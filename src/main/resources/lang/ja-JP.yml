@@ -609,6 +609,8 @@ web:
     helpRevoke: Web セッションを取り消し
     helpDm: ダイレクトメッセージを送信
     helpDmRead: 1:1 メッセージスレッドを読む
+    helpReply: 公開 BMChat メッセージに返信
+    replyClickHint: "クリックして返信 (#{id})"
     helpGroup: 'グループチャットメッセージを送信'
     groupDisabled: 'グループチャットは無効です。'
     groupDirectInputRequired: 'グループチャットメッセージはプレイヤーが直接入力する必要があります。'
@@ -630,6 +632,10 @@ web:
     dmGameSendDisabled: ゲーム内からの DM 送信は無効です。
     dmDirectInputRequired: "DMはプレイヤーが直接入力したコマンドでのみ送信できます。"
     dmPlayerNotFound: プレイヤーが見つかりません。少なくとも一度参加している必要があります。
+    replyDisabled: ゲーム内返信機能は無効です。
+    replyDirectInputRequired: 返信はプレイヤーが直接入力したコマンドでのみ送信できます。
+    replyEmpty: 返信メッセージが空です。
+    replyTargetNotFound: 返信先のメッセージが見つかりません。
     dmEmpty: メッセージが空です。
     dmFailed: 'DM 送信失敗: {error}'
     dmSent: '{player} に送信しました: {message}'

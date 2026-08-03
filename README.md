@@ -8,10 +8,14 @@ A web chat plugin for Bukkit/Paper/Spigot-compatible Minecraft servers. It can r
 
 - BlueMap embedded chat panel and standalone web chat page
 - Two-way game ↔ web chat relay
+- Signed server-to-server public chat relay with per-server web badges and game/Discord server labels
+- Clickable Minecraft replies (`/bmchat reply`) and linked web-sender DM shortcuts (`/bmchat dm`)
+- Optional mirroring of game `/w`/`/msg`/`/tell`-style whispers into both users' BMChat web DM thread
 - Guest chat with math captcha, cooldowns, and a 50 messages/minute default guest rate limit
 - `/bmchat auth <code>` account linking, web password login, local admin accounts
 - Web admin/moderator panel, message hiding, pin/delete action toggle, guest/IP mutes, session revoke
 - Admin custom emoji manager: create, upload, rename, and delete emoji folders/files
+- ImageEmojis-Bero 1.9.0 compatibility for token-preserving web/game/reply/relay rendering
 - File and clipboard upload, image/video/audio/YouTube/Shorts previews, plus optional TikTok and X/Twitter embeds
 - DiscordSRV relay and Discord CDN media cache
 - Message replies with clickable referenced-message previews, optional game-side reply previews, pinned messages, virtual scrolling, draggable/resizable window, PIP
@@ -25,7 +29,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.5.5.jar
+target/BlueMapWebChat-4.6.0.jar
 ```
 
 ## Install
@@ -37,6 +41,9 @@ target/BlueMapWebChat-4.5.5.jar
 5. For BlueMap embedded mode, keep `web-addon.auto-install` and `web-addon.auto-patch-webapp-conf` enabled.
 6. For standalone-only mode, set `standalone-web.enabled: true`, `web-addon.auto-install: false`, and `web-addon.auto-patch-webapp-conf: false`.
 7. Restart the server or run `/bmchat reload`. Run `/bluemap reload` if BlueMap does not refresh web assets automatically.
+
+
+Existing configs are never overwritten. When `config-version` is missing or differs from the running plugin version, BlueMapWebChat compares the physical `config.yml` with the bundled defaults and writes `plugins/BlueMapWebChat/config-migration-4.6.0.yml`. The generated file contains copy-ready missing settings, changed bundled defaults, and the target `config-version` review marker. Even when no other settings differ, the file is still created so configuration version management remains explicit. Version details and previous/new default values are comments, not YAML settings. Custom values and obsolete-setting notes are omitted. When `config-version: "4.6.0"` already matches the plugin version, the config is treated as reviewed and comparison is skipped. See `docs/UPGRADE_4_6_0_EN.md`.
 
 ## Deployment modes
 
@@ -152,6 +159,9 @@ Group chats use a dedicated SQLite store (`group-chat.sqlite-file`, default `gro
 
 DMs use an independent private-message store. `direct-message.storage: auto` follows `chat.history-storage` when public chat uses `jsonl`; otherwise it uses SQLite. You can also set `direct-message.storage` to `sqlite` or `jsonl` explicitly, using `direct-message.sqlite-file` or `direct-message.jsonl-file`. `direct-message.retention-days: 0` means no time limit; otherwise the DM window title shows the configured retention period and old DM rows are physically removed after that many days. `direct-message.max-messages-per-thread: 0` disables count-based cleanup. `direct-message.confirm-hide` controls whether the web UI asks before hiding a DM from your own view. Because private messages are stored on the server, the feature is disabled by default and should be enabled only after setting a server policy.
 
+
+Game `/w`, `/msg`, `/tell`, and compatible aliases can be mirrored into the same web DM thread with `direct-message.capture-game-whispers`. Clicking a local game sender suggests `/w <realName> `; linked web senders and remote-server game senders suggest `/bmchat dm <realName> `.
+
 ## Custom emoji and game-side emoji plugins
 
 BlueMapWebChat stores custom emoji files under `plugins/BlueMapWebChat/emojis`. Subfolders are treated as emoji packs.
@@ -164,9 +174,9 @@ By default, web-to-game chat preserves custom emoji tokens such as `:default/wav
 - `link`: sends the configured token text plus a short BM Web Chat image link.
 - `label`: sends only the configured token text.
 
-`emoji.game-link.*` only affects web-to-Minecraft chat. Discord image preview links are controlled separately: `discordsrv.append-web-emoji-links` handles web→Discord messages, and `discordsrv.append-game-emoji-links` handles game→Discord tokens by augmenting DiscordSRV's normal Minecraft→Discord relay when possible. Leave `game-to-discord` disabled when DiscordSRV already relays normal Minecraft chat to avoid duplicates.
+`emoji.game-link.*` only affects web-to-Minecraft chat. Discord image preview links are controlled separately: `discordsrv.append-web-emoji-links` handles web→Discord messages, and `discordsrv.append-game-emoji-links` handles game→Discord tokens by augmenting DiscordSRV's normal Minecraft→Discord relay when possible. When several servers share one Discord channel, only the server that observed the original local game chat edits that native DiscordSRV message; peer servers do not stack their own labels or emoji links. Receiving relay peers never re-send the message to Discord. Leave `game-to-discord` disabled when DiscordSRV already relays normal Minecraft chat to avoid duplicate posts.
 
-BM Web Chat does not call ImageEmojis or any other game-side emoji plugin directly, and it does not read resource packs or generated glyphs. It preserves token text and attempts to load before ImageEmojis so the original chat text can be captured before game-side rendering.
+BM Web Chat keeps the canonical token text in web history and server-relay payloads. When ImageEmojis or ImageEmojis-Bero is enabled, BMChat reads its public runtime emoji repository through reflection and uses the receiving server's current token-to-glyph mapping when it builds clickable Minecraft components. No hard plugin dependency or resource-pack parsing is required; unresolved tokens still fall back to the normal game-side rendering path.
 
 When GIF/JPG/JPEG/WEBP emoji files are uploaded, BlueMapWebChat also creates a same-folder PNG sidecar for compatibility with game-side emoji plugins that only read PNG files:
 
@@ -176,6 +186,8 @@ plugins/BlueMapWebChat/emojis/default/wave.png
 ```
 
 The web UI keeps using the original file, so GIF animation is preserved. A game-side emoji plugin may use the PNG sidecar if it watches the same emoji directory. Run that plugin's reload command after adding or changing emoji files.
+
+Detailed setup, relay, reply-command, permission, reload, and troubleshooting notes: [`docs/IMAGEEMOJIS_BERO_1_9_0_EN.md`](docs/IMAGEEMOJIS_BERO_1_9_0_EN.md).
 
 ## YouTube Shorts, TikTok, and X/Twitter previews
 
@@ -199,6 +211,8 @@ Enable TikTok or X/Twitter only if you are comfortable with third-party embed re
 ## Commands
 
 ```text
+/bmchat dm <player> <message>
+/bmchat reply <messageId> <message>
 /bmchat auth <code>
 /bmchat password <newPassword>
 /bmchat reload
@@ -217,12 +231,18 @@ Enable TikTok or X/Twitter only if you are comfortable with third-party embed re
 ```text
 bluemapwebchat.auth
 bluemapwebchat.webchat
+bluemapwebchat.dm
+bluemapwebchat.reply
+bluemapwebchat.group
 bluemapwebchat.admin
 ```
 
 ## Documentation
 
+- `docs/USER_MANUAL_EN.md` - complete user and operator manual for all features
 - `docs/CONFIGURATION_EN.md` - configuration reference
+- `docs/SERVER_RELAY_EN.md` - server-to-server public chat relay
+- `docs/UPGRADE_4_6_0_EN.md` - 4.5.5 to 4.6.0 config/database upgrade
 - `docs/CADDY_HTTPS_EN.md` - HTTPS reverse proxy setup
 - `docs/I18N_EN.md` - language files and fallback behavior
 - `docs/INSTALL_TROUBLESHOOTING_EN.md` - install, upgrade, troubleshooting

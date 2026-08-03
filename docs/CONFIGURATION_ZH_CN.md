@@ -2,6 +2,10 @@
 
 本文说明 `plugins/BlueMapWebChat/config.yml`。
 
+## 配置版本与迁移片段
+
+`config-version` 不是自动转换架构的编号，而是管理员已完成配置审核的标记。当它与正在运行的插件版本一致时会跳过比较。缺失或不同时，插件会比较实际 `config.yml` 与 JAR 内置默认配置，生成 `config-migration-<plugin-version>.yml`，但不会修改真实配置。生成文件会把可直接合并的缺失设置、已变化的默认值以及最终审核标记 `config-version` 写成真实 YAML 设置。即使没有其他差异，也会为了配置版本管理生成该文件。版本信息以及旧、新默认值使用 `#` 注释，不输出自定义值和废弃候选等参考列表。先合并需要的值，仅在审核完成后再合并 `config-version`。在版本一致前，每次启动和 `/bmchat reload` 都会更新该文件。
+
 ## 总开关
 
 新生成的 config 顶层默认为 `enabled: false`。在此状态下，BlueMapWebChat 只会生成/读取配置，/bmchat reload 仍可使用，但不会启动 Web/聊天服务、监听器、Discord 集成、私信存储、插件网页安装、上传/表情初始化或清理任务。已有 config 如果没有此键，为了升级兼容会视为已启用。请先检查存储方式、保留期限、上传、预览、认证和对外公开设置，再改为 `enabled: true`。
@@ -78,9 +82,15 @@ emoji:
 
 ## 1:1 私信会话线程
 
-启用 `direct-message.enabled` 后，可以使用 1:1 会话线程式消息箱。目标仅限已有 UUID/名称记录的已关联或曾加入玩家。线程使用排序后的两个 UUID 作为键，因此 A→B 与 B→A 总是进入同一个会话。消息会保存到 `direct-message.storage` 指定的专用 DM 存储。`auto` 会在公开聊天使用 `jsonl` 存储时让 DM 也使用 JSONL，其他情况下使用 SQLite。SQLite 使用 `direct-message.sqlite-file`，JSONL 使用 `direct-message.jsonl-file`。
+```yaml
+direct-message:
+  enabled: false
+  allow-web-send: true
+  allow-game-send: true
+  capture-game-whispers: true
+```
 
-`direct-message.retention-days: 0` 表示无保留期限。大于 0 的值会显示在 DM 窗口标题旁作为保留期限，超过该天数的 DM 原文会被物理删除。`direct-message.max-messages-per-thread: 0` 表示不按线程消息数清理。`direct-message.confirm-hide` 控制 Web UI 在从自己视图隐藏 DM 前是否显示确认框。由于私信会保存在服务器上，此功能默认关闭。
+`capture-game-whispers` 会把未取消的 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 复制到发送者和接收者的 BMChat DM 会话。它不会重新发送或替换 Minecraft 私聊。Bukkit 无法统一获得所有私聊插件的最终成功结果，因此以格式正确、目标为已知玩家的命令作为记录条件。
 
 ## 0 表示无限制/无最大值的选项
 
@@ -127,46 +137,125 @@ chat:
 
 当 Web 聊天转发到 Minecraft 聊天时，`chat.game-name-hover.enabled` 可以在显示名称上添加 hover 提示。仅当 `player-display.mode` 为 `display-name` 或 `custom-name`，且显示名称与真实 Minecraft 账号名不同时才会应用。该提示使用 Spigot/Bungee 聊天组件，因此不是 Paper 专用，在 Spigot/Paper 兼容服务器上可用。`text` 支持 Minecraft legacy 颜色代码以及 `{display}`, `{real}`, `{uuid}`, `{source}` 占位符。
 
-## Minecraft 聊天中的回复显示
+## Minecraft 聊天回复与发送者点击
 
 ```yaml
 reply:
+  game-click:
+    enabled: true
+    local-game-chat: true
+  game-command-format: "&8[&dReply&8] &f{player}&7: &f{message}"
   game-preview:
     enabled: true
     format: "&7{sender}: {preview}"
     max-length: 120
-
   game-prefix:
     enabled: true
     text: "↪ [Reply] "
 ```
 
-当 Web 或访客消息回复另一条消息时，`game-preview.enabled` 会先在 Minecraft 聊天中单独发送一行被回复消息的预览，然后再发送实际 Web 消息。这样可以保持原有 Web→游戏聊天格式，同时让引用行和正文行中的 URL 都保持可点击。
+点击非 URL 正文会建议 `/bmchat reply <messageId> `，URL 片段仍优先打开链接。`local-game-chat` 让普通本地游戏聊天也可点击回复；若其他聊天格式插件必须独占最终渲染，请关闭。点击同服游戏发送者名称会建议 `/w <真实名称> `；已关联 Web 发送者和其他服务器的游戏发送者会建议 `/bmchat dm <真实名称> `。
 
-预览文本会经过与普通 Web 消息相同的 Web→游戏自定义表情处理。使用默认 token 保留设置时，自定义表情 token 会保持不变；明确启用 `emoji.game-link.enabled` 时，会应用所选的 game-link mode。较长预览会按 `max-length` 使用 `…` 省略；设为 `0` 可关闭预览专用截断。
+游戏回复会保留玩家输入的自定义表情 token，用于 Web 历史和服务器中继；在发送端服务器的 Minecraft 输出中，则复用游戏侧表情插件处理后的命令正文来显示表情。若没有处理后的 glyph 且 `emoji.game-link.mode` 为 `preserve`，已识别 token 会以普通 Bukkit 聊天行输出以兼容游戏侧渲染器；该兼容行无法附带 BMChat 的点击和 hover metadata。
 
-`game-prefix` 控制实际回复消息行的标签/prefix。使用默认 Web 格式时，它会把 `[Web] Player: message` 改为 `↪ [Reply] Player: message`。BlueMapWebChat 会替换已渲染 relay 行开头附近第一个方括号来源标签；如果找不到这样的标签，则会把 prefix 文本加到前面。
 
-`game-preview.format` 和 `game-prefix.text` 都支持 `&7` 这类 Minecraft legacy 颜色代码。
+
+`server-relay` 用于连接多个 BlueMapWebChat 服务器的公共聊天。游戏、已关联 Web 用户和访客消息可发送到远端服务器的 Web 聊天与 Minecraft 聊天，同时保留消息 ID、回复关系、发送者和来源服务器信息。
+
+## 服务器中继配置
+
+服务器 1：
+
+```yaml
+server-relay:
+  enabled: true
+  server-id: "server1"
+  server-name: "服务器 1"
+  shared-secret: "两台服务器使用同一个足够长的随机密钥"
+  connect-timeout-seconds: 5
+  request-timeout-seconds: 10
+  max-clock-skew-seconds: 60
+  dedupe-seconds: 300
+  max-hops: 8
+  sources:
+    game: true
+    web: true
+    guest: true
+    discord: false
+    system: false
+  delivery:
+    web: true
+    game: true
+  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
+  peers:
+    - id: "server3"
+      url: "https://server3.example.com/bmwc/api"
+      secret: ""
+      enabled: true
+```
+
+服务器 3 使用 `server-id: "server3"`，并在 `peers` 中添加 `id: "server1"` 和服务器 1 的公开 API URL。双方必须互相登记；接收方 peer ID 必须与发送方 `server-id` 完全一致，并且每台服务器的 ID 必须唯一。
+
+## HTTPS 与反向代理
+
+`url` 是远端可公开访问的 BMChat API base，`/relay/receive` 会自动追加。
+
+```text
+配置: https://server3.example.com/bmwc/api
+请求: https://server3.example.com/bmwc/api/relay/receive
+```
+
+公开 HTTPS 路由必须把包含 `/relay/receive` POST 在内的整个 API 路径转发到内部 BMChat HTTP 监听器。已有 HTTPS 前端时无需公开 8899 端口。代理必须保留 `X-BMWC-Relay-Version`, `X-BMWC-Relay-From`, `X-BMWC-Relay-Timestamp`, `X-BMWC-Relay-Signature`。自签名证书需要加入 Java trust store，否则会在 TLS 验证阶段失败。
+
+## 密钥
+
+- `shared-secret` 是所有 peer 的默认密钥。
+- `peers[].secret` 是单独连接的覆盖密钥。
+- 两台服务器可使用相同的长随机 `shared-secret`，并保持 peer `secret: ""`。
+- peer 密钥和公共密钥都为空时，该 peer 会从活动列表排除。
+
+## 多服务器拓扑
+
+全网状拓扑让每台服务器登记所有其他服务器；Hub 拓扑让 leaf 只连接 hub，hub 登记所有 leaf。relay ID 去重、来源抑制、上一跳排除和 `max-hops` 防止循环。没有持久离线队列；peer 离线期间的消息不会稍后补发。
+
+## reload 与诊断
+
+`/bmchat reload` 会关闭旧 relay，并使用当前配置重新创建。中继是每条消息一次 HTTP(S) 请求，不是永久连接，因此没有单独的“重新连接”操作。
+
+```text
+Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
+```
+
+如果 `activePeers` 少于配置数量，警告会指出重复 ID、自身 ID、空/非法 URL、不支持的 scheme 或缺少密钥等原因。
+
+## HTTP 错误
+
+- `403 unknown_peer`: 接收服务器的活动 peer 中没有发送方的准确 `server-id`。
+- `401 bad_signature`: 实际密钥不同，或代理修改了正文/头。
+- `401 expired_request`: 两台服务器时钟差超过 `max-clock-skew-seconds`。
+- `404 relay_disabled`: 接收端未启用，或代理转发到了错误实例/路径。
+- `426 unsupported_protocol`: 两端中继协议版本不兼容。
+
+修改接收端 peer 或密钥后，也必须在接收端执行 `/bmchat reload`。
+
+## 显示区分
+
+Web 聊天只为其他服务器的消息显示基于 `originServerId` 的固定颜色徽章，当前服务器自身的徽章会省略。Web→游戏时，仅远端消息的旧格式缺少 `{server}` / `{server_id}` 才会自动添加 `[server-name]`。Discord 是共享外部频道，因此继续保留服务器标识。为避免 DiscordSRV 循环和系统事件重复，`sources.discord` 与 `sources.system` 默认关闭。
 
 ## Discord 转发选项
 
 ```yaml
 discordsrv:
-  append-web-emoji-links: true
+  web-to-discord-format: "[{server}] [Web] {sender}: {message}"
+  game-to-discord-format: "[{server}] {sender}: {message}"
   game-to-discord: false
+  append-web-emoji-links: true
   append-game-emoji-links: true
-  max-emoji-links-per-message: 4
   reply-relay:
     enabled: false
-    prefix-enabled: true
-    preview-enabled: true
-    preview-max-length: 120
 ```
 
-`discordsrv.append-web-emoji-links` 会把 BM Web Chat 自定义表情 token 的图片 URL 附加到 Web→Discord 消息中。`discordsrv.append-game-emoji-links` 会在可能的情况下编辑 DiscordSRV 的普通 Minecraft→Discord 转发消息，为游戏侧 token 附加图片 URL。可选的 `discordsrv.game-to-discord` 是让 BM Web Chat 直接把游戏聊天发送到 Discord 的功能；如果 DiscordSRV 已经在转发普通 Minecraft 聊天，请保持关闭以避免重复消息。这些设置与只影响 Web→Minecraft 聊天的 `emoji.game-link.*` 分离。
-
-`discordsrv.reply-relay` 控制是否也把 Web 回复预览发送到 Discord。默认关闭，以避免 Discord 消息出现类似额外评论的行。
+格式支持 `{server}`, `{server_id}`, `{sender}`, `{name}`, `{role}`, `{source}`, `{message}`, `{channel}`。中继启用时，旧格式若没有服务器占位符会自动添加 `[server-name]`。多个服务器共享同一 Discord 频道时，只有实际检测到本地 Minecraft 聊天的来源服务器 BMChat 才会给 DiscordSRV 的普通游戏转发添加服务器名和表情链接，其他服务器不会编辑该消息。接收端不会把服务器中继消息再次发送到 Discord，因此来源服务器的 Discord 集成关闭或失败时，不存在由其他服务器代发的 relay-only fallback。DiscordSRV 已转发普通游戏聊天时，应关闭 `game-to-discord` 以避免重复。
 
 ## 置顶消息
 
@@ -212,9 +301,9 @@ BlueMapWebChat 会把自定义表情文件保存到 `plugins/BlueMapWebChat/emoj
 
 `emoji.game-link.*` 只影响 Web→Minecraft 聊天。Discord 图片预览链接分别由 Web→Discord 的 `discordsrv.append-web-emoji-links` 和 Game→Discord 的 `discordsrv.append-game-emoji-links` 控制。`append-game-emoji-links` 会在可能的情况下编辑 DiscordSRV 的普通 Minecraft→Discord 转发消息；只有当你希望 BM Web Chat 直接发送游戏聊天到 Discord 时才需要 `game-to-discord`。
 
-BM Web Chat 不会直接调用 ImageEmojis 或其他游戏侧表情插件，也不会读取资源包或生成的 glyph。它会保留 token 文本，并尽量在 ImageEmojis 之前加载，以便在游戏侧渲染前捕获原始聊天文本。
+BM Web Chat 会在 Web 历史和中继 payload 中保留规范的表情 token。启用 ImageEmojis 或 ImageEmojis-Bero 时，BMChat 会通过 reflection 读取其公开的 runtime 表情 repository，并在构建可点击的 Minecraft component 前把 token 转换为接收服务器当前使用的 glyph。该机制不增加硬依赖，也不会解析资源包。
 
-当 token 保留行为生效且同一行中也包含 URL 时，BM Web Chat 会保留为一行 plain Minecraft 聊天，而不会重复发送 URL 引用行。这样游戏侧表情插件仍然可以读取原始 token 文本。
+对于交互式聊天行，BMChat 会先插入 ImageEmojis glyph，再构建发送者、回复和 URL 点击事件，因此表情显示与可点击链接可以同时工作。只有接收服务器无法解析的已知 token 才会使用单行 plain Bukkit fallback 兼容其他游戏侧 renderer；该 fallback 无法携带 BMChat 的点击或 hover metadata。
 
 `default-pack` 和 `aliases` 可用于把扁平的游戏侧 token 映射回 BM Web Chat 的 pack/name id。例如：
 
@@ -227,6 +316,10 @@ emoji:
 ```
 
 GIF/JPG/JPEG/WEBP 表情原文件会自动获得同文件夹 PNG sidecar，以兼容只读取 PNG 文件的游戏侧表情插件。Web UI 会继续使用原始文件，因此 GIF 动画会保留。
+
+### ImageEmojis-Bero 1.9.0
+
+兼容目标为 [ImageEmojis-Bero 1.9.0](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)。若 Web 与游戏共用表情文件，请设置 `emojisFolder: "/BlueMapWebChat/emojis"`、`templateFormat: ":<emoji>:"`、`replaceInCommands: true`，并授予用户 `imageemojis.use`。完整设置、中继行为、重新加载顺序、Discord 注意事项与故障排除参见 `IMAGEEMOJIS_BERO_1_9_0_ZH_CN.md`。
 
 ## 命令面板
 

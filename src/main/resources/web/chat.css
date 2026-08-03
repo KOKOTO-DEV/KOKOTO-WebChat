@@ -2981,7 +2981,35 @@ body.bmwc-pip-mode {
   user-select: none;
 }
 
+/* Server relay origin badge: intentionally stronger than the normal source label
+   so messages from multiple connected servers are distinguishable at a glance. */
+#bmwc-root .bmwc-server-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: min(180px, 45vw);
+  padding: 1px 6px;
+  border: 1px solid hsla(var(--bmwc-server-hue, 210), 78%, 68%, 0.82);
+  border-radius: 999px;
+  background: hsla(var(--bmwc-server-hue, 210), 76%, 52%, 0.24);
+  color: hsl(var(--bmwc-server-hue, 210), 92%, 78%) !important;
+  font-size: 0.9em;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.96;
+}
+
+#bmwc-root.bmwc-theme-light .bmwc-server-badge,
+#bmwc-root.bmwc-theme-system .bmwc-server-badge {
+  border-color: hsla(var(--bmwc-server-hue, 210), 72%, 38%, 0.68);
+  background: hsla(var(--bmwc-server-hue, 210), 72%, 48%, 0.15);
+  color: hsl(var(--bmwc-server-hue, 210), 72%, 32%) !important;
+}
+
 #bmwc-root .bmwc-source-label,
+#bmwc-root .bmwc-server-badge,
 #bmwc-root .bmwc-time,
 #bmwc-root .bmwc-mini-actions,
 #bmwc-root .bmwc-mini-action {
@@ -7706,6 +7734,7 @@ body.bmwc-standalone-mode {
 #bmwc-root .bmwc-messages .bmwc-meta,
 #bmwc-root .bmwc-messages .bmwc-time,
 #bmwc-root .bmwc-messages .bmwc-source-label,
+#bmwc-root .bmwc-messages .bmwc-server-badge:not([style*="--bmwc-server-hue"]),
 #bmwc-root .bmwc-messages .bmwc-source-badge,
 #bmwc-root .bmwc-messages .bmwc-role-badge,
 .bmwc-dm-modal-backdrop .bmwc-dm-messages .bmwc-dm-message-body,
@@ -7720,6 +7749,7 @@ body.bmwc-standalone-mode {
 
 #bmwc-root .bmwc-messages .bmwc-time,
 #bmwc-root .bmwc-messages .bmwc-source-label,
+#bmwc-root .bmwc-messages .bmwc-server-badge:not([style*="--bmwc-server-hue"]),
 #bmwc-root .bmwc-messages .bmwc-source-badge,
 #bmwc-root .bmwc-messages .bmwc-role-badge,
 .bmwc-dm-modal-backdrop .bmwc-dm-messages .bmwc-time,

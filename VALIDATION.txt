@@ -1,0 +1,70 @@
+BlueMapWebChat 4.6.0 source validation
+=====================================
+
+Release basis
+- Used the user-supplied BlueMapWebChat-4.6.0-source(1).zip as the source of truth.
+- Kept the plugin version at 4.6.0.
+
+Configuration migration behavior
+- Existing config.yml is never overwritten or merged automatically.
+- If config-version matches the running plugin version, comparison is skipped and stale same-version migration guidance is removed.
+- If config-version is missing or different, config-migration-<plugin-version>.yml contains only:
+  - settings missing from the physical config.yml;
+  - bundled defaults that changed while the configured value still equals the previous default.
+- The generated YAML body contains only real configuration paths and values that can be merged into config.yml.
+- Version information, counts, and previous/new default details are written as # comments.
+- Metadata sections such as migration, summary, settings-to-add, changed-defaults-to-review,
+  preserved-custom-values, obsolete-settings-to-review, and finalize-after-review are not generated.
+- Customized values and obsolete-setting information lists are intentionally omitted.
+- If config-version is absent, a migration file is generated even when no missing settings or changed defaults exist; the YAML body then contains the target config-version marker.
+- If config-version differs from the running plugin version, the migration file is generated or refreshed.
+- If config-version matches the running plugin version, comparison and file creation are skipped and stale same-version guidance is removed.
+- Privacy-sensitive game-whisper capture and local clickable-chat behavior use disabled runtime fallbacks only while config-version differs from the plugin version.
+
+Comparison results
+- The bundled 4.5.5 and current 4.6.0 defaults were parsed and compared directly.
+- 22 settings require addition, excluding config-version.
+- 2 bundled defaults changed:
+  - discordsrv.web-to-discord-format
+  - discordsrv.game-to-discord-format
+- No 4.5.5 default setting was removed in 4.6.0.
+- An explicit unknown config version does not guess previous defaults and therefore receives only missing-setting comparison.
+- A missing version marker uses the bundled 4.5.5 baseline.
+
+Validation performed
+- The current ConfigMigrationManager.java compiled with Java 17 against focused Bukkit compatibility stubs.
+- A Python behavioral comparison reproduced the Java migration rules against the bundled 4.5.5 and 4.6.0 configs.
+- The generated fragment model parsed as YAML and its leaf paths exactly matched the 22 missing settings plus the 2 changed defaults.
+- The fragment model contained none of the removed metadata section names.
+- config.yml, the 4.5.5 baseline, plugin.yml, and all language YAML files parsed successfully.
+- en-US, ko-KR, ja-JP, and zh-CN each contain the same 655 flattened language keys.
+- pom.xml, plugin.yml, and config.yml consistently declare 4.6.0.
+- CHANGELOG version headings are unique and Markdown code fences are balanced.
+- English, Korean, Japanese, and Simplified Chinese README, configuration, upgrade, and release-checklist documents describe the simplified migration fragment behavior.
+- inner.js and src/main/resources/web/chat.js pass JavaScript syntax checks.
+- Internal Markdown links resolve to files included in the source tree.
+- No merge-conflict markers, patch rejects, editor backup files, class files, or temporary test files are included in the packaged source.
+
+Not performed
+- A full Maven dependency build and shaded release JAR were not produced in this environment.
+- Live Paper/Spigot, BlueMap, DiscordSRV, ImageEmojis-Bero, reverse-proxy, and TLS testing remains required before production release.
+
+Comprehensive manual validation
+-------------------------------
+- Added docs/USER_MANUAL_EN.md, USER_MANUAL_KO.md, USER_MANUAL_JA.md, and USER_MANUAL_ZH_CN.md.
+- Each manual contains the same 36 major feature/operations sections.
+- Covered installation, config migration, deployment modes, HTTP/HTTPS, UI, public chat, history/search, auth, security, guests/captcha, sender interactions, replies, DM/whisper capture, group chat, announcements, pins, uploads, previews, emoji, ImageEmojis-Bero 1.9.0, notifications/Web Push, PWA/PIP, DiscordSRV, server relay, web commands, moderation, fonts, virtual scrolling, commands, permissions, storage/backup, reload/restart, and troubleshooting.
+- README links were added for all four manuals.
+- Changelog and four-language release checklists were updated.
+- Verified 36 numbered sections and balanced Markdown code fences in all manuals.
+- Verified all explicitly referenced companion documents exist.
+- Re-validated config/lang YAML and JavaScript syntax.
+- Re-validated language parity: en-US, ko-KR, ja-JP, zh-CN each contain 655 keys.
+
+Final configuration-version decision validation
+-----------------------------------------------
+- Unversioned config matching all current defaults still produces a fragment whose only YAML value is config-version: "4.6.0".
+- A 4.5.5 baseline config produces 22 missing settings, 2 changed bundled defaults, and the target config-version marker.
+- A matching config-version follows the explicit skip branch, creates no migration fragment, and removes stale same-version guidance.
+- The exact three-state decision table is included in all four complete manuals and all four 4.6.0 upgrade guides.
+- Every literal /bmchat command usage emitted by BmChatCommand is represented in all four complete manuals; `/bmchat dm hide` is documented with the correct `<messageId>` argument.

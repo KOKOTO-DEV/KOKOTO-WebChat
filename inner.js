@@ -2546,8 +2546,35 @@
 
   function displaySource(msg) {
     const source = String(msg && msg.source || "").toLowerCase();
-    if (!source) return "";
-    return t("source." + source, source);
+    return source ? t("source." + source, source) : "";
+  }
+
+  function messageServerInfo(msg) {
+    const id = String(msg && msg.originServerId || "").trim();
+    const name = String(msg && msg.originServerName || "").trim();
+    const label = name || id;
+    const title = name && id && name !== id ? name + " (" + id + ")" : label;
+    return {id, name, label, title};
+  }
+
+  function isLocalServerMessage(msg) {
+    const server = messageServerInfo(msg);
+    if (!server.id && !server.name) return true;
+    const currentId = String(state.config && state.config.serverRelayServerId || "").trim();
+    if (currentId && server.id) return currentId.toLowerCase() === server.id.toLowerCase();
+    const currentName = String(state.config && state.config.serverRelayServerName || "").trim();
+    return !!(currentName && server.name && currentName.toLowerCase() === server.name.toLowerCase());
+  }
+
+  function serverBadgeHtml(msg) {
+    const server = messageServerInfo(msg);
+    if (!server.label || isLocalServerMessage(msg)) return "";
+    const key = server.id || server.label;
+    const palette = [198, 28, 132, 278, 52, 342, 168, 225, 12, 102, 310, 74];
+    let hash = 0;
+    for (let i = 0; i < key.length; i++) hash = ((hash * 31) + key.charCodeAt(i)) >>> 0;
+    const hue = palette[hash % palette.length];
+    return `<span class="bmwc-server-badge" data-server-id="${esc(server.id)}" style="--bmwc-server-hue:${hue}" title="${esc(server.title)}">${esc(server.label)}</span><span class="bmwc-meta-sep" aria-hidden="true">·</span>`;
   }
 
 
@@ -4928,7 +4955,7 @@
     el.classList.toggle("bmwc-has-mini-actions", !!(canReply || canPin || canDelete));
     el.innerHTML = `
       <div class="bmwc-meta">
-        <span class="bmwc-sender${originalSender ? " bmwc-sender-has-real" : ""}"${senderAttrs}>${originalSender ? senderNameHtml(shownSender, originalSender, msg.source) : minecraftNameHtml(renderedSender, shouldRenderMinecraftNameColors() && sourceMayRenderMinecraftNameColors(msg.source))}</span><span class="bmwc-meta-sep" aria-hidden="true">·</span><span class="bmwc-source-label">${esc(displaySource(msg))}</span><span class="bmwc-meta-sep" aria-hidden="true">·</span><span class="bmwc-time-actions"><span class="bmwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(time)}</span>${miniActionsHtml}</span>
+        <span class="bmwc-sender${originalSender ? " bmwc-sender-has-real" : ""}"${senderAttrs}>${originalSender ? senderNameHtml(shownSender, originalSender, msg.source) : minecraftNameHtml(renderedSender, shouldRenderMinecraftNameColors() && sourceMayRenderMinecraftNameColors(msg.source))}</span><span class="bmwc-meta-sep" aria-hidden="true">·</span>${serverBadgeHtml(msg)}<span class="bmwc-source-label">${esc(displaySource(msg))}</span><span class="bmwc-meta-sep" aria-hidden="true">·</span><span class="bmwc-time-actions"><span class="bmwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(time)}</span>${miniActionsHtml}</span>
       </div>
       ${replyReferenceHtml(msg)}
       <div class="bmwc-text">${messageTextHtml(msg)}</div>

@@ -43,9 +43,10 @@ public class WebChatServer {
     private final RateLimiter rateLimiter = new RateLimiter();
     private final Object uploadQuotaLock = new Object();
     private final Deque<ChatMessage> history = new ArrayDeque<>();
+    private final ConcurrentHashMap<String, CachedReplyTarget> transientReplyTargets = new ConcurrentHashMap<>();
     private SqliteHistoryStore sqliteHistory;
     private final Set<SseClient> clients = ConcurrentHashMap.newKeySet();
-    private static final Pattern URL_PATTERN = Pattern.compile("(?i)\\b((?:https?://|www\\.)[^\\s<>\"]+)");
+    private static final Pattern URL_PATTERN = Pattern.compile("(?i)((?:https?://|www\\.)[^\\s<>\"]+)");
     // Keep this aligned with the frontend customEmojiTokenRegex().
     // Emoji ids may contain spaces and pack paths, for example :pack 1/name:.
     // The negative lookbehind prevents URL schemes such as http:// from being treated as emoji tokens.
@@ -64,6 +65,9 @@ public class WebChatServer {
     private int sqliteWritesSincePrune;
     private volatile boolean running;
     private static volatile boolean imageIoPluginsRegistered;
+    private volatile Map<String, String> imageEmojiRuntimeSymbols = Map.of();
+    private volatile long imageEmojiRuntimeSymbolsLoadedAt;
+    private final java.util.concurrent.atomic.AtomicBoolean imageEmojiRuntimeRefreshScheduled = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public WebChatServer(BlueMapWebChatPlugin plugin, Storage storage, AuthManager auth, CaptchaManager captcha) {
         this.plugin = plugin;
@@ -105,6 +109,7 @@ public class WebChatServer {
         cleanupOldExternalMediaCache();
         ensureImageIoPluginsRegistered();
         syncExistingGameEmojiPngSidecarsOnStartup();
+        refreshImageEmojiRuntimeSymbols();
 
         running = true;
         server.start();
@@ -120,6 +125,7 @@ public class WebChatServer {
         server.createContext(p + "/pins", this::handlePins);
         server.createContext(p + "/stream", this::handleStream);
         server.createContext(p + "/send", this::handleSend);
+        server.createContext(p + "/relay/receive", this::handleRelayReceive);
         server.createContext(p + "/push/subscribe", this::handlePushSubscribe);
         server.createContext(p + "/push/unsubscribe", this::handlePushUnsubscribe);
         server.createContext(p + "/push/test", this::handlePushTest);
@@ -556,36 +562,73 @@ public class WebChatServer {
         }
     }
 
-    public void publishFromGame(Player player, String message) {
+    public ChatMessage publishFromGame(Player player, String message) {
         String displayName = plugin.displayPlayerName(player);
         String realName = player == null ? displayName : player.getName();
         String uuid = player == null ? "" : player.getUniqueId().toString();
         if (!uuid.isBlank() && displayName != null && !displayName.isBlank()) {
             plugin.storage().updateLastDisplayName(uuid, realName, displayName);
         }
-        publishFromGame(displayName, realName, uuid, message);
+        return publishFromGame(displayName, realName, uuid, message);
     }
 
-    public void publishFromGame(String player, String message) {
-        publishFromGame(player, "", "", message);
+    public ChatMessage publishFromGame(String player, String message) {
+        return publishFromGame(player, "", "", message);
     }
 
-    public void publishFromGame(String player, String realPlayerName, String playerUuid, String message) {
+    public ChatMessage publishFromGame(String player, String realPlayerName, String playerUuid, String message) {
         ConfigValues config = plugin.configValues();
         String text = stripChatMessage(message, config);
-        if (text.isBlank()) return;
+        if (text.isBlank()) return null;
         if (plugin.discordBridge() != null && plugin.discordBridge().shouldSuppressGameEcho(player, text)) {
-            return;
+            return null;
         }
         prewarmExternalMediaCache(text);
         ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "game", player, "USER", text)
                 .withRealSender(stripControl(realPlayerName, 64), stripControl(playerUuid, 64));
+        prepareServerRelay(msg);
         addHistory(msg);
         broadcast(msg);
         dispatchWebPushChat(msg);
         if (plugin.discordBridge() != null) {
             plugin.discordBridge().sendGameMessage(msg);
         }
+        publishServerRelay(msg);
+        return msg;
+    }
+
+    public ChatMessage publishReplyFromGame(Player player, String replyToId, String message) {
+        return publishReplyFromGame(player, replyToId, message, message);
+    }
+
+    public ChatMessage publishReplyFromGame(Player player, String replyToId, String message, String gameDisplayMessage) {
+        if (player == null) return null;
+        ConfigValues config = plugin.configValues();
+        String text = canonicalizeKnownEmojiTokens(stripChatMessage(message, config), config);
+        if (text.isBlank()) return null;
+        String gameText = stripChatMessage(gameDisplayMessage, config);
+        if (gameText.isBlank()) gameText = text;
+
+        ChatMessage target = findHistoryMessageById(stripControl(replyToId, 96));
+        if (target == null || target.hidden) return null;
+
+        String displayName = plugin.displayPlayerName(player);
+        String realName = player.getName();
+        String uuid = player.getUniqueId().toString();
+        plugin.storage().updateLastDisplayName(uuid, realName, displayName);
+
+        prewarmExternalMediaCache(text);
+        ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "game", displayName, "USER", text)
+                .withRealSender(stripControl(realName, 64), stripControl(uuid, 64))
+                .withReply(target.id, stripControl(target.sender, 64), messageReplyPreview(target));
+        prepareServerRelay(msg);
+        addHistory(msg);
+        broadcast(msg);
+        dispatchWebPushChat(msg);
+        if (plugin.discordBridge() != null) plugin.discordBridge().sendGameMessage(msg);
+        publishServerRelay(msg);
+        sendGameCommandReplyToGame(msg, config, gameText);
+        return msg;
     }
 
     public void publishFromDiscord(String sender, String message) {
@@ -596,9 +639,11 @@ public class WebChatServer {
         if (safeSender.isBlank()) safeSender = "Discord";
         prewarmExternalMediaCache(text);
         ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "discord", safeSender, "DISCORD", text);
+        prepareServerRelay(msg);
         addHistory(msg);
         broadcast(msg);
         dispatchWebPushChat(msg);
+        publishServerRelay(msg);
     }
 
     public void publishSystemEvent(String sender, String message) {
@@ -613,9 +658,20 @@ public class WebChatServer {
         if (text.isBlank()) return;
         ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "event", safeSender, "SYSTEM", text);
         msg.withI18n(i18nKey, i18nArgsJson);
+        prepareServerRelay(msg);
         addHistory(msg);
         broadcast(msg);
         dispatchWebPushChat(msg);
+        publishServerRelay(msg);
+    }
+
+    private void handleRelayReceive(HttpExchange ex) throws IOException {
+        ServerRelay relay = plugin.serverRelay();
+        if (relay == null) {
+            sendJson(ex, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}");
+            return;
+        }
+        relay.handleIncoming(ex);
     }
 
     private void handleConfig(HttpExchange ex) throws IOException {
@@ -624,6 +680,8 @@ public class WebChatServer {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("ok", true);
         m.put("serverVersion", plugin.getDescription().getVersion());
+        m.put("serverRelayServerId", c.serverRelayServerId);
+        m.put("serverRelayServerName", c.serverRelayServerName);
         m.put("guestEnabled", c.guestEnabled);
         m.put("guestAllowCustomName", c.guestAllowCustomName);
         m.put("guestNamePrefix", c.guestNamePrefix);
@@ -1742,6 +1800,7 @@ public class WebChatServer {
         ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "web", plugin.displayNameForAccount(ctx.account), ctx.account.role.name(), message)
                 .withRealSender(stripControl(ctx.account.safeUsername(), 64), stripControl(ctx.account.uuid, 64));
         attachReplyIfPresent(msg, replyToId, replyToSender, replyToPreview);
+        prepareServerRelay(msg);
         ConfigValues c = plugin.configValues();
         if (c.broadcastWebChatToWeb) {
             addHistory(msg);
@@ -1751,6 +1810,7 @@ public class WebChatServer {
         sendJson(ex, 200, "{\"ok\":true}");
         sendToGame(msg, ctx.account.role == Role.ADMIN ? c.webAdminToGameFormat : c.webUserToGameFormat);
         plugin.discordBridge().sendWebMessage(msg);
+        publishServerRelay(msg);
     }
 
     private void handleGuestSend(HttpExchange ex, Map<String, String> body, String ip, String message, String replyToId, String replyToSender, String replyToPreview) throws IOException {
@@ -1808,6 +1868,7 @@ public class WebChatServer {
         prewarmExternalMediaCache(message);
         ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "guest", guestName, "GUEST", message);
         attachReplyIfPresent(msg, replyToId, replyToSender, replyToPreview);
+        prepareServerRelay(msg);
         if (config.broadcastWebChatToWeb) {
             addHistory(msg);
             broadcast(msg);
@@ -1817,6 +1878,7 @@ public class WebChatServer {
         sendJson(ex, 200, "{\"ok\":true" + extra + "}");
         sendToGame(msg, config.webGuestToGameFormat);
         plugin.discordBridge().sendWebMessage(msg);
+        publishServerRelay(msg);
     }
 
 
@@ -4981,6 +5043,30 @@ public class WebChatServer {
             return fallback;
         }
     }
+
+    private String canonicalizeKnownEmojiTokens(String text, ConfigValues config) {
+        String raw = String.valueOf(text == null ? "" : text);
+        if (raw.isBlank() || config == null || !config.emojiEnabled) return raw;
+        Matcher matcher = EMOJI_TOKEN_PATTERN.matcher(raw);
+        if (!matcher.find()) return raw;
+
+        EmojiCatalog catalog = scanEmojiCatalog(config);
+        if (catalog.items.isEmpty()) return raw;
+        Map<String, EmojiItem> emojiById = new HashMap<>();
+        for (EmojiItem item : catalog.items) emojiById.put(item.id, item);
+        Map<String, String> aliasToId = emojiAliasToWebId(catalog, config);
+
+        matcher.reset();
+        StringBuffer out = new StringBuffer();
+        while (matcher.find()) {
+            EmojiItem item = emojiItemForToken(matcher.group(1), emojiById, aliasToId);
+            String replacement = item == null ? matcher.group(0) : ":" + item.id + ":";
+            matcher.appendReplacement(out, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(out);
+        return out.toString();
+    }
+
     private String messageForGameChat(String message, ConfigValues config) {
         String text = String.valueOf(message == null ? "" : message);
         if (config == null || !config.emojiEnabled || !config.emojiGameLinkEnabled || isEmojiGameTokenPreserveMode(config)) return text;
@@ -5242,15 +5328,13 @@ public class WebChatServer {
     }
 
     private boolean shouldPreservePlainBroadcastForGameEmojiTokens(String rawMessage, String renderedLine, ConfigValues config) {
-        if (config == null || !config.clickableUrlsInGame || !containsUrl(renderedLine)) return false;
-        if (!isEmojiGameTokenPreserveMode(config)) return false;
-        // Preserve :pack/name: tokens only when the original user/reply text contains
-        // a known BM Web Chat emoji token. Do not inspect the final rendered game line:
-        // formats such as "{sender}: {message}" can produce false positives like
-        // "쿠로베 호노카: https://...", where the sender colon and the URL scheme colon
-        // look like an emoji token to the broad token regex. That false positive forced
-        // plain Bukkit broadcast and made image-only upload URLs non-clickable in-game.
-        return containsKnownEmojiTokenLiteral(String.valueOf(rawMessage == null ? "" : rawMessage), config);
+        if (config == null || !isEmojiGameTokenPreserveMode(config)) return false;
+        // Interactive components bypass ImageEmojis' BroadcastMessageEvent listener.
+        // We therefore resolve known ImageEmojis tokens to the receiving server's
+        // runtime glyph before building the component. Use the plain broadcast fallback
+        // only when a known token is still present after that conversion.
+        String rendered = String.valueOf(renderedLine == null ? "" : renderedLine);
+        return containsKnownEmojiTokenLiteral(rendered, config);
     }
 
     private boolean isEmojiGameTokenPreserveMode(ConfigValues config) {
@@ -5290,6 +5374,118 @@ public class WebChatServer {
         return false;
     }
 
+    private String renderImageEmojiSymbolsForGame(String text) {
+        String raw = String.valueOf(text == null ? "" : text);
+        Matcher matcher = EMOJI_TOKEN_PATTERN.matcher(raw);
+        if (!matcher.find()) return raw;
+
+        Map<String, String> symbols = imageEmojiRuntimeSymbols();
+        if (symbols.isEmpty()) return raw;
+
+        matcher.reset();
+        StringBuffer out = new StringBuffer();
+        while (matcher.find()) {
+            String symbol = imageEmojiRuntimeSymbol(symbols, matcher.group(1));
+            matcher.appendReplacement(out, Matcher.quoteReplacement(symbol.isBlank() ? matcher.group(0) : symbol));
+        }
+        matcher.appendTail(out);
+        return out.toString();
+    }
+
+    private Map<String, String> imageEmojiRuntimeSymbols() {
+        long now = System.currentTimeMillis();
+        Map<String, String> cached = imageEmojiRuntimeSymbols;
+        if (now - imageEmojiRuntimeSymbolsLoadedAt < 5000L) return cached;
+
+        // Relay HTTP handlers are asynchronous. Never walk Bukkit's plugin registry
+        // from that thread; use the last immutable snapshot and refresh it on the
+        // primary server thread for the next line.
+        if (!Bukkit.isPrimaryThread()) {
+            if (imageEmojiRuntimeRefreshScheduled.compareAndSet(false, true)) {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    try {
+                        refreshImageEmojiRuntimeSymbols();
+                    } finally {
+                        imageEmojiRuntimeRefreshScheduled.set(false);
+                    }
+                });
+            }
+            return cached;
+        }
+        return refreshImageEmojiRuntimeSymbols();
+    }
+
+    private synchronized Map<String, String> refreshImageEmojiRuntimeSymbols() {
+        long now = System.currentTimeMillis();
+        if (now - imageEmojiRuntimeSymbolsLoadedAt < 5000L) return imageEmojiRuntimeSymbols;
+
+        LinkedHashMap<String, String> out = new LinkedHashMap<>();
+        try {
+            for (org.bukkit.plugin.Plugin candidate : Bukkit.getPluginManager().getPlugins()) {
+                if (candidate == null || !candidate.isEnabled()) continue;
+                String pluginName = String.valueOf(candidate.getName() == null ? "" : candidate.getName());
+                String descriptionName = candidate.getDescription() == null ? "" : String.valueOf(candidate.getDescription().getName());
+                String normalized = (pluginName + descriptionName).toLowerCase(Locale.ROOT).replace("-", "").replace("_", "");
+                if (!normalized.contains("imageemojis") && !normalized.contains("imageemoji")) continue;
+
+                Object repository = invokeNoArgReflective(candidate, "getEmojiRepository");
+                Object emojis = invokeNoArgReflective(repository, "getEmojis");
+                if (!(emojis instanceof Iterable<?> iterable)) continue;
+                for (Object emoji : iterable) {
+                    if (emoji == null) continue;
+                    String symbol = reflectString(emoji, "getAsUtf8Symbol");
+                    if (symbol.isBlank()) continue;
+                    addImageEmojiRuntimeSymbol(out, reflectString(emoji, "getName"), symbol);
+                    addImageEmojiRuntimeSymbol(out, reflectString(emoji, "getTemplate"), symbol);
+                    String fileName = reflectString(emoji, "getFileName");
+                    if (!fileName.isBlank()) addImageEmojiRuntimeSymbol(out, fileName, symbol);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        imageEmojiRuntimeSymbols = out.isEmpty()
+                ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(out));
+        imageEmojiRuntimeSymbolsLoadedAt = now;
+        return imageEmojiRuntimeSymbols;
+    }
+
+    private void addImageEmojiRuntimeSymbol(Map<String, String> out, String alias, String symbol) {
+        if (out == null || symbol == null || symbol.isBlank()) return;
+        for (String key : emojiAliasKeys(alias)) {
+            String normalized = key.trim();
+            if (normalized.isBlank()) continue;
+            out.putIfAbsent(normalized, symbol);
+            out.putIfAbsent(normalized.toLowerCase(Locale.ROOT), symbol);
+        }
+    }
+
+    private String imageEmojiRuntimeSymbol(Map<String, String> symbols, String token) {
+        if (symbols == null || symbols.isEmpty()) return "";
+        for (String key : emojiAliasKeys(token)) {
+            String symbol = symbols.get(key);
+            if (symbol == null) symbol = symbols.get(key.toLowerCase(Locale.ROOT));
+            if (symbol != null && !symbol.isBlank()) return symbol;
+        }
+        return "";
+    }
+
+    private Object invokeNoArgReflective(Object target, String methodName) {
+        if (target == null || methodName == null || methodName.isBlank()) return null;
+        try {
+            java.lang.reflect.Method method = target.getClass().getMethod(methodName);
+            method.setAccessible(true);
+            return method.invoke(target);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private String reflectString(Object target, String methodName) {
+        Object value = invokeNoArgReflective(target, methodName);
+        return value == null ? "" : String.valueOf(value);
+    }
+
     private String translateGameFormatCodes(String value) {
         return ChatColor.translateAlternateColorCodes('&', String.valueOf(value == null ? "" : value));
     }
@@ -5301,23 +5497,102 @@ public class WebChatServer {
         return sanitizeSingleGameLine(translateGameFormatCodes(value), maxLength);
     }
 
+    private void prepareServerRelay(ChatMessage msg) {
+        ServerRelay relay = plugin.serverRelay();
+        if (relay != null) relay.prepareLocal(msg);
+    }
+
+    private void publishServerRelay(ChatMessage msg) {
+        ServerRelay relay = plugin.serverRelay();
+        if (relay != null) relay.publishLocal(msg);
+    }
+
+    public boolean hasMessageId(String id) {
+        if (id == null || id.isBlank()) return false;
+        if (findTransientReplyTarget(id) != null) return true;
+        synchronized (history) {
+            for (ChatMessage existing : history) {
+                if (id.equals(existing.id)) return true;
+            }
+        }
+        return sqliteHistory != null && sqliteHistory.find(id) != null;
+    }
+
+    public void acceptRelayedMessage(ChatMessage msg) {
+        if (msg == null || msg.message == null || msg.message.isBlank() || hasMessageId(msg.id)) return;
+        ConfigValues config = plugin.configValues();
+        if (config.serverRelayDeliverToWeb) {
+            prewarmExternalMediaCache(msg.message);
+            addHistory(msg);
+            broadcast(msg);
+            dispatchWebPushChat(msg);
+        }
+        if (config.serverRelayDeliverToGame) {
+            if (!config.serverRelayDeliverToWeb) cacheTransientReplyTarget(msg);
+            sendRelayedToGame(msg, config.serverRelayGameFormat);
+        }
+    }
+
+    private void sendRelayedToGame(ChatMessage msg, String format) {
+        ConfigValues config = plugin.configValues();
+        String rawTemplate = String.valueOf(format == null ? "" : format);
+        String template = translateGameFormatCodes(rawTemplate);
+        String gameMessage = renderImageEmojiSymbolsForGame(messageForGameChat(msg == null ? "" : msg.message, config));
+        String source = stripControl(msg == null ? "" : msg.source, 32);
+        String serverId = stripControl(msg == null ? "" : msg.originServerId, 64);
+        String serverName = stripControl(msg == null || msg.originServerName == null || msg.originServerName.isBlank() ? serverId : msg.originServerName, 96);
+        String sender = stripControl(msg == null ? "" : msg.sender, 96);
+        String realSender = stripControl(msg == null ? "" : msg.realSender, 96);
+        String playerUuid = stripControl(msg == null ? "" : msg.playerUuid, 64);
+        String role = stripControl(msg == null ? "" : msg.role, 32);
+        String line = template
+                .replace("{server}", serverName)
+                .replace("{server_id}", serverId)
+                .replace("{source}", source)
+                .replace("{sender}", sender)
+                .replace("{player}", sender)
+                .replace("{guest}", sender)
+                .replace("{real_sender}", realSender)
+                .replace("{uuid}", playerUuid)
+                .replace("{role}", role)
+                .replace("{message}", gameMessage);
+        line = applyAutomaticServerGamePrefix(rawTemplate, line, serverName, msg, config);
+        line = sanitizeSingleGameLine(applyReplyGameLinePrefix(msg, line, config), 32768);
+        final String finalReplyLine = gameReplyPreviewLine(msg, config);
+        final GameLineHover finalHover = gameLineHover(msg, line, gameMessage, config);
+        final String finalLine = line;
+        boolean preservePlainForReply = shouldPreservePlainBroadcastForGameEmojiTokens(
+                String.valueOf(msg == null ? "" : msg.replyToPreview), finalReplyLine, config);
+        boolean preservePlainForTokens = shouldPreservePlainBroadcastForGameEmojiTokens(msg, finalLine, config);
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!finalReplyLine.isBlank()) broadcastGameLine(finalReplyLine, preservePlainForReply, config);
+            broadcastGameLine(finalLine, preservePlainForTokens, config, finalHover);
+        });
+    }
+
     private void sendToGame(ChatMessage msg, String format) {
         ConfigValues config = plugin.configValues();
         if (!config.sendWebChatToGame) return;
 
         // Translate color/format codes only in configured templates, not in user text.
         // This keeps user-provided literals such as "&n", "&l", "&a" intact when relayed to game chat.
-        String template = translateGameFormatCodes(format);
-        String gameMessage = messageForGameChat(msg == null ? "" : msg.message, config);
+        String rawTemplate = String.valueOf(format == null ? "" : format);
+        String template = translateGameFormatCodes(rawTemplate);
+        String gameMessage = renderImageEmojiSymbolsForGame(messageForGameChat(msg == null ? "" : msg.message, config));
         String sender = String.valueOf(msg == null || msg.sender == null ? "" : msg.sender);
+        String serverId = stripControl(msg == null ? "" : msg.originServerId, 64);
+        String serverName = stripControl(msg == null || msg.originServerName == null || msg.originServerName.isBlank() ? serverId : msg.originServerName, 96);
         String line = template
+                .replace("{server}", serverName)
+                .replace("{server_id}", serverId)
                 .replace("{player}", sender)
                 .replace("{guest}", sender)
                 .replace("{message}", gameMessage);
         line = applyReplyGameLinePrefix(msg, line, config);
+        line = applyAutomaticServerGamePrefix(rawTemplate, line, serverName, msg, config);
 
         final String finalReplyLine = gameReplyPreviewLine(msg, config);
-        final GameLineHover finalHover = gameLineHover(msg, line, config);
+        final GameLineHover finalHover = gameLineHover(msg, line, gameMessage, config);
         final String finalLine = line;
         boolean preservePlainForReply = shouldPreservePlainBroadcastForGameEmojiTokens(
                 String.valueOf(msg == null ? "" : msg.replyToPreview), finalReplyLine, config);
@@ -5328,6 +5603,61 @@ public class WebChatServer {
             }
             broadcastGameLine(finalLine, preservePlainForGameEmojiTokens, config, finalHover);
         });
+    }
+
+    private void sendGameCommandReplyToGame(ChatMessage msg, ConfigValues config) {
+        sendGameCommandReplyToGame(msg, config, msg == null ? "" : msg.message);
+    }
+
+    private void sendGameCommandReplyToGame(ChatMessage msg, ConfigValues config, String gameDisplayMessage) {
+        if (msg == null || config == null) return;
+        String rawTemplate = String.valueOf(config.replyGameCommandFormat == null ? "" : config.replyGameCommandFormat);
+        if (rawTemplate.isBlank()) rawTemplate = "&8[&dReply&8] &f{player}&7: &f{message}";
+        String template = translateGameFormatCodes(rawTemplate);
+        String gameMessage = renderImageEmojiSymbolsForGame(messageForGameChat(gameDisplayMessage, config));
+        String serverId = stripControl(msg.originServerId, 64);
+        String serverName = stripControl(msg.originServerName == null || msg.originServerName.isBlank() ? serverId : msg.originServerName, 96);
+        String sender = stripControl(msg.sender, 96);
+        String line = template
+                .replace("{server}", serverName)
+                .replace("{server_id}", serverId)
+                .replace("{player}", sender)
+                .replace("{sender}", sender)
+                .replace("{message}", gameMessage);
+        line = applyReplyGameLinePrefix(msg, line, config);
+        line = applyAutomaticServerGamePrefix(rawTemplate, line, serverName, msg, config);
+        line = sanitizeSingleGameLine(line, 32768);
+
+        String replyPreview = gameReplyPreviewLine(msg, config);
+        GameLineHover interaction = gameLineHover(msg, line, gameMessage, config);
+        boolean preservePreview = shouldPreservePlainBroadcastForGameEmojiTokens(msg.replyToPreview, replyPreview, config);
+        boolean preserveLine = shouldPreservePlainBroadcastForGameEmojiTokens(gameDisplayMessage, line, config);
+        final String finalLine = line;
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!replyPreview.isBlank()) broadcastGameLine(replyPreview, preservePreview, config);
+            broadcastGameLine(finalLine, preserveLine, config, interaction);
+        });
+    }
+
+    private String applyAutomaticServerGamePrefix(String rawTemplate, String renderedLine, String serverName, ChatMessage msg, ConfigValues config) {
+        String line = String.valueOf(renderedLine == null ? "" : renderedLine);
+        if (config == null || !config.serverRelayEnabled || serverName == null || serverName.isBlank()) return line;
+        // A local web/game message is already being viewed on its origin server.
+        // Only remote relay messages need an origin-server prefix.
+        if (isLocalMessageOrigin(msg, config)) return line;
+        String template = String.valueOf(rawTemplate == null ? "" : rawTemplate);
+        if (template.contains("{server}") || template.contains("{server_id}")) return line;
+        return ChatColor.DARK_GRAY + "[" + ChatColor.AQUA + serverName + ChatColor.DARK_GRAY + "] " + ChatColor.RESET + line;
+    }
+
+    private boolean isLocalMessageOrigin(ChatMessage msg, ConfigValues config) {
+        String originId = stripControl(msg == null ? "" : msg.originServerId, 64).trim();
+        if (originId.isBlank()) return true;
+        String localId = stripControl(config == null ? "" : config.serverRelayServerId, 64).trim();
+        if (!localId.isBlank()) return originId.equalsIgnoreCase(localId);
+        String originName = stripControl(msg == null ? "" : msg.originServerName, 96).trim();
+        String localName = stripControl(config == null ? "" : config.serverRelayServerName, 96).trim();
+        return !originName.isBlank() && !localName.isBlank() && originName.equalsIgnoreCase(localName);
     }
 
     private boolean shouldShowReplyPreviewInGame(ChatMessage msg, ConfigValues config) {
@@ -5350,7 +5680,7 @@ public class WebChatServer {
         int max = Math.max(0, config.replyGamePreviewMaxLength);
         rawPreview = truncateVisible(rawPreview, max);
 
-        String gamePreview = messageForGameChat(rawPreview, config);
+        String gamePreview = renderImageEmojiSymbolsForGame(messageForGameChat(rawPreview, config));
         gamePreview = truncateVisible(gamePreview, max);
         if (gamePreview.isBlank()) gamePreview = "...";
 
@@ -5369,8 +5699,37 @@ public class WebChatServer {
         if (msg.replyToId == null || msg.replyToId.isBlank()) return text;
         String prefix = formatReplyGamePrefix(msg, config);
         if (prefix.isBlank()) return text;
+        String serverLabel = stripMinecraftFormatting(String.valueOf(
+                msg.originServerName == null || msg.originServerName.isBlank() ? msg.originServerId : msg.originServerName)).trim();
+        int[] firstBracket = firstVisibleBracketRange(text, 160);
+        if (!serverLabel.isBlank() && firstBracket[0] >= 0 && firstBracket[1] > firstBracket[0]) {
+            String existing = stripMinecraftFormatting(text.substring(firstBracket[0] + 1, firstBracket[1])).trim();
+            if (existing.equalsIgnoreCase(serverLabel)) {
+                int after = firstBracket[1] + 1;
+                while (after < text.length() && Character.isWhitespace(text.charAt(after))) after++;
+                String spacer = prefix.endsWith(" ") || after >= text.length() ? "" : " ";
+                return text.substring(0, firstBracket[1] + 1) + " " + prefix + spacer + text.substring(after);
+            }
+        }
         String line = replaceFirstBracketLabelOrPrepend(text, prefix, 96);
         return line;
+    }
+
+    private int[] firstVisibleBracketRange(String text, int searchLimit) {
+        String line = String.valueOf(text == null ? "" : text);
+        int limit = searchLimit <= 0 ? line.length() : Math.min(line.length(), searchLimit);
+        for (int i = 0; i < limit; i++) {
+            char ch = line.charAt(i);
+            if (ch == ChatColor.COLOR_CHAR && i + 1 < limit) {
+                i++;
+                continue;
+            }
+            if (ch != '[') continue;
+            int end = line.indexOf(']', i + 1);
+            if (end >= 0 && end < limit) return new int[]{i, end};
+            break;
+        }
+        return new int[]{-1, -1};
     }
 
     private String formatReplyGamePrefix(ChatMessage msg, ConfigValues config) {
@@ -5433,29 +5792,68 @@ public class WebChatServer {
         return raw.substring(0, Math.max(0, maxLength - 1)).trim() + "…";
     }
 
-    private GameLineHover gameLineHover(ChatMessage msg, String renderedLine, ConfigValues config) {
-        if (msg == null || config == null || !config.gameNameHoverEnabled) return GameLineHover.empty();
-        String mode = String.valueOf(config.playerNameMode == null ? "" : config.playerNameMode).trim();
-        if (!("display-name".equalsIgnoreCase(mode) || "custom-name".equalsIgnoreCase(mode))) {
-            return GameLineHover.empty();
-        }
+    private GameLineHover gameLineHover(ChatMessage msg, String renderedLine, String renderedMessage, ConfigValues config) {
+        if (msg == null || config == null) return GameLineHover.empty();
+
         String display = String.valueOf(msg.sender == null ? "" : msg.sender);
         String real = stripControl(msg.realSender, 64).trim();
-        if (display.isBlank() || real.isBlank()) return GameLineHover.empty();
-        String plainDisplay = stripMinecraftFormatting(display).trim();
-        if (plainDisplay.isBlank() || plainDisplay.equalsIgnoreCase(real)) return GameLineHover.empty();
         String line = String.valueOf(renderedLine == null ? "" : renderedLine);
-        if (!line.contains(display)) return GameLineHover.empty();
-        String uuid = stripControl(msg.playerUuid, 64).trim();
-        String hover = String.valueOf(config.gameNameHoverText == null ? "" : config.gameNameHoverText);
-        if (hover.isBlank()) hover = "&f{real}";
-        hover = hover
-                .replace("{display}", plainDisplay)
-                .replace("{real}", real)
-                .replace("{uuid}", uuid)
-                .replace("{source}", stripControl(msg.source, 32).trim());
-        hover = translateGameFormatCodes(hover.replace("\\n", "\n"));
-        return hover.isBlank() ? GameLineHover.empty() : new GameLineHover(display, hover);
+        String source = stripControl(msg.source, 32).trim();
+        String suggestCommand = display.isBlank() || real.isBlank() || !line.contains(display)
+                ? ""
+                : senderSuggestCommand(msg, config, real);
+        String hover = "";
+
+        String mode = String.valueOf(config.playerNameMode == null ? "" : config.playerNameMode).trim();
+        boolean nicknameMode = "display-name".equalsIgnoreCase(mode) || "custom-name".equalsIgnoreCase(mode);
+        String plainDisplay = stripMinecraftFormatting(display).trim();
+        if (!display.isBlank() && !real.isBlank() && line.contains(display)
+                && config.gameNameHoverEnabled && nicknameMode && !plainDisplay.isBlank() && !plainDisplay.equalsIgnoreCase(real)) {
+            String uuid = stripControl(msg.playerUuid, 64).trim();
+            hover = String.valueOf(config.gameNameHoverText == null ? "" : config.gameNameHoverText);
+            if (hover.isBlank()) hover = "&f{real}";
+            hover = hover
+                    .replace("{display}", plainDisplay)
+                    .replace("{real}", real)
+                    .replace("{uuid}", uuid)
+                    .replace("{source}", source);
+            hover = translateGameFormatCodes(hover.replace("\\n", "\n"));
+        }
+
+        String replyTarget = String.valueOf(renderedMessage == null ? "" : renderedMessage);
+        String replyCommand = "";
+        String replyHover = "";
+        if (config.replyGameClickEnabled && msg.id != null && !msg.id.isBlank()
+                && !replyTarget.isBlank() && line.contains(replyTarget)) {
+            String shortId = stripControl(msg.id, 24);
+            replyCommand = "/bmchat reply " + stripControl(msg.id, 96) + " ";
+            replyHover = ChatColor.GRAY + plugin.langManager().text(
+                    "command.replyClickHint",
+                    "Click to reply (#{id})",
+                    Map.of("id", shortId));
+        }
+
+        if (hover.isBlank() && suggestCommand.isBlank() && replyCommand.isBlank()) return GameLineHover.empty();
+        return new GameLineHover(display, hover, suggestCommand, replyTarget, replyHover, replyCommand);
+    }
+
+    private String senderSuggestCommand(ChatMessage msg, ConfigValues config, String realSender) {
+        String target = stripMinecraftFormatting(stripControl(realSender, 64)).trim();
+        // Minecraft Java names use [A-Za-z0-9_]. Common Geyser/Floodgate setups
+        // may prepend '.', '*', or '-', so allow those safe non-whitespace characters too.
+        if (!target.matches("[A-Za-z0-9_.*-]{1,64}")) return "";
+
+        String source = stripControl(msg == null ? "" : msg.source, 32).trim();
+        if ("game".equalsIgnoreCase(source) && isLocalMessageOrigin(msg, config)) {
+            return "/w " + target + " ";
+        }
+        if (("web".equalsIgnoreCase(source) || "game".equalsIgnoreCase(source))
+                && config != null && config.directMessageEnabled && config.directMessageAllowGameSend) {
+            // Web users and players on another relayed server cannot be reached by
+            // the local vanilla /w command, so use the BMChat DM channel instead.
+            return "/bmchat dm " + target + " ";
+        }
+        return "";
     }
 
     private String stripMinecraftFormatting(String value) {
@@ -5465,23 +5863,34 @@ public class WebChatServer {
     private static final class GameLineHover {
         final String target;
         final String text;
+        final String suggestCommand;
+        final String replyTarget;
+        final String replyText;
+        final String replySuggestCommand;
 
-        GameLineHover(String target, String text) {
+        GameLineHover(String target, String text, String suggestCommand,
+                      String replyTarget, String replyText, String replySuggestCommand) {
             this.target = target == null ? "" : target;
             this.text = text == null ? "" : text;
+            this.suggestCommand = suggestCommand == null ? "" : suggestCommand;
+            this.replyTarget = replyTarget == null ? "" : replyTarget;
+            this.replyText = replyText == null ? "" : replyText;
+            this.replySuggestCommand = replySuggestCommand == null ? "" : replySuggestCommand;
         }
 
         boolean enabled() {
-            return !target.isBlank() && !text.isBlank();
+            boolean senderEnabled = !target.isBlank() && (!text.isBlank() || !suggestCommand.isBlank());
+            boolean replyEnabled = !replyTarget.isBlank() && !replySuggestCommand.isBlank();
+            return senderEnabled || replyEnabled;
+        }
+
+        GameLineHover withoutSender() {
+            return new GameLineHover("", "", "", replyTarget, replyText, replySuggestCommand);
         }
 
         static GameLineHover empty() {
-            return new GameLineHover("", "");
+            return new GameLineHover("", "", "", "", "", "");
         }
-    }
-
-    private static final class HoverApplyState {
-        boolean applied;
     }
 
     private void broadcastGameLine(String line, boolean preservePlainForGameEmojiTokens, ConfigValues config) {
@@ -5552,77 +5961,117 @@ public class WebChatServer {
         }
     }
 
+    public void broadcastClickableLocalGameMessage(ChatMessage msg, String renderedLine, String renderedMessage,
+                                                   java.util.Collection<? extends Player> recipients) {
+        ConfigValues config = plugin.configValues();
+        String originalMessage = String.valueOf(renderedMessage == null ? "" : renderedMessage);
+        String message = renderImageEmojiSymbolsForGame(originalMessage);
+        String line = sanitizeSingleGameLine(renderedLine, 32768);
+        if (!message.equals(originalMessage) && !originalMessage.isBlank() && line.contains(originalMessage)) {
+            line = line.replace(originalMessage, message);
+        }
+        GameLineHover interaction = gameLineHover(msg, line, message, config);
+        boolean clickableUrls = config != null && config.clickableUrlsInGame && containsUrl(line);
+        try {
+            TextComponent component = buildInteractiveLine(line, clickableUrls, interaction);
+            java.util.Collection<? extends Player> targets = recipients == null
+                    ? Bukkit.getOnlinePlayers()
+                    : recipients;
+            for (Player player : targets) {
+                if (player != null && player.isOnline()) player.spigot().sendMessage(component);
+            }
+            // The original AsyncChatEvent remains active for non-player viewers, so
+            // Paper writes the normal chat log from its Async Chat Thread. Do not echo
+            // this manually to the console from the main server thread.
+        } catch (Throwable t) {
+            plugin.getLogger().warning("Clickable local game chat failed; falling back to plain player delivery: " + t.getMessage());
+            java.util.Collection<? extends Player> targets = recipients == null
+                    ? Bukkit.getOnlinePlayers()
+                    : recipients;
+            for (Player player : targets) if (player != null && player.isOnline()) player.sendMessage(line);
+        }
+    }
+
     private TextComponent buildInteractiveLine(String line, boolean clickableUrls, GameLineHover hover) {
         TextComponent root = new TextComponent("");
-        HoverApplyState hoverState = new HoverApplyState();
-        if (!clickableUrls) {
-            addLegacyExtra(root, line, hover, hoverState);
+        String text = String.valueOf(line == null ? "" : line);
+        if (hover == null || !hover.enabled()) {
+            appendLegacyWithUrls(root, text, clickableUrls, null, null);
             return root;
         }
-        Matcher matcher = URL_PATTERN.matcher(line);
+
+        int senderIndex = (!hover.target.isBlank()) ? text.indexOf(hover.target) : -1;
+        if (senderIndex < 0) {
+            appendReplyAwareText(root, text, clickableUrls, hover);
+            return root;
+        }
+
+        appendReplyAwareText(root, text.substring(0, senderIndex), clickableUrls, hover.withoutSender());
+        appendInteractiveLegacy(root, hover.target, hover.text, hover.suggestCommand);
+        appendReplyAwareText(root, text.substring(senderIndex + hover.target.length()), clickableUrls, hover.withoutSender());
+        return root;
+    }
+
+    private void appendReplyAwareText(TextComponent root, String text, boolean clickableUrls, GameLineHover hover) {
+        if (text == null || text.isEmpty()) return;
+        if (hover == null || hover.replyTarget.isBlank() || hover.replySuggestCommand.isBlank()) {
+            appendLegacyWithUrls(root, text, clickableUrls, null, null);
+            return;
+        }
+        int index = text.lastIndexOf(hover.replyTarget);
+        if (index < 0) {
+            appendLegacyWithUrls(root, text, clickableUrls, null, null);
+            return;
+        }
+        appendLegacyWithUrls(root, text.substring(0, index), clickableUrls, null, null);
+        appendLegacyWithUrls(root, hover.replyTarget, clickableUrls, hover.replyText, hover.replySuggestCommand);
+        appendLegacyWithUrls(root, text.substring(index + hover.replyTarget.length()), clickableUrls, null, null);
+    }
+
+    private void appendLegacyWithUrls(TextComponent root, String text, boolean clickableUrls, String hoverText, String suggestCommand) {
+        if (text == null || text.isEmpty()) return;
+        if (!clickableUrls) {
+            appendInteractiveLegacy(root, text, hoverText, suggestCommand);
+            return;
+        }
+        Matcher matcher = URL_PATTERN.matcher(text);
         int last = 0;
         while (matcher.find()) {
-            addLegacyExtra(root, line.substring(last, matcher.start()), hover, hoverState);
-
+            appendInteractiveLegacy(root, text.substring(last, matcher.start()), hoverText, suggestCommand);
             String raw = matcher.group(1);
             String[] split = splitUrlTrailing(raw);
             String url = split[0];
             String trailing = split[1];
-
             if (!url.isBlank()) {
                 String clickUrl = normalizeClickUrl(url);
-                BaseComponent[] parts = TextComponent.fromLegacyText(url);
-                for (BaseComponent part : parts) {
+                for (BaseComponent part : TextComponent.fromLegacyText(url)) {
                     part.setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, clickUrl));
                     root.addExtra(part);
                 }
             }
-            if (!trailing.isBlank()) {
-                addLegacyExtra(root, trailing, hover, hoverState);
-            }
+            appendInteractiveLegacy(root, trailing, hoverText, suggestCommand);
             last = matcher.end();
         }
-        addLegacyExtra(root, line.substring(last), hover, hoverState);
-        return root;
+        appendInteractiveLegacy(root, text.substring(last), hoverText, suggestCommand);
+    }
+
+    private void appendInteractiveLegacy(TextComponent root, String text, String hoverText, String suggestCommand) {
+        if (text == null || text.isEmpty()) return;
+        HoverEvent hoverEvent = hoverText == null || hoverText.isBlank()
+                ? null
+                : new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder(hoverText).create());
+        ClickEvent clickEvent = suggestCommand == null || suggestCommand.isBlank()
+                ? null
+                : new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, suggestCommand);
+        for (BaseComponent part : TextComponent.fromLegacyText(text)) {
+            if (hoverEvent != null) part.setHoverEvent(hoverEvent);
+            if (clickEvent != null) part.setClickEvent(clickEvent);
+            root.addExtra(part);
+        }
     }
 
     private void addLegacyExtra(TextComponent root, String text) {
-        addLegacyExtra(root, text, GameLineHover.empty(), new HoverApplyState());
-    }
-
-    private void addLegacyExtra(TextComponent root, String text, GameLineHover hover, HoverApplyState state) {
-        if (text == null || text.isEmpty()) return;
-        if (hover == null || !hover.enabled() || state == null || state.applied) {
-            for (BaseComponent part : TextComponent.fromLegacyText(text)) {
-                root.addExtra(part);
-            }
-            return;
-        }
-        String target = hover.target;
-        int index = text.indexOf(target);
-        if (index < 0) {
-            for (BaseComponent part : TextComponent.fromLegacyText(text)) {
-                root.addExtra(part);
-            }
-            return;
-        }
-        if (index > 0) {
-            for (BaseComponent part : TextComponent.fromLegacyText(text.substring(0, index))) {
-                root.addExtra(part);
-            }
-        }
-        HoverEvent hoverEvent = new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder(hover.text).create());
-        for (BaseComponent part : TextComponent.fromLegacyText(target)) {
-            part.setHoverEvent(hoverEvent);
-            root.addExtra(part);
-        }
-        state.applied = true;
-        int after = index + target.length();
-        if (after < text.length()) {
-            for (BaseComponent part : TextComponent.fromLegacyText(text.substring(after))) {
-                root.addExtra(part);
-            }
-        }
+        appendInteractiveLegacy(root, text, null, null);
     }
 
     private String normalizeClickUrl(String url) {
@@ -5722,8 +6171,46 @@ public class WebChatServer {
         }
     }
 
+    private void cacheTransientReplyTarget(ChatMessage msg) {
+        if (msg == null || msg.id == null || msg.id.isBlank()) return;
+        long expiresAt = System.currentTimeMillis() + 3_600_000L;
+        transientReplyTargets.put(msg.id, new CachedReplyTarget(msg, expiresAt));
+        if (transientReplyTargets.size() > 4096) {
+            long now = System.currentTimeMillis();
+            transientReplyTargets.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue().expiresAt < now);
+            while (transientReplyTargets.size() > 4096) {
+                Map.Entry<String, CachedReplyTarget> oldest = transientReplyTargets.entrySet().stream()
+                        .min(Comparator.comparingLong(entry -> entry.getValue().expiresAt))
+                        .orElse(null);
+                if (oldest == null || !transientReplyTargets.remove(oldest.getKey(), oldest.getValue())) break;
+            }
+        }
+    }
+
+    private ChatMessage findTransientReplyTarget(String id) {
+        CachedReplyTarget cached = transientReplyTargets.get(id);
+        if (cached == null) return null;
+        if (cached.expiresAt < System.currentTimeMillis()) {
+            transientReplyTargets.remove(id, cached);
+            return null;
+        }
+        return cached.message;
+    }
+
+    private static final class CachedReplyTarget {
+        final ChatMessage message;
+        final long expiresAt;
+
+        CachedReplyTarget(ChatMessage message, long expiresAt) {
+            this.message = message;
+            this.expiresAt = expiresAt;
+        }
+    }
+
     private ChatMessage findHistoryMessageById(String id) {
         if (id == null || id.isBlank()) return null;
+        ChatMessage transientTarget = findTransientReplyTarget(id);
+        if (transientTarget != null) return transientTarget;
         if (sqliteHistoryEnabled()) {
             ChatMessage msg = sqliteHistory.find(id);
             if (msg != null) return msg;

@@ -62,6 +62,10 @@ public final class SqliteHistoryStore implements AutoCloseable {
                     + "sender TEXT NOT NULL DEFAULT '',"
                     + "real_sender TEXT NOT NULL DEFAULT '',"
                     + "player_uuid TEXT NOT NULL DEFAULT '',"
+                    + "relay_id TEXT NOT NULL DEFAULT '',"
+                    + "origin_server_id TEXT NOT NULL DEFAULT '',"
+                    + "origin_server_name TEXT NOT NULL DEFAULT '',"
+                    + "relay_hop INTEGER NOT NULL DEFAULT 0,"
                     + "role TEXT NOT NULL DEFAULT '',"
                     + "message TEXT NOT NULL DEFAULT '',"
                     + "i18n_key TEXT NOT NULL DEFAULT '',"
@@ -73,8 +77,25 @@ public final class SqliteHistoryStore implements AutoCloseable {
                     + ")");
             st.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_time_seq ON chat_messages(time, seq)");
             st.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_seq ON chat_messages(seq)");
+            ensureColumn(st, "relay_id", "TEXT NOT NULL DEFAULT ''");
+            ensureColumn(st, "origin_server_id", "TEXT NOT NULL DEFAULT ''");
+            ensureColumn(st, "origin_server_name", "TEXT NOT NULL DEFAULT ''");
+            ensureColumn(st, "relay_hop", "INTEGER NOT NULL DEFAULT 0");
             st.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_id ON chat_messages(id)");
         }
+    }
+
+    private void ensureColumn(Statement st, String column, String definition) throws SQLException {
+        boolean exists = false;
+        try (ResultSet rs = st.executeQuery("PRAGMA table_info(chat_messages)")) {
+            while (rs.next()) {
+                if (column.equalsIgnoreCase(rs.getString("name"))) {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+        if (!exists) st.execute("ALTER TABLE chat_messages ADD COLUMN " + column + " " + definition);
     }
 
     public Path path() {
@@ -93,8 +114,8 @@ public final class SqliteHistoryStore implements AutoCloseable {
     public synchronized void insert(ChatMessage msg) {
         if (msg == null || msg.id == null || msg.id.isBlank()) return;
         String sql = "INSERT OR REPLACE INTO chat_messages "
-                + "(id,time,source,sender,real_sender,player_uuid,role,message,i18n_key,i18n_args,reply_to_id,reply_to_sender,reply_to_preview,hidden) "
-                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                + "(id,time,source,sender,real_sender,player_uuid,relay_id,origin_server_id,origin_server_name,relay_hop,role,message,i18n_key,i18n_args,reply_to_id,reply_to_sender,reply_to_preview,hidden) "
+                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             bindMessage(ps, msg);
             ps.executeUpdate();
@@ -110,14 +131,18 @@ public final class SqliteHistoryStore implements AutoCloseable {
         ps.setString(4, nz(msg.sender));
         ps.setString(5, nz(msg.realSender));
         ps.setString(6, nz(msg.playerUuid));
-        ps.setString(7, nz(msg.role));
-        ps.setString(8, nz(msg.message));
-        ps.setString(9, nz(msg.i18nKey));
-        ps.setString(10, nz(msg.i18nArgs));
-        ps.setString(11, nz(msg.replyToId));
-        ps.setString(12, nz(msg.replyToSender));
-        ps.setString(13, nz(msg.replyToPreview));
-        ps.setInt(14, msg.hidden ? 1 : 0);
+        ps.setString(7, nz(msg.relayId));
+        ps.setString(8, nz(msg.originServerId));
+        ps.setString(9, nz(msg.originServerName));
+        ps.setInt(10, msg.relayHop);
+        ps.setString(11, nz(msg.role));
+        ps.setString(12, nz(msg.message));
+        ps.setString(13, nz(msg.i18nKey));
+        ps.setString(14, nz(msg.i18nArgs));
+        ps.setString(15, nz(msg.replyToId));
+        ps.setString(16, nz(msg.replyToSender));
+        ps.setString(17, nz(msg.replyToPreview));
+        ps.setInt(18, msg.hidden ? 1 : 0);
     }
 
     public synchronized Page page(String beforeId, String afterId, int limit, long cutoff) {
@@ -464,6 +489,10 @@ public final class SqliteHistoryStore implements AutoCloseable {
         msg.id = rs.getString("id");
         msg.realSender = rs.getString("real_sender");
         msg.playerUuid = rs.getString("player_uuid");
+        msg.relayId = rs.getString("relay_id");
+        msg.originServerId = rs.getString("origin_server_id");
+        msg.originServerName = rs.getString("origin_server_name");
+        msg.relayHop = rs.getInt("relay_hop");
         msg.i18nKey = rs.getString("i18n_key");
         msg.i18nArgs = rs.getString("i18n_args");
         msg.replyToId = rs.getString("reply_to_id");

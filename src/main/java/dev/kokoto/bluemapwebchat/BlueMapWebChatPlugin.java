@@ -20,6 +20,7 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
     private ModerationManager moderationManager;
     private LangManager langManager;
     private DiscordBridge discordBridge;
+    private ServerRelay serverRelay;
     private DirectMessageStore directMessages;
     private GroupChatStore groupChats;
     private WebChatServer webServer;
@@ -29,6 +30,7 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
         reloadConfig();
+        ConfigMigrationManager.check(this);
         configValues = ConfigValues.load(getConfig());
         registerCommandExecutor();
         if (!configValues.pluginEnabled) {
@@ -56,6 +58,7 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
         installAssets();
         ensureEmojiDirectory();
         startWebServer();
+        startServerRelay();
         discordBridge.start();
 
         registerRuntimeListeners();
@@ -79,6 +82,7 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
         stopRuntimeServices();
         saveRuntimeState();
         reloadConfig();
+        ConfigMigrationManager.check(this);
         configValues = ConfigValues.load(getConfig());
         if (!configValues.pluginEnabled) {
             registerCommandExecutor();
@@ -119,6 +123,7 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
         installAssets();
         ensureEmojiDirectory();
         startWebServer();
+        startServerRelay();
         if (discordBridge == null) {
             discordBridge = new DiscordBridge(this);
         }
@@ -152,7 +157,16 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new EventAnnouncementListener(this), this);
     }
 
+    private void startServerRelay() {
+        serverRelay = new ServerRelay(this);
+        serverRelay.start();
+    }
+
     private void stopRuntimeServices() {
+        if (serverRelay != null) {
+            serverRelay.close();
+            serverRelay = null;
+        }
         if (discordBridge != null) {
             discordBridge.stop();
             discordBridge = null;
@@ -350,6 +364,10 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
 
     public ModerationManager moderationManager() {
         return moderationManager;
+    }
+
+    public ServerRelay serverRelay() {
+        return serverRelay;
     }
 
     public DiscordBridge discordBridge() {

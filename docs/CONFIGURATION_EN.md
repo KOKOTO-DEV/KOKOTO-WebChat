@@ -2,6 +2,10 @@
 
 This document describes `plugins/BlueMapWebChat/config.yml`.
 
+## Configuration version and migration fragment
+
+`config-version` is an administrator review marker, not an automatic schema converter. If it matches the running plugin version, BlueMapWebChat assumes the configuration has already been reviewed and skips the comparison. If it is missing or different, the plugin compares the physical `config.yml` with the bundled defaults and writes `config-migration-<plugin-version>.yml` without changing the real config. The generated file contains copy-ready missing settings, changed bundled defaults, and the target `config-version` review marker as real YAML settings. It is still created when no other differences exist, so configuration version management remains explicit. Version information and previous/new default details are comments; preserved custom values and obsolete-setting notes are omitted. Merge the required values and merge `config-version` only after review. The file is regenerated on startup and `/bmchat reload` until the versions match.
+
 ## Master switch
 
 New generated configs start with top-level `enabled: false`. In this state, BlueMapWebChat only creates/loads configuration and keeps only `/bmchat reload` available; it does not start web/chat services, listeners, Discord integration, private-message storage, addon installation, upload/emoji initialization, or cleanup tasks. Existing configs without this key are treated as enabled for upgrade compatibility. Review storage, retention, upload, preview, authentication, and exposure settings, then set `enabled: true`.
@@ -99,9 +103,17 @@ Supported values:
 
 ## Direct message threads
 
-`direct-message.enabled` enables optional 1:1 direct-message threads. Targets are limited to linked/known players with stored UUID/name data. Threads are keyed by the sorted pair of UUIDs, so A->B and B->A always use the same conversation. Messages are stored in the independent private-message store configured by `direct-message.storage`. `auto` follows `chat.history-storage` when public chat uses `jsonl`; otherwise it uses SQLite. Use `direct-message.sqlite-file` for SQLite or `direct-message.jsonl-file` for JSONL.
+```yaml
+direct-message:
+  enabled: false
+  allow-web-send: true
+  allow-game-send: true
+  capture-game-whispers: true
+```
 
-`direct-message.retention-days: 0` means no time limit. Any positive value is shown next to the DM window title and physically deletes DM messages older than that many days. `direct-message.max-messages-per-thread: 0` disables count-based cleanup. `direct-message.confirm-hide` controls the web confirmation prompt before hiding a DM from your own view. Because private messages are stored on the server, the feature is disabled by default.
+`direct-message.enabled` enables stored 1:1 threads for linked or previously known players. A→B and B→A use the same UUID-pair thread. `storage`, retention, message-count limits, and notification options are documented in the default config.
+
+`capture-game-whispers` mirrors non-cancelled `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, and `/t` commands into the sender and recipient BMChat DM thread. It does not resend or replace the Minecraft whisper. Bukkit does not expose a reliable final success result for every whisper plugin, so a valid command targeting a known player is used as the capture criterion.
 
 ## UI time zone
 
@@ -152,36 +164,171 @@ chat:
 
 When web chat is relayed into Minecraft, `chat.game-name-hover.enabled` can add a hover tooltip to the displayed sender name. It is only applied when `player-display.mode` is `display-name` or `custom-name` and the displayed name differs from the real Minecraft account name. The tooltip is built with Spigot/Bungee chat components, so it works on Spigot/Paper-compatible servers and is not Paper-only. `text` supports Minecraft legacy color codes and placeholders `{display}`, `{real}`, `{uuid}`, and `{source}`.
 
-## Reply relay to Minecraft chat
+## Minecraft chat replies and sender actions
 
 ```yaml
 reply:
+  game-click:
+    enabled: true
+    local-game-chat: true
+  game-command-format: "&8[&dReply&8] &f{player}&7: &f{message}"
   game-preview:
     enabled: true
     format: "&7{sender}: {preview}"
     max-length: 120
-
   game-prefix:
     enabled: true
     text: "↪ [Reply] "
 ```
 
-When a web or guest message replies to another message, `game-preview.enabled` sends the referenced message preview as a separate Minecraft chat line before the actual web message. This keeps the normal web-to-game chat format unchanged while allowing URLs in both the quote line and the real message to remain clickable.
+When `reply.game-click.enabled` is true, clicking a non-URL message body rendered by BMChat suggests `/bmchat reply <messageId> `. URL segments retain their open-link action. `/bmchat reply <messageId> <message>` creates a public message with the same `replyTo` metadata used by web replies.
 
-The preview text uses the same web-to-game custom emoji handling as normal web messages. With the default token-preserving setup, custom emoji tokens remain unchanged; when `emoji.game-link.enabled` is explicitly enabled, the selected game-link mode is applied. Long previews are shortened with `…` according to `max-length`; set it to `0` to disable preview-specific truncation.
+Game replies preserve the player-entered custom emoji token for web history and server relay. On the originating server, BMChat also reuses the game emoji plugin's processed command body so the Minecraft reply line renders the emoji. If no processed glyph is available and `emoji.game-link.mode` is `preserve`, BMChat emits a plain compatibility line for recognized tokens; that fallback line cannot carry BMChat's click/hover metadata.
 
-`game-prefix` controls the actual reply message line label/prefix. With the default web formats it changes `[Web] Player: message` into `↪ [Reply] Player: message`. BlueMapWebChat replaces the first bracketed source label near the start of the already-rendered relay line; if no such label is found, the prefix text is prepended.
+`local-game-chat: true` replaces the normal local Minecraft chat line with an equivalent clickable component so game-origin messages can also be replied to. Disable it if another chat-format plugin must exclusively own the final renderer. This does not disable reply clicks on web-to-game or remote relay lines.
 
-Both `game-preview.format` and `game-prefix.text` support Minecraft legacy color codes with `&`, for example `&7` for gray.
+A local game sender name suggests `/w <realName> ` when clicked. Linked web-user and remote-server game sender names suggest `/bmchat dm <realName> `. Sender-name actions remain separate from message-body reply clicks and keep the optional real-name hover.
+
+`game-preview` sends the referenced-message preview before a relayed reply. `game-prefix` changes the source label of the actual reply line. Formats support legacy `&` colors and the placeholders documented in `config.yml`.
+
+
+
+`server-relay` connects the public chat of multiple BlueMapWebChat servers. Game, linked web-user, and guest messages can be delivered to the remote server's web chat and Minecraft chat while preserving message IDs, replies, sender identity, and the originating server.
+
+## Server relay configuration
+
+Server 1:
+
+```yaml
+server-relay:
+  enabled: true
+  server-id: "server1"
+  server-name: "Server 1"
+  shared-secret: "replace-with-one-long-random-secret-used-on-both-servers"
+  connect-timeout-seconds: 5
+  request-timeout-seconds: 10
+  max-clock-skew-seconds: 60
+  dedupe-seconds: 300
+  max-hops: 8
+  sources:
+    game: true
+    web: true
+    guest: true
+    discord: false
+    system: false
+  delivery:
+    web: true
+    game: true
+  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
+  peers:
+    - id: "server3"
+      url: "https://server3.example.com/bmwc/api"
+      secret: ""
+      enabled: true
+```
+
+Server 3:
+
+```yaml
+server-relay:
+  enabled: true
+  server-id: "server3"
+  server-name: "Server 3"
+  shared-secret: "replace-with-one-long-random-secret-used-on-both-servers"
+  sources:
+    game: true
+    web: true
+    guest: true
+    discord: false
+    system: false
+  delivery:
+    web: true
+    game: true
+  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
+  peers:
+    - id: "server1"
+      url: "https://server1.example.com/bmwc/api"
+      secret: ""
+      enabled: true
+```
+
+Each peer must be reciprocal: the receiving server must list the sender's exact `server-id`. IDs are case-sensitive after normalization and must be unique. Do not use the same ID for two servers.
+
+## HTTPS and reverse proxies
+
+`url` is the other server's externally reachable BMChat API base. BlueMapWebChat appends `/relay/receive` automatically:
+
+```text
+Configured: https://server3.example.com/bmwc/api
+Requested:  https://server3.example.com/bmwc/api/relay/receive
+```
+
+The public HTTPS route must proxy the whole BMChat API path to the internal BMChat HTTP listener, including POST requests to `/relay/receive`. Do not expose port 8899 publicly when HTTPS already fronts the service. The proxy must preserve these request headers:
+
+```text
+X-BMWC-Relay-Version
+X-BMWC-Relay-From
+X-BMWC-Relay-Timestamp
+X-BMWC-Relay-Signature
+```
+
+A publicly trusted certificate works with Java normally. A private/self-signed certificate must be imported into the Java trust store or the HTTPS request will fail before reaching BMChat.
+
+## Secrets
+
+- `shared-secret` is the default key for every peer.
+- `peers[].secret` overrides the shared key for that one connection.
+- With two servers, use the same long random `shared-secret` on both servers and leave each peer `secret: ""`.
+- With per-peer keys, the two reciprocal entries must use the same pair-specific key.
+- If neither a peer secret nor a shared secret is available, the peer is ignored.
+
+## Topology
+
+For three or more servers, use either:
+
+- Full mesh: every server lists every other server. This is simplest and most resilient.
+- Hub: leaf servers list a hub and the hub lists every leaf. The hub forwards messages to the remaining peers.
+
+Relay IDs, origin suppression, immediate-sender exclusion, and `max-hops` prevent loops in cyclic topologies. There is no persistent offline queue; a message is not replayed later when a peer was unreachable.
+
+## Reload behavior and diagnostics
+
+`/bmchat reload` closes the previous relay instance and creates a new one from the current config. Relay uses one HTTPS request per message, not a permanent connection, so there is no separate reconnect operation.
+
+A healthy startup log looks like:
+
+```text
+Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
+```
+
+If `activePeers` is lower than the configured count, nearby warnings explain which peer was rejected and why. Typical causes are duplicate IDs, a peer ID equal to the local server ID, an empty/invalid URL, an unsupported URL scheme, or a missing secret.
+
+## HTTP errors
+
+- `403 unknown_peer`: the receiving server does not have the sender's exact `server-id` in its active peers. Check both directions and the `activePeers` log on the receiver.
+- `401 bad_signature`: the effective secrets differ or a proxy altered the body/headers.
+- `401 expired_request`: server clocks differ by more than `max-clock-skew-seconds`.
+- `404 relay_disabled`: relay is disabled on the receiver, or the proxy routes to the wrong BMChat instance/path.
+- `426 unsupported_protocol`: the two plugin builds use incompatible relay protocol versions.
+
+After editing either side, run `/bmchat reload` on that side. When a receiver's peer list or secret changes, reload the receiver as well.
+
+## Display behavior
+
+- Web chat shows a colored badge derived from `originServerId`; the same server keeps the same color.
+- Web-to-game output uses `{server}` and `{server_id}`. The local server omits its own automatic label; if a remote message uses an older format containing neither placeholder, `[server-name]` is prepended automatically.
+- Discord direct relay formats support `{server}` and `{server_id}` and receive an automatic prefix when missing.
+- `sources.discord` and `sources.system` are disabled by default to avoid DiscordSRV loops and noisy cross-server event duplication.
 
 ## Discord relay options
 
 ```yaml
 discordsrv:
-  append-web-emoji-links: true
   game-to-discord: false
+  append-web-emoji-links: true
   append-game-emoji-links: true
-  max-emoji-links-per-message: 4
+  web-to-discord-format: "[{server}] [Web] {sender}: {message}"
+  game-to-discord-format: "[{server}] {sender}: {message}"
   reply-relay:
     enabled: false
     prefix-enabled: true
@@ -189,9 +336,9 @@ discordsrv:
     preview-max-length: 120
 ```
 
-`discordsrv.append-web-emoji-links` appends image URLs for BM Web Chat custom emoji tokens to web-to-Discord messages. `discordsrv.append-game-emoji-links` appends image URLs for game-side tokens by augmenting DiscordSRV's normal Minecraft→Discord relay messages when possible. Optional `discordsrv.game-to-discord` can make BM Web Chat send game chat to Discord directly, but keep it disabled when DiscordSRV already relays normal Minecraft chat to avoid duplicate Discord messages. These settings are separate from `emoji.game-link.*`, which only affects web-to-Minecraft chat.
+Discord formats support `{server}`, `{server_id}`, `{sender}`, `{name}`, `{role}`, `{source}`, `{message}`, and `{channel}`. While server relay is active, old custom formats without `{server}` or `{server_id}` receive an automatic `[server-name]` prefix. In a shared Discord channel, only the BMChat instance that observed the original local Minecraft chat may edit DiscordSRV's native game relay; peer servers leave it unchanged so server labels and emoji links are not stacked. Server-relayed messages are not re-sent to Discord by receiving peers, so there is no relay-only fallback when the origin server's Discord bridge is unavailable.
 
-`discordsrv.reply-relay` controls whether web reply previews are also sent to Discord. It is disabled by default to avoid extra/comment-like lines in Discord messages.
+`append-web-emoji-links` and `append-game-emoji-links` add public BMChat emoji URLs for Discord previews. Keep `game-to-discord` disabled when DiscordSRV already relays normal Minecraft chat to prevent duplicates. `reply-relay` optionally adds a replied-message preview and is disabled by default.
 
 ## Pinned messages
 
@@ -240,6 +387,10 @@ player-display:
 ```
 
 When `strip-colors: false`, Minecraft legacy color codes are rendered only for actual chat sender names in the web UI. System/event messages and Discord output strip raw Minecraft color codes. Stored/remembered display names are normalized against the current `strip-colors` setting when they are reused.
+
+### ImageEmojis-Bero 1.9.0
+
+The supported compatibility target is [ImageEmojis-Bero 1.9.0](https://github.com/KOKOTO-DEV/ImageEmojis-Bero). For a shared web/game emoji library, set its `emojisFolder: "/BlueMapWebChat/emojis"`, keep `templateFormat: ":<emoji>:"`, `replaceInCommands: true`, and give users `imageemojis.use`. See `IMAGEEMOJIS_BERO_1_9_0_EN.md` for the complete setup, relay behavior, reload sequence, Discord interaction, and troubleshooting.
 
 ## Command panel
 
@@ -363,9 +514,9 @@ When `emoji.game-link.enabled` is `true`, `emoji.game-link.mode` supports `prese
 
 `emoji.game-link.*` only affects web-to-Minecraft chat. Discord image preview links are controlled separately by `discordsrv.append-web-emoji-links` for web→Discord and `discordsrv.append-game-emoji-links` for game→Discord. `append-game-emoji-links` can augment DiscordSRV's normal Minecraft→Discord relay messages, while `game-to-discord` is only needed when you want BM Web Chat to send game chat to Discord directly.
 
-BM Web Chat does not call ImageEmojis or other game-side emoji plugins directly, and it does not read resource packs or generated glyphs. It preserves token text and attempts to load before ImageEmojis so original chat text can be captured before game-side rendering.
+BM Web Chat preserves canonical tokens in web history and relay payloads. If ImageEmojis or ImageEmojis-Bero is enabled, BMChat reads its public runtime emoji repository through reflection and resolves tokens to the receiving server's active glyphs before constructing clickable Minecraft components. This does not add a hard dependency and does not parse the resource pack.
 
-When token-preserving behavior is active and the same line also contains URLs, BM Web Chat keeps a single plain Minecraft chat line instead of repeating URL reference lines. This protects game-side emoji plugins that need to read the original token text.
+For interactive lines, resolved ImageEmojis glyphs are inserted before BMChat adds sender, reply, and URL click events, so emoji rendering and clickable URLs work together. Only unresolved known tokens use the single plain-Bukkit-line fallback for compatibility with another game-side renderer; that fallback cannot carry BMChat click or hover metadata.
 
 `default-pack` and `aliases` help map flat game-side tokens back to BM Web Chat pack/name ids. For example:
 

@@ -6,10 +6,14 @@ Bukkit/Paper/Spigot 계열 서버에서 동작하는 웹 채팅 플러그인입�
 
 - BlueMap 지도 안 채팅 패널 또는 standalone `/chat` 페이지 제공
 - 게임 ↔ 웹 채팅 양방향 전달
+- HMAC 서명 기반 서버 간 공개 채팅 릴레이와 서버별 웹 색상 배지, 게임/Discord 서버명 표시
+- Minecraft 메시지 클릭 댓글(`/bmchat reply`)과 웹 발신자 클릭 BMChat DM(`/bmchat dm`)
+- 게임 `/w`/`/msg`/`/tell`류 귓속말을 양쪽 사용자의 웹 DM으로 선택적 복제
 - 게스트 채팅, 수학 캡차, 쿨다운/분당 제한
 - `/bmchat auth <code>` 계정 연동, 웹 비밀번호 로그인, 로컬 관리자 계정
 - 관리자/모더레이터 웹 패널, 메시지 숨김, 고정/삭제 표시 토글, 게스트/IP 뮤트, 세션 revoke
 - 관리자 커스텀 이모지 관리: 이모지 폴더/파일 생성, 업로드, 이름 변경, 삭제
+- ImageEmojis-Bero 1.9.0 토큰·게임 댓글·서버 릴레이 호환
 - 파일/클립보드 업로드, 이미지/영상/오디오/YouTube/Shorts 미리보기, 선택형 TikTok 및 X/Twitter 임베드
 - DiscordSRV 연동, Discord CDN 미디어 캐시
 - 답글 및 원본 메시지 점프, 게임 채팅 원문 미리보기, 고정 메시지, 가상 스크롤, 창 이동/크기조절, PIP
@@ -23,7 +27,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.5.5.jar
+target/BlueMapWebChat-4.6.0.jar
 ```
 
 ## 기본 설치
@@ -35,6 +39,9 @@ target/BlueMapWebChat-4.5.5.jar
 5. BlueMap 안에 띄울 경우 `web-addon.auto-install`과 `web-addon.auto-patch-webapp-conf`를 `true`로 둡니다.
 6. standalone만 쓸 경우 `standalone-web.enabled: true`, `web-addon.auto-install: false`, `web-addon.auto-patch-webapp-conf: false`로 둡니다.
 7. 서버 재시작 또는 `/bmchat reload`를 실행합니다. BlueMap 쪽 웹 자원이 갱신되지 않으면 `/bluemap reload`도 실행합니다.
+
+
+기존 `config.yml`은 덮어쓰지 않습니다. `config-version`이 없거나 실행 중인 플러그인 버전과 다르면 실제 `config.yml`과 JAR 기본 설정을 비교해 `plugins/BlueMapWebChat/config-migration-4.6.0.yml`을 생성합니다. 생성 파일에는 그대로 병합할 수 있는 누락 설정, 변경된 기본값, 최종 `config-version` 검토 표식을 실제 YAML 설정으로 표시합니다. 다른 차이가 없어도 설정 버전 관리를 위해 파일과 `config-version` 항목은 생성됩니다. 버전 정보와 이전·새 기본값 설명은 `#` 주석으로만 기록합니다. 사용자 지정값과 폐기 후보 같은 참고 목록은 출력하지 않습니다. `config-version: "4.6.0"`이 플러그인 버전과 같으면 이미 검토한 설정으로 간주하고 비교를 생략합니다. 자세한 내용은 `docs/UPGRADE_4_6_0_KO.md`를 참고하세요.
 
 ## 사용 형태
 
@@ -130,7 +137,6 @@ URL 설정 참고: HTTPS 리버스 프록시에서는 `web-addon.api-base-url`�
 - `commands.run-from-chat-input`: 채팅 입력창의 `/command` 실행 허용 여부
 - `ui.picture-in-picture.enabled`: PIP 버튼과 PIP 실행을 함께 제어합니다.
 
-
 ## 채팅 기록 보관기간
 
 새로 생성된 config는 최상단 `enabled: false` 상태이므로, 보관 기간과 정리 관련 값을 검토하고 `enabled: true`로 바꾸기 전까지 자동 정리 작업이 실행되지 않습니다. 서버 정책에 맞게 채팅 기록, 업로드, 외부 미디어 캐시 보관 기간을 확인한 뒤 활성화하세요.
@@ -147,6 +153,9 @@ URL 설정 참고: HTTPS 리버스 프록시에서는 `web-addon.api-base-url`�
 
 DM은 공개 채팅 기록과 분리된 전용 저장소를 사용합니다. `direct-message.storage: auto`는 공개 채팅이 `jsonl` 저장방식일 때 DM도 JSONL을 사용하고, 그 외에는 SQLite를 사용합니다. 필요하면 `direct-message.storage`를 `sqlite` 또는 `jsonl`로 직접 지정하고 `direct-message.sqlite-file` 또는 `direct-message.jsonl-file`을 사용할 수 있습니다. `direct-message.retention-days: 0`은 보관 기한 없음이며, 그 외 값은 DM 메시지함 제목 옆에 보관 기간으로 표시되고 해당 일수가 지난 DM 원문은 물리 삭제됩니다. `direct-message.max-messages-per-thread: 0`은 스레드별 개수 정리 없음입니다. `direct-message.confirm-hide`는 웹 UI에서 DM을 내 화면에서 숨길 때 확인창을 띄울지 정합니다. 개인 메시지가 서버에 저장되는 기능이므로 기본값은 비활성화이며, 서버 정책에 맞게 보관 주기를 정한 뒤 켜는 것을 권장합니다.
 
+
+`direct-message.capture-game-whispers`를 켜면 게임의 `/w`, `/msg`, `/tell`류 명령을 같은 웹 DM 스레드에 복제할 수 있습니다. 같은 서버의 게임 발신자 이름을 클릭하면 `/w <실제이름> `, 웹 발신자와 다른 서버의 게임 발신자는 `/bmchat dm <실제이름> `이 자동완성됩니다.
+
 ## 커스텀 이모지와 게임 측 이모지 플러그인
 
 BlueMapWebChat은 커스텀 이모지를 `plugins/BlueMapWebChat/emojis` 아래에 저장합니다. 하위 폴더는 이모지 팩으로 처리됩니다.
@@ -159,9 +168,9 @@ BlueMapWebChat은 커스텀 이모지를 `plugins/BlueMapWebChat/emojis` 아래�
 - `link`: 설정된 토큰 텍스트와 BM Web Chat 짧은 이미지 링크를 같이 보냅니다.
 - `label`: 설정된 토큰 텍스트만 보냅니다.
 
-`emoji.game-link.*`는 웹→Minecraft 채팅에만 적용됩니다. Discord 이미지 미리보기 링크는 별도 설정으로 분리됩니다. `discordsrv.append-web-emoji-links`는 웹→Discord 메시지용이고, `discordsrv.append-game-emoji-links`는 가능한 경우 DiscordSRV의 일반 Minecraft→Discord 릴레이 메시지를 수정해서 게임→Discord 토큰 URL을 붙입니다. DiscordSRV가 일반 Minecraft 채팅을 이미 릴레이하고 있다면 중복 방지를 위해 `game-to-discord`는 꺼두세요.
+`emoji.game-link.*`는 웹→Minecraft 채팅에만 적용됩니다. Discord 이미지 미리보기 링크는 별도 설정으로 분리됩니다. `discordsrv.append-web-emoji-links`는 웹→Discord 메시지용이고, `discordsrv.append-game-emoji-links`는 가능한 경우 DiscordSRV의 일반 Minecraft→Discord 릴레이 메시지를 수정해서 게임→Discord 토큰 URL을 붙입니다. 여러 서버가 같은 Discord 채널을 공유할 때는 실제 로컬 게임 채팅을 감지한 원본 서버만 그 DiscordSRV 메시지를 수정하고, 다른 서버는 서버명이나 이모지 링크를 중복해서 붙이지 않습니다. 수신 릴레이 서버는 해당 메시지를 Discord로 다시 보내지 않습니다. DiscordSRV가 일반 Minecraft 채팅을 이미 릴레이하고 있다면 중복 게시 방지를 위해 `game-to-discord`는 꺼두세요.
 
-BM Web Chat은 ImageEmojis나 다른 게임 측 이모지 플러그인을 직접 호출하지 않고, 리소스팩이나 생성된 glyph도 읽지 않습니다. BM Web Chat은 토큰 텍스트를 보존하고, 가능하면 ImageEmojis보다 먼저 로드되어 게임 측 렌더링 전에 원문 채팅 텍스트를 잡도록 합니다.
+BM Web Chat은 웹 기록과 서버 릴레이 payload에는 원본 이모지 토큰을 그대로 보존합니다. ImageEmojis 또는 ImageEmojis-Bero가 활성화되어 있으면 공개된 runtime 이모지 저장소를 reflection으로 읽어, 클릭 가능한 Minecraft 컴포넌트를 만들 때 수신 서버의 현재 token→glyph 매핑을 사용합니다. 플러그인 hard dependency나 리소스팩 분석은 필요하지 않으며, 매핑하지 못한 토큰은 기존 게임 측 렌더링 경로로 fallback합니다.
 
 GIF/JPG/JPEG/WEBP 이모지를 업로드하면, PNG만 읽는 게임 측 이모지 플러그인과의 호환을 위해 같은 폴더에 PNG sidecar도 생성합니다.
 
@@ -171,6 +180,8 @@ plugins/BlueMapWebChat/emojis/default/wave.png
 ```
 
 웹 UI는 원본 파일을 사용하므로 GIF 애니메이션은 유지됩니다. 게임 측 이모지 플러그인이 같은 이모지 디렉터리를 감시한다면 PNG sidecar를 사용할 수 있습니다. 이모지 추가/변경 후에는 해당 플러그인의 reload 명령을 실행하세요.
+
+ImageEmojis-Bero 1.9.0 공용 폴더, 권한, 명령어 변환, 서버 릴레이 및 문제 해결은 [`docs/IMAGEEMOJIS_BERO_1_9_0_KO.md`](docs/IMAGEEMOJIS_BERO_1_9_0_KO.md)를 참고하세요.
 
 ## YouTube Shorts, TikTok, X/Twitter 미리보기
 
@@ -194,6 +205,8 @@ TikTok 또는 X/Twitter는 사용자 브라우저에서 외부 embed 요청이 �
 ## 명령어
 
 ```text
+/bmchat dm <플레이어> <메시지>
+/bmchat reply <메시지ID> <메시지>
 /bmchat auth <code>
 /bmchat password <newPassword>
 /bmchat reload
@@ -212,12 +225,18 @@ TikTok 또는 X/Twitter는 사용자 브라우저에서 외부 embed 요청이 �
 ```text
 bluemapwebchat.auth
 bluemapwebchat.webchat
+bluemapwebchat.dm
+bluemapwebchat.reply
+bluemapwebchat.group
 bluemapwebchat.admin
 ```
 
 ## 문서
 
+- `docs/USER_MANUAL_KO.md` - 전체 기능 사용자·운영자 통합 매뉴얼
 - `docs/CONFIGURATION_KO.md` - 설정 참고
+- `docs/SERVER_RELAY_KO.md` - 서버 간 공개 채팅 릴레이
+- `docs/UPGRADE_4_6_0_KO.md` - 4.5.5→4.6.0 설정/DB 업그레이드
 - `docs/CADDY_HTTPS_KO.md` - HTTPS 리버스 프록시
 - `docs/I18N_KO.md` - 다국어 파일과 fallback
 - `docs/INSTALL_TROUBLESHOOTING_KO.md` - 설치/업그레이드/문제 해결

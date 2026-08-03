@@ -1,11 +1,4 @@
-# BlueMapWebChat 4.6.0 configuration
-
-# Configuration review marker. Existing config.yml files are never overwritten on update.
-# If this value differs from the running plugin version, BlueMapWebChat creates
-# config-migration-<version>.yml containing copy-ready missing settings, changed defaults, and the target config-version marker.
-# The file is created even when config-version is the only required change.
-# When the versions match, the config is treated as already reviewed and comparison is skipped.
-config-version: "4.6.0"
+# BlueMapWebChat 4.5.5 configuration
 
 # Master switch for BlueMapWebChat.
 # New generated configs default to false so the plugin creates config.yml first
@@ -149,10 +142,8 @@ chat:
   # Format used when web messages are relayed into Minecraft chat.
   # Supports Minecraft legacy color codes with & in the configured template only.
   # User message text is not color-translated.
-  # web-user/web-admin placeholders: {server}, {server_id}, {player}, {message}
-  # web-guest placeholders: {server}, {server_id}, {guest}, {message}
-  # When server relay is enabled and an installed legacy format does not contain
-  # {server} or {server_id}, BMChat automatically prepends [server-name].
+  # web-user/web-admin placeholders: {player}, {message}
+  # web-guest placeholders: {guest}, {message}
   web-user-to-game-format: "[Web] {player}: {message}"
   web-guest-to-game-format: "[Web Guest] {guest}: {message}"
   web-admin-to-game-format: "[Web Admin] {player}: {message}"
@@ -162,11 +153,6 @@ chat:
   send-web-chat-to-game: true
   clickable-urls-in-game: true
 
-
-  # Linked web-user sender names in Minecraft chat are clickable. Clicking only the sender name
-  # suggests `/bmchat dm <real Minecraft account name> ` in the chat input.
-  # The message body separately suggests `/bmchat reply <messageId> ` when reply.game-click is enabled.
-  # This click action works independently of the optional hover setting below.
   # When player-display.mode is display-name or custom-name, optionally show the real linked
   # Minecraft account name when hovering over a web-chat sender name in in-game chat.
   # Hover is only added when the displayed name differs from the real account name.
@@ -177,52 +163,6 @@ chat:
   game-name-hover:
     enabled: false
     text: "&f{real}"
-
-# Optional server-to-server public chat relay.
-# Each server runs the same plugin and sends signed HTTP POST requests to configured peers.
-# Configure a unique server-id on every server and use the same shared-secret on both sides,
-# or set a per-peer secret. Peer URL is the other server's BMChat API base URL;
-# /relay/receive is appended automatically. Example: http://10.0.0.2:8899/api
-# For more than two servers, configure a full mesh or a hub topology. relayId de-duplication
-# and hop limits prevent messages from looping when peers form a cycle.
-server-relay:
-  enabled: false
-  server-id: "server-1"
-  server-name: "Server 1"
-  # Generate a long random value and use the same value on connected peers.
-  shared-secret: ""
-  connect-timeout-seconds: 5
-  request-timeout-seconds: 10
-  max-clock-skew-seconds: 60
-  dedupe-seconds: 300
-  max-hops: 8
-
-  sources:
-    game: true
-    web: true
-    guest: true
-    # Disabled by default to avoid DiscordSRV bridge loops across servers.
-    discord: false
-    # Join/quit/death/server announcements are disabled by default.
-    system: false
-
-  delivery:
-    web: true
-    game: true
-
-  # Available placeholders: {server}, {server_id}, {source}, {sender},
-  # {real_sender}, {uuid}, {role}, {message}.
-  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-
-  # Add one entry for each remote BMChat server. The URL may point to the API root;
-  # /relay/receive is appended automatically.
-  # - id: "server-2"
-  #   url: "http://10.0.0.2:8899/api"
-  #   # Empty = use server-relay.shared-secret.
-  #   secret: ""
-  #   enabled: true
-  peers: []
-
 
 announcements:
   broadcast-to-web-chat: true
@@ -317,11 +257,6 @@ direct-message:
   allow-web-send: true
   # Allow sending DMs from /bmchat dm in game.
   allow-game-send: true
-
-  # Copy successful-looking player whisper commands such as /w, /msg, /tell,
-  # /whisper, /m, /pm and /message into the BMChat 1:1 DM thread. This does not
-  # resend the whisper in Minecraft; it only mirrors it to the private web inbox.
-  capture-game-whispers: true
 
   # Notify players about unread DMs when they join.
   notify-on-login: true
@@ -682,11 +617,9 @@ discordsrv:
     prefix-enabled: true
     preview-enabled: true
     preview-max-length: 120
-  # Discord relay format placeholders: {server}, {server_id}, {sender}, {name}, {role}, {source}, {message}, {channel}
-  # While server relay is enabled, existing custom formats without {server}/{server_id}
-  # are automatically prefixed with [server-name] so old config files stay distinguishable.
-  web-to-discord-format: "[{server}] [Web] {sender}: {message}"
-  game-to-discord-format: "[{server}] {sender}: {message}"
+  # Discord relay format placeholders: {sender}, {name}, {role}, {source}, {message}, {channel}
+  web-to-discord-format: "[Web] {sender}: {message}"
+  game-to-discord-format: "{sender}: {message}"
   discord-to-web-sender-format: "Discord:{sender}"
   discord-to-web-message-format: "{message}"
 
@@ -879,10 +812,9 @@ emoji:
     label-format: ":{id}:"
     # 0 = unlimited. Prevents very long in-game lines when many emoji are sent.
     max-links-per-message: 4
-    # ImageEmojis-Bero 1.9.0 compatibility guide: docs/IMAGEEMOJIS_BERO_1_9_0_EN.md
-    # With ImageEmojis/ImageEmojis-Bero, BMChat resolves the receiving server's runtime
-    # glyph before adding reply and URL click events. Unresolved known tokens fall back to
-    # one plain Bukkit line so another game-side emoji renderer can still process them.
+    # When token-preserving behavior is active and a token-bearing line also contains URLs,
+    # BM Web Chat keeps a single plain Minecraft chat line so game-side emoji plugins can
+    # still see and render the token text.
     # Prefer this pack when a flat token such as :wave: matches multiple packs.
     # Example: "default" or "global"
     default-pack: ""
@@ -892,19 +824,6 @@ emoji:
     #   wave: "default/wave"
     aliases: {}
 reply:
-  # Clicking the body of a BMChat-rendered Minecraft message suggests
-  # /bmchat reply <messageId> in the chat input. Sender-name clicks remain DM actions.
-  game-click:
-    enabled: true
-    # Replaces the normal local Minecraft chat line with an equivalent clickable
-    # component so game-origin messages can also be replied to. Disable this if a
-    # chat-format plugin requires exclusive ownership of the final chat renderer.
-    local-game-chat: true
-
-  # Format used for a public reply sent from /bmchat reply <messageId> <message>.
-  # Placeholders: {server}, {server_id}, {player}, {message}.
-  game-command-format: "&8[&dReply&8] &f{player}&7: &f{message}"
-
   # Show the original message preview in Minecraft chat when a web/guest message is a reply.
   # It is sent as a separate line before the actual web message so URLs in both lines stay clickable.
   game-preview:

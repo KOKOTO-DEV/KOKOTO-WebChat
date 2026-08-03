@@ -54,6 +54,7 @@ public class ConfigValues {
     public boolean directMessageNotifyOnMessage;
     public boolean directMessageWebUnreadBadge;
     public boolean directMessageConfirmHide;
+    public boolean directMessageCaptureGameWhispers;
     public int directMessageRetentionDays;
     public int directMessageMaxMessagesPerThread;
     public int directMessageMaxMessageLength;
@@ -84,6 +85,40 @@ public class ConfigValues {
     public boolean broadcastIngameChatToWeb;
     public boolean sendWebChatToGame;
     public boolean clickableUrlsInGame;
+
+    public boolean serverRelayEnabled;
+    public String serverRelayServerId;
+    public String serverRelayServerName;
+    public String serverRelaySharedSecret;
+    public int serverRelayConnectTimeoutSeconds;
+    public int serverRelayRequestTimeoutSeconds;
+    public int serverRelayMaxClockSkewSeconds;
+    public int serverRelayDedupeSeconds;
+    public int serverRelayMaxHops;
+    public boolean serverRelayGameChat;
+    public boolean serverRelayWebChat;
+    public boolean serverRelayGuestChat;
+    public boolean serverRelayDiscordChat;
+    public boolean serverRelaySystemEvents;
+    public boolean serverRelayDeliverToWeb;
+    public boolean serverRelayDeliverToGame;
+    public String serverRelayGameFormat;
+    public List<RelayPeer> serverRelayPeers;
+
+    public static final class RelayPeer {
+        public final String id;
+        public final String url;
+        public final String secret;
+        public final boolean enabled;
+
+        public RelayPeer(String id, String url, String secret, boolean enabled) {
+            this.id = id;
+            this.url = url;
+            this.secret = secret;
+            this.enabled = enabled;
+        }
+    }
+
     public boolean gameNameHoverEnabled;
     public String gameNameHoverText;
 
@@ -302,6 +337,9 @@ public class ConfigValues {
     public boolean replyGamePreviewEnabled;
     public String replyGamePreviewFormat;
     public int replyGamePreviewMaxLength;
+    public boolean replyGameClickEnabled;
+    public boolean replyGameClickLocalChat;
+    public String replyGameCommandFormat;
 
     public boolean pinnedEnabled;
     public int pinnedMaxPins;
@@ -415,6 +453,7 @@ public class ConfigValues {
         v.directMessageNotifyOnMessage = c.getBoolean("direct-message.notify-on-message", true);
         v.directMessageWebUnreadBadge = c.getBoolean("direct-message.web-unread-badge", true);
         v.directMessageConfirmHide = c.getBoolean("direct-message.confirm-hide", true);
+        v.directMessageCaptureGameWhispers = c.getBoolean("direct-message.capture-game-whispers", false);
         v.directMessageRetentionDays = Math.max(0, c.getInt("direct-message.retention-days", 0));
         v.directMessageMaxMessagesPerThread = Math.max(0, c.getInt("direct-message.max-messages-per-thread", 0));
         v.directMessageMaxMessageLength = Math.max(0, c.getInt("direct-message.max-message-length", 500));
@@ -455,6 +494,26 @@ public class ConfigValues {
         v.broadcastIngameChatToWeb = c.getBoolean("chat.broadcast-ingame-chat-to-web", true);
         v.sendWebChatToGame = c.getBoolean("chat.send-web-chat-to-game", true);
         v.clickableUrlsInGame = c.getBoolean("chat.clickable-urls-in-game", true);
+
+        v.serverRelayEnabled = c.getBoolean("server-relay.enabled", false);
+        v.serverRelayServerId = normalizeRelayId(c.getString("server-relay.server-id", ""));
+        v.serverRelayServerName = normalizeDisplayName(c.getString("server-relay.server-name", ""), "");
+        v.serverRelaySharedSecret = String.valueOf(c.getString("server-relay.shared-secret", "")).trim();
+        v.serverRelayConnectTimeoutSeconds = Math.max(1, c.getInt("server-relay.connect-timeout-seconds", 5));
+        v.serverRelayRequestTimeoutSeconds = Math.max(1, c.getInt("server-relay.request-timeout-seconds", 10));
+        v.serverRelayMaxClockSkewSeconds = Math.max(1, c.getInt("server-relay.max-clock-skew-seconds", 60));
+        v.serverRelayDedupeSeconds = Math.max(30, c.getInt("server-relay.dedupe-seconds", 300));
+        v.serverRelayMaxHops = Math.max(1, Math.min(32, c.getInt("server-relay.max-hops", 8)));
+        v.serverRelayGameChat = c.getBoolean("server-relay.sources.game", true);
+        v.serverRelayWebChat = c.getBoolean("server-relay.sources.web", true);
+        v.serverRelayGuestChat = c.getBoolean("server-relay.sources.guest", true);
+        v.serverRelayDiscordChat = c.getBoolean("server-relay.sources.discord", false);
+        v.serverRelaySystemEvents = c.getBoolean("server-relay.sources.system", false);
+        v.serverRelayDeliverToWeb = c.getBoolean("server-relay.delivery.web", true);
+        v.serverRelayDeliverToGame = c.getBoolean("server-relay.delivery.game", true);
+        v.serverRelayGameFormat = c.getString("server-relay.game-format", "&8[&b{server}&8] &f{sender}&7: &f{message}");
+        v.serverRelayPeers = sanitizeRelayPeers(c.getMapList("server-relay.peers"));
+
         v.gameNameHoverEnabled = c.getBoolean("chat.game-name-hover.enabled", false);
         v.gameNameHoverText = c.getString("chat.game-name-hover.text", "&f{real}");
 
@@ -664,9 +723,9 @@ public class ConfigValues {
         v.discordIgnoreBotMessages = c.getBoolean("discordsrv.ignore-bot-messages", true);
         v.discordSuppressGameEcho = c.getBoolean("discordsrv.suppress-game-echo", true);
         v.discordSuppressGameEchoSeconds = c.getInt("discordsrv.suppress-game-echo-seconds", 5);
-        v.discordWebToDiscordFormat = c.getString("discordsrv.web-to-discord-format", "[Web] {sender}: {message}");
+        v.discordWebToDiscordFormat = c.getString("discordsrv.web-to-discord-format", "[{server}] [Web] {sender}: {message}");
         v.discordGameToDiscord = c.getBoolean("discordsrv.game-to-discord", false);
-        v.discordGameToDiscordFormat = c.getString("discordsrv.game-to-discord-format", "{sender}: {message}");
+        v.discordGameToDiscordFormat = c.getString("discordsrv.game-to-discord-format", "[{server}] {sender}: {message}");
         v.discordAppendGameEmojiLinks = c.getBoolean("discordsrv.append-game-emoji-links", true);
         v.discordToWebSenderFormat = c.getString("discordsrv.discord-to-web-sender-format", "Discord:{sender}");
         v.discordToWebMessageFormat = c.getString("discordsrv.discord-to-web-message-format", "{message}");
@@ -759,6 +818,9 @@ public class ConfigValues {
         v.replyGamePreviewEnabled = c.getBoolean("reply.game-preview.enabled", true);
         v.replyGamePreviewFormat = translateConfiguredGameFormat(c.getString("reply.game-preview.format", "&7{sender}: {preview}"));
         v.replyGamePreviewMaxLength = Math.max(0, c.getInt("reply.game-preview.max-length", 120));
+        v.replyGameClickEnabled = c.getBoolean("reply.game-click.enabled", false);
+        v.replyGameClickLocalChat = c.getBoolean("reply.game-click.local-game-chat", false);
+        v.replyGameCommandFormat = translateConfiguredGameFormat(c.getString("reply.game-command-format", "&8[&dReply&8] &f{player}&7: &f{message}"));
 
         v.pinnedEnabled = c.getBoolean("pinned.enabled", true);
         v.pinnedMaxPins = Math.max(0, c.getInt("pinned.max-pins", 20));
@@ -785,6 +847,32 @@ public class ConfigValues {
         boolean enabled = c.getBoolean("announcements." + key + ".enabled", defaultEnabled);
         String message = c.getString("announcements." + key + ".message", defaultMessage);
         v.announcements.put(key, new AnnouncementConfig(enabled, message));
+    }
+
+
+    private static List<RelayPeer> sanitizeRelayPeers(List<Map<?, ?>> raw) {
+        List<RelayPeer> out = new ArrayList<>();
+        if (raw == null) return out;
+        for (Map<?, ?> item : raw) {
+            if (item == null) continue;
+            boolean enabled = boolValue(item.get("enabled"), true);
+            String id = normalizeRelayId(String.valueOf(mapValue(item, "id", "")));
+            String url = String.valueOf(mapValue(item, "url", "")).trim();
+            String secret = String.valueOf(mapValue(item, "secret", "")).trim();
+            // Keep incomplete entries so ServerRelay can report exactly why a configured
+            // peer was ignored instead of silently reducing the loaded peer count.
+            out.add(new RelayPeer(id, url, secret, enabled));
+        }
+        return out;
+    }
+
+    private static String normalizeRelayId(String raw) {
+        String id = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.ROOT);
+        id = id.replaceAll("[^a-z0-9._-]", "-");
+        while (id.contains("--")) id = id.replace("--", "-");
+        while (id.startsWith("-")) id = id.substring(1);
+        while (id.endsWith("-")) id = id.substring(0, id.length() - 1);
+        return id.length() > 64 ? id.substring(0, 64) : id;
     }
 
     private static List<CommandPreset> sanitizeCommandPresets(List<Map<?, ?>> raw) {

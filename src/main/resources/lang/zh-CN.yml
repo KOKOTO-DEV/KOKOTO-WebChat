@@ -609,6 +609,8 @@ web:
     helpRevoke: 撤销 Web 会话
     helpDm: 发送私信
     helpDmRead: 读取 1 对 1 消息会话
+    helpReply: 回复公开 BMChat 消息
+    replyClickHint: "点击回复 (#{id})"
     helpGroup: '发送群聊消息'
     groupDisabled: '群聊已禁用。'
     groupDirectInputRequired: '群聊消息必须由玩家直接输入。'
@@ -633,6 +635,10 @@ web:
     dmGameSendDisabled: 游戏内私信发送已禁用。
     dmDirectInputRequired: "DM 只能通过玩家直接输入的命令发送。"
     dmPlayerNotFound: 找不到玩家。玩家必须至少加入过一次。
+    replyDisabled: 游戏内回复功能已禁用。
+    replyDirectInputRequired: 回复只能通过玩家直接输入的命令发送。
+    replyEmpty: 回复消息为空。
+    replyTargetNotFound: 找不到要回复的消息。
     dmEmpty: 消息为空。
     dmFailed: '私信发送失败: {error}'
     dmSent: '已发送给 {player}: {message}'

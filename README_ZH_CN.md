@@ -6,10 +6,14 @@
 
 - BlueMap 内嵌聊天面板，或 standalone Web 聊天页面
 - 游戏 ↔ Web 双向聊天
+- HMAC 签名的服务器间公共聊天中继、服务器彩色 Web 徽章、游戏/Discord 服务器标签
+- Minecraft 点击回复(`/bmchat reply`)与 Web 发送者点击 BMChat DM(`/bmchat dm`)
+- 可选将游戏 `/w`/`/msg`/`/tell` 类私聊复制到双方 Web DM
 - 访客聊天、数学验证码、冷却与每分钟限制
 - 通过 `/bmchat auth <code>` 绑定账号、Web 密码登录、本地管理员账号
 - Web 管理/版主面板、隐藏消息、访客/IP 禁言、撤销会话
 - 管理员自定义表情管理：创建、上传、重命名和删除表情文件夹/文件
+- ImageEmojis-Bero 1.9.0 token、游戏回复与服务器中继兼容
 - 文件/剪贴板上传，图片/视频/音频/YouTube/Shorts 预览，以及可选的 TikTok 和 X/Twitter 嵌入
 - DiscordSRV 转发，Discord CDN 媒体缓存
 - 回复与跳转到原消息、游戏内回复预览、置顶消息、虚拟滚动、可拖动/缩放窗口、PIP
@@ -22,7 +26,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.5.5.jar
+target/BlueMapWebChat-4.6.0.jar
 ```
 
 ## 安装
@@ -34,6 +38,9 @@ target/BlueMapWebChat-4.5.5.jar
 5. 如果要嵌入 BlueMap，保持 `web-addon.auto-install` 和 `web-addon.auto-patch-webapp-conf` 为 `true`。
 6. 如果只使用 standalone，设置 `standalone-web.enabled: true`，并将 `web-addon.auto-install`、`web-addon.auto-patch-webapp-conf` 设为 `false`。
 7. 重启服务器或执行 `/bmchat reload`。如果 BlueMap Web 资源没有刷新，再执行 `/bluemap reload`。
+
+
+现有 `config.yml` 不会被覆盖。当 `config-version` 缺失或与正在运行的插件版本不同时，插件会比较实际配置与 JAR 内置默认配置，并生成 `plugins/BlueMapWebChat/config-migration-4.6.0.yml`。生成文件会把可直接合并的缺失设置、已变化的默认值以及最终审核用的 `config-version` 标记写成真实 YAML 设置。即使没有其他差异，也会为了配置版本管理生成该文件和 `config-version` 项。版本信息以及旧、新默认值说明只使用 `#` 注释。不会输出自定义值和废弃候选等参考列表。当 `config-version: "4.6.0"` 与插件版本一致时，配置被视为已审核并跳过比较。参见 `docs/UPGRADE_4_6_0_ZH_CN.md`。
 
 ## standalone URL
 
@@ -103,9 +110,9 @@ BlueMapWebChat 会把自定义表情文件保存到 `plugins/BlueMapWebChat/emoj
 - `link`: 发送配置的 token 文本，并附加一个短 BM Web Chat 图片链接。
 - `label`: 只发送配置的 token 文本。
 
-`emoji.game-link.*` 只影响 Web→Minecraft 聊天。Discord 图片预览链接由单独设置控制：`discordsrv.append-web-emoji-links` 用于 Web→Discord 消息，`discordsrv.append-game-emoji-links` 会在可能的情况下编辑 DiscordSRV 的普通 Minecraft→Discord 转发消息，为 Game→Discord token 附加 URL。如果 DiscordSRV 已经在转发普通 Minecraft 聊天，请保持 `game-to-discord` 关闭以避免重复。
+`emoji.game-link.*` 只影响 Web→Minecraft 聊天。Discord 图片预览链接由单独设置控制：`discordsrv.append-web-emoji-links` 用于 Web→Discord 消息，`discordsrv.append-game-emoji-links` 会在可能的情况下编辑 DiscordSRV 的普通 Minecraft→Discord 转发消息，为 Game→Discord token 附加 URL。多个服务器共享同一 Discord 频道时，只有实际检测到本地游戏聊天的来源服务器会编辑该 DiscordSRV 消息，其他服务器不会重复添加服务器名或表情链接；接收中继的 peer 也不会把消息重新发送到 Discord。如果 DiscordSRV 已经在转发普通 Minecraft 聊天，请保持 `game-to-discord` 关闭以避免重复发布。
 
-BM Web Chat 不会直接调用 ImageEmojis 或其他游戏侧表情插件，也不会读取资源包或生成的 glyph。它会保留 token 文本，并尽量在 ImageEmojis 之前加载，以便在游戏侧渲染前捕获原始聊天文本。
+BM Web Chat 会在 Web 历史和服务器中继 payload 中保留规范的表情 token。启用 ImageEmojis 或 ImageEmojis-Bero 时，BMChat 会通过 reflection 读取其公开的 runtime 表情 repository，并在构建可点击的 Minecraft component 时使用接收服务器当前的 token→glyph 映射。无需硬依赖或解析资源包；无法解析的 token 仍会回退到原有的游戏侧渲染路径。
 
 上传 GIF/JPG/JPEG/WEBP 表情时，BlueMapWebChat 还会在同一文件夹创建 PNG sidecar，以兼容只读取 PNG 文件的游戏侧表情插件。
 
@@ -115,6 +122,8 @@ plugins/BlueMapWebChat/emojis/default/wave.png
 ```
 
 Web UI 会继续使用原始文件，因此 GIF 动画会保留。如果游戏侧表情插件监视同一个表情目录，它可以使用 PNG sidecar。添加或更改表情后，请运行该插件的 reload 命令。
+
+ImageEmojis-Bero 1.9.0 的共用目录、权限、命令转换、服务器中继及故障排除参见 [`docs/IMAGEEMOJIS_BERO_1_9_0_ZH_CN.md`](docs/IMAGEEMOJIS_BERO_1_9_0_ZH_CN.md)。
 
 ## YouTube Shorts、TikTok 和 X/Twitter 预览
 
@@ -138,6 +147,8 @@ preview:
 ## 命令
 
 ```text
+/bmchat dm <player> <message>
+/bmchat reply <messageId> <message>
 /bmchat auth <code>
 /bmchat password <newPassword>
 /bmchat reload
@@ -156,12 +167,18 @@ preview:
 ```text
 bluemapwebchat.auth
 bluemapwebchat.webchat
+bluemapwebchat.dm
+bluemapwebchat.reply
+bluemapwebchat.group
 bluemapwebchat.admin
 ```
 
 ## 文档
 
+- `docs/USER_MANUAL_ZH_CN.md` - 所有功能的完整用户与运维手册
 - `docs/CONFIGURATION_ZH_CN.md`
+- `docs/SERVER_RELAY_ZH_CN.md` - 服务器间公共聊天中继
+- `docs/UPGRADE_4_6_0_ZH_CN.md` - 4.5.5→4.6.0 配置/数据库升级
 - `docs/CADDY_HTTPS_ZH_CN.md`
 - `docs/I18N_ZH_CN.md`
 - `docs/INSTALL_TROUBLESHOOTING_ZH_CN.md`
@@ -189,6 +206,9 @@ URL 设置说明：HTTPS 反向代理模式下，将 `web-addon.api-base-url` �
 启用 `direct-message.enabled` 后，可以使用 1:1 会话线程式消息箱。目标仅限已有 UUID/名称记录的已关联或曾加入玩家。A→B 与 B→A 会使用同一个线程，存储按 UUID 进行，UI 会尽可能显示为 `显示名 (真实账号名)`。
 
 DM 使用独立于公开聊天历史的专用存储。`direct-message.storage: auto` 会在公开聊天使用 `jsonl` 存储时让 DM 也使用 JSONL，其他情况下使用 SQLite。也可以显式设置为 `sqlite` 或 `jsonl`，并分别使用 `direct-message.sqlite-file` 或 `direct-message.jsonl-file`。`direct-message.retention-days: 0` 表示无保留期限；其他值会显示在 DM 窗口标题旁作为保留期限，超过该天数的 DM 原文会被物理删除。`direct-message.max-messages-per-thread: 0` 表示不按线程消息数清理。`direct-message.confirm-hide` 控制 Web UI 在从自己视图隐藏 DM 前是否显示确认框。由于私信会保存在服务器上，此功能默认关闭，建议先确定服务器保留策略后再启用。
+
+
+启用 `direct-message.capture-game-whispers` 后，游戏 `/w`、`/msg`、`/tell` 等会复制到相同 Web DM 会话。点击同服游戏发送者名称会建议 `/w <真实名称> `；Web 发送者和其他服务器的游戏发送者会建议 `/bmchat dm <真实名称> `。
 
 ## 群组聊天室
 

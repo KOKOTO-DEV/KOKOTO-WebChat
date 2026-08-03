@@ -15,12 +15,18 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 public class ChatListener implements Listener {
+    private static final Pattern CUSTOM_EMOJI_TOKEN_PATTERN = Pattern.compile("(?<![A-Za-z0-9+.-]):(?:emoji:)?([^:\\r\\n]{1,200}):");
     private final BlueMapWebChatPlugin plugin;
     private final Map<AsyncPlayerChatEvent, String> originalChatMessages = Collections.synchronizedMap(new WeakHashMap<>());
     private final Map<Event, String> originalPaperChatMessages = Collections.synchronizedMap(new WeakHashMap<>());
+    private final Map<PlayerCommandPreprocessEvent, String> originalNativeWhisperCommands = Collections.synchronizedMap(new WeakHashMap<>());
     private final Map<UUID, CapturedDirectMessageCommand> originalDirectMessageCommands = new ConcurrentHashMap<>();
     private final boolean paperAsyncChatRegistered;
 
@@ -34,21 +40,125 @@ public class ChatListener implements Listener {
     public void captureOriginalDirectMessageCommand(PlayerCommandPreprocessEvent event) {
         if (event == null || event.getPlayer() == null) return;
         String message = event.getMessage();
+        if (parseNativeWhisper(message) != null) {
+            originalNativeWhisperCommands.put(event, message);
+        }
         if (!looksLikeDirectMessageCommand(message)) return;
         // Command preprocessors from emoji plugins may replace :pack/name: with a
         // private-use font glyph before the command executor sees the args. Keep
         // the raw player command so /bmchat dm stores the same token the user typed.
         // DM command handling later requires this capture; commands dispatched through
         // /execute, command blocks, console, or plugins do not pass this player-input check.
-        originalDirectMessageCommands.put(event.getPlayer().getUniqueId(),
-                new CapturedDirectMessageCommand(message, System.currentTimeMillis()));
+        UUID playerId = event.getPlayer().getUniqueId();
+        long now = System.currentTimeMillis();
+        originalDirectMessageCommands.compute(playerId, (ignored, existing) -> {
+            // ImageEmojis-style command preprocessors can re-dispatch the same command
+            // after replacing :pack/name: with a generated font glyph. Preserve the
+            // earliest player-typed form for a very short window so the nested command
+            // cannot overwrite the token text that must be stored for web rendering.
+            if (existing != null
+                    && now - existing.createdAtMs <= 1_000L
+                    && sameDirectMessageRoute(existing.message, message)
+                    && containsEmojiTokenText(existing.message)
+                    && !existing.message.equals(message)) {
+                return existing;
+            }
+            return new CapturedDirectMessageCommand(message, now);
+        });
     }
 
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void discardCancelledDirectMessageCommand(PlayerCommandPreprocessEvent event) {
         if (event == null || event.getPlayer() == null || !event.isCancelled()) return;
-        originalDirectMessageCommands.remove(event.getPlayer().getUniqueId());
+        originalNativeWhisperCommands.remove(event);
+
+        UUID playerId = event.getPlayer().getUniqueId();
+        CapturedDirectMessageCommand captured = originalDirectMessageCommands.get(playerId);
+        String processed = event.getMessage();
+        // Some emoji preprocessors cancel the original event after replacing tokens
+        // and then re-dispatch the transformed command. Retain the captured raw form
+        // only when the cancellation clearly belongs to that same transformed route.
+        if (captured != null
+                && System.currentTimeMillis() - captured.createdAtMs <= 1_000L
+                && sameDirectMessageRoute(captured.message, processed)
+                && containsEmojiTokenText(captured.message)
+                && !captured.message.equals(processed)) {
+            return;
+        }
+        originalDirectMessageCommands.remove(playerId);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void mirrorNativeWhisperToWebDm(PlayerCommandPreprocessEvent event) {
+        if (event == null || event.getPlayer() == null) return;
+        String original = originalNativeWhisperCommands.remove(event);
+        ConfigValues config = plugin.configValues();
+        if (config == null || !config.directMessageEnabled || !config.directMessageCaptureGameWhispers) return;
+        NativeWhisper whisper = parseNativeWhisper(original == null ? event.getMessage() : original);
+        if (whisper == null) return;
+
+        Player player = event.getPlayer();
+        String senderUuid = player.getUniqueId().toString();
+        String senderDisplay = plugin.displayPlayerName(player);
+        String senderName = player.getName();
+        plugin.getServer().getScheduler().runTask(plugin, () -> mirrorNativeWhisper(
+                senderUuid, senderName, senderDisplay, whisper.target, whisper.message));
+    }
+
+    private NativeWhisper parseNativeWhisper(String raw) {
+        String text = String.valueOf(raw == null ? "" : raw).trim();
+        if (!text.startsWith("/")) return null;
+        String[] parts = text.substring(1).split("\\s+", 3);
+        if (parts.length < 3) return null;
+        String root = parts[0].toLowerCase(java.util.Locale.ROOT);
+        int colon = root.indexOf(':');
+        if (colon >= 0 && colon + 1 < root.length()) root = root.substring(colon + 1);
+        if (!(root.equals("w") || root.equals("whisper") || root.equals("msg") || root.equals("tell")
+                || root.equals("m") || root.equals("pm") || root.equals("message") || root.equals("t"))) {
+            return null;
+        }
+        String target = parts[1].trim();
+        String message = parts[2].trim();
+        if (target.isBlank() || message.isBlank()) return null;
+        return new NativeWhisper(target, message);
+    }
+
+    private void mirrorNativeWhisper(String senderUuid, String senderName, String senderDisplay,
+                                     String targetInput, String rawMessage) {
+        ConfigValues config = plugin.configValues();
+        DirectMessageStore store = plugin.directMessages();
+        if (config == null || !config.directMessageEnabled || !config.directMessageCaptureGameWhispers
+                || store == null || !store.available()) return;
+        PlayerIdentity target = plugin.storage().findKnownPlayer(targetInput);
+        if (target == null || target.uuid == null || target.uuid.isBlank()) return;
+        if (target.uuid.equalsIgnoreCase(senderUuid)) return;
+
+        String message = String.valueOf(rawMessage == null ? "" : rawMessage)
+                .replace('\n', ' ').replace('\r', ' ').trim();
+        int max = Math.max(0, config.directMessageMaxMessageLength);
+        if (max > 0 && message.length() > max) message = message.substring(0, max);
+        if (message.isBlank()) return;
+
+        plugin.storage().updateLastDisplayName(senderUuid, senderName, senderDisplay);
+        DirectMessageStore.SendResult result = store.send(senderUuid, target.uuid, message);
+        if (!result.ok) return;
+        WebChatServer server = plugin.webServer();
+        if (server == null) return;
+        String threadId = result.thread == null ? "" : result.thread.id;
+        long messageId = result.message == null ? 0L : result.message.id;
+        server.publishDirectMessageUpdate(senderUuid, target.uuid, threadId);
+        server.dispatchWebPushDirectMessage(senderUuid, senderDisplay, target.uuid, target.label(), threadId, messageId, message);
+    }
+
+    private static final class NativeWhisper {
+        final String target;
+        final String message;
+
+        NativeWhisper(String target, String message) {
+            this.target = target;
+            this.message = message;
+        }
     }
 
     public String pollOriginalDirectMessageCommand(Player player) {
@@ -69,7 +179,7 @@ public class ChatListener implements Listener {
         if (parts.length < 2) return false;
         String root = parts[0].toLowerCase(java.util.Locale.ROOT);
         String sub = parts[1].toLowerCase(java.util.Locale.ROOT);
-        return isBmChatRoot(root) && (sub.equals("dm") || sub.equals("group") || sub.equals("gc"));
+        return isBmChatRoot(root) && (sub.equals("dm") || sub.equals("reply") || sub.equals("group") || sub.equals("gc"));
     }
 
     private boolean isBmChatRoot(String root) {
@@ -80,6 +190,42 @@ public class ChatListener implements Listener {
                 || root.equals("bluemapwebchat:bmchat")
                 || root.equals("bluemapwebchat:bluemapchat")
                 || root.equals("bluemapwebchat:bmc");
+    }
+
+
+    private boolean sameDirectMessageRoute(String first, String second) {
+        String a = directMessageRouteKey(first);
+        String b = directMessageRouteKey(second);
+        return !a.isBlank() && a.equalsIgnoreCase(b);
+    }
+
+    private String directMessageRouteKey(String raw) {
+        String text = String.valueOf(raw == null ? "" : raw).trim();
+        if (!text.startsWith("/")) return "";
+        String[] parts = text.substring(1).split("\\s+", 5);
+        if (parts.length < 2) return "";
+        String root = parts[0].toLowerCase(java.util.Locale.ROOT);
+        if (!isBmChatRoot(root)) return "";
+        String sub = parts[1].toLowerCase(java.util.Locale.ROOT);
+        if (sub.equals("reply")) {
+            return parts.length >= 3 ? "reply:" + parts[2] : "reply:";
+        }
+        if (sub.equals("dm")) {
+            return parts.length >= 3 ? "dm:" + parts[2] : "dm:";
+        }
+        if (sub.equals("group") || sub.equals("gc")) {
+            if (parts.length < 3) return "group:";
+            if (parts[2].equalsIgnoreCase("send")) {
+                return parts.length >= 4 ? "group:send:" + parts[3] : "group:send:";
+            }
+            return "group:" + parts[2];
+        }
+        return "";
+    }
+
+    private boolean containsEmojiTokenText(String raw) {
+        String text = String.valueOf(raw == null ? "" : raw);
+        return !text.isBlank() && CUSTOM_EMOJI_TOKEN_PATTERN.matcher(text).find();
     }
 
     private static class CapturedDirectMessageCommand {
@@ -103,12 +249,40 @@ public class ChatListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onChat(AsyncPlayerChatEvent event) {
         if (paperAsyncChatRegistered) return;
         String message = originalChatMessages.remove(event);
         if (message == null && event != null) message = event.getMessage();
-        publishCapturedGameChat(event == null ? null : event.getPlayer(), message);
+        if (event == null || event.getPlayer() == null) return;
+
+        ConfigValues config = plugin.configValues();
+        WebChatServer server = plugin.webServer();
+        boolean interactive = config != null && config.replyGameClickEnabled
+                && config.replyGameClickLocalChat && config.broadcastIngameChatToWeb && server != null;
+        if (!interactive) {
+            publishCapturedGameChat(event.getPlayer(), message);
+            return;
+        }
+
+        ChatMessage msg = publishCapturedGameChat(event.getPlayer(), message);
+        if (msg == null) return;
+        String gameMessage = String.valueOf(event.getMessage() == null ? "" : event.getMessage());
+        String line;
+        try {
+            line = String.format(event.getFormat(), event.getPlayer().getDisplayName(), gameMessage);
+        } catch (Throwable ignored) {
+            line = "<" + event.getPlayer().getDisplayName() + "> " + gameMessage;
+        }
+        List<Player> recipients = new ArrayList<>(event.getRecipients());
+        // Keep the native asynchronous chat event alive for console/non-player output
+        // so the server log stays on the normal Async Chat Thread. Players receive the
+        // interactive BMChat component separately and are removed from the native route
+        // to prevent duplicate lines.
+        event.getRecipients().clear();
+        String finalLine = line;
+        plugin.getServer().getScheduler().runTask(plugin,
+                () -> server.broadcastClickableLocalGameMessage(msg, finalLine, gameMessage, recipients));
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -135,7 +309,7 @@ public class ChatListener implements Listener {
                 } catch (Throwable ignored) {
                 }
             }, plugin, false);
-            plugin.getServer().getPluginManager().registerEvent(eventClass, this, EventPriority.MONITOR, (listener, event) -> {
+            plugin.getServer().getPluginManager().registerEvent(eventClass, this, EventPriority.HIGHEST, (listener, event) -> {
                 try {
                     onPaperChat(event);
                 } catch (Throwable t) {
@@ -160,21 +334,57 @@ public class ChatListener implements Listener {
 
     private void onPaperChat(Event event) {
         if (event == null) return;
-        String message = originalPaperChatMessages.remove(event);
-        if (message == null || message.isBlank()) {
-            message = paperPlainText(callNoArg(event, "originalMessage"));
+        String original = originalPaperChatMessages.remove(event);
+        if (original == null || original.isBlank()) original = paperPlainText(callNoArg(event, "originalMessage"));
+        if (original == null || original.isBlank()) original = paperPlainText(callNoArg(event, "message"));
+        Player player = paperPlayer(event);
+
+        ConfigValues config = plugin.configValues();
+        WebChatServer server = plugin.webServer();
+        boolean interactive = config != null && config.replyGameClickEnabled
+                && config.replyGameClickLocalChat && config.broadcastIngameChatToWeb && server != null;
+        if (!interactive) {
+            publishCapturedGameChat(player, original);
+            return;
         }
-        if (message == null || message.isBlank()) {
-            message = paperPlainText(callNoArg(event, "message"));
-        }
-        publishCapturedGameChat(paperPlayer(event), message);
+
+        ChatMessage msg = publishCapturedGameChat(player, original);
+        if (msg == null || player == null) return;
+        String gameMessage = paperPlainText(callNoArg(event, "message"));
+        if (gameMessage.isBlank()) gameMessage = original;
+        String line = "<" + player.getDisplayName() + "> " + gameMessage;
+        List<Player> recipients = paperPlayerViewers(event);
+        removePaperPlayerViewers(event);
+        String finalGameMessage = gameMessage;
+        plugin.getServer().getScheduler().runTask(plugin,
+                () -> server.broadcastClickableLocalGameMessage(msg, line, finalGameMessage, recipients));
     }
 
-    private void publishCapturedGameChat(Player player, String message) {
-        if (!plugin.configValues().broadcastIngameChatToWeb) return;
+    private void removePaperPlayerViewers(Event event) {
+        Object viewers = callNoArg(event, "viewers");
+        if (!(viewers instanceof Collection<?> collection)) return;
+        try {
+            collection.removeIf(viewer -> viewer instanceof Player);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private List<Player> paperPlayerViewers(Event event) {
+        Object viewers = callNoArg(event, "viewers");
+        List<Player> players = new ArrayList<>();
+        if (viewers instanceof Collection<?> collection) {
+            for (Object viewer : collection) if (viewer instanceof Player player) players.add(player);
+            return players;
+        }
+        players.addAll(plugin.getServer().getOnlinePlayers());
+        return players;
+    }
+
+    private ChatMessage publishCapturedGameChat(Player player, String message) {
+        if (!plugin.configValues().broadcastIngameChatToWeb) return null;
         WebChatServer server = plugin.webServer();
-        if (server == null) return;
-        server.publishFromGame(player, message == null ? "" : message);
+        if (server == null) return null;
+        return server.publishFromGame(player, message == null ? "" : message);
     }
 
 

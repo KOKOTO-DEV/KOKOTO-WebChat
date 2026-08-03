@@ -1,5 +1,5 @@
 name: BlueMapWebChat
-version: 4.5.5
+version: 4.6.0
 main: dev.kokoto.bluemapwebchat.BlueMapWebChatPlugin
 api-version: '1.21'
 authors: [KOKOTO]
@@ -9,7 +9,7 @@ loadbefore: [ImageEmojis]
 commands:
   bmchat:
     description: BlueMapWebChat command
-    usage: /bmchat <auth|password|dm|group|reload|admin>
+    usage: /bmchat <auth|password|dm|reply|group|reload|admin>
     aliases: [bluemapchat, bmc]
 permissions:
   bluemapwebchat.auth:
@@ -24,6 +24,10 @@ permissions:
 
   bluemapwebchat.dm:
     description: Allows sending and reading BlueMapWebChat direct messages.
+    default: true
+
+  bluemapwebchat.reply:
+    description: Allows replying to public BMChat messages from Minecraft.
     default: true
 
   bluemapwebchat.group:

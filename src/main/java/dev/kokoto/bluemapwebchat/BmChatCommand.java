@@ -71,6 +71,8 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
                 return guest(sender, args);
             case "dm":
                 return dm(sender, args);
+            case "reply":
+                return reply(sender, args);
             case "group":
             case "gc":
                 return group(sender, args);
@@ -82,6 +84,54 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
                 help(sender);
                 return true;
         }
+    }
+
+    private boolean reply(CommandSender sender, String[] args) {
+        ConfigValues config = plugin.configValues();
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(red(msg("onlyPlayers", "This command can only be used by players.")));
+            return true;
+        }
+        if (!sender.hasPermission("bluemapwebchat.reply")) {
+            sender.sendMessage(red(msg("noPermission", "You do not have permission.")));
+            return true;
+        }
+        if (config == null || !config.replyGameClickEnabled) {
+            sender.sendMessage(red(msg("replyDisabled", "Game replies are disabled.")));
+            return true;
+        }
+        if (args.length < 3) {
+            sender.sendMessage(yellow("/bmchat reply <messageId> <message>"));
+            return true;
+        }
+
+        String playerInputCommand = directMessageCommandFromPlayerInput(player, args);
+        String body = replyMessageBodyFromOriginalCommand(playerInputCommand, args);
+        if (body == null) {
+            sender.sendMessage(red(msg("replyDirectInputRequired", "Replies must be typed directly by the player.")));
+            return true;
+        }
+        int replyMaxLength = config.maxUrlMessageLength > 0 ? config.maxUrlMessageLength : config.maxMessageLength;
+        body = stripForDm(body, replyMaxLength);
+        if (body.isBlank()) {
+            sender.sendMessage(red(msg("replyEmpty", "Reply message is empty.")));
+            return true;
+        }
+
+        // The raw command body is the canonical web/relay text. The Bukkit args can
+        // already contain ImageEmojis' generated glyphs, which are preferable for the
+        // immediate Minecraft echo because plugin-created interactive components are
+        // not passed back through the original chat event renderer.
+        String gameDisplayBody = stripForDm(commandBodyFromArguments(args, 2), replyMaxLength);
+        if (gameDisplayBody.isBlank()) gameDisplayBody = body;
+
+        WebChatServer server = plugin.webServer();
+        ChatMessage created = server == null ? null : server.publishReplyFromGame(player, args[1], body, gameDisplayBody);
+        if (created == null) {
+            sender.sendMessage(red(msg("replyTargetNotFound", "The referenced message could not be found.")));
+            return true;
+        }
+        return true;
     }
 
     private boolean auth(CommandSender sender, String[] args) {
@@ -510,7 +560,7 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
     private boolean matchesCurrentDirectMessageCommand(String original, String[] args) {
         if (original == null || original.isBlank() || args == null || args.length < 1) return false;
         String wanted = args[0].toLowerCase(java.util.Locale.ROOT);
-        if (!("dm".equals(wanted) || "group".equals(wanted) || "gc".equals(wanted))) return false;
+        if (!("dm".equals(wanted) || "reply".equals(wanted) || "group".equals(wanted) || "gc".equals(wanted))) return false;
         String text = original.trim();
         if (text.startsWith("/")) text = text.substring(1);
         String[] parts = text.split("\\s+", 4);
@@ -518,7 +568,13 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
         String root = parts[0].toLowerCase(java.util.Locale.ROOT);
         String sub = parts[1].toLowerCase(java.util.Locale.ROOT);
         if (!isBmChatCommandRoot(root)) return false;
-        if ("dm".equals(wanted)) {
+        if ("reply".equals(wanted)) {
+            if (!"reply".equals(sub)) return false;
+            if (args.length == 1) return parts.length == 2;
+            if (parts.length < 3 || !parts[2].equalsIgnoreCase(args[1])) return false;
+            if (args.length == 2) return parts.length == 3;
+            return parts.length >= 4;
+        } else if ("dm".equals(wanted)) {
             if (!"dm".equals(sub)) return false;
             if (args.length == 1) return parts.length == 2;
             if (parts.length < 3 || !parts[2].equalsIgnoreCase(args[1])) return false;
@@ -593,6 +649,17 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
         return parts.length >= 4;
     }
 
+
+    private String commandBodyFromArguments(String[] args, int firstIndex) {
+        if (args == null || firstIndex < 0 || firstIndex >= args.length) return "";
+        StringBuilder out = new StringBuilder();
+        for (int i = firstIndex; i < args.length; i++) {
+            if (i > firstIndex) out.append(' ');
+            out.append(args[i] == null ? "" : args[i]);
+        }
+        return out.toString();
+    }
+
     private String directMessageBodyFromOriginalCommand(String original, String[] args) {
         if (original == null || original.isBlank()) return null;
         String text = original.trim();
@@ -602,6 +669,19 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
         String root = parts[0].toLowerCase(java.util.Locale.ROOT);
         String sub = parts[1].toLowerCase(java.util.Locale.ROOT);
         if (!isBmChatCommandRoot(root) || !"dm".equals(sub)) return null;
+        if (args == null || args.length < 3 || !parts[2].equalsIgnoreCase(args[1])) return null;
+        return parts[3];
+    }
+
+    private String replyMessageBodyFromOriginalCommand(String original, String[] args) {
+        if (original == null || original.isBlank()) return null;
+        String text = original.trim();
+        if (text.startsWith("/")) text = text.substring(1);
+        String[] parts = text.split("\\s+", 4);
+        if (parts.length < 4) return null;
+        String root = parts[0].toLowerCase(java.util.Locale.ROOT);
+        String sub = parts[1].toLowerCase(java.util.Locale.ROOT);
+        if (!isBmChatCommandRoot(root) || !"reply".equals(sub)) return null;
         if (args == null || args.length < 3 || !parts[2].equalsIgnoreCase(args[1])) return null;
         return parts[3];
     }
@@ -1018,6 +1098,9 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(yellow("/bmchat dm read <player> [pageSize]") + ChatColor.GRAY + " - " + msg("helpDmRead", "Read a direct message thread"));
             sender.sendMessage(yellow("/bmchat group <room> <message>") + ChatColor.GRAY + " - " + msg("helpGroup", "Send a group chat message"));
         }
+        if (config != null && config.pluginEnabled && config.replyGameClickEnabled && sender instanceof Player) {
+            sender.sendMessage(yellow("/bmchat reply <messageId> <message>") + ChatColor.GRAY + " - " + msg("helpReply", "Reply to a public BMChat message"));
+        }
     }
 
     private String msg(String key, String fallback, String... values) {
@@ -1157,6 +1240,7 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             out.add("auth");
             out.add("password");
             if (config != null && config.directMessageEnabled && sender instanceof Player) out.add("dm");
+            if (config != null && config.replyGameClickEnabled && sender instanceof Player) out.add("reply");
             if (config != null && config.groupChatEnabled && sender instanceof Player) out.add("group");
             if (sender.hasPermission("bluemapwebchat.admin")) {
                 out.add("reload");
@@ -1165,6 +1249,8 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
                 out.add("sessions");
                 out.add("revoke");
             }
+        } else if (args.length >= 3 && "reply".equalsIgnoreCase(args[0]) && sender instanceof Player) {
+            out.addAll(emojiTokenTabSuggestions(args[args.length - 1]));
         } else if (args.length == 2 && "dm".equalsIgnoreCase(args[0]) && sender instanceof Player) {
             out.add("list");
             out.add("unread");

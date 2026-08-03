@@ -1,5 +1,21 @@
 # Changelog
 
+## 4.6.0
+
+- Added secure multi-server game/web chat relay with HTTPS and HMAC authentication.
+- Added server-aware message labels and per-server web badge colors.
+- Added in-game message replies using `/bmchat reply`.
+- Added BMChat DM suggestions for web and remote-server senders.
+- Added game whisper capture into BMChat DM history.
+- Added ImageEmojis-Bero 1.9.0 compatibility for chat, replies, DMs, and relayed messages.
+- Preserved URLs, emoji tokens, message IDs, reply references, and origin metadata across relays.
+- Prevented duplicate Discord delivery and repeated server/source prefixes in shared channels.
+- Restored the normal asynchronous logging path for local Minecraft chat.
+- Added automatic SQLite relay metadata migration.
+- Added a non-destructive configuration migration fragment for missing and changed settings.
+- Updated the changelog, configuration manuals, upgrade guides, and four-language documentation.
+
+
 ## 4.5.5
 
 - Expanded `config.yml` inline documentation for supported option values and placeholders beyond the game-name hover text, including Google Drive preview mode, X/Twitter embed theme, clipboard upload behavior, command role values, web font item fields, Web Push TTL range, UI scroll/opacity ranges, and upload/cache retention semantics.

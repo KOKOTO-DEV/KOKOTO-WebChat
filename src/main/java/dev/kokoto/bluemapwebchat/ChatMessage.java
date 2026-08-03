@@ -10,6 +10,10 @@ public class ChatMessage {
     public String sender;
     public String realSender;
     public String playerUuid;
+    public String relayId;
+    public String originServerId;
+    public String originServerName;
+    public int relayHop;
     public String role;
     public String message;
     public String i18nKey;
@@ -67,6 +71,10 @@ public class ChatMessage {
         m.put("sender", sender);
         if (realSender != null && !realSender.isBlank() && !realSender.equals(sender)) m.put("realSender", realSender);
         if (playerUuid != null && !playerUuid.isBlank()) m.put("playerUuid", playerUuid);
+        if (relayId != null && !relayId.isBlank()) m.put("relayId", relayId);
+        if (originServerId != null && !originServerId.isBlank()) m.put("originServerId", originServerId);
+        if (originServerName != null && !originServerName.isBlank()) m.put("originServerName", originServerName);
+        if (relayHop > 0) m.put("relayHop", relayHop);
         m.put("role", role);
         m.put("hidden", hidden);
         if (i18nKey != null && !i18nKey.isBlank()) m.put("i18nKey", i18nKey);
@@ -86,6 +94,10 @@ public class ChatMessage {
         ChatMessage msg = new ChatMessage(time, source, sender, role, message);
         msg.realSender = value(m.get("realSender"), "");
         msg.playerUuid = value(m.get("playerUuid"), "");
+        msg.relayId = value(m.get("relayId"), "");
+        msg.originServerId = value(m.get("originServerId"), "");
+        msg.originServerName = value(m.get("originServerName"), "");
+        msg.relayHop = (int) parseLong(m.get("relayHop"), 0);
         String id = m.get("id");
         if (id != null && !id.isBlank()) msg.id = id;
         msg.i18nKey = value(m.get("i18nKey"), "");

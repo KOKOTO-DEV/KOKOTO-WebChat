@@ -23,6 +23,12 @@ public class DiscordBridge {
     private final Map<String, Long> recentDiscordInbound = new ConcurrentHashMap<>();
     private final Map<String, Long> recentDiscordEventIds = new ConcurrentHashMap<>();
     private final Map<String, Long> recentDirectDiscordOutbound = new ConcurrentHashMap<>();
+    // Only the server where a Minecraft chat event actually originated records the
+    // raw game message here. Every BMChat instance connected to the same Discord
+    // channel receives the resulting DiscordSRV bot message through JDA, so this
+    // origin fingerprint prevents non-origin servers from prepending their own
+    // server label or appending the same emoji links again.
+    private final Map<String, Long> recentLocalGameOutbound = new ConcurrentHashMap<>();
     private static final Map<String, Long> globalDiscordInboundEventIds = new ConcurrentHashMap<>();
 
     public DiscordBridge(BlueMapWebChatPlugin plugin) {
@@ -70,6 +76,7 @@ public class DiscordBridge {
         recentDiscordInbound.clear();
         recentDiscordEventIds.clear();
         recentDirectDiscordOutbound.clear();
+        recentLocalGameOutbound.clear();
         started = false;
     }
 
@@ -87,7 +94,7 @@ public class DiscordBridge {
         }
         if (!allow) return;
 
-        String text = format(c.discordWebToDiscordFormat, msg.sender, msg.role, msg.source, msg.message, c.discordChannel);
+        String text = formatMessage(c.discordWebToDiscordFormat, msg, c.discordChannel);
         if (c.discordReplyRelayEnabled) {
             text = applyReplyRelayToDiscord(msg, text, c);
         }
@@ -100,18 +107,85 @@ public class DiscordBridge {
 
     public void sendGameMessage(ChatMessage msg) {
         ConfigValues c = plugin.configValues();
-        if (msg == null || c == null || !c.discordEnabled || !c.discordGameToDiscord) return;
+        if (msg == null || c == null || !c.discordEnabled) return;
 
-        String text = format(c.discordGameToDiscordFormat, msg.sender, msg.role, msg.source, msg.message, c.discordChannel);
+        // This method is invoked only for a game chat event created on this server.
+        // Relayed messages use WebChatServer.acceptRelayedMessage() and never enter
+        // this path, so the fingerprint identifies the one server allowed to edit
+        // DiscordSRV's native game-chat post.
+        rememberLocalGameOutbound(msg);
+        if (!c.discordGameToDiscord) return;
+
+        String text = formatMessage(c.discordGameToDiscordFormat, msg, c.discordChannel);
         text = appendGameEmojiLinksToDiscord(msg, text, c);
         if (text.isBlank()) return;
 
         sendDirectToDiscord(text);
     }
 
+
+    private void rememberLocalGameOutbound(ChatMessage msg) {
+        if (msg == null) return;
+        String message = normalizeEcho(msg.message);
+        String sender = normalizeEcho(msg.sender);
+        if (message.isBlank() && sender.isBlank()) return;
+
+        long now = System.currentTimeMillis();
+        if (!sender.isBlank()) {
+            recentLocalGameOutbound.put("s:" + sender, now);
+            if (!message.isBlank()) recentLocalGameOutbound.put("sm:" + sender + "\u0000" + message, now);
+        } else if (!message.isBlank()) {
+            // A normal player chat always has a sender. Body-only fingerprints are
+            // reserved for unusual senderless integrations so common short messages
+            // such as "hi" cannot make a peer server claim another server's post.
+            recentLocalGameOutbound.put("m:" + message, now);
+        }
+        pruneRecent(now, 60_000L);
+    }
+
+    private boolean matchesRecentLocalGameOutbound(String discordContent, long ttlMillis) {
+        String content = normalizeEcho(discordContent);
+        if (content.isBlank()) return false;
+        long now = System.currentTimeMillis();
+        recentLocalGameOutbound.entrySet().removeIf(e -> now - e.getValue() > ttlMillis);
+
+        // Prefer a sender+message match, then the original message body. The
+        // sender-only fallback covers DiscordSRV/ImageEmojis pipelines that replace
+        // the token body with a private-use glyph before the Discord post is built.
+        for (Map.Entry<String, Long> entry : recentLocalGameOutbound.entrySet()) {
+            if (now - entry.getValue() > ttlMillis) continue;
+            String key = entry.getKey();
+            if (!key.startsWith("sm:")) continue;
+            int split = key.indexOf('\u0000', 3);
+            if (split < 0) continue;
+            String sender = key.substring(3, split);
+            String message = key.substring(split + 1);
+            if (!sender.isBlank() && !message.isBlank()
+                    && content.contains(sender) && content.contains(message)) return true;
+        }
+        for (Map.Entry<String, Long> entry : recentLocalGameOutbound.entrySet()) {
+            if (now - entry.getValue() > ttlMillis) continue;
+            String key = entry.getKey();
+            if (!key.startsWith("m:")) continue;
+            String message = key.substring(2);
+            if (message.length() >= 2 && content.contains(message)) return true;
+        }
+        for (Map.Entry<String, Long> entry : recentLocalGameOutbound.entrySet()) {
+            // Keep the weaker sender-only window short to reduce false matches when
+            // the same account name exists on more than one linked server.
+            if (now - entry.getValue() > Math.min(ttlMillis, 8_000L)) continue;
+            String key = entry.getKey();
+            if (!key.startsWith("s:")) continue;
+            String sender = key.substring(2);
+            if (sender.length() >= 3 && content.contains(sender)) return true;
+        }
+        return false;
+    }
+
     private boolean needsJdaListener(ConfigValues c) {
         if (c == null || !c.discordEnabled) return false;
         if (c.discordDiscordToWeb) return true;
+        if (c.serverRelayEnabled) return true;
         return c.discordAppendGameEmojiLinks && c.discordMaxEmojiLinksPerMessage > 0;
     }
 
@@ -215,7 +289,7 @@ public class DiscordBridge {
                 recentDiscordEventIds.put(dedupeKey, System.currentTimeMillis());
                 globalDiscordInboundEventIds.put(dedupeKey, System.currentTimeMillis());
             }
-            maybeAppendGameEmojiLinksToNativeDiscordMessage(message, author, content, c);
+            maybeEnhanceNativeDiscordMessage(message, author, content, c);
 
             if (!c.discordDiscordToWeb) return;
             if (c.discordIgnoreBotMessages && asBoolean(call(author, "isBot"))) return;
@@ -241,23 +315,49 @@ public class DiscordBridge {
     }
 
 
-    private void maybeAppendGameEmojiLinksToNativeDiscordMessage(Object message, Object author, String content, ConfigValues c) {
-        if (message == null || c == null) return;
-        if (!c.discordAppendGameEmojiLinks || c.discordMaxEmojiLinksPerMessage <= 0) return;
-        if (content == null || content.isBlank()) return;
+    private void maybeEnhanceNativeDiscordMessage(Object message, Object author, String content, ConfigValues c) {
+        if (message == null || author == null || c == null || content == null || content.isBlank()) return;
 
-        // This covers the normal DiscordSRV Minecraft -> Discord relay. Web/game messages sent
-        // directly by BM Web Chat are remembered and skipped so their own append settings stay authoritative.
-        if (!asBoolean(call(author, "isBot"))) return;
+        // Only edit messages authored by DiscordSRV's own JDA account. This avoids
+        // touching unrelated bots which happen to post in the configured channel.
+        if (!isDiscordSrvSelfUser(author)) return;
+
+        // Web/game messages sent directly by BM Web Chat are already formatted and
+        // remembered on the originating server. Skip them there. Other BMChat
+        // instances sharing the channel will not have this exact direct-outbound
+        // fingerprint, so the local-game origin check below also keeps them from
+        // modifying another server's direct message.
         if (seenRecently(recentDirectDiscordOutbound, normalizeEcho(content), 60_000L)) return;
 
-        WebChatServer server = plugin.webServer();
-        if (server == null) return;
-        String links = server.externalEmojiLinksForDiscord(content, c.discordMaxEmojiLinksPerMessage);
-        if (links.isBlank()) return;
-        if (containsAnyLine(content, links)) return;
+        // The default BMChat web format is "[server] [Web] ...". Every server in
+        // the shared channel sees that same bot post, but it is already fully
+        // formatted by its origin and must never be treated as a native game relay.
+        if (looksLikeBmChatWebOutbound(content)) return;
 
-        String updated = content.trim() + "\n" + links;
+        // A DiscordSRV bot account is shared by every connected server. JDA alone
+        // cannot tell which Minecraft server produced a native DiscordSRV message.
+        // Match it against a recent local game event and allow only that origin
+        // server to add the server label/emoji links. Relayed game messages are not
+        // recorded here and therefore cannot acquire an extra transit-server label.
+        if (!matchesRecentLocalGameOutbound(content, 15_000L)) return;
+
+        String updated = content.trim();
+        String serverLabel = localRelayServerLabel(c);
+        if (!serverLabel.isBlank() && !hasServerLabelPrefix(updated, serverLabel)) {
+            updated = "[" + serverLabel + "] " + updated;
+        }
+
+        if (c.discordAppendGameEmojiLinks && c.discordMaxEmojiLinksPerMessage > 0) {
+            WebChatServer server = plugin.webServer();
+            if (server != null) {
+                String links = server.externalEmojiLinksForDiscord(content, c.discordMaxEmojiLinksPerMessage);
+                if (!links.isBlank() && !containsAnyLine(updated, links)) {
+                    updated = updated + "\n" + links;
+                }
+            }
+        }
+
+        if (updated.equals(content.trim())) return;
         try {
             Object action;
             try {
@@ -267,8 +367,30 @@ public class DiscordBridge {
             }
             action.getClass().getMethod("queue").invoke(action);
         } catch (Throwable t) {
-            plugin.getLogger().fine("Failed to append BM Web Chat emoji links to DiscordSRV game relay message: " + t.getMessage());
+            plugin.getLogger().fine("Failed to add server label/emoji links to DiscordSRV relay message: " + t.getMessage());
         }
+    }
+
+    private boolean looksLikeBmChatWebOutbound(String content) {
+        String value = safeText(content);
+        if (value.isBlank()) return false;
+        // Accept both "[Web] ..." and "[Server] [Web] ...". Limit bracket
+        // contents so arbitrary message text later in the line is not classified.
+        return value.matches("(?i)^\\s*(?:\\[[^\\]\\r\\n]{1,96}\\]\\s*)?\\[web\\](?:\\s|$).*");
+    }
+
+    private boolean isDiscordSrvSelfUser(Object author) {
+        if (author == null || !asBoolean(call(author, "isBot")) || jda == null) return false;
+        Object selfUser = call(jda, "getSelfUser");
+        String selfId = callString(selfUser, "getId");
+        String authorId = callString(author, "getId");
+        return !selfId.isBlank() && selfId.equals(authorId);
+    }
+
+    private boolean hasServerLabelPrefix(String text, String serverLabel) {
+        String value = String.valueOf(text == null ? "" : text).trim();
+        String label = safeText(serverLabel);
+        return !label.isBlank() && value.regionMatches(true, 0, "[" + label + "]", 0, label.length() + 2);
     }
 
     private boolean containsAnyLine(String base, String lines) {
@@ -471,6 +593,7 @@ public class DiscordBridge {
         recentDiscordInbound.entrySet().removeIf(e -> now - e.getValue() > ttlMillis);
         recentDiscordEventIds.entrySet().removeIf(e -> now - e.getValue() > 60_000L);
         recentDirectDiscordOutbound.entrySet().removeIf(e -> now - e.getValue() > 60_000L);
+        recentLocalGameOutbound.entrySet().removeIf(e -> now - e.getValue() > 60_000L);
         globalDiscordInboundEventIds.entrySet().removeIf(e -> now - e.getValue() > 60_000L);
     }
 
@@ -541,7 +664,32 @@ public class DiscordBridge {
         return name.isBlank() ? "Discord" : name;
     }
 
+    private String formatMessage(String template, ChatMessage msg, String channel) {
+        if (msg == null) return "";
+        ChatMessage value = msg;
+        String rawTemplate = template == null || template.isBlank() ? "{message}" : template;
+        String rendered = format(rawTemplate, value.sender, value.role, value.source, value.message, channel,
+                messageServerName(value), messageServerId(value));
+
+        // Existing config files do not contain the new placeholders. Prefix the
+        // server automatically so upgrading the plugin immediately makes messages
+        // distinguishable. Adding {server} or {server_id} to the custom format
+        // suppresses this automatic prefix and lets the administrator place it.
+        if (!containsServerPlaceholder(rawTemplate)) {
+            String label = messageServerName(value);
+            if (!label.isBlank() && !hasServerLabelPrefix(rendered, label)) {
+                rendered = "[" + label + "] " + rendered;
+            }
+        }
+        return rendered;
+    }
+
     private String format(String template, String sender, String role, String source, String message, String channel) {
+        return format(template, sender, role, source, message, channel, "", "");
+    }
+
+    private String format(String template, String sender, String role, String source, String message,
+                          String channel, String server, String serverId) {
         if (template == null || template.isBlank()) template = "{message}";
         return template
                 .replace("{sender}", safeText(sender))
@@ -549,7 +697,30 @@ public class DiscordBridge {
                 .replace("{role}", safeText(role))
                 .replace("{source}", safeText(source))
                 .replace("{message}", safeText(message))
-                .replace("{channel}", safeText(channel));
+                .replace("{channel}", safeText(channel))
+                .replace("{server}", safeText(server))
+                .replace("{server_id}", safeText(serverId));
+    }
+
+    private boolean containsServerPlaceholder(String template) {
+        String value = String.valueOf(template == null ? "" : template);
+        return value.contains("{server}") || value.contains("{server_id}");
+    }
+
+    private String messageServerId(ChatMessage msg) {
+        return msg == null ? "" : safeText(msg.originServerId);
+    }
+
+    private String messageServerName(ChatMessage msg) {
+        if (msg == null) return "";
+        String name = safeText(msg.originServerName);
+        return name.isBlank() ? messageServerId(msg) : name;
+    }
+
+    private String localRelayServerLabel(ConfigValues c) {
+        if (c == null || !c.serverRelayEnabled) return "";
+        String name = safeText(c.serverRelayServerName);
+        return name.isBlank() ? safeText(c.serverRelayServerId) : name;
     }
 
     private Object call(Object target, String method) {

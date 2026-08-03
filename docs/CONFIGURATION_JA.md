@@ -2,6 +2,10 @@
 
 `plugins/BlueMapWebChat/config.yml` の説明です。
 
+## 設定 version と migration fragment
+
+`config-version` は自動 schema 変換番号ではなく、管理者が設定確認を完了した marker です。実行中の plugin version と一致すれば確認済みとして比較を省略します。ない、または異なる場合は実 `config.yml` と同梱 default を比較し、実 config を変更せず `config-migration-<plugin-version>.yml` を生成します。生成ファイルには、そのまま merge できる不足設定、変更された default、最終確認 marker の `config-version` を実 YAML 設定として記録します。他の差分がなくても設定 version 管理のため file を生成します。version 情報と旧・新 default は `#` comment で、custom 値や obsolete 候補の情報一覧は出力しません。必要な値を merge し、確認完了時だけ `config-version` も merge してください。version が一致するまで起動と `/bmchat reload` ごとにファイルを更新します。
+
 ## 全体有効化スイッチ
 
 新規生成された config は最上位の `enabled: false` から始まります。この状態では BlueMapWebChat は config の生成/読み込みのみを行い、/bmchat reload は引き続き使用できますが、Web/チャットサービス、リスナー、Discord 連携、DM ストア、アドオン設置、アップロード/絵文字初期化、クリーンアップ処理を開始しません。既存 config にこのキーがない場合は、アップグレード互換性のため有効として扱います。保存方式、保持期間、アップロード、プレビュー、認証、公開設定を確認してから `enabled: true` に変更してください。
@@ -78,9 +82,15 @@ emoji:
 
 ## 1:1 ダイレクトメッセージスレッド
 
-`direct-message.enabled` を有効にすると、1:1 会話スレッド型のメッセージボックスを使用できます。送信先は UUID/名前が保存済みの、連携済みまたは参加履歴のあるプレイヤーに限定されます。スレッドは 2 つの UUID をソートしたペアで識別されるため、A→B と B→A は常に同じ会話に入ります。メッセージは `direct-message.storage` で指定した専用 DM ストアに保存されます。`auto` は公開チャットが `jsonl` 保存方式のとき DM も JSONL を使い、それ以外では SQLite を使います。SQLite は `direct-message.sqlite-file`、JSONL は `direct-message.jsonl-file` を使います。
+```yaml
+direct-message:
+  enabled: false
+  allow-web-send: true
+  allow-game-send: true
+  capture-game-whispers: true
+```
 
-`direct-message.retention-days: 0` は保持期限なしです。1 以上の値は DM 画面のタイトル横に保持期間として表示され、その日数を過ぎた DM 本文は物理削除されます。`direct-message.max-messages-per-thread: 0` はスレッドごとの件数整理なしです。`direct-message.confirm-hide` は Web UI で自分の表示から DM を隠す前に確認するかを制御します。個人メッセージがサーバーに保存されるため既定では無効です。
+`capture-game-whispers` は、キャンセルされていない `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` を送信者と受信者の BMChat DM スレッドへ複製します。Minecraft whisper 自体を再送・置換しません。Bukkit は任意の whisper plugin の最終成功結果を共通 API で提供しないため、既知 player 宛ての正しい形式の command を記録基準にします。
 
 ## 0 が無制限/最大値なしを意味する項目
 
@@ -127,46 +137,125 @@ chat:
 
 Web チャットを Minecraft チャットへ中継するとき、`chat.game-name-hover.enabled` で表示名に hover ツールチップを追加できます。これは `player-display.mode` が `display-name` または `custom-name` で、表示名が実際の Minecraft アカウント名と異なる場合にのみ適用されます。このツールチップは Spigot/Bungee チャットコンポーネントを使用するため、Paper 専用ではなく Spigot/Paper 互換サーバーで動作します。`text` は Minecraft legacy 色コードと `{display}`, `{real}`, `{uuid}`, `{source}` プレースホルダーに対応します。
 
-## Minecraft チャットでの返信表示
+## Minecraft チャットの返信と送信者クリック
 
 ```yaml
 reply:
+  game-click:
+    enabled: true
+    local-game-chat: true
+  game-command-format: "&8[&dReply&8] &f{player}&7: &f{message}"
   game-preview:
     enabled: true
     format: "&7{sender}: {preview}"
     max-length: 120
-
   game-prefix:
     enabled: true
     text: "↪ [Reply] "
 ```
 
-Web またはゲストメッセージが別のメッセージへ返信する場合、`game-preview.enabled` は参照元メッセージのプレビューを実際の Web メッセージの前に Minecraft チャットへ別行で送信します。これにより、通常の Web→ゲーム形式を保ったまま、引用行と本文行の URL をそれぞれクリック可能にできます。
+URL 以外の本文クリックは `/bmchat reply <messageId> ` を入力候補にし、URL 部分はリンクを開く動作を優先します。`local-game-chat` は通常のローカルゲームチャットもクリック可能にします。他の chat-format plugin が最終描画を独占する場合は無効にしてください。同じサーバーのゲーム送信者名は `/w <実名> `、連携済み Web 送信者と別サーバーのゲーム送信者名は `/bmchat dm <実名> ` を候補にします。
 
-プレビュー文は通常の Web メッセージと同じ Web→ゲーム用カスタム絵文字処理を通ります。既定のトークン保持設定ではカスタム絵文字トークンは変更されず、`emoji.game-link.enabled` を明示的に有効にした場合は選択した game-link mode が適用されます。長いプレビューは `max-length` に従って `…` で省略されます。`0` にするとプレビュー固有の省略を無効化します。
+ゲーム返信では、入力されたカスタム絵文字 token を Web 履歴とサーバーリレー用に保持し、送信元サーバーの Minecraft 表示にはゲーム側絵文字 plugin が処理した command body を再利用します。処理済み glyph がなく `emoji.game-link.mode` が `preserve` の場合、認識済み token は互換性のため通常の Bukkit chat 行として出力されます。この fallback 行には BMChat の click/hover metadata は付きません。
 
-`game-prefix` は実際の返信メッセージ行のラベル/prefix を制御します。既定の Web フォーマットでは `[Web] Player: message` を `↪ [Reply] Player: message` に変更します。BlueMapWebChat は、既にレンダリングされた relay 行の先頭付近にある最初の角括弧ソースラベルを置き換えます。該当するラベルがない場合は prefix テキストを前に付けます。
 
-`game-preview.format` と `game-prefix.text` はどちらも `&7` などの Minecraft legacy 色コードに対応しています。
+
+`server-relay` は複数の BlueMapWebChat サーバーの公開チャットを接続します。ゲーム、連携済み Web ユーザー、ゲストのメッセージを相手側の Web チャットと Minecraft チャットへ送り、メッセージ ID、返信関係、送信者、発信元サーバー情報を保持します。
+
+## サーバーリレー設定
+
+サーバー 1:
+
+```yaml
+server-relay:
+  enabled: true
+  server-id: "server1"
+  server-name: "サーバー 1"
+  shared-secret: "両方のサーバーで同じ長いランダム秘密鍵"
+  connect-timeout-seconds: 5
+  request-timeout-seconds: 10
+  max-clock-skew-seconds: 60
+  dedupe-seconds: 300
+  max-hops: 8
+  sources:
+    game: true
+    web: true
+    guest: true
+    discord: false
+    system: false
+  delivery:
+    web: true
+    game: true
+  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
+  peers:
+    - id: "server3"
+      url: "https://server3.example.com/bmwc/api"
+      secret: ""
+      enabled: true
+```
+
+サーバー 3 側では `server-id: "server3"` とし、`peers` に `id: "server1"` とサーバー 1 の公開 API URL を登録します。受信側の peer ID は送信側の `server-id` と正確に一致し、各サーバー ID は一意でなければなりません。
+
+## HTTPS / リバースプロキシ
+
+`url` は相手サーバーで外部から到達できる BMChat API base です。`/relay/receive` は自動追加されます。
+
+```text
+設定: https://server3.example.com/bmwc/api
+要求: https://server3.example.com/bmwc/api/relay/receive
+```
+
+公開 HTTPS ルートは `/relay/receive` の POST を含む API パス全体を内部 BMChat HTTP リスナーへ転送してください。HTTPS 経由なら 8899 を外部公開する必要はありません。プロキシは `X-BMWC-Relay-Version`, `X-BMWC-Relay-From`, `X-BMWC-Relay-Timestamp`, `X-BMWC-Relay-Signature` を保持する必要があります。自己署名証明書は Java trust store へ登録しないと TLS 検証で失敗します。
+
+## 秘密鍵
+
+- `shared-secret` は全 peer の既定キーです。
+- `peers[].secret` はその接続だけのキーで、共通キーより優先されます。
+- 2 サーバーなら同じ長い `shared-secret` を両方に設定し、peer の `secret` は空にできます。
+- peer キーも共通キーもない peer は無効として除外されます。
+
+## 複数サーバーとループ防止
+
+フルメッシュでは全サーバーが互いを登録し、ハブ構成では leaf が hub のみを登録して hub が全 leaf を登録します。relay ID の重複排除、発信元抑止、直前 peer 除外、`max-hops` により循環構成でも無限ループを防ぎます。停止中の peer へ後から再送する永続オフラインキューはありません。
+
+## reload と診断
+
+`/bmchat reload` は以前の relay を閉じ、現在の設定で作り直します。常時接続ではなくメッセージごとの HTTP(S) 要求なので、別の再接続操作はありません。
+
+```text
+Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
+```
+
+`activePeers` が設定数より少ない場合、重複 ID、自己 ID、空/不正 URL、未対応 scheme、秘密鍵不足などの理由が警告に表示されます。
+
+## HTTP エラー
+
+- `403 unknown_peer`: 受信側の有効 peer に送信側 `server-id` がありません。
+- `401 bad_signature`: 実効秘密鍵が異なるか、プロキシが本文/ヘッダーを変更しました。
+- `401 expired_request`: サーバー時刻差が `max-clock-skew-seconds` を超えています。
+- `404 relay_disabled`: 受信側で無効、またはプロキシ先のパス/インスタンスが違います。
+- `426 unsupported_protocol`: relay protocol の互換性がありません。
+
+受信側の peer 一覧や秘密鍵を変えた場合は受信側でも `/bmchat reload` を実行してください。
+
+## 表示
+
+Web では別サーバーのメッセージだけ `originServerId` 由来の固定色サーバーバッジを表示し、現在のサーバー自身のバッジは省略します。Web→ゲームでは別サーバー由来の古い形式に `{server}` / `{server_id}` がなければ `[server-name]` を自動付与します。Discord は共有外部チャンネルのためサーバー表示を維持します。DiscordSRV ループとイベント重複を避けるため `sources.discord` と `sources.system` は既定で無効です。
 
 ## Discord 連携オプション
 
 ```yaml
 discordsrv:
-  append-web-emoji-links: true
+  web-to-discord-format: "[{server}] [Web] {sender}: {message}"
+  game-to-discord-format: "[{server}] {sender}: {message}"
   game-to-discord: false
+  append-web-emoji-links: true
   append-game-emoji-links: true
-  max-emoji-links-per-message: 4
   reply-relay:
     enabled: false
-    prefix-enabled: true
-    preview-enabled: true
-    preview-max-length: 120
 ```
 
-`discordsrv.append-web-emoji-links` は、Web→Discord メッセージに BM Web Chat カスタム絵文字トークンの画像 URL を追加します。`discordsrv.append-game-emoji-links` は、可能な場合 DiscordSRV の通常の Minecraft→Discord リレー本文を編集し、ゲーム側トークンの画像 URL を追加します。任意機能の `discordsrv.game-to-discord` は BM Web Chat がゲームチャットを Discord へ直接送信するための機能なので、DiscordSRV が通常の Minecraft チャットを既に中継している場合は重複を避けるため無効のままにしてください。これらは Web→Minecraft チャットのみに影響する `emoji.game-link.*` とは別の設定です。
-
-`discordsrv.reply-relay` は、Web の返信プレビューを Discord にも送るかどうかを制御します。Discord メッセージに予期しない追加行が出ないよう、既定では無効です。
+format は `{server}`, `{server_id}`, `{sender}`, `{name}`, `{role}`, `{source}`, `{message}`, `{channel}` に対応します。relay 有効時、古い format に server placeholder がなければ `[server-name]` を自動付与します。同じ Discord チャンネルを複数サーバーで共有する場合、実際のローカル Minecraft チャットを検知した発信元サーバーの BMChat だけが DiscordSRV の通常ゲーム転送にサーバー名と絵文字リンクを追加し、他サーバーは編集しません。受信側 peer は relay メッセージを Discord へ再送しないため、発信元サーバーの Discord 連携が無効または失敗した場合に別サーバーが代送する relay-only fallback はありません。DiscordSRV が通常チャットを既に送る場合は重複防止のため `game-to-discord` を無効にしてください。
 
 ## 固定メッセージ
 
@@ -212,9 +301,9 @@ BlueMapWebChat はカスタム絵文字を `plugins/BlueMapWebChat/emojis` 以�
 
 `emoji.game-link.*` は Web→Minecraft チャットのみに影響します。Discord の画像プレビューリンクは、Web→Discord 用の `discordsrv.append-web-emoji-links` と Game→Discord 用の `discordsrv.append-game-emoji-links` で分けて制御します。`append-game-emoji-links` は可能な場合 DiscordSRV の通常の Minecraft→Discord リレー本文を編集し、`game-to-discord` は BM Web Chat がゲームチャットを Discord へ直接送信したい場合にのみ必要です。
 
-BM Web Chat は ImageEmojis などのゲーム側絵文字プラグインを直接呼び出さず、リソースパックや生成済み glyph も読み取りません。トークン文字列を保持し、可能であれば ImageEmojis より先に読み込まれることで、ゲーム側レンダリング前の元のチャット文字列を取得できるようにします。
+BM Web Chat は Web 履歴とリレー payload に正規の絵文字 token を保持します。ImageEmojis または ImageEmojis-Bero が有効な場合、公開されている runtime 絵文字 repository を reflection で読み取り、クリック可能な Minecraft component を作成する前に受信サーバーの有効な glyph へ token を変換します。hard dependency の追加や resource pack の解析は行いません。
 
-トークン保持動作が有効で同じ行に URL も含まれる場合、BM Web Chat は URL 参照行を繰り返さず、単一の plain Minecraft チャット行として送信します。これにより、ゲーム側の絵文字プラグインが元のトークン文字列を読み取れます。
+interactive chat では ImageEmojis glyph を先に挿入してから sender・reply・URL の click event を構築するため、絵文字表示とクリック可能な URL が同時に動作します。受信サーバーで解決できない既知 token のみ、別のゲーム側 renderer 向けに単一の plain Bukkit fallback を使用します。この fallback には BMChat の click/hover metadata を付けられません。
 
 `default-pack` と `aliases` は、flat なゲーム側トークンを BM Web Chat の pack/name id に対応付けるために使います。例:
 
@@ -227,6 +316,10 @@ emoji:
 ```
 
 GIF/JPG/JPEG/WEBP 絵文字の元ファイルには、PNG のみを読むゲーム側絵文字プラグインとの互換性のため、同じフォルダーに PNG sidecar が自動生成されます。Web UI は元ファイルを使い続けるため、GIF アニメーションは維持されます。
+
+### ImageEmojis-Bero 1.9.0
+
+互換対象は [ImageEmojis-Bero 1.9.0](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) です。Web とゲームで同じ絵文字を使う場合は `emojisFolder: "/BlueMapWebChat/emojis"`, `templateFormat: ":<emoji>:"`, `replaceInCommands: true` を設定し、ユーザーへ `imageemojis.use` を付与します。詳細は `IMAGEEMOJIS_BERO_1_9_0_JA.md` を参照してください。
 
 ## コマンドパネル
 

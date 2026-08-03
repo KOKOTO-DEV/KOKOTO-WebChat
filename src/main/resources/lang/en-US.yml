@@ -609,6 +609,8 @@ web:
     helpRevoke: Revoke web sessions
     helpDm: Send a direct message
     helpDmRead: Read a direct message thread
+    helpReply: Reply to a public BMChat message
+    replyClickHint: "Click to reply (#{id})"
     helpGroup: 'Send a group chat message'
     groupDisabled: 'Group chats are disabled.'
     groupDirectInputRequired: 'Group messages must be typed directly by the player.'
@@ -633,6 +635,10 @@ web:
     dmGameSendDisabled: Sending direct messages from game is disabled.
     dmDirectInputRequired: "Direct messages must be typed directly by the player."
     dmPlayerNotFound: Player not found. The player must have joined at least once.
+    replyDisabled: In-game replies are disabled.
+    replyDirectInputRequired: Replies must be typed directly by the player.
+    replyEmpty: Reply message is empty.
+    replyTargetNotFound: The referenced message could not be found.
     dmEmpty: Message is empty.
     dmFailed: 'Direct message failed: {error}'
     dmSent: 'Sent to {player}: {message}'
