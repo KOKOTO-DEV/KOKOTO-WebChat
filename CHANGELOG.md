@@ -38,7 +38,7 @@ Notification configuration migration
 In 4.5.3, browser notification defaults and mobile/background Web Push notification defaults were consolidated into a single notifications: section.
 
 Use the following block as the new default notification configuration:
-
+```yml
 # Browser/system notifications and mobile/background Web Push notification defaults.
 # These server-side allow limits apply to both the browser web notification path
 # and the mobile/background Web Push path. Users can still narrow these in Chat settings.
@@ -60,7 +60,7 @@ notifications:
   notify-keywords: true
   notify-own-messages: true
   show-message-preview: true
-
+```
 The old configuration keys below are still read only for migration and backward compatibility:
 
 browser-notifications.*
