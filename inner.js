@@ -92,9 +92,12 @@
     dmThreads: [],
     dmAdminThreads: [],
     dmCleanupPreview: null,
+    privateChatContentAccess: false,
     dmModalOpen: false,
     dmActiveThreadId: "",
     dmDraftTarget: null,
+    dmAuditMode: false,
+    dmAuditThread: null,
     dmSearchTimer: null,
     dmSearchPanelOpen: false,
     dmConversationFocus: localStorage.getItem("bmwc.dmConversationFocus") === "1",
@@ -1972,7 +1975,13 @@
   function updateDirectMessageComposeControls() {
     if (!state.dmModalOpen) return;
     syncDirectMessageModalSettings();
-    const emojiVisible = canUseCustomEmoji();
+    const auditMode = state.dmAuditMode === true;
+    const compose = document.querySelector(".bmwc-dm-compose");
+    const newButton = document.getElementById("bmwc-dm-new");
+    setElementVisible(compose, !auditMode);
+    setElementVisible(newButton, !auditMode);
+    if (auditMode) closeDirectMessageEmojiPanel();
+    const emojiVisible = !auditMode && canUseCustomEmoji();
     const emojiBtn = document.getElementById("bmwc-dm-emoji");
     setElementVisible(emojiBtn, emojiVisible);
     if (emojiBtn) emojiBtn.title = t("button.emoji", "Emoji");
@@ -1983,7 +1992,7 @@
     }
     updateDirectMessageEmojiResizeHandleVisibility();
 
-    const uploadVisible = canUpload();
+    const uploadVisible = !auditMode && canUpload();
     const uploadBtn = document.getElementById("bmwc-dm-upload");
     const fileInput = document.getElementById("bmwc-dm-file");
     setElementVisible(uploadBtn, uploadVisible);
@@ -1995,6 +2004,7 @@
 
     const input = document.getElementById("bmwc-dm-input");
     if (input) {
+      input.disabled = auditMode;
       if (state.directMessageMaxMessageLength > 0) input.maxLength = state.directMessageMaxMessageLength;
       else input.removeAttribute("maxlength");
     }
@@ -2575,6 +2585,143 @@
     for (let i = 0; i < key.length; i++) hash = ((hash * 31) + key.charCodeAt(i)) >>> 0;
     const hue = palette[hash % palette.length];
     return `<span class="bmwc-server-badge" data-server-id="${esc(server.id)}" style="--bmwc-server-hue:${hue}" title="${esc(server.title)}">${esc(server.label)}</span><span class="bmwc-meta-sep" aria-hidden="true">·</span>`;
+  }
+
+  function publicMessageDirectMessageTarget(msg) {
+    const uuid = String(msg && msg.playerUuid || "").trim();
+    const source = String(msg && msg.source || "").trim().toLowerCase();
+    if (!uuid || (source !== "game" && source !== "web")) return null;
+    const displayName = String(displaySender(msg) || "").trim();
+    const username = String(realSender(msg) || "").trim();
+    const server = messageServerInfo(msg);
+    const remote = !isLocalServerMessage(msg) && !!server.id;
+    const baseLabel = displayName || username || uuid;
+    const label = remote && server.label ? baseLabel + " · " + server.label : baseLabel;
+    return {
+      uuid,
+      label,
+      displayName,
+      username,
+      remote,
+      serverId: remote ? server.id : "",
+      serverName: remote ? (server.name || server.label || server.id) : ""
+    };
+  }
+
+  function directMessageTargetDataAttributes(target) {
+    if (!target) return "";
+    return [
+      `data-dm-target-uuid="${esc(target.uuid || "")}"`,
+      `data-dm-target-label="${esc(target.label || "")}"`,
+      `data-dm-target-display-name="${esc(target.displayName || "")}"`,
+      `data-dm-target-username="${esc(target.username || "")}"`,
+      `data-dm-target-remote="${target.remote ? "1" : "0"}"`,
+      `data-dm-target-server-id="${esc(target.serverId || "")}"`,
+      `data-dm-target-server-name="${esc(target.serverName || "")}"`
+    ].join(" ");
+  }
+
+  function publicMessageDirectMessageTargetFromElement(button, messageElement, fallbackMsg) {
+    const root = messageElement || (button && button.closest ? button.closest(".bmwc-msg") : null);
+    const fromMessage = publicMessageDirectMessageTarget(fallbackMsg);
+    const read = (buttonKey, rootKey, fallback) => {
+      const buttonValue = button && button.dataset ? String(button.dataset[buttonKey] || "").trim() : "";
+      if (buttonValue) return buttonValue;
+      const rootValue = root && root.dataset ? String(root.dataset[rootKey] || "").trim() : "";
+      return rootValue || String(fallback || "").trim();
+    };
+    const uuid = read("dmTargetUuid", "playerUuid", fromMessage && fromMessage.uuid);
+    if (!uuid) return null;
+    const serverId = read("dmTargetServerId", "originServerId", fromMessage && fromMessage.serverId);
+    const serverName = read("dmTargetServerName", "originServerName", fromMessage && fromMessage.serverName);
+    const displayName = read("dmTargetDisplayName", "displaySender", fromMessage && fromMessage.displayName);
+    const username = read("dmTargetUsername", "realSender", fromMessage && fromMessage.username);
+    const remoteValue = button && button.dataset && button.dataset.dmTargetRemote !== undefined
+      ? String(button.dataset.dmTargetRemote)
+      : (root && root.dataset && root.dataset.remoteMessage !== undefined ? String(root.dataset.remoteMessage) : "");
+    const remote = remoteValue ? remoteValue === "1" : (!!serverId && !(fallbackMsg && isLocalServerMessage(fallbackMsg)));
+    const baseLabel = read("dmTargetLabel", "dmTargetLabel", fromMessage && fromMessage.label) || displayName || username || uuid;
+    return {
+      uuid,
+      label: baseLabel,
+      displayName,
+      username,
+      remote,
+      serverId: remote ? serverId : "",
+      serverName: remote ? (serverName || serverId) : ""
+    };
+  }
+
+  function messageOriginSourceHtml(msg) {
+    const content = `${serverBadgeHtml(msg)}<span class="bmwc-source-label">${esc(displaySource(msg))}</span>`;
+    const target = publicMessageDirectMessageTarget(msg);
+    if (!target || !state.directMessageEnabled) return content;
+    const player = directMessagePlainLabel(target.label) || target.uuid;
+    const title = fmt("dm.openForPlayer", "Open direct message with {player}", {player});
+    return `<button type="button" class="bmwc-message-dm-target" ${directMessageTargetDataAttributes(target)} title="${esc(title)}" aria-label="${esc(title)}">${content}</button>`;
+  }
+
+  async function openDirectMessageForTarget(target) {
+    if (!target || !target.uuid || !state.directMessageEnabled) return;
+    if (!state.token) {
+      openLoginModal();
+      return;
+    }
+
+    const wasOpen = state.dmModalOpen;
+    await openDirectMessageModal();
+    if (!state.dmModalOpen) return;
+    if (wasOpen) await loadDirectMessageThreads(true);
+
+    closeDirectMessagePlayerSearch();
+    closeDirectMessageEmojiPanel();
+    state.dmAuditMode = false;
+    state.dmAuditThread = null;
+
+    const uuid = target.uuid.toLowerCase();
+    const serverId = String(target.serverId || "").trim().toLowerCase();
+    const existing = (state.dmThreads || []).find(thread => {
+      if (target.remote) {
+        return String(thread && thread.otherServerId || "").trim().toLowerCase() === serverId
+          && String(thread && thread.otherPlayerUuid || "").trim().toLowerCase() === uuid;
+      }
+      return !thread.otherRemote
+        && String(thread && (thread.otherPlayerUuid || thread.otherUuid) || "").trim().toLowerCase() === uuid;
+    });
+    if (existing && existing.id) {
+      state.dmDraftTarget = null;
+      state.dmActiveThreadId = existing.id;
+      updateDirectMessageComposeControls();
+      renderDirectMessageThreads();
+      updateDirectMessageViewMode();
+      await loadDirectMessageMessages(existing.id);
+    } else {
+      state.dmActiveThreadId = "";
+      state.dmDraftTarget = {
+        uuid: target.uuid,
+        label: target.label,
+        displayName: target.displayName,
+        username: target.username,
+        remote: target.remote,
+        serverId: target.serverId,
+        serverName: target.serverName
+      };
+      updateDirectMessageComposeControls();
+      renderDirectMessageThreads();
+      renderDirectMessageHeader(target.label);
+      renderDirectMessageMessages([]);
+      updateDirectMessageViewMode();
+    }
+
+    const input = document.getElementById("bmwc-dm-input");
+    if (input) {
+      setActiveComposeInput(input);
+      input.focus();
+    }
+  }
+
+  async function openDirectMessageForPublicMessage(msg) {
+    return openDirectMessageForTarget(publicMessageDirectMessageTarget(msg));
   }
 
 
@@ -3535,6 +3682,9 @@
     state.groupActiveRoom = null;
     state.groupCleanupPreview = null;
     state.privateChatSuperAdmin = false;
+    state.privateChatContentAccess = false;
+    state.dmAuditMode = false;
+    state.dmAuditThread = null;
   }
 
   function clearVisibleChatForLoggedOutHidden(reason = "auth-expired") {
@@ -4937,6 +5087,16 @@
     el.dataset.virtualKey = key;
     el.dataset.hidden = msg.hidden ? "1" : "0";
     if (msg.id) el.dataset.id = msg.id;
+    if (msg.playerUuid) el.dataset.playerUuid = String(msg.playerUuid);
+    if (msg.originServerId) el.dataset.originServerId = String(msg.originServerId);
+    if (msg.originServerName) el.dataset.originServerName = String(msg.originServerName);
+    el.dataset.displaySender = String(displaySender(msg) || "");
+    el.dataset.realSender = String(realSender(msg) || "");
+    const messageDmTarget = publicMessageDirectMessageTarget(msg);
+    if (messageDmTarget) {
+      el.dataset.dmTargetLabel = String(messageDmTarget.label || "");
+      el.dataset.remoteMessage = messageDmTarget.remote ? "1" : "0";
+    }
 
     const time = formatMessageTime(msg.time);
     const shownSender = displaySender(msg);
@@ -4955,7 +5115,7 @@
     el.classList.toggle("bmwc-has-mini-actions", !!(canReply || canPin || canDelete));
     el.innerHTML = `
       <div class="bmwc-meta">
-        <span class="bmwc-sender${originalSender ? " bmwc-sender-has-real" : ""}"${senderAttrs}>${originalSender ? senderNameHtml(shownSender, originalSender, msg.source) : minecraftNameHtml(renderedSender, shouldRenderMinecraftNameColors() && sourceMayRenderMinecraftNameColors(msg.source))}</span><span class="bmwc-meta-sep" aria-hidden="true">·</span>${serverBadgeHtml(msg)}<span class="bmwc-source-label">${esc(displaySource(msg))}</span><span class="bmwc-meta-sep" aria-hidden="true">·</span><span class="bmwc-time-actions"><span class="bmwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(time)}</span>${miniActionsHtml}</span>
+        <span class="bmwc-sender${originalSender ? " bmwc-sender-has-real" : ""}"${senderAttrs}>${originalSender ? senderNameHtml(shownSender, originalSender, msg.source) : minecraftNameHtml(renderedSender, shouldRenderMinecraftNameColors() && sourceMayRenderMinecraftNameColors(msg.source))}</span><span class="bmwc-meta-sep" aria-hidden="true">·</span>${messageOriginSourceHtml(msg)}<span class="bmwc-meta-sep" aria-hidden="true">·</span><span class="bmwc-time-actions"><span class="bmwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(time)}</span>${miniActionsHtml}</span>
       </div>
       ${replyReferenceHtml(msg)}
       <div class="bmwc-text">${messageTextHtml(msg)}</div>
@@ -4963,6 +5123,14 @@
     `;
     installSenderIdentityToggle(el);
     installTimeToggle(el);
+    el.querySelectorAll("[data-dm-target-uuid]").forEach(btn => {
+      btn.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const target = publicMessageDirectMessageTargetFromElement(btn, el, msg);
+        openDirectMessageForTarget(target);
+      });
+    });
     el.querySelectorAll("[data-reply]").forEach(btn => {
       btn.addEventListener("click", event => {
         event.preventDefault();
@@ -6944,6 +7112,8 @@
       msg.sender || "",
       msg.realSender || "",
       msg.playerUuid || "",
+      msg.originServerId || "",
+      msg.originServerName || "",
       msg.role || "",
       msg.source || "",
       msg.message || msg.text || "",
@@ -12204,6 +12374,9 @@
       state.dmCleanupPreview = null;
       state.groupCleanupPreview = null;
       state.privateChatSuperAdmin = false;
+    state.privateChatContentAccess = false;
+    state.dmAuditMode = false;
+    state.dmAuditThread = null;
       updateDirectMessageButton();
       updateGroupChatButton();
       return null;
@@ -12215,10 +12388,12 @@
         state.dmThreads = [];
         state.dmAdminThreads = [];
         state.dmCleanupPreview = null;
+        state.privateChatContentAccess = false;
       } else {
         state.dmUnread = Number(res.unread || 0);
         state.dmThreads = Array.isArray(res.threads) ? res.threads : [];
         state.privateChatSuperAdmin = res.privateChatSuperAdmin === true || state.privateChatSuperAdmin === true;
+        state.privateChatContentAccess = res.privateChatContentAccess === true;
         state.dmAdminThreads = Array.isArray(res.adminThreads) ? res.adminThreads : [];
         state.dmCleanupPreview = res.cleanupPreview || null;
       }
@@ -12262,6 +12437,69 @@
       return `<span class="bmwc-dm-identity bmwc-sender-has-real${extra}" title="${esc(title)}" data-bmwc-identity-toggle="1" data-display-sender="${esc(identity.display)}" data-real-sender="${esc(identity.real)}" data-source="dm" data-showing-real="${state.senderIdentityMode === "real" ? "1" : "0"}" role="button" tabindex="0">${senderNameHtml(identity.display, identity.real, "dm")}</span>`;
     }
     return `<span class="bmwc-dm-identity${extra}" title="${esc(directMessagePlainLabel(identity.display))}">${directMessageLabelHtml(identity.display)}</span>`;
+  }
+
+  function directMessageRemoteServer(item) {
+    item = item || {};
+    const id = String(item.otherServerId || item.serverId || "").trim();
+    const name = String(item.otherServerName || item.serverName || "").trim();
+    const label = name || id;
+    const remote = item.otherRemote === true || item.remote === true || !!id;
+    return {remote, id, name, label};
+  }
+
+  function stripDirectMessageServerAffixes(value, server) {
+    let result = String(value || "").trim();
+    if (!result || !server) return result;
+    const labels = [server.name, server.id, server.label]
+      .map(value => String(value || "").trim())
+      .filter((value, index, values) => value && values.findIndex(other => other.toLowerCase() === value.toLowerCase()) === index)
+      .sort((a, b) => b.length - a.length);
+    for (let pass = 0; pass < 4; pass++) {
+      const before = result;
+      labels.forEach(label => {
+        const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        result = result.replace(new RegExp("^\\s*\\[" + escaped + "\\]\\s*", "i"), "");
+        result = result.replace(new RegExp("\\s*\\[" + escaped + "\\]\\s*$", "i"), "");
+      });
+      result = result.trim();
+      if (result === before) break;
+    }
+    return result;
+  }
+
+  function directMessageHeaderIdentity(item) {
+    const server = directMessageRemoteServer(item);
+    const identity = directMessageIdentityParts(item);
+    if (!server.remote || !server.label) return {server, identity};
+    return {
+      server,
+      identity: {
+        display: stripDirectMessageServerAffixes(identity.display, server) || identity.display,
+        real: stripDirectMessageServerAffixes(identity.real, server),
+        uuid: identity.uuid
+      }
+    };
+  }
+
+  function directMessageHeaderIdentityHtml(item, className = "") {
+    const resolved = directMessageHeaderIdentity(item);
+    const identityItem = {
+      displayName: resolved.identity.display,
+      username: resolved.identity.real,
+      uuid: resolved.identity.uuid
+    };
+    const identityHtml = directMessageIdentityHtml(identityItem, className);
+    if (!resolved.server.remote || !resolved.server.label) return identityHtml;
+    return `<span class="bmwc-dm-title-server">[${esc(resolved.server.label)}]</span> ${identityHtml}`;
+  }
+
+  function directMessageHeaderPlainLabel(item, fallback = "") {
+    if (!item) return directMessagePlainLabel(fallback);
+    const resolved = directMessageHeaderIdentity(item);
+    const player = directMessagePlainLabel(resolved.identity.display || fallback);
+    if (!resolved.server.remote || !resolved.server.label) return player;
+    return `[${resolved.server.label}] ${player}`.trim();
   }
 
   function directMessageBodyHtml(value) {
@@ -12404,6 +12642,9 @@
     closeDirectMessagePlayerSearch();
     state.dmActiveThreadId = "";
     state.dmDraftTarget = null;
+    state.dmAuditMode = false;
+    state.dmAuditThread = null;
+    updateDirectMessageComposeControls();
     renderDirectMessageThreads();
     renderDirectMessageMessages([]);
     renderDirectMessageHeader("");
@@ -12429,7 +12670,10 @@
         <span class="bmwc-dm-thread-preview" title="${esc(plainLegacyText(thread.lastMessage || ""))}">${directMessageBodyHtml(thread.lastMessage || "")}</span>
       </button>`;
     }).join("");
-    const adminHtml = adminThreads.length ? `<div class="bmwc-admin-meta-title">🛡 ${esc(t("admin.privateMetaOnly", "Admin metadata only"))}</div>` + adminThreads.map(item => {
+    const adminTitle = state.privateChatContentAccess
+      ? t("admin.privateContentAccess", "Admin DM audit (contents available)")
+      : t("admin.privateMetaOnly", "Admin metadata only");
+    const adminHtml = adminThreads.length ? `<div class="bmwc-admin-meta-title">🛡 ${esc(adminTitle)}</div>` + adminThreads.map(item => {
       const retention = retentionRemainingText(item.retentionBaseAt || item.latestMessageAt || item.updatedAt, item.retentionDays ?? state.directMessageRetentionDays, "dm", item.retentionExpiresAt);
       const flags = `${item.locked ? esc(t("admin.locked", "locked")) + " · " : ""}${item.retentionExempt ? esc(t("admin.retentionExempt", "auto-delete excluded")) + " · " : ""}`;
       const meta = `${esc(retention)} · ${flags}${esc(t("admin.messages", "messages"))}: ${esc(item.messageCount || 0)} · ${esc(t("admin.storage", "storage"))}: ${esc(formatBytes(item.storageBytes || 0))}`;
@@ -12438,7 +12682,10 @@
       const lockTitle = item.locked ? t("admin.unlockDmThreadHint", "Unlock this DM session so messages can be sent again.") : t("admin.lockDmThreadHint", "Lock this DM session to prevent new messages.");
       const exemptTitle = item.retentionExempt ? t("admin.includeDmRetentionHint", "Include this DM session in automatic cleanup again.") : t("admin.excludeDmRetentionHint", "Exclude this DM session from automatic cleanup.");
       const deleteTitle = t("admin.deleteDmThreadHint", "Delete this DM session, including metadata, messages, and uploads.");
-      return `<div class="bmwc-dm-thread bmwc-admin-meta-row"><span class="bmwc-dm-thread-name" title="${esc(t("admin.noContentAccess", "Message contents are not accessible from this view."))}">🛡 ${directMessageAdminIdentityHtml(item)}</span><span class="bmwc-admin-meta-actions"><button type="button" class="bmwc-button" data-dm-admin-lock-thread="${esc(item.id || "")}" data-next-locked="${item.locked ? "false" : "true"}" title="${esc(lockTitle)}" aria-label="${esc(lockTitle)}">${esc(lockLabel)}</button><button type="button" class="bmwc-button" data-dm-admin-retention-thread="${esc(item.id || "")}" data-next-exempt="${item.retentionExempt ? "false" : "true"}" title="${esc(exemptTitle)}" aria-label="${esc(exemptTitle)}">${esc(exemptLabel)}</button><button type="button" class="bmwc-button bmwc-admin-meta-danger" data-dm-admin-delete-thread="${esc(item.id || "")}" title="${esc(deleteTitle)}" aria-label="${esc(deleteTitle)}">${esc(t("admin.deleteThread", "Delete"))}</button></span><span class="bmwc-dm-thread-preview" title="${esc(meta.replace(/<[^>]*>/g, ""))}">${meta}</span></div>`;
+      const openTitle = state.privateChatContentAccess ? t("admin.openDmAudit", "Open this DM session in read-only audit view.") : t("admin.noContentAccess", "Message contents are not accessible from this view.");
+      const openAttrs = state.privateChatContentAccess ? ` data-dm-admin-open-thread="${esc(item.id || "")}" role="button" tabindex="0"` : "";
+      const openClass = state.privateChatContentAccess ? " bmwc-admin-meta-open" : "";
+      return `<div class="bmwc-dm-thread bmwc-admin-meta-row${openClass}"${openAttrs} title="${esc(openTitle)}"><span class="bmwc-dm-thread-name">🛡 ${directMessageAdminIdentityHtml(item)}</span><span class="bmwc-admin-meta-actions"><button type="button" class="bmwc-button" data-dm-admin-lock-thread="${esc(item.id || "")}" data-next-locked="${item.locked ? "false" : "true"}" title="${esc(lockTitle)}" aria-label="${esc(lockTitle)}">${esc(lockLabel)}</button><button type="button" class="bmwc-button" data-dm-admin-retention-thread="${esc(item.id || "")}" data-next-exempt="${item.retentionExempt ? "false" : "true"}" title="${esc(exemptTitle)}" aria-label="${esc(exemptTitle)}">${esc(exemptLabel)}</button><button type="button" class="bmwc-button bmwc-admin-meta-danger" data-dm-admin-delete-thread="${esc(item.id || "")}" title="${esc(deleteTitle)}" aria-label="${esc(deleteTitle)}">${esc(t("admin.deleteThread", "Delete"))}</button></span><span class="bmwc-dm-thread-preview" title="${esc(meta.replace(/<[^>]*>/g, ""))}">${meta}</span></div>`;
     }).join("") : "";
     const previewHtml = state.privateChatSuperAdmin ? cleanupPreviewHtml(state.dmCleanupPreview, "dm") : "";
     list.innerHTML = userHtml + previewHtml + adminHtml;
@@ -12446,11 +12693,34 @@
       btn.addEventListener("click", event => {
         if (event && event.target && event.target.closest && event.target.closest(senderIdentitySelector())) return;
         state.dmDraftTarget = null;
+        state.dmAuditMode = false;
+        state.dmAuditThread = null;
         state.dmActiveThreadId = btn.dataset.dmThread || "";
+        updateDirectMessageComposeControls();
         renderDirectMessageThreads();
         updateDirectMessageViewMode();
         loadDirectMessageMessages(state.dmActiveThreadId);
       });
+    });
+    list.querySelectorAll("[data-dm-admin-open-thread]").forEach(row => {
+      const openAudit = event => {
+        if (event && event.target && event.target.closest && (event.target.closest("button") || event.target.closest(senderIdentitySelector()))) return;
+        if (event && event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+        if (event) { event.preventDefault(); event.stopPropagation(); }
+        const threadId = row.dataset.dmAdminOpenThread || "";
+        const item = adminThreads.find(candidate => String(candidate.id || "") === threadId);
+        if (!threadId || !item || !state.privateChatContentAccess) return;
+        state.dmDraftTarget = null;
+        state.dmAuditMode = true;
+        state.dmAuditThread = item;
+        state.dmActiveThreadId = threadId;
+        updateDirectMessageComposeControls();
+        renderDirectMessageThreads();
+        updateDirectMessageViewMode();
+        loadDirectMessageMessages(threadId);
+      };
+      row.addEventListener("click", openAudit);
+      row.addEventListener("keydown", openAudit);
     });
     list.querySelectorAll("[data-dm-admin-lock-thread]").forEach(btn => {
       btn.addEventListener("click", event => {
@@ -12483,8 +12753,16 @@
     const thread = state.dmActiveThreadId ? (state.dmThreads || []).find(t => t.id === state.dmActiveThreadId) : null;
     const target = thread || state.dmDraftTarget || null;
     const value = label || (target ? directMessageLabel(target) : t("dm.selectThread", "Select a thread"));
-    title.innerHTML = target ? directMessageIdentityHtml(target, "bmwc-dm-title-name") : directMessageLabelHtml(value);
-    title.dataset.dmPlainTitle = directMessagePlainLabel(value);
+    if (state.dmAuditMode && state.dmAuditThread) {
+      title.innerHTML = `<span class="bmwc-admin-meta-title">🛡 ${esc(t("admin.dmAuditView", "DM audit (read-only)"))}</span> ${directMessageAdminIdentityHtml(state.dmAuditThread)}`;
+      title.dataset.dmPlainTitle = directMessagePlainLabel(value);
+    } else if (target) {
+      title.innerHTML = directMessageHeaderIdentityHtml(target, "bmwc-dm-title-name");
+      title.dataset.dmPlainTitle = directMessageHeaderPlainLabel(target, value);
+    } else {
+      title.innerHTML = directMessageLabelHtml(value);
+      title.dataset.dmPlainTitle = directMessagePlainLabel(value);
+    }
     installSenderIdentityToggle(title);
     updateDirectMessageViewMode();
   }
@@ -12545,10 +12823,13 @@
       renderDirectMessageHeader("");
       return;
     }
+    const auditNotice = state.dmAuditMode
+      ? `<div class="bmwc-admin-audit-notice">🛡 ${esc(t("admin.dmAuditReadOnly", "This administrator audit view is read-only. Every access is recorded in the audit log."))}</div>`
+      : "";
     if (!arr.length) {
-      box.innerHTML = `<div class="bmwc-dm-empty">${esc(t("dm.emptyThread", "No messages yet."))}</div>`;
+      box.innerHTML = auditNotice + `<div class="bmwc-dm-empty">${esc(t("dm.emptyThread", "No messages yet."))}</div>`;
     } else {
-      box.innerHTML = arr.map(msg => {
+      box.innerHTML = auditNotice + arr.map(msg => {
         const sender = msg.senderDisplayName || msg.senderUsername || msg.senderUuid || "";
         const mine = state.username && msg.senderUsername && String(msg.senderUsername).toLowerCase() === String(state.username).toLowerCase();
         const rawMessageId = msg.id || "";
@@ -12557,7 +12838,7 @@
         const senderIdentity = {senderDisplayName: sender, senderUsername: msg.senderUsername || "", senderUuid: msg.senderUuid || ""};
         return `<div class="bmwc-msg bmwc-dm-message${mine ? " bmwc-mine" : ""}" data-dm-message-id="${messageId}">
           <div class="bmwc-meta bmwc-dm-message-meta">${directMessageIdentityHtml(senderIdentity, "bmwc-sender")}<span class="bmwc-meta-sep" aria-hidden="true">·</span><span class="bmwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span></div>
-          <button type="button" class="bmwc-dm-message-hide" data-dm-hide-message="${messageId}" title="${esc(t("dm.hideMessage", "Hide this message"))}" aria-label="${esc(t("dm.hideMessage", "Hide this message"))}">×</button>
+          ${state.dmAuditMode ? "" : `<button type="button" class="bmwc-dm-message-hide" data-dm-hide-message="${messageId}" title="${esc(t("dm.hideMessage", "Hide this message"))}" aria-label="${esc(t("dm.hideMessage", "Hide this message"))}">×</button>`}
           <div class="bmwc-text bmwc-dm-message-body">${directMessageBodyHtml(body)}</div>
           ${directMessagePreviewHtml(body, rawMessageId)}
         </div>`;
@@ -12581,24 +12862,35 @@
     }
   }
 
+  function directMessageMessagesUrl(threadId, beforeId = 0, limit = 100) {
+    const path = state.dmAuditMode ? "/admin/dm/messages" : "/dm/messages";
+    let url = path + "?token=" + encodeURIComponent(state.token)
+      + "&threadId=" + encodeURIComponent(threadId)
+      + "&limit=" + encodeURIComponent(String(limit));
+    if (Number(beforeId || 0) > 0) url += "&before=" + encodeURIComponent(String(beforeId));
+    return url;
+  }
+
   async function loadDirectMessageMessages(threadId) {
     if (!state.token || !threadId) return;
     if (state.dmMessagesLoading) return;
     state.dmMessagesLoading = true;
     try {
       const limit = privateMessagePageLimit();
-      const res = await api("/dm/messages?token=" + encodeURIComponent(state.token) + "&threadId=" + encodeURIComponent(threadId) + "&limit=" + encodeURIComponent(String(limit)));
+      const res = await api(directMessageMessagesUrl(threadId, 0, limit));
       const thread = (state.dmThreads || []).find(t => t.id === threadId);
       const messages = Array.isArray(res.messages) ? res.messages : [];
       state.dmMessages = messages;
       state.dmMessagesHasMore = messages.length >= limit;
       renderDirectMessageHeader(thread ? directMessageLabel(thread) : "");
       renderDirectMessageMessages(state.dmMessages, {stickToBottom: true});
-      state.dmUnread = Number(res.unread || 0);
-      updateDirectMessageButton();
-      await loadDirectMessageThreads(true);
+      if (!state.dmAuditMode) {
+        state.dmUnread = Number(res.unread || 0);
+        updateDirectMessageButton();
+        await loadDirectMessageThreads(true);
+      }
     } catch (e) {
-      alertResponse("alert.dmLoadFailed", "Failed to load messages: {error}", e.response || {error: e.message || "error"});
+      alertResponse(state.dmAuditMode ? "alert.dmAuditLoadFailed" : "alert.dmLoadFailed", state.dmAuditMode ? "Failed to load DM audit: {error}" : "Failed to load messages: {error}", e.response || {error: e.message || "error"});
     } finally {
       state.dmMessagesLoading = false;
     }
@@ -12617,7 +12909,7 @@
     state.dmMessagesLoading = true;
     try {
       const limit = privateMessagePageLimit();
-      const res = await api("/dm/messages?token=" + encodeURIComponent(state.token) + "&threadId=" + encodeURIComponent(state.dmActiveThreadId) + "&before=" + encodeURIComponent(String(oldest)) + "&limit=" + encodeURIComponent(String(limit)), {timeoutMs: 15000});
+      const res = await api(directMessageMessagesUrl(state.dmActiveThreadId, oldest, limit), {timeoutMs: 15000});
       const older = Array.isArray(res.messages) ? res.messages : [];
       const beforeCount = state.dmMessages.length;
       state.dmMessages = mergePrivateMessagePages(older, state.dmMessages);
@@ -12643,13 +12935,13 @@
     const beforeNewest = privateMessageNewestId(state.dmMessages);
     try {
       const limit = privateMessagePageLimit();
-      const res = await api("/dm/messages?token=" + encodeURIComponent(state.token) + "&threadId=" + encodeURIComponent(state.dmActiveThreadId) + "&limit=" + encodeURIComponent(String(limit)), {timeoutMs: 15000});
+      const res = await api(directMessageMessagesUrl(state.dmActiveThreadId, 0, limit), {timeoutMs: 15000});
       const messages = Array.isArray(res.messages) ? res.messages : [];
       const afterNewest = privateMessageNewestId(messages);
       state.dmMessages = messages;
       state.dmMessagesHasMore = messages.length >= limit;
       renderDirectMessageMessages(state.dmMessages, {stickToBottom: true});
-      if (Number(res.unread || 0) >= 0) {
+      if (!state.dmAuditMode && Number(res.unread || 0) >= 0) {
         state.dmUnread = Number(res.unread || 0);
         updateDirectMessageButton();
       }
@@ -13415,13 +13707,34 @@
       return;
     }
     box.innerHTML = arr.map(player => {
-      const label = player.label || player.displayName || player.username || player.uuid;
-      return `<button type="button" class="bmwc-dm-player" data-dm-player="${esc(player.uuid)}" data-dm-player-label="${esc(label)}" title="${esc(directMessagePlainLabel(label))}">${directMessageLabelHtml(label)}</button>`;
+      const remote = player.remote === true;
+      const uuid = String(player.playerUuid || player.uuid || "");
+      const label = player.label || player.displayName || player.username || uuid;
+      const target = {
+        uuid,
+        label,
+        displayName: player.displayName || "",
+        username: player.username || "",
+        remote,
+        serverId: remote ? String(player.serverId || "") : "",
+        serverName: remote ? String(player.serverName || player.serverId || "") : ""
+      };
+      return `<button type="button" class="bmwc-dm-player" data-dm-player="${esc(uuid)}" ${directMessageTargetDataAttributes(target)} title="${esc(directMessagePlainLabel(label))}">${directMessageLabelHtml(label)}</button>`;
     }).join("");
     box.querySelectorAll("[data-dm-player]").forEach(btn => {
       btn.addEventListener("click", () => {
-        state.dmDraftTarget = {uuid: btn.dataset.dmPlayer || "", label: btn.dataset.dmPlayerLabel || ""};
+        state.dmDraftTarget = {
+          uuid: btn.dataset.dmTargetUuid || btn.dataset.dmPlayer || "",
+          label: btn.dataset.dmTargetLabel || "",
+          displayName: btn.dataset.dmTargetDisplayName || "",
+          username: btn.dataset.dmTargetUsername || "",
+          remote: btn.dataset.dmTargetRemote === "1",
+          serverId: btn.dataset.dmTargetServerId || "",
+          serverName: btn.dataset.dmTargetServerName || ""
+        };
         state.dmActiveThreadId = "";
+        state.dmAuditMode = false;
+        state.dmAuditThread = null;
         renderDirectMessageHeader(state.dmDraftTarget.label);
         renderDirectMessageMessages([]);
         updateDirectMessageViewMode();
@@ -13456,14 +13769,14 @@
     const setOver = visible => {
       try { modal.classList.toggle("bmwc-dm-drag-over", !!visible); } catch (_) {}
     };
-    const allowed = () => !state.uploadActive && canUpload();
+    const allowed = () => !state.dmAuditMode && !state.uploadActive && canUpload();
     ["dragenter", "dragover"].forEach(type => {
       wrap.addEventListener(type, event => {
         if (!isFileDragEvent(event)) return;
         event.preventDefault();
         event.stopPropagation();
         if (event.dataTransfer) event.dataTransfer.dropEffect = allowed() ? "copy" : "none";
-        setOver(true);
+        setOver(!state.dmAuditMode);
       }, {capture: true});
     });
     wrap.addEventListener("dragleave", event => {
@@ -13477,6 +13790,7 @@
       event.preventDefault();
       event.stopPropagation();
       setOver(false);
+      if (state.dmAuditMode) return;
       const files = dropEventFiles(event);
       if (!files.length) return;
       setActiveComposeInput("bmwc-dm-input");
@@ -13494,6 +13808,7 @@
   }
 
   async function sendDirectMessageFromModal() {
+    if (state.dmAuditMode) return;
     if (!state.token || !state.directMessageEnabled || !state.directMessageAllowWebSend) return;
     const input = document.getElementById("bmwc-dm-input");
     if (!input) return;
@@ -13505,9 +13820,26 @@
     const body = {token: state.token, message};
     if (state.dmActiveThreadId) {
       const thread = (state.dmThreads || []).find(t => t.id === state.dmActiveThreadId);
-      if (thread) body.targetUuid = thread.otherUuid;
+      if (thread) {
+        const remote = thread.otherRemote === true && !!thread.otherServerId;
+        body.targetUuid = thread.otherPlayerUuid || thread.otherUuid;
+        if (remote) {
+          body.targetServerId = thread.otherServerId || "";
+          body.targetServerName = thread.otherServerName || thread.otherServerId || "";
+          body.targetUsername = thread.otherUsername || "";
+          body.targetDisplayName = thread.otherDisplayName || "";
+          body.targetLabel = thread.otherLabel || directMessageLabel(thread) || "";
+        }
+      }
     } else if (state.dmDraftTarget && state.dmDraftTarget.uuid) {
       body.targetUuid = state.dmDraftTarget.uuid;
+      if (state.dmDraftTarget.remote && state.dmDraftTarget.serverId) {
+        body.targetServerId = state.dmDraftTarget.serverId;
+        body.targetServerName = state.dmDraftTarget.serverName || "";
+        body.targetUsername = state.dmDraftTarget.username || "";
+        body.targetDisplayName = state.dmDraftTarget.displayName || "";
+        body.targetLabel = state.dmDraftTarget.label || "";
+      }
     }
     if (!body.targetUuid) {
       alert(t("dm.selectPlayerFirst", "Select a player first."));
@@ -14546,6 +14878,8 @@
     state.dmModalOpen = true;
     state.dmActiveThreadId = "";
     state.dmDraftTarget = null;
+    state.dmAuditMode = false;
+    state.dmAuditThread = null;
     const wrap = document.createElement("div");
     wrap.className = "bmwc-modal-backdrop bmwc-dm-modal-backdrop";
     applyDetachedModalTheme(wrap);
@@ -14595,7 +14929,7 @@
       </div>`;
     document.body.appendChild(wrap);
     installDirectMessageIdentityToggleGuard(wrap);
-    const close = () => { hideEmojiAutocomplete(); closeDirectMessageEmojiPanel(); closeDirectMessagePlayerSearch(); hideDirectMessageEdgeToast(true); wrap.remove(); state.dmModalOpen = false; if (state.activeComposeInputId === "bmwc-dm-input") state.activeComposeInputId = "bmwc-message"; };
+    const close = () => { hideEmojiAutocomplete(); closeDirectMessageEmojiPanel(); closeDirectMessagePlayerSearch(); hideDirectMessageEdgeToast(true); wrap.remove(); state.dmModalOpen = false; state.dmAuditMode = false; state.dmAuditThread = null; if (state.activeComposeInputId === "bmwc-dm-input") state.activeComposeInputId = "bmwc-message"; };
     wrap.querySelector("#bmwc-dm-close").onclick = close;
     wrap.addEventListener("click", e => { if (e.target === wrap) close(); });
     wrap.addEventListener("click", e => {

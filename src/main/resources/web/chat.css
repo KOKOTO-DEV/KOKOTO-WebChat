@@ -3008,6 +3008,43 @@ body.bmwc-pip-mode {
   color: hsl(var(--bmwc-server-hue, 210), 72%, 32%) !important;
 }
 
+/* A UUID-backed game/web sender can be opened directly from the
+   "server · source" metadata without depending on recipient search. */
+#bmwc-root .bmwc-message-dm-target {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: baseline;
+  flex: 0 0 auto;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  vertical-align: baseline;
+  cursor: pointer;
+}
+
+#bmwc-root .bmwc-message-dm-target:hover .bmwc-source-label,
+#bmwc-root .bmwc-message-dm-target:focus-visible .bmwc-source-label {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+#bmwc-root .bmwc-message-dm-target:hover .bmwc-server-badge,
+#bmwc-root .bmwc-message-dm-target:focus-visible .bmwc-server-badge {
+  filter: brightness(1.14);
+}
+
+#bmwc-root .bmwc-message-dm-target:focus-visible {
+  outline: 1px solid rgba(130, 190, 255, 0.78);
+  outline-offset: 2px;
+}
+
 #bmwc-root .bmwc-source-label,
 #bmwc-root .bmwc-server-badge,
 #bmwc-root .bmwc-time,
@@ -8690,4 +8727,23 @@ body.bmwc-standalone-mode {
   display: inline-flex !important;
   visibility: visible !important;
   pointer-events: auto !important;
+}
+
+.bmwc-admin-meta-open {
+  cursor: pointer;
+}
+
+.bmwc-admin-meta-open:hover,
+.bmwc-admin-meta-open:focus-visible {
+  background: rgba(255,255,255,0.11);
+}
+
+.bmwc-admin-audit-notice {
+  margin-bottom: 8px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.07);
+  font-size: 11px;
+  line-height: 1.35;
 }

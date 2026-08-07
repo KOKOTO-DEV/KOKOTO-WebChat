@@ -1023,6 +1023,44 @@ public class DirectMessageStore {
     }
 
 
+    public synchronized List<DirectMessageMessage> adminListMessages(String threadId, long beforeId, int limit) {
+        String tid = String.valueOf(threadId == null ? "" : threadId).trim();
+        if (tid.isBlank()) return new ArrayList<>();
+        int effectiveLimit = Math.max(1, Math.min(limit <= 0 ? 100 : limit, 200));
+        if (jsonlMode()) {
+            List<JsonlMessage> raw = new ArrayList<>();
+            for (JsonlMessage msg : jsonlMessages.values()) {
+                if (msg == null || msg.hidden || !tid.equals(msg.threadId)) continue;
+                if (beforeId > 0 && msg.id >= beforeId) continue;
+                raw.add(msg);
+            }
+            raw.sort(Comparator.comparingLong((JsonlMessage m) -> m.id).reversed());
+            if (raw.size() > effectiveLimit) raw = new ArrayList<>(raw.subList(0, effectiveLimit));
+            Collections.reverse(raw);
+            List<DirectMessageMessage> out = new ArrayList<>();
+            for (JsonlMessage msg : raw) out.add(jsonlToMessage(msg));
+            return out;
+        }
+        List<DirectMessageMessage> out = new ArrayList<>();
+        if (connection == null) return out;
+        String sql = "SELECT id,thread_id,sender_uuid,body,created_at FROM dm_messages WHERE thread_id=? AND hidden=0 "
+                + (beforeId > 0 ? "AND id<? " : "")
+                + "ORDER BY id DESC LIMIT ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, tid);
+            int index = 2;
+            if (beforeId > 0) ps.setLong(index++, beforeId);
+            ps.setInt(index, effectiveLimit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(messageFromResult(rs));
+            }
+            Collections.reverse(out);
+        } catch (SQLException ex) {
+            plugin.getLogger().warning("Failed to list direct messages for administrator audit: " + ex.getMessage());
+        }
+        return out;
+    }
+
     public synchronized List<DirectMessageMessage> listMessagesBetween(String userUuid, String otherUuid, int limit) {
         String user = normalizeUuid(userUuid);
         String other = normalizeUuid(otherUuid);

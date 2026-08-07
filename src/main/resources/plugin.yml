@@ -1,5 +1,5 @@
 name: BlueMapWebChat
-version: 4.6.0
+version: 4.6.1
 main: dev.kokoto.bluemapwebchat.BlueMapWebChatPlugin
 api-version: '1.21'
 authors: [KOKOTO]
@@ -20,6 +20,9 @@ permissions:
     default: true
   bluemapwebchat.admin:
     description: Allows administrating BlueMapWebChat.
+    default: op
+  bluemapwebchat.update.notify:
+    description: Shows BlueMapWebChat update notices when an administrator joins.
     default: op
 
   bluemapwebchat.dm:

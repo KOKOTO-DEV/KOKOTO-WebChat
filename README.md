@@ -20,6 +20,8 @@ A web chat plugin for Bukkit/Paper/Spigot-compatible Minecraft servers. It can r
 - DiscordSRV relay and Discord CDN media cache
 - Message replies with clickable referenced-message previews, optional game-side reply previews, pinned messages, virtual scrolling, draggable/resizable window, PIP
 - Optional 1:1 direct-message threads for linked/known players, with unread badges and per-thread retention
+- Remote-server player discovery in the existing web DM recipient search
+- Optional read-only administrator DM content audit with exact-account allowlist and audit logging
 - Built-in UI languages: en-US, ko-KR, ja-JP, zh-CN
 
 ## Build
@@ -29,7 +31,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.6.0.jar
+target/BlueMapWebChat-4.6.1.jar
 ```
 
 ## Install
@@ -43,7 +45,30 @@ target/BlueMapWebChat-4.6.0.jar
 7. Restart the server or run `/bmchat reload`. Run `/bluemap reload` if BlueMap does not refresh web assets automatically.
 
 
-Existing configs are never overwritten. When `config-version` is missing or differs from the running plugin version, BlueMapWebChat compares the physical `config.yml` with the bundled defaults and writes `plugins/BlueMapWebChat/config-migration-4.6.0.yml`. The generated file contains copy-ready missing settings, changed bundled defaults, and the target `config-version` review marker. Even when no other settings differ, the file is still created so configuration version management remains explicit. Version details and previous/new default values are comments, not YAML settings. Custom values and obsolete-setting notes are omitted. When `config-version: "4.6.0"` already matches the plugin version, the config is treated as reviewed and comparison is skipped. See `docs/UPGRADE_4_6_0_EN.md`.
+Existing configs are never overwritten. When `config-version` is missing or differs from the running plugin version, BlueMapWebChat compares the physical `config.yml` with the bundled defaults and writes `plugins/BlueMapWebChat/config-migration-4.6.1.yml`. The generated file contains copy-ready missing settings, changed bundled defaults, and the target `config-version` review marker. Even when no other settings differ, the file is still created so configuration version management remains explicit. Version details and previous/new default values are comments, not YAML settings. Custom values and obsolete-setting notes are omitted. When `config-version: "4.6.1"` already matches the plugin version, the config is treated as reviewed and comparison is skipped. See `docs/UPGRADE_4_6_1_EN.md` for this update and `docs/UPGRADE_4_6_0_EN.md` for the previous major migration.
+
+## 4.6.1 exact cross-server DM routing
+
+Remote DM recipients are now identified by both `server-id` and player UUID. Clicking `server · source` opens the conversation for that exact server/player pair, even when the same UUID exists on the local server. The message is sent through the signed private relay endpoint and stored by the destination server.
+
+Every server participating in cross-server DM must use this corrected 4.6.1 build. The version number is unchanged, but older 4.6.1 builds do not contain the complete private relay and exact target handoff fixes.
+
+## 4.6.1 cross-server DM discovery and administrator audit
+
+When a relayed message contains a player UUID, that remote player is added to the existing New Message recipient search. No separate DM button is added. Guest and Discord senders without a UUID remain excluded.
+
+DM content audit is disabled by default and requires both settings below:
+
+```yaml
+private-chat-super-admins:
+  - "ExactMinecraftNameOrUUID"
+
+direct-message:
+  admin-audit:
+    enabled: true
+```
+
+Ordinary ADMIN/MODERATOR roles do not gain access automatically. The audit view is read-only, and every page read records the actor, thread ID, pagination position, requested limit, and returned count in the audit log without copying message bodies into the log.
 
 ## Deployment modes
 
@@ -155,12 +180,12 @@ Group chats use a dedicated SQLite store (`group-chat.sqlite-file`, default `gro
 
 ## Direct message threads
 
-`direct-message.enabled` enables optional 1:1 conversation threads. Targets are limited to linked or previously known players with a stored UUID/name. A->B and B->A use the same thread, and messages are stored by UUID while the UI displays `display name (real account name)` when both are available.
+`direct-message.enabled` enables optional 1:1 conversation threads. Targets include linked or previously known players and remote-server senders whose relayed message contains a player UUID. The latest relayed display name and real Minecraft name are added to the web DM recipient search, so a conversation can be started from the normal search without a separate DM button. Guest and Discord senders without a player UUID are excluded. A->B and B->A use the same thread, and messages are stored by UUID while the UI displays `display name (real account name)` when both are available.
 
 DMs use an independent private-message store. `direct-message.storage: auto` follows `chat.history-storage` when public chat uses `jsonl`; otherwise it uses SQLite. You can also set `direct-message.storage` to `sqlite` or `jsonl` explicitly, using `direct-message.sqlite-file` or `direct-message.jsonl-file`. `direct-message.retention-days: 0` means no time limit; otherwise the DM window title shows the configured retention period and old DM rows are physically removed after that many days. `direct-message.max-messages-per-thread: 0` disables count-based cleanup. `direct-message.confirm-hide` controls whether the web UI asks before hiding a DM from your own view. Because private messages are stored on the server, the feature is disabled by default and should be enabled only after setting a server policy.
 
 
-Game `/w`, `/msg`, `/tell`, and compatible aliases can be mirrored into the same web DM thread with `direct-message.capture-game-whispers`. Clicking a local game sender suggests `/w <realName> `; linked web senders and remote-server game senders suggest `/bmchat dm <realName> `.
+Game `/w`, `/msg`, `/tell`, and compatible aliases can be mirrored into the same web DM thread with `direct-message.capture-game-whispers`. Clicking a local game sender suggests `/w <realName> `; linked web senders suggest `/bmchat dm <realName> `; remote-server game senders suggest `/bmchat dm <realName>@<server-id> ` so same-name or same-UUID players on different servers remain distinct. Typing `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, or `/t` with the same `name@server-id` target routes that message through the cross-server BMChat DM relay.
 
 ## Custom emoji and game-side emoji plugins
 
@@ -235,6 +260,7 @@ bluemapwebchat.dm
 bluemapwebchat.reply
 bluemapwebchat.group
 bluemapwebchat.admin
+bluemapwebchat.update.notify
 ```
 
 ## Documentation
@@ -242,6 +268,7 @@ bluemapwebchat.admin
 - `docs/USER_MANUAL_EN.md` - complete user and operator manual for all features
 - `docs/CONFIGURATION_EN.md` - configuration reference
 - `docs/SERVER_RELAY_EN.md` - server-to-server public chat relay
+- `docs/UPGRADE_4_6_1_EN.md` - 4.6.0 to 4.6.1 upgrade
 - `docs/UPGRADE_4_6_0_EN.md` - 4.5.5 to 4.6.0 config/database upgrade
 - `docs/CADDY_HTTPS_EN.md` - HTTPS reverse proxy setup
 - `docs/I18N_EN.md` - language files and fallback behavior
@@ -259,7 +286,7 @@ Font note: Installed fonts must be typed by their CSS font-family name. Chat set
 
 ### Private chat metadata super admins
 
-Set `private-chat-super-admins` in `config.yml` to exact UUIDs or Minecraft names for users who may see DM/group-chat metadata for moderation/accounting. This view only shows titles/participants, message counts, approximate stored byte sizes, retention status, and cleanup preview counts. It does not expose message bodies or allow opening other users' conversations. Super admins can also lock a DM/group session or exclude it from automatic retention cleanup; these controls are admin-only.
+Set `private-chat-super-admins` in `config.yml` to exact UUIDs or Minecraft names for users who may see DM/group-chat metadata for moderation/accounting. By default this view shows titles/participants, message counts, approximate stored byte sizes, retention status, and cleanup preview counts. When `direct-message.admin-audit.enabled: true` is also set, the same explicitly listed users may open DM bodies in a read-only audit view; ordinary ADMIN/MODERATOR roles do not qualify automatically, and every page read is audit-logged. Super admins can also lock a DM/group session or exclude it from automatic retention cleanup.
 
 Administrative actions are also appended to date-based text audit files under `plugins/BlueMapWebChat/audit` by default. The audit log is intended for server operators and is not shown in the web UI.
 

@@ -1,5 +1,50 @@
 # Changelog
 
+## 4.6.1
+
+- Fixed cross-server direct messaging from the web interface. This includes exact `server-id + player UUID` targeting, shared game/web sessions, destination-server delivery, remote DM search, message-metadata shortcuts, game `/bmchat dm` and `name@server-id` whisper routing, and server identification in the DM window before the first message is sent.
+- Added an optional read-only administrator DM audit view for responding to misconduct or other exceptional incidents. Access is limited to explicitly listed private-chat super administrators, and every audit read is recorded without copying message bodies into the audit log.
+- Added a compact update checker. It uses Modrinth as the release source, logs a newer stable version to the console, and shows administrators a one-line join notice with clickable Modrinth and CurseForge pages. Only `update-check.enabled` is configurable; timing, channel, permission behavior, and links use built-in defaults.
+- Reorganized the bundled `config.yml` into clearly labeled functional groups without renaming existing keys or changing their defaults. The only newly exposed update-check setting is the single `update-check.enabled` switch directly below the plugin master switch.
+
+### Important cross-server DM compatibility requirement
+
+All servers that exchange cross-server DMs must run the same corrected **4.6.1 build**. Matching the displayed version number alone is not sufficient because earlier 4.6.1 builds do not include the complete private DM relay and exact target handoff changes. Replace the plugin on every connected server and restart all of them; otherwise the sender may create a session while the destination server does not receive or store it.
+
+### Configuration added in 4.6.1
+
+The functional settings added compared with the bundled 4.6.0 defaults are:
+
+```yaml
+update-check:
+  enabled: true
+
+direct-message:
+  admin-audit:
+    enabled: false
+```
+
+The configuration review marker also changes to:
+
+```yaml
+config-version: "4.6.1"
+```
+
+To enable DM body auditing, both the allowlist and the audit switch are required:
+
+```yaml
+private-chat-super-admins:
+  - "ExactMinecraftNameOrUUID"
+
+direct-message:
+  admin-audit:
+    enabled: true
+```
+
+Ordinary ADMIN or MODERATOR roles do not gain DM body access automatically. The audit view is read-only.
+
+
+
 ## 4.6.0
 
 - Added secure multi-server game/web chat relay with HTTPS and HMAC authentication.

@@ -40,16 +40,46 @@ public class ChatListener implements Listener {
     public void captureOriginalDirectMessageCommand(PlayerCommandPreprocessEvent event) {
         if (event == null || event.getPlayer() == null) return;
         String message = event.getMessage();
-        if (parseNativeWhisper(message) != null) {
+        NativeWhisperCommand whisper = NativeWhisperCommand.parse(message);
+        if (whisper != null) {
+            String routedCommand = routedWhisperCommand(whisper);
+            if (routedCommand != null) {
+                // Minecraft's native whisper commands cannot address another server.
+                // Rewrite an explicit name@server target into the normal BMChat DM
+                // command early enough that command preprocessors such as ImageEmojis
+                // still see and transform the command body exactly once. If the
+                // suffix names this server, remove only the suffix and preserve the
+                // original local whisper command instead.
+                event.setMessage(routedCommand);
+                if (NativeWhisperCommand.parse(routedCommand) != null) {
+                    originalNativeWhisperCommands.put(event, routedCommand);
+                }
+                captureOriginalBmChatCommand(event.getPlayer(), routedCommand);
+                return;
+            }
             originalNativeWhisperCommands.put(event, message);
         }
-        if (!looksLikeDirectMessageCommand(message)) return;
+        captureOriginalBmChatCommand(event.getPlayer(), event.getMessage());
+    }
+
+    private String routedWhisperCommand(NativeWhisperCommand whisper) {
+        if (whisper == null) return null;
+        ServerRelay relay = plugin.serverRelay();
+        ConfigValues config = plugin.configValues();
+        String localServerId = relay != null
+                ? relay.serverId()
+                : (config == null ? "" : config.serverRelayServerId);
+        return whisper.routedCommand(localServerId);
+    }
+
+    private void captureOriginalBmChatCommand(Player player, String message) {
+        if (player == null || !looksLikeDirectMessageCommand(message)) return;
         // Command preprocessors from emoji plugins may replace :pack/name: with a
         // private-use font glyph before the command executor sees the args. Keep
         // the raw player command so /bmchat dm stores the same token the user typed.
         // DM command handling later requires this capture; commands dispatched through
         // /execute, command blocks, console, or plugins do not pass this player-input check.
-        UUID playerId = event.getPlayer().getUniqueId();
+        UUID playerId = player.getUniqueId();
         long now = System.currentTimeMillis();
         originalDirectMessageCommands.compute(playerId, (ignored, existing) -> {
             // ImageEmojis-style command preprocessors can re-dispatch the same command
@@ -95,7 +125,7 @@ public class ChatListener implements Listener {
         String original = originalNativeWhisperCommands.remove(event);
         ConfigValues config = plugin.configValues();
         if (config == null || !config.directMessageEnabled || !config.directMessageCaptureGameWhispers) return;
-        NativeWhisper whisper = parseNativeWhisper(original == null ? event.getMessage() : original);
+        NativeWhisperCommand whisper = NativeWhisperCommand.parse(original == null ? event.getMessage() : original);
         if (whisper == null) return;
 
         Player player = event.getPlayer();
@@ -106,31 +136,13 @@ public class ChatListener implements Listener {
                 senderUuid, senderName, senderDisplay, whisper.target, whisper.message));
     }
 
-    private NativeWhisper parseNativeWhisper(String raw) {
-        String text = String.valueOf(raw == null ? "" : raw).trim();
-        if (!text.startsWith("/")) return null;
-        String[] parts = text.substring(1).split("\\s+", 3);
-        if (parts.length < 3) return null;
-        String root = parts[0].toLowerCase(java.util.Locale.ROOT);
-        int colon = root.indexOf(':');
-        if (colon >= 0 && colon + 1 < root.length()) root = root.substring(colon + 1);
-        if (!(root.equals("w") || root.equals("whisper") || root.equals("msg") || root.equals("tell")
-                || root.equals("m") || root.equals("pm") || root.equals("message") || root.equals("t"))) {
-            return null;
-        }
-        String target = parts[1].trim();
-        String message = parts[2].trim();
-        if (target.isBlank() || message.isBlank()) return null;
-        return new NativeWhisper(target, message);
-    }
-
     private void mirrorNativeWhisper(String senderUuid, String senderName, String senderDisplay,
                                      String targetInput, String rawMessage) {
         ConfigValues config = plugin.configValues();
         DirectMessageStore store = plugin.directMessages();
         if (config == null || !config.directMessageEnabled || !config.directMessageCaptureGameWhispers
                 || store == null || !store.available()) return;
-        PlayerIdentity target = plugin.storage().findKnownPlayer(targetInput);
+        PlayerIdentity target = findLocalWhisperTarget(targetInput);
         if (target == null || target.uuid == null || target.uuid.isBlank()) return;
         if (target.uuid.equalsIgnoreCase(senderUuid)) return;
 
@@ -151,14 +163,42 @@ public class ChatListener implements Listener {
         server.dispatchWebPushDirectMessage(senderUuid, senderDisplay, target.uuid, target.label(), threadId, messageId, message);
     }
 
-    private static final class NativeWhisper {
-        final String target;
-        final String message;
+    private PlayerIdentity findLocalWhisperTarget(String rawInput) {
+        String input = String.valueOf(rawInput == null ? "" : rawInput).trim();
+        if (input.isBlank()) return null;
 
-        NativeWhisper(String target, String message) {
-            this.target = target;
-            this.message = message;
+        // The native command was resolved by this Minecraft server. Prefer the
+        // online local player and never let a remembered remote identity with the
+        // same UUID/name replace that local recipient in the mirrored DM thread.
+        Player online = plugin.getServer().getPlayerExact(input);
+        if (online != null) {
+            String uuid = online.getUniqueId().toString();
+            String display = plugin.displayPlayerName(online);
+            plugin.storage().updateLastDisplayName(uuid, online.getName(), display);
+            return new PlayerIdentity(uuid, online.getName(), display);
         }
+
+        PlayerIdentity displayMatch = null;
+        String plainInput = plainPlayerName(input);
+        for (PlayerIdentity candidate : plugin.storage().listKnownPlayers("", 0)) {
+            if (candidate == null || candidate.uuid == null || candidate.uuid.isBlank()) continue;
+            if (RemotePlayerRef.isRemote(candidate.uuid)) continue;
+            String username = String.valueOf(candidate.username == null ? "" : candidate.username).trim();
+            String displayName = String.valueOf(candidate.displayName == null ? "" : candidate.displayName).trim();
+            if (username.equalsIgnoreCase(input)) return candidate;
+            if (displayMatch == null && displayName.equalsIgnoreCase(input)) displayMatch = candidate;
+            if (displayMatch == null && !plainInput.isBlank()
+                    && plainPlayerName(displayName).equalsIgnoreCase(plainInput)) displayMatch = candidate;
+        }
+        return displayMatch;
+    }
+
+    private String plainPlayerName(String value) {
+        String text = String.valueOf(value == null ? "" : value);
+        text = text.replaceAll("(?i)[§&]x(?:[§&][0-9a-f]){6}", "");
+        text = text.replaceAll("(?i)&#[0-9a-f]{6}", "");
+        text = ChatColor.stripColor(ChatColor.translateAlternateColorCodes('&', text));
+        return String.valueOf(text == null ? "" : text).trim();
     }
 
     public String pollOriginalDirectMessageCommand(Player player) {

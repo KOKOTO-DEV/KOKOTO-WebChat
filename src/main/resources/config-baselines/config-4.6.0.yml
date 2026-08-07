@@ -1,15 +1,11 @@
-# =============================================================================
-# Core
-# =============================================================================
-
-# BlueMapWebChat 4.6.1 configuration
+# BlueMapWebChat 4.6.0 configuration
 
 # Configuration review marker. Existing config.yml files are never overwritten on update.
 # If this value differs from the running plugin version, BlueMapWebChat creates
 # config-migration-<version>.yml containing copy-ready missing settings, changed defaults, and the target config-version marker.
 # The file is created even when config-version is the only required change.
 # When the versions match, the config is treated as already reviewed and comparison is skipped.
-config-version: "4.6.1"
+config-version: "4.6.0"
 
 # Master switch for BlueMapWebChat.
 # New generated configs default to false so the plugin creates config.yml first
@@ -17,15 +13,16 @@ config-version: "4.6.1"
 # Existing configs that do not have this key are treated as enabled for upgrade compatibility.
 enabled: false
 
-# Check Modrinth for a newer stable release and notify the console and online administrators.
-# The request interval, release channel, join delay, and download links use built-in defaults.
-update-check:
+# Users allowed to see private-message/group-room metadata for moderation/accounting.
+# Only metadata is exposed: room/thread titles, participants, message counts, and byte sizes.
+# Message bodies remain inaccessible. Use exact Minecraft names or UUIDs. Empty = no super admins.
+private-chat-super-admins: []
+
+# Administrative audit log. This is not shown in the web UI.
+# Files are appended by date under plugins/BlueMapWebChat/audit by default.
+audit:
   enabled: true
-
-
-# =============================================================================
-# Network and web hosting
-# =============================================================================
+  directory: "audit"
 
 #
 # URL / HTTP / HTTPS quick guide
@@ -103,6 +100,7 @@ web-addon:
   bluemap-webapp-conf: "plugins/BlueMap/webapp.conf"
   addon-path: "addons/bluemap-web-chat"
 
+
 standalone-web:
   # Serve a standalone chat page from the plugin HTTP server.
   # Direct HTTP example: http://<server-host>:8899/chat
@@ -124,11 +122,6 @@ standalone-web:
   #   http.cors-origin is a real origin; otherwise it becomes "/bmwc/api".
   # - Full URL: "https://map.example.com/bmwc/api" is used as-is.
   api-base-url: ""
-
-
-# =============================================================================
-# Public chat and message features
-# =============================================================================
 
 chat:
   # History storage backend.
@@ -185,16 +178,51 @@ chat:
     enabled: false
     text: "&f{real}"
 
-search:
-  # Enable the web message search button and /history/search API.
-  enabled: true
-  # Number of search results returned by the web UI and /history/search API.
-  # This is the only search result count limit. There is no separate internal maximum.
-  # Setting this to 2000 returns up to 2000 results; setting it to 10 returns up to 10.
-  # Very large values such as 10000 or 100000 are accepted, but can make searches slow,
-  # increase response size, and add significant CPU, memory, and database load.
-  # Recommended: 50-200 for normal use. Raise only when you need large admin searches.
-  result-limit: 50
+# Optional server-to-server public chat relay.
+# Each server runs the same plugin and sends signed HTTP POST requests to configured peers.
+# Configure a unique server-id on every server and use the same shared-secret on both sides,
+# or set a per-peer secret. Peer URL is the other server's BMChat API base URL;
+# /relay/receive is appended automatically. Example: http://10.0.0.2:8899/api
+# For more than two servers, configure a full mesh or a hub topology. relayId de-duplication
+# and hop limits prevent messages from looping when peers form a cycle.
+server-relay:
+  enabled: false
+  server-id: "server-1"
+  server-name: "Server 1"
+  # Generate a long random value and use the same value on connected peers.
+  shared-secret: ""
+  connect-timeout-seconds: 5
+  request-timeout-seconds: 10
+  max-clock-skew-seconds: 60
+  dedupe-seconds: 300
+  max-hops: 8
+
+  sources:
+    game: true
+    web: true
+    guest: true
+    # Disabled by default to avoid DiscordSRV bridge loops across servers.
+    discord: false
+    # Join/quit/death/server announcements are disabled by default.
+    system: false
+
+  delivery:
+    web: true
+    game: true
+
+  # Available placeholders: {server}, {server_id}, {source}, {sender},
+  # {real_sender}, {uuid}, {role}, {message}.
+  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
+
+  # Add one entry for each remote BMChat server. The URL may point to the API root;
+  # /relay/receive is appended automatically.
+  # - id: "server-2"
+  #   url: "http://10.0.0.2:8899/api"
+  #   # Empty = use server-relay.shared-secret.
+  #   secret: ""
+  #   enabled: true
+  peers: []
+
 
 announcements:
   broadcast-to-web-chat: true
@@ -251,58 +279,17 @@ announcements:
     enabled: false
     message: "🌐 {name} logged out of web chat."
 
-reply:
-  # Clicking the body of a BMChat-rendered Minecraft message suggests
-  # /bmchat reply <messageId> in the chat input. Sender-name clicks remain DM actions.
-  game-click:
-    enabled: true
-    # Replaces the normal local Minecraft chat line with an equivalent clickable
-    # component so game-origin messages can also be replied to. Disable this if a
-    # chat-format plugin requires exclusive ownership of the final chat renderer.
-    local-game-chat: true
-
-  # Format used for a public reply sent from /bmchat reply <messageId> <message>.
-  # Placeholders: {server}, {server_id}, {player}, {message}.
-  game-command-format: "&8[&dReply&8] &f{player}&7: &f{message}"
-
-  # Show the original message preview in Minecraft chat when a web/guest message is a reply.
-  # It is sent as a separate line before the actual web message so URLs in both lines stay clickable.
-  game-preview:
-    enabled: true
-    # Supports Minecraft color codes with &.
-    # Placeholders: {sender}, {preview}, {id}
-    format: "&7{sender}: {preview}"
-    # Maximum displayed preview length before appending …
-    # 0 = no truncation.
-    max-length: 120
-
-  # Label/prefix used for the actual web message line when relaying a reply to Minecraft.
-  # Supports Minecraft color codes with &.
-  # With the default web formats this changes "[Web] Player: message" into "↪ [Reply] Player: message".
-  # The first bracketed source label near the start of the rendered relay line is replaced.
-  # If no bracketed source label is found, this text is prepended.
-  # Placeholders: {sender}, {preview}, {id}
-  game-prefix:
-    enabled: true
-    text: "↪ [Reply] "
-
-# Pinned messages are stored separately from normal chat history.
-# They are shown in a compact top bar and opened in a popup.
-pinned:
+search:
+  # Enable the web message search button and /history/search API.
   enabled: true
-  # 0 = unlimited pins.
-  max-pins: 20
-  # Show pinned messages to visitors who are not logged in.
-  # false = pinned messages are only returned/displayed after web login.
-  show-to-logged-out: true
-  # Keep uploaded files / external cached media referenced by pinned messages
-  # even when normal upload/cache retention cleanup runs.
-  preserve-uploads: true
+  # Number of search results returned by the web UI and /history/search API.
+  # This is the only search result count limit. There is no separate internal maximum.
+  # Setting this to 2000 returns up to 2000 results; setting it to 10 returns up to 10.
+  # Very large values such as 10000 or 100000 are accepted, but can make searches slow,
+  # increase response size, and add significant CPU, memory, and database load.
+  # Recommended: 50-200 for normal use. Raise only when you need large admin searches.
+  result-limit: 50
 
-
-# =============================================================================
-# Private messaging and server relay
-# =============================================================================
 
 direct-message:
   # Thread-style 1:1 direct messages.
@@ -335,13 +322,6 @@ direct-message:
   # /whisper, /m, /pm and /message into the BMChat 1:1 DM thread. This does not
   # resend the whisper in Minecraft; it only mirrors it to the private web inbox.
   capture-game-whispers: true
-
-  # Optional administrator DM content audit. Disabled by default because this grants
-  # access to private message bodies. Access requires both this switch and membership
-  # in private-chat-super-admins. The web view is read-only and each read is recorded
-  # through the audit logger without copying message bodies into the audit log.
-  admin-audit:
-    enabled: false
 
   # Notify players about unread DMs when they join.
   notify-on-login: true
@@ -391,189 +371,6 @@ group-chat:
 
   # SQLite file for group chat rooms/messages. Relative paths are stored under the plugin data folder.
   sqlite-file: "group-messages.db"
-
-# Optional server-to-server public chat relay.
-# Each server runs the same plugin and sends signed HTTP POST requests to configured peers.
-# Configure a unique server-id on every server and use the same shared-secret on both sides,
-# or set a per-peer secret. Peer URL is the other server's BMChat API base URL;
-# /relay/receive is appended automatically. Example: http://10.0.0.2:8899/api
-# For more than two servers, configure a full mesh or a hub topology. relayId de-duplication
-# and hop limits prevent messages from looping when peers form a cycle.
-server-relay:
-  enabled: false
-  server-id: "server-1"
-  server-name: "Server 1"
-  # Generate a long random value and use the same value on connected peers.
-  shared-secret: ""
-  connect-timeout-seconds: 5
-  request-timeout-seconds: 10
-  max-clock-skew-seconds: 60
-  dedupe-seconds: 300
-  max-hops: 8
-
-  sources:
-    game: true
-    web: true
-    guest: true
-    # Disabled by default to avoid DiscordSRV bridge loops across servers.
-    discord: false
-    # Join/quit/death/server announcements are disabled by default.
-    system: false
-
-  delivery:
-    web: true
-    game: true
-
-  # Available placeholders: {server}, {server_id}, {source}, {sender},
-  # {real_sender}, {uuid}, {role}, {message}.
-  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-
-  # Add one entry for each remote BMChat server. The URL may point to the API root;
-  # /relay/receive is appended automatically.
-  # - id: "server-2"
-  #   url: "http://10.0.0.2:8899/api"
-  #   # Empty = use server-relay.shared-secret.
-  #   secret: ""
-  #   enabled: true
-  peers: []
-
-
-# =============================================================================
-# Accounts, permissions, and moderation
-# =============================================================================
-
-# Player name shown for Minecraft-origin messages and announcements.
-# name = real Minecraft username, display-name = Bukkit displayName used by nickname plugins,
-# custom-name = customName first, then displayName.
-# When a display/custom nickname differs from the real Minecraft username,
-# web chat sends the real username too so the UI can show it on hover/click.
-# strip-colors: true removes legacy Minecraft color codes from stored/displayed names.
-# strip-colors: false keeps &/§ color codes for web sender-name rendering.
-# Discord output still strips raw Minecraft color codes before sending.
-player-display:
-  mode: "name"
-  strip-colors: true
-
-# Guest mode is enabled by default for direct HTTP personal use.
-# Spam controls below are intentionally conservative:
-# - first message requires math captcha
-# - captcha pass expires after 2 hours
-# - guests are rate-limited by cooldown and per-minute count
-# - guest file upload is disabled by default
-guest:
-  enabled: true
-  allow-custom-name: true
-  name-prefix: "Guest-"
-  cooldown-seconds: 6
-  max-messages-per-minute: 50
-  block-player-name-spoofing: true
-  blocked-names:
-    - "admin"
-    - "administrator"
-    - "server"
-    - "op"
-    - "console"
-    - "moderator"
-    - "owner"
-
-captcha:
-  # "math" enables a simple math challenge for guests. Use "off" to disable.
-  mode: "math"
-  expire-seconds: 120
-  # false = once solved, guest can chat until pass-valid-minutes expires.
-  # true = require captcha on every guest message.
-  require-on-each-message: false
-  pass-valid-minutes: 120
-
-auth:
-  # Keep auth enabled even in guest mode so players can link with /bmchat auth
-  # and optionally set a web password later.
-  enabled: true
-  link-code-length: 6
-  link-code-expire-seconds: 180
-  # Web-side link code issue rate limit per remote IP. 0 disables each limit.
-  link-code-cooldown-seconds: 3
-  link-code-max-per-minute: 10
-  password-login: true
-  remember-session-days: 30
-  auto-admin-from-permission: true
-  admin-permission: "bluemapwebchat.admin"
-
-security:
-  # Password login brute-force protection.
-  # 0 disables the failure limit.
-  login-fail-limit: 5
-  # Failed attempts are counted within this time window.
-  login-fail-window-seconds: 300
-  # 0 disables lockout even when failures are counted.
-  login-lock-seconds: 600
-  # Server-Sent Events (/stream) connection limits. 0 disables each limit.
-  max-sse-connections-per-ip: 5
-  max-sse-connections-total: 200
-
-admin:
-  allow-local-admin-accounts: true
-  admin-session-expire-hours: 12
-  # Empty = no IP restriction. Use block style when restricting by IP/CIDR:
-  # allow-admin-login-from:
-  #   - "127.0.0.1"
-  #   - "10.0.0.0/8"
-  allow-admin-login-from: []
-
-# Users allowed to see private-message/group-room metadata for moderation/accounting.
-# When direct-message.admin-audit.enabled is also true, these users may open DM message
-# bodies in a read-only audit view. Every audit read is written to the audit log.
-# Use exact Minecraft names or UUIDs. Empty = no private-chat super administrators.
-private-chat-super-admins: []
-
-# Administrative audit log. This is not shown in the web UI.
-# Files are appended by date under plugins/BlueMapWebChat/audit by default.
-audit:
-  enabled: true
-  directory: "audit"
-
-moderation:
-  enabled: true
-  allow-web-admin-panel: true
-  allow-moderator-message-delete: true
-  allow-moderator-guest-mute: true
-  default-mute-minutes: 60
-
-# Optional web command panel. Disabled by default because it runs console commands.
-# By default only pre-approved presets are exposed to the web UI; allow-all enables arbitrary command input.
-commands:
-  enabled: false
-  # false = only presets below can be executed. true = users at min-role can run any console command.
-  # Keep this false unless the web UI is strongly protected.
-  allow-all: false
-  # Minimum web role allowed to run commands. Supported values: USER, MODERATOR, ADMIN.
-  min-role: ADMIN
-  show-button: true
-  # false = commands can only be run from the command button/modal.
-  # true = entering /command in the chat input can execute a command when allow-all is true.
-  run-from-chat-input: false
-  # Only used when run-from-chat-input is true. Shows an inline run/preview panel for /commands.
-  show-when-input-starts-with-slash: true
-  require-confirm: true
-  # Maximum length for direct commands when allow-all is true.
-  # 0 = unlimited. Positive values are used directly; no hard upper cap is applied.
-  max-length: 0
-  broadcast-result-to-web-chat: false
-  presets:
-    # - id: day
-    #   label: Set day
-    #   description: Set the current world time to day.
-    #   command: "time set day"
-    #   confirm: true
-    # - id: weather-clear
-    #   label: Clear weather
-    #   command: "weather clear"
-    #   confirm: true
-
-
-# =============================================================================
-# Web interface and notifications
-# =============================================================================
 
 ui:
   # Default UI language. Supported values: en-US, ko-KR, ja-JP, zh-CN.
@@ -689,6 +486,7 @@ ui:
     skip-while-media-active: true
     skip-unchanged: true
 
+
 # Notification defaults and server-side allow limits shared by browser notifications
 # and mobile/background Web Push. Users still choose the same notification options
 # once in Chat settings; these values only define what the server allows by default.
@@ -732,28 +530,121 @@ web-push:
   # Web Push TTL in seconds. Allowed range: 30-86400.
   ttl-seconds: 300
 
-# Optional web font serving. Files are read from plugins/BlueMapWebChat/fonts
-# by default and served through the BlueMapWebChat HTTP API.
-web-fonts:
+# Player name shown for Minecraft-origin messages and announcements.
+# name = real Minecraft username, display-name = Bukkit displayName used by nickname plugins,
+# custom-name = customName first, then displayName.
+# When a display/custom nickname differs from the real Minecraft username,
+# web chat sends the real username too so the UI can show it on hover/click.
+# strip-colors: true removes legacy Minecraft color codes from stored/displayed names.
+# strip-colors: false keeps &/§ color codes for web sender-name rendering.
+# Discord output still strips raw Minecraft color codes before sending.
+player-display:
+  mode: "name"
+  strip-colors: true
+
+# Guest mode is enabled by default for direct HTTP personal use.
+# Spam controls below are intentionally conservative:
+# - first message requires math captcha
+# - captcha pass expires after 2 hours
+# - guests are rate-limited by cooldown and per-minute count
+# - guest file upload is disabled by default
+guest:
+  enabled: true
+  allow-custom-name: true
+  name-prefix: "Guest-"
+  cooldown-seconds: 6
+  max-messages-per-minute: 50
+  block-player-name-spoofing: true
+  blocked-names:
+    - "admin"
+    - "administrator"
+    - "server"
+    - "op"
+    - "console"
+    - "moderator"
+    - "owner"
+
+captcha:
+  # "math" enables a simple math challenge for guests. Use "off" to disable.
+  mode: "math"
+  expire-seconds: 120
+  # false = once solved, guest can chat until pass-valid-minutes expires.
+  # true = require captcha on every guest message.
+  require-on-each-message: false
+  pass-valid-minutes: 120
+
+auth:
+  # Keep auth enabled even in guest mode so players can link with /bmchat auth
+  # and optionally set a web password later.
+  enabled: true
+  link-code-length: 6
+  link-code-expire-seconds: 180
+  # Web-side link code issue rate limit per remote IP. 0 disables each limit.
+  link-code-cooldown-seconds: 3
+  link-code-max-per-minute: 10
+  password-login: true
+  remember-session-days: 30
+  auto-admin-from-permission: true
+  admin-permission: "bluemapwebchat.admin"
+
+security:
+  # Password login brute-force protection.
+  # 0 disables the failure limit.
+  login-fail-limit: 5
+  # Failed attempts are counted within this time window.
+  login-fail-window-seconds: 300
+  # 0 disables lockout even when failures are counted.
+  login-lock-seconds: 600
+  # Server-Sent Events (/stream) connection limits. 0 disables each limit.
+  max-sse-connections-per-ip: 5
+  max-sse-connections-total: 200
+
+admin:
+  allow-local-admin-accounts: true
+  admin-session-expire-hours: 12
+  # Empty = no IP restriction. Use block style when restricting by IP/CIDR:
+  # allow-admin-login-from:
+  #   - "127.0.0.1"
+  #   - "10.0.0.0/8"
+  allow-admin-login-from: []
+
+moderation:
+  enabled: true
+  allow-web-admin-panel: true
+  allow-moderator-message-delete: true
+  allow-moderator-guest-mute: true
+  default-mute-minutes: 60
+
+# Optional web command panel. Disabled by default because it runs console commands.
+# By default only pre-approved presets are exposed to the web UI; allow-all enables arbitrary command input.
+commands:
   enabled: false
-  directory: "fonts"
-  items: []
-  # Item fields:
-  # - family: CSS font-family name exposed to the web UI
-  # - file: relative font file path under web-fonts.directory; allowed extensions: woff2, woff, ttf, otf
-  # - weight: 100-900, default 400
-  # - style: normal, italic, or oblique
-  # Example:
-  # items:
-  #   - family: "Pretendard"
-  #     file: "Pretendard.woff2"
-  #     weight: 400
-  #     style: "normal"
-
-
-# =============================================================================
-# External integrations
-# =============================================================================
+  # false = only presets below can be executed. true = users at min-role can run any console command.
+  # Keep this false unless the web UI is strongly protected.
+  allow-all: false
+  # Minimum web role allowed to run commands. Supported values: USER, MODERATOR, ADMIN.
+  min-role: ADMIN
+  show-button: true
+  # false = commands can only be run from the command button/modal.
+  # true = entering /command in the chat input can execute a command when allow-all is true.
+  run-from-chat-input: false
+  # Only used when run-from-chat-input is true. Shows an inline run/preview panel for /commands.
+  show-when-input-starts-with-slash: true
+  require-confirm: true
+  # Maximum length for direct commands when allow-all is true.
+  # 0 = unlimited. Positive values are used directly; no hard upper cap is applied.
+  max-length: 0
+  broadcast-result-to-web-chat: false
+  presets:
+    # - id: day
+    #   label: Set day
+    #   description: Set the current world time to day.
+    #   command: "time set day"
+    #   confirm: true
+    # - id: weather-clear
+    #   label: Clear weather
+    #   command: "weather clear"
+    #   confirm: true
 
 discordsrv:
   enabled: false
@@ -798,11 +689,6 @@ discordsrv:
   game-to-discord-format: "[{server}] {sender}: {message}"
   discord-to-web-sender-format: "Discord:{sender}"
   discord-to-web-message-format: "{message}"
-
-
-# =============================================================================
-# Uploads, previews, and emoji
-# =============================================================================
 
 upload:
   enabled: true
@@ -900,6 +786,27 @@ preview:
   external-media-cache-retention-days: 5
   external-media-cache-timeout-seconds: 6
 
+# Optional web font serving. Files are read from plugins/BlueMapWebChat/fonts
+# by default and served through the BlueMapWebChat HTTP API.
+web-fonts:
+  enabled: false
+  directory: "fonts"
+  items: []
+  # Item fields:
+  # - family: CSS font-family name exposed to the web UI
+  # - file: relative font file path under web-fonts.directory; allowed extensions: woff2, woff, ttf, otf
+  # - weight: 100-900, default 400
+  # - style: normal, italic, or oblique
+  # Example:
+  # items:
+  #   - family: "Pretendard"
+  #     file: "Pretendard.woff2"
+  #     weight: 400
+  #     style: "normal"
+
+# Pinned messages are stored separately from normal chat history.
+# They are shown in a compact top bar and opened in a popup.
+
 emoji:
   # Server-managed custom emojis. Put single files in plugins/BlueMapWebChat/emojis,
   # or put files in subfolders to create packs. Supported image files can include GIFs.
@@ -984,3 +891,48 @@ emoji:
     # aliases:
     #   wave: "default/wave"
     aliases: {}
+reply:
+  # Clicking the body of a BMChat-rendered Minecraft message suggests
+  # /bmchat reply <messageId> in the chat input. Sender-name clicks remain DM actions.
+  game-click:
+    enabled: true
+    # Replaces the normal local Minecraft chat line with an equivalent clickable
+    # component so game-origin messages can also be replied to. Disable this if a
+    # chat-format plugin requires exclusive ownership of the final chat renderer.
+    local-game-chat: true
+
+  # Format used for a public reply sent from /bmchat reply <messageId> <message>.
+  # Placeholders: {server}, {server_id}, {player}, {message}.
+  game-command-format: "&8[&dReply&8] &f{player}&7: &f{message}"
+
+  # Show the original message preview in Minecraft chat when a web/guest message is a reply.
+  # It is sent as a separate line before the actual web message so URLs in both lines stay clickable.
+  game-preview:
+    enabled: true
+    # Supports Minecraft color codes with &.
+    # Placeholders: {sender}, {preview}, {id}
+    format: "&7{sender}: {preview}"
+    # Maximum displayed preview length before appending …
+    # 0 = no truncation.
+    max-length: 120
+
+  # Label/prefix used for the actual web message line when relaying a reply to Minecraft.
+  # Supports Minecraft color codes with &.
+  # With the default web formats this changes "[Web] Player: message" into "↪ [Reply] Player: message".
+  # The first bracketed source label near the start of the rendered relay line is replaced.
+  # If no bracketed source label is found, this text is prepended.
+  # Placeholders: {sender}, {preview}, {id}
+  game-prefix:
+    enabled: true
+    text: "↪ [Reply] "
+
+pinned:
+  enabled: true
+  # 0 = unlimited pins.
+  max-pins: 20
+  # Show pinned messages to visitors who are not logged in.
+  # false = pinned messages are only returned/displayed after web login.
+  show-to-logged-out: true
+  # Keep uploaded files / external cached media referenced by pinned messages
+  # even when normal upload/cache retention cleanup runs.
+  preserve-uploads: true

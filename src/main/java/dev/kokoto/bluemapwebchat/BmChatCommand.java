@@ -322,9 +322,15 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(yellow("/bmchat dm <player> <message>"));
             return true;
         }
-        PlayerIdentity target = plugin.storage().findKnownPlayer(args[1]);
+        PlayerIdentity target = findDirectMessageTarget(args[1]);
         if (target == null || target.uuid == null || target.uuid.isBlank()) {
             sender.sendMessage(red(msg("dmPlayerNotFound", "Player not found. The player must have joined at least once.")));
+            return true;
+        }
+        RemotePlayerRef remoteTarget = RemotePlayerRef.parse(target.uuid);
+        ServerRelay relay = plugin.serverRelay();
+        if (remoteTarget != null && (relay == null || !relay.canRouteDirectMessage(remoteTarget.serverId))) {
+            sender.sendMessage(red(msg("dmRemoteServerUnavailable", "The target server is unavailable.")));
             return true;
         }
         String message = directMessageBodyFromOriginalCommand(playerInputCommand, args);
@@ -343,13 +349,52 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         WebChatServer server = plugin.webServer();
+        String senderDisplayName = plugin.displayPlayerName(player);
         if (server != null) {
             server.publishDirectMessageUpdate(senderUuid, target.uuid, result.thread == null ? "" : result.thread.id);
-            server.dispatchWebPushDirectMessage(senderUuid, plugin.displayPlayerName(player), target.uuid, target.label(), result.thread == null ? "" : result.thread.id, result.message == null ? 0L : result.message.id, message);
+            server.dispatchWebPushDirectMessage(senderUuid, senderDisplayName, target.uuid, target.label(), result.thread == null ? "" : result.thread.id, result.message == null ? 0L : result.message.id, message);
         }
-        notifyOnlineRecipient(player, target, message);
+        if (remoteTarget != null) {
+            boolean queued = relay.publishDirectMessage(
+                    senderUuid, player.getName(), senderDisplayName,
+                    remoteTarget.serverId, remoteTarget.playerUuid,
+                    target.username == null ? "" : target.username,
+                    target.displayName == null ? "" : target.displayName,
+                    message);
+            if (!queued) {
+                sender.sendMessage(red(msg("dmRemoteServerUnavailable", "The target server is unavailable.")));
+                return true;
+            }
+        } else {
+            notifyOnlineRecipient(player, target, message);
+        }
         sender.sendMessage(sentEchoLineForGame(player, target.label(), message));
         return true;
+    }
+
+    private PlayerIdentity findDirectMessageTarget(String rawInput) {
+        String input = String.valueOf(rawInput == null ? "" : rawInput).trim();
+        if (input.isBlank()) return null;
+
+        RemotePlayerRef direct = RemotePlayerRef.parse(input);
+        if (direct != null) return plugin.storage().findKnownPlayerByUuid(direct.key);
+
+        int at = input.lastIndexOf('@');
+        if (at > 0 && at < input.length() - 1) {
+            String name = input.substring(0, at).trim();
+            String serverId = RemotePlayerRef.normalizeServerId(input.substring(at + 1));
+            if (!name.isBlank() && !serverId.isBlank()) {
+                for (PlayerIdentity candidate : plugin.storage().listKnownPlayers(name, 200)) {
+                    RemotePlayerRef remote = RemotePlayerRef.parse(candidate == null ? "" : candidate.uuid);
+                    if (remote == null || !serverId.equals(remote.serverId)) continue;
+                    String username = String.valueOf(candidate.username == null ? "" : candidate.username).trim();
+                    String displayName = String.valueOf(candidate.displayName == null ? "" : candidate.displayName).trim();
+                    if (username.equalsIgnoreCase(name) || displayName.equalsIgnoreCase(name)
+                            || candidate.label().equalsIgnoreCase(name)) return candidate;
+                }
+            }
+        }
+        return plugin.storage().findKnownPlayer(input);
     }
 
 
@@ -769,7 +814,7 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(yellow("/bmchat dm read <player> [pageSize]"));
             return true;
         }
-        PlayerIdentity target = plugin.storage().findKnownPlayer(args[2]);
+        PlayerIdentity target = findDirectMessageTarget(args[2]);
         if (target == null || target.uuid == null || target.uuid.isBlank()) {
             sender.sendMessage(red(msg("dmPlayerNotFound", "Player not found. The player must have joined at least once.")));
             return true;
@@ -1228,6 +1273,16 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
         return sb.toString();
     }
 
+    private String directMessageTargetSuggestion(PlayerIdentity player) {
+        if (player == null) return "";
+        String name = player.username != null && !player.username.isBlank()
+                ? player.username.trim()
+                : String.valueOf(player.displayName == null ? "" : player.displayName).trim();
+        if (name.isBlank()) return "";
+        RemotePlayerRef remote = RemotePlayerRef.parse(player.uuid);
+        return remote == null ? name : name + "@" + remote.serverId;
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> out = new ArrayList<>();
@@ -1260,14 +1315,14 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             out.add("hide");
             String partial = args.length > 1 ? args[1] : "";
             for (PlayerIdentity p : plugin.storage().listKnownPlayers(partial, 20)) {
-                if (p.username != null && !p.username.isBlank()) out.add(p.username);
-                else if (p.displayName != null && !p.displayName.isBlank()) out.add(p.displayName);
+                String suggestion = directMessageTargetSuggestion(p);
+                if (!suggestion.isBlank()) out.add(suggestion);
             }
         } else if (args.length == 3 && "dm".equalsIgnoreCase(args[0]) && "read".equalsIgnoreCase(args[1]) && sender instanceof Player) {
             String partial = args.length > 2 ? args[2] : "";
             for (PlayerIdentity p : plugin.storage().listKnownPlayers(partial, 20)) {
-                if (p.username != null && !p.username.isBlank()) out.add(p.username);
-                else if (p.displayName != null && !p.displayName.isBlank()) out.add(p.displayName);
+                String suggestion = directMessageTargetSuggestion(p);
+                if (!suggestion.isBlank()) out.add(suggestion);
             }
         } else if (args.length >= 3 && "dm".equalsIgnoreCase(args[0]) && sender instanceof Player && !isDmSubcommand(args[1])) {
             out.addAll(emojiTokenTabSuggestions(args[args.length - 1]));

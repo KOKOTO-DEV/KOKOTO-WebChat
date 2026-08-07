@@ -136,6 +136,40 @@ public final class ServerRelay implements AutoCloseable {
         return serverName;
     }
 
+    public boolean canRouteDirectMessage(String targetServerId) {
+        String target = normalizeId(targetServerId);
+        if (!isEnabled() || target.isBlank() || target.equals(serverId)) return false;
+
+        ConfigValues.RelayPeer direct = peersById.get(target);
+        if (direct != null && !secretFor(direct).isBlank()) return true;
+
+        // A spoke/chain can safely forward a private message only when there is
+        // exactly one authenticated next hop. With two or more possible peers the
+        // destination route is ambiguous, so reject before the sender-side thread
+        // records a message that cannot be routed.
+        int usableNextHops = 0;
+        for (ConfigValues.RelayPeer peer : peersById.values()) {
+            if (peer == null || secretFor(peer).isBlank()) continue;
+            usableNextHops++;
+            if (usableNextHops > 1) return false;
+        }
+        return usableNextHops == 1;
+    }
+
+    public boolean publishDirectMessage(String senderUuid, String senderUsername, String senderDisplayName,
+                                        String targetServerId, String targetUuid, String targetUsername,
+                                        String targetDisplayName, String message) {
+        String target = normalizeId(targetServerId);
+        if (!canRouteDirectMessage(target)) return false;
+        DirectMessageEnvelope envelope = DirectMessageEnvelope.create(
+                serverId, serverName, target,
+                senderUuid, senderUsername, senderDisplayName,
+                targetUuid, targetUsername, targetDisplayName, message);
+        if (!envelope.valid()) return false;
+        markSeen(envelope.relayId);
+        return sendDirectToPeers(envelope, "");
+    }
+
     public boolean shouldRelay(ChatMessage msg) {
         if (!isEnabled() || msg == null) return false;
         String source = safe(msg.source).toLowerCase(Locale.ROOT);
@@ -247,6 +281,126 @@ public final class ServerRelay implements AutoCloseable {
         }
     }
 
+    public void handleIncomingDirectMessage(HttpExchange exchange) throws IOException {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            sendJson(exchange, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        if (!isEnabled()) {
+            sendJson(exchange, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}");
+            return;
+        }
+        String protocol = header(exchange, HEADER_VERSION);
+        String fromId = normalizeId(header(exchange, HEADER_FROM));
+        String timestampText = header(exchange, HEADER_TIMESTAMP);
+        String signature = header(exchange, HEADER_SIGNATURE).toLowerCase(Locale.ROOT);
+        ConfigValues.RelayPeer peer = peersById.get(fromId);
+        if (!PROTOCOL_VERSION.equals(protocol)) {
+            sendJson(exchange, 426, "{\"ok\":false,\"error\":\"unsupported_protocol\"}");
+            return;
+        }
+        if (peer == null) {
+            sendJson(exchange, 403, "{\"ok\":false,\"error\":\"unknown_peer\"}");
+            return;
+        }
+        long timestamp;
+        try {
+            timestamp = Long.parseLong(timestampText);
+        } catch (NumberFormatException ex) {
+            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"invalid_timestamp\"}");
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long allowedSkew = config.serverRelayMaxClockSkewSeconds * 1000L;
+        if (timestamp < now - allowedSkew || timestamp > now + allowedSkew) {
+            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"expired_request\"}");
+            return;
+        }
+        byte[] bodyBytes;
+        try {
+            bodyBytes = readLimited(exchange, MAX_BODY_BYTES);
+        } catch (IOException ex) {
+            sendJson(exchange, 413, "{\"ok\":false,\"error\":\"body_too_large\"}");
+            return;
+        }
+        String body = new String(bodyBytes, StandardCharsets.UTF_8);
+        String secret = secretFor(peer);
+        if (secret.isBlank() || signature.isBlank() || !constantTimeEquals(signature, sign(secret, timestampText + "\n" + body))) {
+            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"bad_signature\"}");
+            return;
+        }
+        DirectMessageEnvelope envelope = DirectMessageEnvelope.fromMap(JsonUtil.parseFlatObject(body));
+        if (!envelope.valid() || !fromId.equals(envelope.fromServerId)
+                || envelope.hop < 0 || envelope.hop >= config.serverRelayMaxHops) {
+            sendJson(exchange, 400, "{\"ok\":false,\"error\":\"invalid_envelope\"}");
+            return;
+        }
+        if (envelope.originServerId.equals(serverId)) {
+            markSeen(envelope.relayId);
+            sendJson(exchange, 200, "{\"ok\":true,\"duplicate\":true}");
+            return;
+        }
+        if (!markSeen(envelope.relayId)) {
+            sendJson(exchange, 200, "{\"ok\":true,\"duplicate\":true}");
+            return;
+        }
+        if (envelope.targetServerId.equals(serverId)) {
+            WebChatServer web = plugin.webServer();
+            boolean accepted = web != null && web.acceptRelayedDirectMessage(
+                    envelope.originServerId, envelope.originServerName,
+                    envelope.senderUuid, envelope.senderUsername, envelope.senderDisplayName,
+                    envelope.targetUuid, envelope.targetUsername, envelope.targetDisplayName,
+                    envelope.message);
+            if (!accepted) {
+                sendJson(exchange, 404, "{\"ok\":false,\"error\":\"dm_target_unavailable\"}");
+                return;
+            }
+            sendJson(exchange, 200, "{\"ok\":true,\"delivered\":true}");
+            return;
+        }
+        if (envelope.hop + 1 >= config.serverRelayMaxHops) {
+            sendJson(exchange, 409, "{\"ok\":false,\"error\":\"max_hops\"}");
+            return;
+        }
+        envelope.hop++;
+        envelope.fromServerId = serverId;
+        if (!sendDirectToPeers(envelope, fromId)) {
+            sendJson(exchange, 404, "{\"ok\":false,\"error\":\"dm_route_unavailable\"}");
+            return;
+        }
+        sendJson(exchange, 200, "{\"ok\":true,\"forwarded\":true}");
+    }
+
+    private boolean sendDirectToPeers(DirectMessageEnvelope envelope, String excludePeerId) {
+        if (!isEnabled() || envelope == null) return false;
+        String body = envelope.toJson();
+        ConfigValues.RelayPeer direct = peersById.get(envelope.targetServerId);
+        if (direct != null && !direct.id.equals(excludePeerId)) {
+            String secret = secretFor(direct);
+            if (secret.isBlank()) return false;
+            send(direct, body, secret, true);
+            return true;
+        }
+
+        // A spoke or chain node has exactly one usable next hop after the sender
+        // and origin are excluded. Do not broadcast private message bodies to
+        // multiple unrelated peers when no explicit destination route is known.
+        ConfigValues.RelayPeer nextHop = null;
+        for (ConfigValues.RelayPeer peer : peersById.values()) {
+            if (peer.id.equals(excludePeerId) || peer.id.equals(envelope.originServerId)) continue;
+            if (secretFor(peer).isBlank()) continue;
+            if (nextHop != null) {
+                plugin.getLogger().warning("DM relay route to " + envelope.targetServerId
+                        + " is ambiguous; configure a direct peer or a single hub/next hop.");
+                return false;
+            }
+            nextHop = peer;
+        }
+        if (nextHop == null) return false;
+        send(nextHop, body, secretFor(nextHop), true);
+        return true;
+    }
+
     private void sendToPeers(RelayEnvelope envelope, String excludePeerId) {
         if (!isEnabled() || envelope == null) return;
         String body = envelope.toJson();
@@ -259,9 +413,14 @@ public final class ServerRelay implements AutoCloseable {
     }
 
     private void send(ConfigValues.RelayPeer peer, String body, String secret) {
+        send(peer, body, secret, false);
+    }
+
+    private void send(ConfigValues.RelayPeer peer, String body, String secret, boolean directMessage) {
         try {
             String timestamp = Long.toString(System.currentTimeMillis());
-            HttpRequest request = HttpRequest.newBuilder(relayUri(peer.url))
+            URI endpoint = directMessage ? relayDirectMessageUri(peer.url) : relayUri(peer.url);
+            HttpRequest request = HttpRequest.newBuilder(endpoint)
                     .timeout(Duration.ofSeconds(config.serverRelayRequestTimeoutSeconds))
                     .header("Content-Type", "application/json; charset=utf-8")
                     .header(HEADER_VERSION, PROTOCOL_VERSION)
@@ -273,23 +432,35 @@ public final class ServerRelay implements AutoCloseable {
             httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
                     .whenComplete((response, error) -> {
                         if (closed.get()) return;
+                        String kind = directMessage ? "DM relay" : "Server relay";
                         if (error != null) {
-                            plugin.getLogger().warning("Server relay send failed for peer " + peer.id + ": " + safe(error.getMessage()));
+                            plugin.getLogger().warning(kind + " send failed for peer " + peer.id + ": " + safe(error.getMessage()));
                         } else if (response.statusCode() < 200 || response.statusCode() >= 300) {
                             String detail = compactResponseBody(response.body());
-                            plugin.getLogger().warning("Server relay peer " + peer.id + " returned HTTP "
+                            plugin.getLogger().warning(kind + " peer " + peer.id + " returned HTTP "
                                     + response.statusCode() + (detail.isBlank() ? "" : " (" + detail + ")"));
                         }
                     });
         } catch (Exception ex) {
-            plugin.getLogger().warning("Server relay request could not be created for peer " + peer.id + ": " + ex.getMessage());
+            plugin.getLogger().warning((directMessage ? "DM relay" : "Server relay")
+                    + " request could not be created for peer " + peer.id + ": " + ex.getMessage());
         }
     }
 
     private URI relayUri(String configured) {
+        return relayEndpointUri(configured, "/relay/receive");
+    }
+
+    private URI relayDirectMessageUri(String configured) {
+        return relayEndpointUri(configured, "/relay/dm/receive");
+    }
+
+    private URI relayEndpointUri(String configured, String endpoint) {
         String url = safe(configured).trim();
         while (url.endsWith("/")) url = url.substring(0, url.length() - 1);
-        if (!url.endsWith("/relay/receive")) url += "/relay/receive";
+        if (url.endsWith("/relay/receive")) url = url.substring(0, url.length() - "/relay/receive".length());
+        if (url.endsWith("/relay/dm/receive")) url = url.substring(0, url.length() - "/relay/dm/receive".length());
+        url += endpoint;
         URI uri = URI.create(url);
         String scheme = safe(uri.getScheme()).toLowerCase(Locale.ROOT);
         if (!scheme.equals("http") && !scheme.equals("https")) {
@@ -388,6 +559,112 @@ public final class ServerRelay implements AutoCloseable {
         if (!closed.compareAndSet(false, true)) return;
         executor.shutdownNow();
         seenRelayIds.clear();
+    }
+
+    private static final class DirectMessageEnvelope {
+        String relayId;
+        String originServerId;
+        String originServerName;
+        String fromServerId;
+        String targetServerId;
+        int hop;
+        long time;
+        String senderUuid;
+        String senderUsername;
+        String senderDisplayName;
+        String targetUuid;
+        String targetUsername;
+        String targetDisplayName;
+        String message;
+
+        static DirectMessageEnvelope create(String originServerId, String originServerName, String targetServerId,
+                                            String senderUuid, String senderUsername, String senderDisplayName,
+                                            String targetUuid, String targetUsername, String targetDisplayName,
+                                            String message) {
+            DirectMessageEnvelope e = new DirectMessageEnvelope();
+            e.relayId = "dmrelay-" + SecurityUtil.randomToken(16);
+            e.originServerId = normalizeId(originServerId);
+            e.originServerName = safe(originServerName);
+            e.fromServerId = e.originServerId;
+            e.targetServerId = normalizeId(targetServerId);
+            e.hop = 0;
+            e.time = System.currentTimeMillis();
+            e.senderUuid = limit(safe(senderUuid).trim().toLowerCase(Locale.ROOT), 80);
+            e.senderUsername = limit(safe(senderUsername), 64);
+            e.senderDisplayName = limit(safe(senderDisplayName), 128);
+            e.targetUuid = limit(safe(targetUuid).trim().toLowerCase(Locale.ROOT), 80);
+            e.targetUsername = limit(safe(targetUsername), 64);
+            e.targetDisplayName = limit(safe(targetDisplayName), 128);
+            e.message = limit(safe(message), 16384);
+            return e;
+        }
+
+        static DirectMessageEnvelope fromMap(Map<String, String> map) {
+            DirectMessageEnvelope e = new DirectMessageEnvelope();
+            e.relayId = safe(map.get("relayId"));
+            e.originServerId = normalizeId(map.get("originServerId"));
+            e.originServerName = safe(map.get("originServerName"));
+            e.fromServerId = normalizeId(map.get("fromServerId"));
+            e.targetServerId = normalizeId(map.get("targetServerId"));
+            e.hop = parseInt(map.get("hop"), -1);
+            e.time = parseLong(map.get("time"), System.currentTimeMillis());
+            e.senderUuid = safe(map.get("senderUuid")).trim().toLowerCase(Locale.ROOT);
+            e.senderUsername = safe(map.get("senderUsername"));
+            e.senderDisplayName = safe(map.get("senderDisplayName"));
+            e.targetUuid = safe(map.get("targetUuid")).trim().toLowerCase(Locale.ROOT);
+            e.targetUsername = safe(map.get("targetUsername"));
+            e.targetDisplayName = safe(map.get("targetDisplayName"));
+            e.message = safe(map.get("message"));
+            return e;
+        }
+
+        boolean valid() {
+            return relayId.matches("[A-Za-z0-9._:-]{8,160}")
+                    && !originServerId.isBlank() && originServerId.length() <= 64
+                    && originServerName.length() <= 96
+                    && !fromServerId.isBlank() && fromServerId.length() <= 64
+                    && !targetServerId.isBlank() && targetServerId.length() <= 64
+                    && !targetServerId.equals(originServerId)
+                    && !senderUuid.isBlank() && senderUuid.length() <= 80
+                    && senderUsername.length() <= 64
+                    && senderDisplayName.length() <= 128
+                    && !targetUuid.isBlank() && targetUuid.length() <= 80
+                    && targetUsername.length() <= 64
+                    && targetDisplayName.length() <= 128
+                    && !message.isBlank() && message.length() <= 16384;
+        }
+
+        String toJson() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("relayId", relayId);
+            m.put("originServerId", originServerId);
+            m.put("originServerName", originServerName);
+            m.put("fromServerId", fromServerId);
+            m.put("targetServerId", targetServerId);
+            m.put("hop", hop);
+            m.put("time", time);
+            m.put("senderUuid", senderUuid);
+            m.put("senderUsername", senderUsername);
+            m.put("senderDisplayName", senderDisplayName);
+            m.put("targetUuid", targetUuid);
+            m.put("targetUsername", targetUsername);
+            m.put("targetDisplayName", targetDisplayName);
+            m.put("message", message);
+            return JsonUtil.obj(m);
+        }
+
+        private static String limit(String raw, int max) {
+            String value = safe(raw);
+            return value.length() <= max ? value : value.substring(0, max);
+        }
+
+        private static int parseInt(String raw, int fallback) {
+            try { return Integer.parseInt(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
+        }
+
+        private static long parseLong(String raw, long fallback) {
+            try { return Long.parseLong(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
+        }
     }
 
     private static final class RelayEnvelope {

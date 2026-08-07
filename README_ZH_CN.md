@@ -26,7 +26,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.6.0.jar
+target/BlueMapWebChat-4.6.1.jar
 ```
 
 ## 安装
@@ -40,7 +40,11 @@ target/BlueMapWebChat-4.6.0.jar
 7. 重启服务器或执行 `/bmchat reload`。如果 BlueMap Web 资源没有刷新，再执行 `/bluemap reload`。
 
 
-现有 `config.yml` 不会被覆盖。当 `config-version` 缺失或与正在运行的插件版本不同时，插件会比较实际配置与 JAR 内置默认配置，并生成 `plugins/BlueMapWebChat/config-migration-4.6.0.yml`。生成文件会把可直接合并的缺失设置、已变化的默认值以及最终审核用的 `config-version` 标记写成真实 YAML 设置。即使没有其他差异，也会为了配置版本管理生成该文件和 `config-version` 项。版本信息以及旧、新默认值说明只使用 `#` 注释。不会输出自定义值和废弃候选等参考列表。当 `config-version: "4.6.0"` 与插件版本一致时，配置被视为已审核并跳过比较。参见 `docs/UPGRADE_4_6_0_ZH_CN.md`。
+现有 `config.yml` 不会被覆盖。当 `config-version` 缺失或与正在运行的插件版本不同时，插件会比较实际配置与 JAR 内置默认配置，并生成 `plugins/BlueMapWebChat/config-migration-4.6.1.yml`。生成文件会把可直接合并的缺失设置、已变化的默认值以及最终审核用的 `config-version` 标记写成真实 YAML 设置。即使没有其他差异，也会为了配置版本管理生成该文件和 `config-version` 项。版本信息以及旧、新默认值说明只使用 `#` 注释。不会输出自定义值和废弃候选等参考列表。当 `config-version: "4.6.1"` 与插件版本一致时，配置被视为已审核并跳过比较。本次更新参见 `docs/UPGRADE_4_6_1_ZH_CN.md`，之前的主要迁移参见 `docs/UPGRADE_4_6_0_ZH_CN.md`。
+
+### 4.6.1 跨服务器私信兼容性重要说明
+
+所有交换跨服务器私信的连接服务器都必须使用同一个修正版 **4.6.1 构建**。仅显示相同的版本号并不够；较早的 4.6.1 构建不包含完整的专用私信中继与精确目标传递修复，可能导致只在发送服务器创建会话，而接收服务器没有收到或保存消息。请在所有连接服务器上替换 JAR 并重新启动。
 
 ## standalone URL
 
@@ -171,6 +175,7 @@ bluemapwebchat.dm
 bluemapwebchat.reply
 bluemapwebchat.group
 bluemapwebchat.admin
+bluemapwebchat.update.notify
 ```
 
 ## 文档
@@ -178,6 +183,7 @@ bluemapwebchat.admin
 - `docs/USER_MANUAL_ZH_CN.md` - 所有功能的完整用户与运维手册
 - `docs/CONFIGURATION_ZH_CN.md`
 - `docs/SERVER_RELAY_ZH_CN.md` - 服务器间公共聊天中继
+- `docs/UPGRADE_4_6_1_ZH_CN.md` - 4.6.0→4.6.1 升级
 - `docs/UPGRADE_4_6_0_ZH_CN.md` - 4.5.5→4.6.0 配置/数据库升级
 - `docs/CADDY_HTTPS_ZH_CN.md`
 - `docs/I18N_ZH_CN.md`
@@ -203,12 +209,12 @@ URL 设置说明：HTTPS 反向代理模式下，将 `web-addon.api-base-url` �
 
 ## 1:1 私信会话线程
 
-启用 `direct-message.enabled` 后，可以使用 1:1 会话线程式消息箱。目标仅限已有 UUID/名称记录的已关联或曾加入玩家。A→B 与 B→A 会使用同一个线程，存储按 UUID 进行，UI 会尽可能显示为 `显示名 (真实账号名)`。
+启用 `direct-message.enabled` 后，可以使用 1:1 会话线程式消息箱。目标包括已有 UUID/名称记录的已关联或曾加入玩家，以及中继消息中带有玩家 UUID 的其他服务器发送者。收到的显示名和真实 Minecraft 名会加入 Web DM 的新会话对象搜索，因此无需单独添加 DM 按钮即可通过普通搜索开始会话。没有玩家 UUID 的访客和 Discord 发送者不会被加入。A→B 与 B→A 会使用同一个线程，存储按 UUID 进行，UI 会尽可能显示为 `显示名 (真实账号名)`。
 
 DM 使用独立于公开聊天历史的专用存储。`direct-message.storage: auto` 会在公开聊天使用 `jsonl` 存储时让 DM 也使用 JSONL，其他情况下使用 SQLite。也可以显式设置为 `sqlite` 或 `jsonl`，并分别使用 `direct-message.sqlite-file` 或 `direct-message.jsonl-file`。`direct-message.retention-days: 0` 表示无保留期限；其他值会显示在 DM 窗口标题旁作为保留期限，超过该天数的 DM 原文会被物理删除。`direct-message.max-messages-per-thread: 0` 表示不按线程消息数清理。`direct-message.confirm-hide` 控制 Web UI 在从自己视图隐藏 DM 前是否显示确认框。由于私信会保存在服务器上，此功能默认关闭，建议先确定服务器保留策略后再启用。
 
 
-启用 `direct-message.capture-game-whispers` 后，游戏 `/w`、`/msg`、`/tell` 等会复制到相同 Web DM 会话。点击同服游戏发送者名称会建议 `/w <真实名称> `；Web 发送者和其他服务器的游戏发送者会建议 `/bmchat dm <真实名称> `。
+启用 `direct-message.capture-game-whispers` 后，游戏 `/w`、`/msg`、`/tell` 等会复制到相同 Web DM 会话。点击同服游戏发送者名称会建议 `/w <真实名称> `；Web 发送者会建议 `/bmchat dm <真实名称> `；其他服务器的游戏发送者会建议 `/bmchat dm <真实名称>@<server-id> `。在 `/w`、`/msg`、`/tell`、`/whisper`、`/m`、`/pm`、`/message`、`/t` 中使用 `名称@server-id` 目标时，也会通过同一跨服务器 BMChat DM relay 发送。
 
 ## 群组聊天室
 
@@ -219,7 +225,7 @@ DM 使用独立于公开聊天历史的专用存储。`direct-message.storage: a
 
 ### 私信/群组聊天元数据超级管理员
 
-在 `config.yml` 的 `private-chat-super-admins` 中填写准确 UUID 或 Minecraft 名后，可用于管理/容量检查地查看 DM/群组聊天元数据。该视图只显示标题/参与者、消息数、大致存储大小、保留状态和清理预览数量，不能打开消息正文。超级管理员还可以锁定 DM/群组会话，或将其从自动删除中排除；这些控制项仅限管理员使用。
+在 `config.yml` 的 `private-chat-super-admins` 中填写准确 UUID 或 Minecraft 名后，可查看用于管理/容量检查的私信与群聊元数据。默认视图显示标题/参与者、消息数、大致存储大小、保留状态和清理预览。只有同时设置 `direct-message.admin-audit.enabled: true` 时，同一明确列出的账号才能只读打开私信正文；普通 ADMIN/MODERATOR 角色不会自动获得权限，每次分页读取都会写入审计日志。超级管理员还可以锁定会话或将其从自动删除中排除。
 
 会影响管理状态的操作默认会按日期追加到 `plugins/BlueMapWebChat/audit` 下的文本审计日志中。审计日志供服务器运营者查看，不会显示在 Web UI 中。
 

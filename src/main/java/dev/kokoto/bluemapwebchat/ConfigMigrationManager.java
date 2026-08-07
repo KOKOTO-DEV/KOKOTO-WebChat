@@ -21,11 +21,14 @@ final class ConfigMigrationManager {
     private static final List<String> SAFE_DISABLED_WHEN_MISSING = List.of(
             "direct-message.capture-game-whispers",
             "reply.game-click.enabled",
-            "reply.game-click.local-game-chat"
+            "reply.game-click.local-game-chat",
+            "direct-message.admin-audit.enabled"
     );
 
     private static final Map<String, String> BASELINE_RESOURCES = Map.of(
-            "4.5.5", "config-baselines/config-4.5.5.yml"
+            "4.5.5", "config-baselines/config-4.5.5.yml",
+            "4.6.0", "config-baselines/config-4.6.0.yml",
+            "4.6.1", "config-baselines/config-4.6.1.yml"
     );
 
     private ConfigMigrationManager() {

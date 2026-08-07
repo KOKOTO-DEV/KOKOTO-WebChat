@@ -18,6 +18,8 @@ Bukkit/Paper/Spigot 계열 서버에서 동작하는 웹 채팅 플러그인입�
 - DiscordSRV 연동, Discord CDN 미디어 캐시
 - 답글 및 원본 메시지 점프, 게임 채팅 원문 미리보기, 고정 메시지, 가상 스크롤, 창 이동/크기조절, PIP
 - 연동/저장된 플레이어 대상 1:1 대화 스레드형 메시지함, 안 읽은 배지, 스레드별 보관 설정
+- 타 서버 릴레이 발신자를 기존 웹 DM 대상 검색에서 검색
+- 정확한 계정 허용 목록과 감사 로그를 사용하는 선택형 읽기 전용 관리자 DM 본문 감사
 - en-US, ko-KR, ja-JP, zh-CN 다국어 UI
 
 ## 빌드
@@ -27,7 +29,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.6.0.jar
+target/BlueMapWebChat-4.6.1.jar
 ```
 
 ## 기본 설치
@@ -41,7 +43,30 @@ target/BlueMapWebChat-4.6.0.jar
 7. 서버 재시작 또는 `/bmchat reload`를 실행합니다. BlueMap 쪽 웹 자원이 갱신되지 않으면 `/bluemap reload`도 실행합니다.
 
 
-기존 `config.yml`은 덮어쓰지 않습니다. `config-version`이 없거나 실행 중인 플러그인 버전과 다르면 실제 `config.yml`과 JAR 기본 설정을 비교해 `plugins/BlueMapWebChat/config-migration-4.6.0.yml`을 생성합니다. 생성 파일에는 그대로 병합할 수 있는 누락 설정, 변경된 기본값, 최종 `config-version` 검토 표식을 실제 YAML 설정으로 표시합니다. 다른 차이가 없어도 설정 버전 관리를 위해 파일과 `config-version` 항목은 생성됩니다. 버전 정보와 이전·새 기본값 설명은 `#` 주석으로만 기록합니다. 사용자 지정값과 폐기 후보 같은 참고 목록은 출력하지 않습니다. `config-version: "4.6.0"`이 플러그인 버전과 같으면 이미 검토한 설정으로 간주하고 비교를 생략합니다. 자세한 내용은 `docs/UPGRADE_4_6_0_KO.md`를 참고하세요.
+기존 `config.yml`은 덮어쓰지 않습니다. `config-version`이 없거나 실행 중인 플러그인 버전과 다르면 실제 `config.yml`과 JAR 기본 설정을 비교해 `plugins/BlueMapWebChat/config-migration-4.6.1.yml`을 생성합니다. 생성 파일에는 그대로 병합할 수 있는 누락 설정, 변경된 기본값, 최종 `config-version` 검토 표식을 실제 YAML 설정으로 표시합니다. 다른 차이가 없어도 설정 버전 관리를 위해 파일과 `config-version` 항목은 생성됩니다. 버전 정보와 이전·새 기본값 설명은 `#` 주석으로만 기록합니다. 사용자 지정값과 폐기 후보 같은 참고 목록은 출력하지 않습니다. `config-version: "4.6.1"`이 플러그인 버전과 같으면 이미 검토한 설정으로 간주하고 비교를 생략합니다. 이번 업데이트는 `docs/UPGRADE_4_6_1_KO.md`, 이전 주요 마이그레이션은 `docs/UPGRADE_4_6_0_KO.md`를 참고하세요.
+
+## 4.6.1 타 서버 DM 대상·전송 경로 분리
+
+타 서버 DM 대상은 이제 `서버 ID + 플레이어 UUID` 조합으로 식별합니다. 로컬 서버에 같은 UUID의 사용자가 있어도 `서버명 · 종류`를 누르면 해당 타 서버 사용자의 대화가 열리고, 서명된 전용 DM 릴레이를 통해 대상 서버로 전달됩니다.
+
+서버 간 DM을 사용하는 모든 연결 서버에는 이 수정된 4.6.1 빌드를 설치해야 합니다. 버전 번호는 그대로지만 이전 4.6.1 빌드에는 전용 DM 릴레이와 정확한 대상 전달 수정이 모두 들어 있지 않습니다.
+
+## 4.6.1 타 서버 DM 검색과 관리자 감사 열람
+
+서버 릴레이 메시지에 플레이어 UUID가 있으면 해당 타 서버 발신자를 기존 DM 새 대화 검색에서 표시합니다. 별도 DM 버튼은 추가하지 않으며, UUID가 없는 게스트·Discord 발신자는 제외합니다.
+
+DM 본문 감사 기능은 기본적으로 꺼져 있습니다. 다음 두 조건을 모두 설정한 계정만 읽기 전용으로 열람할 수 있습니다.
+
+```yaml
+private-chat-super-admins:
+  - "정확한마인크래프트이름또는UUID"
+
+direct-message:
+  admin-audit:
+    enabled: true
+```
+
+일반 ADMIN/MODERATOR 역할만으로는 본문을 볼 수 없습니다. 감사 화면에서는 전송·숨김이 불가능하고, 페이지를 읽을 때마다 대화 ID와 조회 건수가 날짜별 감사 로그에 기록됩니다. 메시지 본문 자체는 감사 로그에 복사하지 않습니다.
 
 ## 사용 형태
 
@@ -149,12 +174,12 @@ URL 설정 참고: HTTPS 리버스 프록시에서는 `web-addon.api-base-url`�
 
 ## 1:1 메시지함 / DM 스레드
 
-`direct-message.enabled`를 켜면 1:1 대화 스레드형 메시지함을 사용할 수 있습니다. 대상은 UUID/이름이 저장된 연동 또는 접속 기록이 있는 플레이어로 제한됩니다. A→B와 B→A는 같은 스레드를 사용하며, 저장은 UUID 기준으로 하고 UI는 가능하면 `표시명 (실제 계정명)` 형태로 표시합니다.
+`direct-message.enabled`를 켜면 1:1 대화 스레드형 메시지함을 사용할 수 있습니다. 대상은 UUID/이름이 저장된 연동·접속 기록 플레이어와, 서버 릴레이 메시지에서 UUID가 확인된 타 서버 플레이어입니다. 릴레이로 받은 표시 이름과 실제 Minecraft 이름도 웹 DM의 새 대화 대상 검색에 반영되므로 별도 DM 버튼 없이 이름을 검색해 대화를 시작할 수 있습니다. UUID가 없는 게스트·Discord 발신자는 대상에 포함되지 않습니다. A→B와 B→A는 같은 스레드를 사용하며, 저장은 UUID 기준으로 하고 UI는 가능하면 `표시명 (실제 계정명)` 형태로 표시합니다.
 
 DM은 공개 채팅 기록과 분리된 전용 저장소를 사용합니다. `direct-message.storage: auto`는 공개 채팅이 `jsonl` 저장방식일 때 DM도 JSONL을 사용하고, 그 외에는 SQLite를 사용합니다. 필요하면 `direct-message.storage`를 `sqlite` 또는 `jsonl`로 직접 지정하고 `direct-message.sqlite-file` 또는 `direct-message.jsonl-file`을 사용할 수 있습니다. `direct-message.retention-days: 0`은 보관 기한 없음이며, 그 외 값은 DM 메시지함 제목 옆에 보관 기간으로 표시되고 해당 일수가 지난 DM 원문은 물리 삭제됩니다. `direct-message.max-messages-per-thread: 0`은 스레드별 개수 정리 없음입니다. `direct-message.confirm-hide`는 웹 UI에서 DM을 내 화면에서 숨길 때 확인창을 띄울지 정합니다. 개인 메시지가 서버에 저장되는 기능이므로 기본값은 비활성화이며, 서버 정책에 맞게 보관 주기를 정한 뒤 켜는 것을 권장합니다.
 
 
-`direct-message.capture-game-whispers`를 켜면 게임의 `/w`, `/msg`, `/tell`류 명령을 같은 웹 DM 스레드에 복제할 수 있습니다. 같은 서버의 게임 발신자 이름을 클릭하면 `/w <실제이름> `, 웹 발신자와 다른 서버의 게임 발신자는 `/bmchat dm <실제이름> `이 자동완성됩니다.
+`direct-message.capture-game-whispers`를 켜면 게임의 `/w`, `/msg`, `/tell`류 명령을 같은 웹 DM 스레드에 복제할 수 있습니다. 같은 서버의 게임 발신자 이름을 클릭하면 `/w <실제이름> `, 웹 발신자는 `/bmchat dm <실제이름> `, 다른 서버의 게임 발신자는 `/bmchat dm <실제이름>@<server-id> `가 자동완성됩니다. 또한 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t`에서 대상에 `이름@server-id`를 사용하면 같은 타 서버 BMChat DM 릴레이로 전송됩니다.
 
 ## 커스텀 이모지와 게임 측 이모지 플러그인
 
@@ -229,6 +254,7 @@ bluemapwebchat.dm
 bluemapwebchat.reply
 bluemapwebchat.group
 bluemapwebchat.admin
+bluemapwebchat.update.notify
 ```
 
 ## 문서
@@ -236,6 +262,7 @@ bluemapwebchat.admin
 - `docs/USER_MANUAL_KO.md` - 전체 기능 사용자·운영자 통합 매뉴얼
 - `docs/CONFIGURATION_KO.md` - 설정 참고
 - `docs/SERVER_RELAY_KO.md` - 서버 간 공개 채팅 릴레이
+- `docs/UPGRADE_4_6_1_KO.md` - 4.6.0→4.6.1 업그레이드
 - `docs/UPGRADE_4_6_0_KO.md` - 4.5.5→4.6.0 설정/DB 업그레이드
 - `docs/CADDY_HTTPS_KO.md` - HTTPS 리버스 프록시
 - `docs/I18N_KO.md` - 다국어 파일과 fallback
@@ -257,7 +284,7 @@ SQLite 기록 저장소를 사용할 때 채팅 패널 우측 상단 플로팅 �
 
 ### 비공개 채팅 메타데이터 최고관리자
 
-`config.yml`의 `private-chat-super-admins`에 정확한 UUID 또는 마인크래프트 이름을 지정하면 관리/용량 확인용 DM/그룹채팅 메타데이터만 볼 수 있습니다. 이 화면은 제목/참여자, 메시지 수, 대략적인 저장 용량, 보관기간 상태, 정리 미리보기 수치만 표시하며 메시지 본문을 열 수 없습니다. 최고관리자는 DM/그룹 세션을 잠그거나 자동삭제 대상에서 제외할 수 있으며, 이 기능은 관리자 전용입니다.
+`config.yml`의 `private-chat-super-admins`에 정확한 UUID 또는 마인크래프트 이름을 지정하면 관리/용량 확인용 DM/그룹채팅 메타데이터를 볼 수 있습니다. 기본 화면은 제목/참여자, 메시지 수, 대략적인 저장 용량, 보관기간 상태와 정리 미리보기를 표시합니다. `direct-message.admin-audit.enabled: true`를 함께 설정한 경우에만 같은 명시 계정이 DM 본문을 읽기 전용으로 열 수 있으며, 일반 ADMIN/MODERATOR 역할은 자동으로 대상이 되지 않습니다. 페이지 열람은 감사 로그에 기록됩니다. 최고관리자는 DM/그룹 세션 잠금과 자동삭제 제외도 관리할 수 있습니다.
 
 관리적으로 영향을 주는 행동은 기본적으로 `plugins/BlueMapWebChat/audit` 아래 날짜별 텍스트 로그에 append 됩니다. audit 로그는 서버 운영자 확인용이며 웹 UI에는 표시하지 않습니다.
 

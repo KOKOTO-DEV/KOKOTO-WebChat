@@ -105,6 +105,7 @@ public class WebChatServer {
 
         initializeHistoryStorage();
         loadPersistedHistory();
+        rememberRelayedPlayerIdentitiesFromHistory();
         cleanupOldUploads();
         cleanupOldExternalMediaCache();
         ensureImageIoPluginsRegistered();
@@ -126,6 +127,7 @@ public class WebChatServer {
         server.createContext(p + "/stream", this::handleStream);
         server.createContext(p + "/send", this::handleSend);
         server.createContext(p + "/relay/receive", this::handleRelayReceive);
+        server.createContext(p + "/relay/dm/receive", this::handleRelayDirectMessageReceive);
         server.createContext(p + "/push/subscribe", this::handlePushSubscribe);
         server.createContext(p + "/push/unsubscribe", this::handlePushUnsubscribe);
         server.createContext(p + "/push/test", this::handlePushTest);
@@ -136,6 +138,7 @@ public class WebChatServer {
         server.createContext(p + "/dm/send", this::handleDmSend);
         server.createContext(p + "/dm/read", this::handleDmRead);
         server.createContext(p + "/dm/hide-message", this::handleDmHideMessage);
+        server.createContext(p + "/admin/dm/messages", this::handleAdminDmMessages);
         server.createContext(p + "/group/rooms", this::handleGroupRooms);
         server.createContext(p + "/group/players", this::handleGroupPlayers);
         server.createContext(p + "/group/messages", this::handleGroupMessages);
@@ -674,6 +677,15 @@ public class WebChatServer {
         relay.handleIncoming(ex);
     }
 
+    private void handleRelayDirectMessageReceive(HttpExchange ex) throws IOException {
+        ServerRelay relay = plugin.serverRelay();
+        if (relay == null) {
+            sendJson(ex, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}");
+            return;
+        }
+        relay.handleIncomingDirectMessage(ex);
+    }
+
     private void handleConfig(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
         ConfigValues c = plugin.configValues();
@@ -1190,7 +1202,7 @@ public class WebChatServer {
         }
         ConfigValues config = plugin.configValues();
         if (config == null || !config.directMessageEnabled || plugin.directMessages() == null || !plugin.directMessages().available()) {
-            sendJson(ex, 200, "{\"ok\":true,\"enabled\":false,\"unread\":0,\"privateChatSuperAdmin\":false,\"threads\":[],\"adminThreads\":[],\"cleanupPreview\":null}");
+            sendJson(ex, 200, "{\"ok\":true,\"enabled\":false,\"unread\":0,\"privateChatSuperAdmin\":false,\"privateChatContentAccess\":false,\"threads\":[],\"adminThreads\":[],\"cleanupPreview\":null}");
             return;
         }
         SessionContext ctx = sessionFromQuery(ex);
@@ -1205,6 +1217,7 @@ public class WebChatServer {
             items.add(thread.toJson());
         }
         boolean privateChatSuperAdmin = isPrivateChatSuperAdmin(ctx);
+        boolean privateChatContentAccess = privateChatSuperAdmin && config.directMessageAdminAuditEnabled;
         List<String> adminItems = new ArrayList<>();
         String cleanupPreview = "null";
         if (privateChatSuperAdmin) {
@@ -1214,6 +1227,7 @@ public class WebChatServer {
         int unread = plugin.directMessages().unreadCount(ctx.account.uuid);
         sendJson(ex, 200, "{\"ok\":true,\"enabled\":true,\"unread\":" + unread
                 + ",\"privateChatSuperAdmin\":" + privateChatSuperAdmin
+                + ",\"privateChatContentAccess\":" + privateChatContentAccess
                 + ",\"threads\":[" + String.join(",", items) + "]"
                 + ",\"adminThreads\":[" + String.join(",", adminItems) + "]"
                 + ",\"cleanupPreview\":" + cleanupPreview + "}");
@@ -1249,6 +1263,44 @@ public class WebChatServer {
         }
         int unread = plugin.directMessages().unreadCount(ctx.account.uuid);
         sendJson(ex, 200, "{\"ok\":true,\"unread\":" + unread + ",\"messages\":[" + String.join(",", items) + "]}");
+    }
+
+    private void handleAdminDmMessages(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        ConfigValues config = plugin.configValues();
+        if (config == null || !config.directMessageEnabled || !config.directMessageAdminAuditEnabled
+                || plugin.directMessages() == null || !plugin.directMessages().available()) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"dm_audit_disabled\"}");
+            return;
+        }
+        SessionContext ctx = sessionFromQuery(ex);
+        if (!isPrivateChatSuperAdmin(ctx)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}");
+            return;
+        }
+        Map<String, String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
+        String threadId = stripControl(q.get("threadId"), 160).trim();
+        if (threadId.isBlank()) {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"missing_thread\"}");
+            return;
+        }
+        long before = parseLong(q.get("before"), 0L);
+        int limit = boundedInt(q.get("limit"), 100, 1, 200);
+        List<String> items = new ArrayList<>();
+        for (DirectMessageMessage message : plugin.directMessages().adminListMessages(threadId, before, limit)) {
+            items.add(message.toJson());
+        }
+        audit(ctx, "admin.dm-audit-read", Map.of(
+                "threadId", threadId,
+                "before", before,
+                "limit", limit,
+                "returned", items.size()
+        ));
+        sendJson(ex, 200, "{\"ok\":true,\"audit\":true,\"messages\":[" + String.join(",", items) + "]}");
     }
 
     private void handleDmPlayers(HttpExchange ex) throws IOException {
@@ -1301,33 +1353,104 @@ public class WebChatServer {
             sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}");
             return;
         }
-        String targetUuid = stripControl(body.get("targetUuid"), 80).trim();
-        if (targetUuid.isBlank()) {
-            PlayerIdentity target = storage.findKnownPlayer(body.get("target"));
-            if (target != null) targetUuid = target.uuid;
+
+        String targetValue = stripControl(body.get("targetUuid"), 256).trim();
+        String requestedServerId = RemotePlayerRef.normalizeServerId(stripControl(body.get("targetServerId"), 64));
+        RemotePlayerRef remote = RemotePlayerRef.parse(targetValue);
+        if (remote == null && !requestedServerId.isBlank() && !isLocalDirectMessageServer(requestedServerId)) {
+            String realUuid = RemotePlayerRef.normalizePlayerUuid(targetValue);
+            String remoteKey = RemotePlayerRef.key(requestedServerId, realUuid);
+            remote = RemotePlayerRef.parse(remoteKey);
+            if (remote != null) {
+                String targetUsername = stripControl(body.get("targetUsername"), 64).trim();
+                String targetDisplayName = stripControl(body.get("targetDisplayName"), 96).trim();
+                String targetServerName = stripControl(body.get("targetServerName"), 96).trim();
+                if (targetDisplayName.isBlank()) targetDisplayName = stripControl(body.get("targetLabel"), 96).trim();
+                String decorated = RemotePlayerRef.decorateDisplayName(targetDisplayName, targetUsername, targetServerName, requestedServerId);
+                storage.updateLastDisplayName(remote.key, targetUsername, decorated);
+            }
         }
-        PlayerIdentity target = storage.findKnownPlayerByUuid(targetUuid);
+
+        PlayerIdentity target;
+        if (remote != null) {
+            target = storage.findKnownPlayerByUuid(remote.key);
+            if (target == null) {
+                String targetUsername = stripControl(body.get("targetUsername"), 64).trim();
+                String targetDisplayName = stripControl(body.get("targetDisplayName"), 96).trim();
+                String targetServerName = stripControl(body.get("targetServerName"), 96).trim();
+                if (targetDisplayName.isBlank()) targetDisplayName = stripControl(body.get("targetLabel"), 96).trim();
+                String decorated = RemotePlayerRef.decorateDisplayName(targetDisplayName, targetUsername, targetServerName, remote.serverId);
+                storage.updateLastDisplayName(remote.key, targetUsername, decorated);
+                target = storage.findKnownPlayerByUuid(remote.key);
+            }
+        } else {
+            if (targetValue.isBlank()) {
+                PlayerIdentity byName = storage.findKnownPlayer(body.get("target"));
+                if (byName != null) targetValue = byName.uuid;
+            }
+            target = storage.findKnownPlayerByUuid(targetValue);
+        }
         if (target == null || target.uuid == null || target.uuid.isBlank()) {
             sendJson(ex, 404, "{\"ok\":false,\"error\":\"player_not_found\"}");
             return;
         }
+
         String message = stripDirectMessage(body.get("message"), config.directMessageMaxMessageLength);
         if (message.isBlank()) {
             sendJson(ex, 400, "{\"ok\":false,\"error\":\"empty_message\"}");
             return;
         }
+
+        ServerRelay relay = plugin.serverRelay();
+        if (remote != null && (relay == null || !relay.canRouteDirectMessage(remote.serverId))) {
+            sendJson(ex, 503, "{\"ok\":false,\"error\":\"remote_server_unavailable\"}");
+            return;
+        }
+
         DirectMessageStore.SendResult result = plugin.directMessages().send(ctx.account.uuid, target.uuid, message);
         if (!result.ok) {
             sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}");
             return;
         }
-        publishDirectMessageUpdate(ctx.account.uuid, target.uuid, result.thread == null ? "" : result.thread.id);
-        dispatchWebPushDirectMessage(ctx.account.uuid, plugin.displayNameForAccount(ctx.account), target.uuid, target.label(), result.thread == null ? "" : result.thread.id, result.message == null ? 0L : result.message.id, message);
-        notifyOnlineDirectMessage(ctx.account, target, message);
+
+        String threadId = result.thread == null ? "" : result.thread.id;
+        long messageId = result.message == null ? 0L : result.message.id;
+        publishDirectMessageUpdate(ctx.account.uuid, target.uuid, threadId);
+
+        if (remote != null) {
+            String senderUsername = stripControl(ctx.account.safeUsername(), 64).trim();
+            String senderDisplayName = stripControl(plugin.displayNameForAccount(ctx.account), 96).trim();
+            String targetUsername = target.username == null ? "" : stripControl(target.username, 64).trim();
+            String targetDisplayName = target.displayName == null ? "" : stripControl(target.displayName, 128).trim();
+            boolean queued = relay.publishDirectMessage(
+                    ctx.account.uuid, senderUsername, senderDisplayName,
+                    remote.serverId, remote.playerUuid, targetUsername, targetDisplayName, message);
+            if (!queued) {
+                plugin.getLogger().warning("Failed to queue remote direct message for server " + remote.serverId + ".");
+            }
+            // This updates only the sender's own web-push subscription, when that
+            // optional preference is enabled. The remote recipient is notified by
+            // the destination server after it accepts the relayed DM.
+            dispatchWebPushDirectMessage(ctx.account.uuid, senderDisplayName, target.uuid, target.label(), threadId, messageId, message);
+        } else {
+            dispatchWebPushDirectMessage(ctx.account.uuid, plugin.displayNameForAccount(ctx.account), target.uuid, target.label(), threadId, messageId, message);
+            notifyOnlineDirectMessage(ctx.account, target, message);
+        }
+
         String threadJson = result.thread == null ? "null" : result.thread.toJson();
         String messageJson = result.message == null ? "null" : result.message.toJson();
         int unread = plugin.directMessages().unreadCount(ctx.account.uuid);
         sendJson(ex, 200, "{\"ok\":true,\"unread\":" + unread + ",\"thread\":" + threadJson + ",\"message\":" + messageJson + "}");
+    }
+
+    private boolean isLocalDirectMessageServer(String serverId) {
+        String target = RemotePlayerRef.normalizeServerId(serverId);
+        if (target.isBlank()) return true;
+        ServerRelay relay = plugin.serverRelay();
+        if (relay != null && !relay.serverId().isBlank()) return target.equalsIgnoreCase(relay.serverId());
+        ConfigValues config = plugin.configValues();
+        String local = RemotePlayerRef.normalizeServerId(config == null ? "" : config.serverRelayServerId);
+        return !local.isBlank() && target.equalsIgnoreCase(local);
     }
 
     private void handleDmRead(HttpExchange ex) throws IOException {
@@ -1438,7 +1561,7 @@ public class WebChatServer {
         List<String> items = new ArrayList<>();
         String self = ctx.account.uuid == null ? "" : ctx.account.uuid.trim().toLowerCase(Locale.ROOT);
         for (PlayerIdentity player : storage.listKnownPlayers(query, limit + 1)) {
-            if (player.uuid.equalsIgnoreCase(self)) continue;
+            if (player.uuid.equalsIgnoreCase(self) || RemotePlayerRef.isRemote(player.uuid)) continue;
             items.add(player.toJson());
             if (items.size() >= limit) break;
         }
@@ -1509,7 +1632,10 @@ public class WebChatServer {
             if (target != null) targetUuid = target.uuid;
         }
         PlayerIdentity target = storage.findKnownPlayerByUuid(targetUuid);
-        if (target == null || target.uuid == null || target.uuid.isBlank()) { sendJson(ex, 404, "{\"ok\":false,\"error\":\"player_not_found\"}"); return; }
+        if (target == null || target.uuid == null || target.uuid.isBlank() || RemotePlayerRef.isRemote(target.uuid)) {
+            sendJson(ex, 404, "{\"ok\":false,\"error\":\"player_not_found\"}");
+            return;
+        }
         GroupChatStore.ActionResult result = plugin.groupChats().invite(req.ctx.account.uuid, req.body.get("roomId"), target.uuid);
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
         // Broadcast globally so the invitee sees the pending invitation immediately even before becoming a room member.
@@ -1716,16 +1842,19 @@ public class WebChatServer {
     }
 
     private void notifyOnlineDirectMessage(Account sender, PlayerIdentity target, String message) {
+        notifyOnlineDirectMessage(plugin.displayNameForAccount(sender), target, message);
+    }
+
+    private void notifyOnlineDirectMessage(String senderName, PlayerIdentity target, String message) {
         ConfigValues config = plugin.configValues();
-        if (config == null || !config.directMessageNotifyOnMessage) return;
+        if (config == null || !config.directMessageNotifyOnMessage || target == null) return;
         Bukkit.getScheduler().runTask(plugin, () -> {
             try {
                 Player recipient = Bukkit.getPlayer(java.util.UUID.fromString(target.uuid));
                 if (recipient == null || !recipient.isOnline()) return;
-                String senderName = plugin.displayNameForAccount(sender);
                 String body = colorizeForGame(trimForNotice(message, 100));
                 java.util.Map<String, String> vars = new java.util.HashMap<>();
-                vars.put("player", ChatColor.RESET + senderName + ChatColor.LIGHT_PURPLE);
+                vars.put("player", ChatColor.RESET + String.valueOf(senderName == null ? "" : senderName) + ChatColor.LIGHT_PURPLE);
                 vars.put("message", ChatColor.RESET + body);
                 recipient.sendMessage(ChatColor.LIGHT_PURPLE + plugin.langManager().text("command.dmIncoming", "DM from {player}: {message}", vars));
             } catch (IllegalArgumentException ignored) {
@@ -5519,7 +5648,9 @@ public class WebChatServer {
     }
 
     public void acceptRelayedMessage(ChatMessage msg) {
-        if (msg == null || msg.message == null || msg.message.isBlank() || hasMessageId(msg.id)) return;
+        if (msg == null || msg.message == null || msg.message.isBlank()) return;
+        rememberRelayedPlayerIdentity(msg);
+        if (hasMessageId(msg.id)) return;
         ConfigValues config = plugin.configValues();
         if (config.serverRelayDeliverToWeb) {
             prewarmExternalMediaCache(msg.message);
@@ -5531,6 +5662,82 @@ public class WebChatServer {
             if (!config.serverRelayDeliverToWeb) cacheTransientReplyTarget(msg);
             sendRelayedToGame(msg, config.serverRelayGameFormat);
         }
+    }
+
+    public boolean acceptRelayedDirectMessage(String originServerId, String originServerName,
+                                               String senderUuid, String senderUsername, String senderDisplayName,
+                                               String targetUuid, String targetUsername, String targetDisplayName,
+                                               String rawMessage) {
+        ConfigValues config = plugin.configValues();
+        if (config == null || !config.directMessageEnabled || plugin.directMessages() == null
+                || !plugin.directMessages().available()) return false;
+
+        String originId = RemotePlayerRef.normalizeServerId(stripControl(originServerId, 64));
+        String senderRealUuid = RemotePlayerRef.normalizePlayerUuid(stripControl(senderUuid, 80));
+        String targetRealUuid = RemotePlayerRef.normalizePlayerUuid(stripControl(targetUuid, 80));
+        String message = stripDirectMessage(rawMessage, config.directMessageMaxMessageLength);
+        if (originId.isBlank() || senderRealUuid.isBlank() || targetRealUuid.isBlank() || message.isBlank()) return false;
+
+        PlayerIdentity target = storage.findKnownPlayerByUuid(targetRealUuid);
+        String safeTargetUsername = stripControl(targetUsername, 64).trim();
+        String safeTargetDisplay = stripControl(targetDisplayName, 96).trim();
+        if (target == null && (!safeTargetUsername.isBlank() || !safeTargetDisplay.isBlank())) {
+            if (safeTargetDisplay.isBlank()) safeTargetDisplay = safeTargetUsername;
+            storage.updateLastDisplayName(targetRealUuid, safeTargetUsername, safeTargetDisplay);
+            target = storage.findKnownPlayerByUuid(targetRealUuid);
+        }
+        if (target == null) return false;
+
+        String remoteSenderKey = RemotePlayerRef.key(originId, senderRealUuid);
+        if (remoteSenderKey.isBlank()) return false;
+        String safeSenderUsername = stripControl(senderUsername, 64).trim();
+        String safeSenderDisplay = stripControl(senderDisplayName, 96).trim();
+        String remoteSenderDisplay = RemotePlayerRef.decorateDisplayName(
+                safeSenderDisplay, safeSenderUsername, stripControl(originServerName, 96), originId);
+        storage.updateLastDisplayName(remoteSenderKey, safeSenderUsername, remoteSenderDisplay);
+
+        DirectMessageStore.SendResult result = plugin.directMessages().send(remoteSenderKey, targetRealUuid, message);
+        if (!result.ok) return false;
+        String threadId = result.thread == null ? "" : result.thread.id;
+        long messageId = result.message == null ? 0L : result.message.id;
+        publishDirectMessageUpdate(remoteSenderKey, targetRealUuid, threadId);
+        dispatchWebPushDirectMessage(remoteSenderKey, remoteSenderDisplay, targetRealUuid, target.label(), threadId, messageId, message);
+        notifyOnlineDirectMessage(remoteSenderDisplay, target, message);
+        return true;
+    }
+
+
+    private void rememberRelayedPlayerIdentitiesFromHistory() {
+        synchronized (history) {
+            for (ChatMessage message : history) rememberRelayedPlayerIdentity(message);
+        }
+    }
+
+    private void rememberRelayedPlayerIdentity(ChatMessage msg) {
+        if (msg == null) return;
+        ConfigValues config = plugin.configValues();
+        String originServerId = stripControl(msg.originServerId, 64).trim();
+        String localServerId = config == null ? "" : stripControl(config.serverRelayServerId, 64).trim();
+        boolean remoteOrigin = msg.relayHop > 0
+                || (!originServerId.isBlank() && (localServerId.isBlank() || !originServerId.equalsIgnoreCase(localServerId)));
+        if (!remoteOrigin) return;
+
+        String source = stripControl(msg.source, 32).trim().toLowerCase(Locale.ROOT);
+        if (!source.equals("game") && !source.equals("web")) return;
+
+        String uuid = stripControl(msg.playerUuid, 80).trim().toLowerCase(Locale.ROOT);
+        String displayName = stripControl(msg.sender, 96).trim();
+        String username = stripControl(msg.realSender, 64).trim();
+        if (uuid.isBlank() || displayName.isBlank()) return;
+
+        // A player on another server must not reuse the local UUID key.  The
+        // server-scoped key keeps same-UUID players on different servers distinct
+        // in DM search, threads, unread state, and delivery routing.
+        String remoteKey = RemotePlayerRef.key(originServerId, uuid);
+        if (remoteKey.isBlank()) return;
+        String serverLabel = stripControl(msg.originServerName, 96).trim();
+        String remoteDisplay = RemotePlayerRef.decorateDisplayName(displayName, username, serverLabel, originServerId);
+        storage.updateLastDisplayName(remoteKey, username, remoteDisplay);
     }
 
     private void sendRelayedToGame(ChatMessage msg, String format) {
@@ -5851,6 +6058,10 @@ public class WebChatServer {
                 && config != null && config.directMessageEnabled && config.directMessageAllowGameSend) {
             // Web users and players on another relayed server cannot be reached by
             // the local vanilla /w command, so use the BMChat DM channel instead.
+            String originServerId = RemotePlayerRef.normalizeServerId(msg == null ? "" : msg.originServerId);
+            if (!isLocalMessageOrigin(msg, config) && !originServerId.isBlank()) {
+                return "/bmchat dm " + target + "@" + originServerId + " ";
+            }
             return "/bmchat dm " + target + " ";
         }
         return "";

@@ -115,6 +115,7 @@ web:
     confirmRenameEmoji: 要将此表情重命名为 {name} 吗？使用旧名称的表情标记将不再匹配。
     confirmRenameEmojiPack: 要将文件夹 {pack} 重命名为 {name} 吗？此文件夹中的表情标记将会改变。
     dmLoadFailed: "消息加载失败：{error}"
+    dmAuditLoadFailed: "无法加载私信审计内容：{error}"
     dmSendFailed: "消息发送失败：{error}"
     dmHideFailed: "隐藏消息失败：{error}"
     groupLoadFailed: '无法加载群组聊天：{error}'
@@ -137,6 +138,10 @@ web:
     revokeConfirm: 要撤销 {username} 的所有会话吗？
     online: 在线
     privateMetaOnly: '仅显示私信元数据'
+    privateContentAccess: '管理员私信审计（可查看正文）'
+    openDmAudit: '在只读审计视图中打开此私信会话。'
+    dmAuditView: '私信审计（只读）'
+    dmAuditReadOnly: '管理员审计视图为只读，每次查看都会写入审计日志。'
     groupMetaOnly: '群组聊天室元数据'
     noContentAccess: '此视图无法查看消息正文。'
     lockDmThreadHint: '锁定此私信会话，阻止发送新消息。'
@@ -450,8 +455,10 @@ web:
     dmHideFailed: '无法隐藏消息: {error}'
     dmSendFailed: '无法发送消息: {error}'
     dm_disabled: 私信已禁用
+    dm_audit_disabled: 私信正文审计功能已禁用
     web_send_disabled: Web 私信发送已禁用
     player_not_found: 找不到玩家
+    remote_server_unavailable: 无法连接到目标服务器
     self_message: 不能给自己发送私信
   dm:
     title: 消息
@@ -460,6 +467,7 @@ web:
     emptyThread: 还没有消息。
     searchPlayer: 搜索玩家
     newMessage: 新消息
+    openForPlayer: '打开与 {player} 的私信'
     selectPlayerFirst: 请先选择玩家。
     showThreads: 显示会话列表
     hideThreads: 隐藏会话列表
@@ -635,6 +643,7 @@ web:
     dmGameSendDisabled: 游戏内私信发送已禁用。
     dmDirectInputRequired: "DM 只能通过玩家直接输入的命令发送。"
     dmPlayerNotFound: 找不到玩家。玩家必须至少加入过一次。
+    dmRemoteServerUnavailable: 无法连接到目标服务器。
     replyDisabled: 游戏内回复功能已禁用。
     replyDirectInputRequired: 回复只能通过玩家直接输入的命令发送。
     replyEmpty: 回复消息为空。
@@ -685,6 +694,11 @@ web:
     failed: 命令运行失败：{error}
     tooLong: 命令过长。最多 {max} 个字符。
     maxLengthHint: 最多 {max} 个字符
+  update:
+    available: '有新版本 {latest}。当前版本：{current}'
+    openDownload: 打开下载页面
+    modrinth: Modrinth
+    curseforge: CurseForge
   system:
     command-executed: '{executor} 执行了 Web 命令：{label}'
     command-executed-by: '{executor} 执行了 Web 命令：{label}'

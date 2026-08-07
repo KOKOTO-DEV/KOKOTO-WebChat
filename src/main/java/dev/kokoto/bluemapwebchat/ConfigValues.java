@@ -11,6 +11,7 @@ import java.util.Locale;
 
 public class ConfigValues {
     public boolean pluginEnabled;
+    public boolean updateCheckEnabled;
     public List<String> privateChatSuperAdmins;
     public boolean auditEnabled;
     public String auditDirectory;
@@ -55,6 +56,7 @@ public class ConfigValues {
     public boolean directMessageWebUnreadBadge;
     public boolean directMessageConfirmHide;
     public boolean directMessageCaptureGameWhispers;
+    public boolean directMessageAdminAuditEnabled;
     public int directMessageRetentionDays;
     public int directMessageMaxMessagesPerThread;
     public int directMessageMaxMessageLength;
@@ -404,6 +406,7 @@ public class ConfigValues {
         ConfigValues v = new ConfigValues();
         // New generated configs default enabled:false, but old configs without this key remain enabled.
         v.pluginEnabled = c.isSet("enabled") ? c.getBoolean("enabled", false) : true;
+        v.updateCheckEnabled = c.getBoolean("update-check.enabled", true);
         v.privateChatSuperAdmins = c.getStringList("private-chat-super-admins");
         v.auditEnabled = c.getBoolean("audit.enabled", true);
         v.auditDirectory = c.getString("audit.directory", "audit");
@@ -454,6 +457,7 @@ public class ConfigValues {
         v.directMessageWebUnreadBadge = c.getBoolean("direct-message.web-unread-badge", true);
         v.directMessageConfirmHide = c.getBoolean("direct-message.confirm-hide", true);
         v.directMessageCaptureGameWhispers = c.getBoolean("direct-message.capture-game-whispers", false);
+        v.directMessageAdminAuditEnabled = c.getBoolean("direct-message.admin-audit.enabled", false);
         v.directMessageRetentionDays = Math.max(0, c.getInt("direct-message.retention-days", 0));
         v.directMessageMaxMessagesPerThread = Math.max(0, c.getInt("direct-message.max-messages-per-thread", 0));
         v.directMessageMaxMessageLength = Math.max(0, c.getInt("direct-message.max-message-length", 500));

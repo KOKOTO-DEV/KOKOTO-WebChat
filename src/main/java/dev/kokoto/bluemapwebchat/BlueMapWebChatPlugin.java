@@ -25,6 +25,7 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
     private GroupChatStore groupChats;
     private WebChatServer webServer;
     private ChatListener chatListener;
+    private UpdateChecker updateChecker;
 
     @Override
     public void onEnable() {
@@ -62,6 +63,7 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
         discordBridge.start();
 
         registerRuntimeListeners();
+        startUpdateChecker();
 
         scheduleServerStartAnnouncement();
 
@@ -129,6 +131,7 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
         }
         discordBridge.start();
         registerRuntimeListeners();
+        startUpdateChecker();
     }
 
 
@@ -157,12 +160,21 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new EventAnnouncementListener(this), this);
     }
 
+    private void startUpdateChecker() {
+        updateChecker = new UpdateChecker(this);
+        updateChecker.start();
+    }
+
     private void startServerRelay() {
         serverRelay = new ServerRelay(this);
         serverRelay.start();
     }
 
     private void stopRuntimeServices() {
+        if (updateChecker != null) {
+            updateChecker.close();
+            updateChecker = null;
+        }
         if (serverRelay != null) {
             serverRelay.close();
             serverRelay = null;

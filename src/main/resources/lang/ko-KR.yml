@@ -115,6 +115,7 @@ web:
     confirmRenameEmoji: 이 이모지 이름을 {name}(으)로 바꿀까요? 기존 이름을 사용한 이모지 토큰은 더 이상 일치하지 않습니다.
     confirmRenameEmojiPack: '{pack} 폴더 이름을 {name}(으)로 바꿀까요? 이 폴더 안의 이모지 토큰이 변경됩니다.'
     dmLoadFailed: "메시지를 불러오지 못했습니다: {error}"
+    dmAuditLoadFailed: "DM 감사 내용을 불러오지 못했습니다: {error}"
     dmSendFailed: "메시지를 보내지 못했습니다: {error}"
     dmHideFailed: "메시지를 숨기지 못했습니다: {error}"
     groupLoadFailed: '그룹 채팅을 불러오지 못했습니다: {error}'
@@ -137,6 +138,10 @@ web:
     revokeConfirm: '{username} 세션을 모두 해제할까요?'
     online: 온라인
     privateMetaOnly: '비공개 메시지 메타데이터만 표시'
+    privateContentAccess: '관리자 DM 감사 열람(본문 조회 가능)'
+    openDmAudit: '이 DM 세션을 읽기 전용 감사 화면으로 엽니다.'
+    dmAuditView: 'DM 감사 열람(읽기 전용)'
+    dmAuditReadOnly: '관리자 감사 화면은 읽기 전용이며 모든 열람이 감사 로그에 기록됩니다.'
     groupMetaOnly: '그룹 채팅방 메타데이터'
     noContentAccess: '이 화면에서는 메시지 본문을 볼 수 없습니다.'
     lockDmThreadHint: '이 DM 세션을 잠가 새 메시지 전송을 막습니다.'
@@ -450,8 +455,10 @@ web:
     dmSendFailed: '메시지를 보내지 못했습니다: {error}'
     dmHideFailed: '메시지를 숨기지 못했습니다: {error}'
     dm_disabled: 메시지함이 비활성화되어 있습니다
+    dm_audit_disabled: DM 본문 감사 기능이 비활성화되어 있습니다
     web_send_disabled: 웹 메시지 전송이 비활성화되어 있습니다
     player_not_found: 플레이어를 찾을 수 없습니다
+    remote_server_unavailable: 대상 서버에 연결할 수 없습니다
     self_message: 자기 자신에게는 보낼 수 없습니다
   dm:
     title: 메시지함
@@ -460,6 +467,7 @@ web:
     emptyThread: 아직 메시지가 없습니다.
     searchPlayer: 플레이어 검색
     newMessage: 새 대화
+    openForPlayer: '{player}님과 DM 열기'
     selectPlayerFirst: 먼저 플레이어를 선택하세요.
     showThreads: 대화 목록 펼치기
     hideThreads: 대화 목록 접기
@@ -635,6 +643,7 @@ web:
     dmGameSendDisabled: 게임 내 메시지 전송이 비활성화되어 있습니다.
     dmDirectInputRequired: "DM은 플레이어가 직접 입력한 명령으로만 보낼 수 있습니다."
     dmPlayerNotFound: 플레이어를 찾을 수 없습니다. 한 번 이상 접속한 플레이어여야 합니다.
+    dmRemoteServerUnavailable: 대상 서버에 연결할 수 없습니다.
     replyDisabled: 게임 내 댓글 기능이 비활성화되어 있습니다.
     replyDirectInputRequired: 댓글은 플레이어가 직접 입력한 명령으로만 보낼 수 있습니다.
     replyEmpty: 댓글 메시지가 비어 있습니다.
@@ -685,6 +694,11 @@ web:
     failed: '명령어 실행 실패: {error}'
     tooLong: 명령어가 너무 깁니다. 최대 {max}자입니다.
     maxLengthHint: 최대 {max}자
+  update:
+    available: '새 버전 {latest}이(가) 있습니다. 현재 버전: {current}'
+    openDownload: 다운로드 페이지 열기
+    modrinth: Modrinth
+    curseforge: CurseForge
   system:
     command-executed: '{executor}님이 웹 명령어 실행: {label}'
     command-executed-by: '{executor}님이 웹 명령어 실행: {label}'

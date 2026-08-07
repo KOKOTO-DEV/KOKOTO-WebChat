@@ -115,6 +115,7 @@ web:
     confirmRenameEmoji: Rename this emoji to {name}? Existing emoji tokens using the old name will no longer match.
     confirmRenameEmojiPack: Rename folder {pack} to {name}? Emoji tokens in this folder will change.
     dmLoadFailed: "Failed to load messages: {error}"
+    dmAuditLoadFailed: "Failed to load DM audit: {error}"
     dmSendFailed: "Failed to send message: {error}"
     dmHideFailed: "Failed to hide message: {error}"
     groupLoadFailed: 'Failed to load group chats: {error}'
@@ -137,6 +138,10 @@ web:
     revokeConfirm: Revoke all sessions for {username}?
     online: Online
     privateMetaOnly: 'Private metadata only'
+    privateContentAccess: 'Admin DM audit (contents available)'
+    openDmAudit: 'Open this DM session in read-only audit view.'
+    dmAuditView: 'DM audit (read-only)'
+    dmAuditReadOnly: 'This administrator audit view is read-only. Every access is recorded in the audit log.'
     groupMetaOnly: 'Group room metadata'
     noContentAccess: 'Message contents are not accessible from this view.'
     lockDmThreadHint: 'Lock this DM session to prevent new messages.'
@@ -450,8 +455,10 @@ web:
     dmSendFailed: 'Failed to send message: {error}'
     dmHideFailed: 'Failed to hide message: {error}'
     dm_disabled: Direct messages are disabled
+    dm_audit_disabled: DM content auditing is disabled
     web_send_disabled: Web direct-message sending is disabled
     player_not_found: Player not found
+    remote_server_unavailable: Remote server is unavailable
     self_message: You cannot send a direct message to yourself
   dm:
     title: Messages
@@ -460,6 +467,7 @@ web:
     emptyThread: No messages yet.
     searchPlayer: Search player
     newMessage: New message
+    openForPlayer: 'Open direct message with {player}'
     selectPlayerFirst: Select a player first.
     showThreads: Show conversations
     hideThreads: Hide conversations
@@ -635,6 +643,7 @@ web:
     dmGameSendDisabled: Sending direct messages from game is disabled.
     dmDirectInputRequired: "Direct messages must be typed directly by the player."
     dmPlayerNotFound: Player not found. The player must have joined at least once.
+    dmRemoteServerUnavailable: The target server is unavailable.
     replyDisabled: In-game replies are disabled.
     replyDirectInputRequired: Replies must be typed directly by the player.
     replyEmpty: Reply message is empty.
@@ -685,6 +694,11 @@ web:
     failed: 'Command failed: {error}'
     tooLong: 'Command is too long. Maximum: {max} characters.'
     maxLengthHint: 'Maximum: {max} characters'
+  update:
+    available: 'A new version {latest} is available. Current: {current}'
+    openDownload: Open download page
+    modrinth: Modrinth
+    curseforge: CurseForge
   system:
     command-executed: '{executor} executed web command: {label}'
     command-executed-by: '{executor} executed web command: {label}'

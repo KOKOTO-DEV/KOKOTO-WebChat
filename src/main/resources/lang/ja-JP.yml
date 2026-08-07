@@ -115,6 +115,7 @@ web:
     confirmRenameEmoji: この絵文字の名前を {name} に変更しますか？古い名前を使った絵文字トークンは一致しなくなります。
     confirmRenameEmojiPack: フォルダー {pack} を {name} に変更しますか？このフォルダー内の絵文字トークンが変わります。
     dmLoadFailed: "メッセージの読み込みに失敗しました: {error}"
+    dmAuditLoadFailed: "DM監査内容を読み込めませんでした: {error}"
     dmSendFailed: "メッセージの送信に失敗しました: {error}"
     dmHideFailed: "メッセージの非表示に失敗しました: {error}"
     groupLoadFailed: 'グループチャットの読み込みに失敗しました: {error}'
@@ -137,6 +138,10 @@ web:
     revokeConfirm: '{username} の全セッションを解除しますか？'
     online: オンライン
     privateMetaOnly: '非公開メッセージのメタデータのみ'
+    privateContentAccess: '管理者DM監査（本文閲覧可）'
+    openDmAudit: 'このDMセッションを読み取り専用の監査ビューで開きます。'
+    dmAuditView: 'DM監査（読み取り専用）'
+    dmAuditReadOnly: '管理者監査ビューは読み取り専用で、すべての閲覧が監査ログに記録されます。'
     groupMetaOnly: 'グループルームのメタデータ'
     noContentAccess: 'この画面ではメッセージ本文を表示できません。'
     lockDmThreadHint: 'このDMセッションをロックして新しいメッセージ送信を防ぎます。'
@@ -450,8 +455,10 @@ web:
     dmHideFailed: 'メッセージを非表示にできませんでした: {error}'
     dmSendFailed: 'メッセージを送信できませんでした: {error}'
     dm_disabled: ダイレクトメッセージは無効です
+    dm_audit_disabled: DM本文監査機能は無効です
     web_send_disabled: Web からの DM 送信は無効です
     player_not_found: プレイヤーが見つかりません
+    remote_server_unavailable: 対象サーバーに接続できません
     self_message: 自分自身には送信できません
   dm:
     title: メッセージ
@@ -460,6 +467,7 @@ web:
     emptyThread: まだメッセージはありません。
     searchPlayer: プレイヤー検索
     newMessage: 新規メッセージ
+    openForPlayer: '{player}とのDMを開く'
     selectPlayerFirst: 先にプレイヤーを選択してください。
     showThreads: 会話一覧を表示
     hideThreads: 会話一覧を隠す
@@ -632,6 +640,7 @@ web:
     dmGameSendDisabled: ゲーム内からの DM 送信は無効です。
     dmDirectInputRequired: "DMはプレイヤーが直接入力したコマンドでのみ送信できます。"
     dmPlayerNotFound: プレイヤーが見つかりません。少なくとも一度参加している必要があります。
+    dmRemoteServerUnavailable: 対象サーバーに接続できません。
     replyDisabled: ゲーム内返信機能は無効です。
     replyDirectInputRequired: 返信はプレイヤーが直接入力したコマンドでのみ送信できます。
     replyEmpty: 返信メッセージが空です。
@@ -685,6 +694,11 @@ web:
     failed: 'コマンド実行失敗: {error}'
     tooLong: コマンドが長すぎます。最大 {max} 文字です。
     maxLengthHint: 最大 {max} 文字
+  update:
+    available: '新しい version {latest} があります。現在: {current}'
+    openDownload: ダウンロードページを開く
+    modrinth: Modrinth
+    curseforge: CurseForge
   system:
     command-executed: '{executor} が Web コマンドを実行しました: {label}'
     command-executed-by: '{executor} が Web コマンドを実行しました: {label}'

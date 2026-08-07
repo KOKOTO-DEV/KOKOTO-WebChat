@@ -26,7 +26,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.6.0.jar
+target/BlueMapWebChat-4.6.1.jar
 ```
 
 ## インストール
@@ -40,7 +40,11 @@ target/BlueMapWebChat-4.6.0.jar
 7. サーバーを再起動するか `/bmchat reload` を実行します。BlueMap の Web アセットが更新されない場合は `/bluemap reload` も実行します。
 
 
-既存の `config.yml` は上書きされません。`config-version` がない、または実行中のプラグイン version と異なる場合、実ファイルと同梱 default を比較して `plugins/BlueMapWebChat/config-migration-4.6.0.yml` を生成します。生成ファイルには、そのまま merge できる不足設定、変更された default、最終確認用の `config-version` marker を実 YAML 設定として出力します。他の差分がなくても設定 version 管理のため fragment と `config-version` は生成されます。version 情報や旧・新 default の説明は `#` comment にします。custom 値や obsolete 候補の情報一覧は出力しません。`config-version: "4.6.0"` がプラグイン version と一致する場合は確認済みとして比較を省略します。`docs/UPGRADE_4_6_0_JA.md` を参照してください。
+既存の `config.yml` は上書きされません。`config-version` がない、または実行中のプラグイン version と異なる場合、実ファイルと同梱 default を比較して `plugins/BlueMapWebChat/config-migration-4.6.1.yml` を生成します。生成ファイルには、そのまま merge できる不足設定、変更された default、最終確認用の `config-version` marker を実 YAML 設定として出力します。他の差分がなくても設定 version 管理のため fragment と `config-version` は生成されます。version 情報や旧・新 default の説明は `#` comment にします。custom 値や obsolete 候補の情報一覧は出力しません。`config-version: "4.6.1"` がプラグイン version と一致する場合は確認済みとして比較を省略します。今回の更新は `docs/UPGRADE_4_6_1_JA.md`、前回の major migration は `docs/UPGRADE_4_6_0_JA.md` を参照してください。
+
+### 4.6.1 サーバー間 DM の互換性に関する重要事項
+
+サーバー間 DM を交換するすべての接続サーバーで、同じ修正版 **4.6.1 ビルド**を使用してください。表示されるバージョン番号が同じだけでは不十分です。古い 4.6.1 ビルドには完全な専用 DM リレーと正確な送信先引き渡し処理が含まれていないため、送信側だけにセッションが作成され、受信側に保存されない場合があります。すべての接続サーバーで JAR を交換して再起動してください。
 
 ## standalone の URL
 
@@ -104,12 +108,12 @@ emoji:
 
 ## 1:1 ダイレクトメッセージスレッド
 
-`direct-message.enabled` を有効にすると、1:1 会話スレッド型のメッセージボックスを使用できます。送信先は UUID/名前が保存済みの、連携済みまたは参加履歴のあるプレイヤーに限定されます。A→B と B→A は同じスレッドを使い、保存は UUID 基準、UI 表示は可能な場合 `表示名 (実アカウント名)` 形式になります。
+`direct-message.enabled` を有効にすると、1:1 会話スレッド型のメッセージボックスを使用できます。送信先には、UUID/名前が保存済みの連携済み・参加履歴プレイヤーに加えて、リレーメッセージに player UUID が含まれる別サーバーの送信者も含まれます。受信した表示名と実 Minecraft 名は Web DM の新規宛先検索に反映されるため、専用 DM ボタンなしで通常の検索から会話を開始できます。UUID のない guest/Discord 送信者は対象外です。A→B と B→A は同じスレッドを使い、保存は UUID 基準、UI 表示は可能な場合 `表示名 (実アカウント名)` 形式になります。
 
 DM は公開チャット履歴とは別の専用ストアを使います。`direct-message.storage: auto` は、公開チャットが `jsonl` 保存方式のとき DM も JSONL を使い、それ以外では SQLite を使います。必要に応じて `direct-message.storage` を `sqlite` または `jsonl` に固定し、`direct-message.sqlite-file` または `direct-message.jsonl-file` を指定できます。`direct-message.retention-days: 0` は保持期限なしです。それ以外の値は DM 画面のタイトル横に保持期間として表示され、その日数を過ぎた DM 本文は物理削除されます。`direct-message.max-messages-per-thread: 0` はスレッドごとの件数削除なしです。`direct-message.confirm-hide` は Web UI で自分の表示から DM を隠す前に確認するかを制御します。個人メッセージがサーバーに保存されるため既定では無効です。サーバーポリシーに合わせて保持期間を決めてから有効化してください。
 
 
-`direct-message.capture-game-whispers` でゲームの `/w`, `/msg`, `/tell` 系を同じ Web DM に複製できます。同じサーバーのゲーム送信者名は `/w <実名> `、Web 送信者と別サーバーのゲーム送信者名は `/bmchat dm <実名> ` が候補になります。
+`direct-message.capture-game-whispers` でゲームの `/w`, `/msg`, `/tell` 系を同じ Web DM に複製できます。同じサーバーのゲーム送信者名は `/w <実名> `、Web 送信者は `/bmchat dm <実名> `、別サーバーのゲーム送信者名は `/bmchat dm <実名>@<server-id> ` が候補になります。また `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` で `名前@server-id` を指定すると、同じ cross-server BMChat DM relay で送信されます。
 
 ## カスタム絵文字とゲーム側絵文字プラグイン
 
@@ -184,6 +188,7 @@ bluemapwebchat.dm
 bluemapwebchat.reply
 bluemapwebchat.group
 bluemapwebchat.admin
+bluemapwebchat.update.notify
 ```
 
 ## ドキュメント
@@ -191,6 +196,7 @@ bluemapwebchat.admin
 - `docs/USER_MANUAL_JA.md` - 全機能のユーザー・運用総合マニュアル
 - `docs/CONFIGURATION_JA.md`
 - `docs/SERVER_RELAY_JA.md` - サーバー間公開チャットリレー
+- `docs/UPGRADE_4_6_1_JA.md` - 4.6.0→4.6.1 upgrade
 - `docs/UPGRADE_4_6_0_JA.md` - 4.5.5→4.6.0 設定/DB 更新
 - `docs/CADDY_HTTPS_JA.md`
 - `docs/I18N_JA.md`
@@ -217,7 +223,7 @@ SQLite 履歴ストレージを使用している場合、チャットパネル�
 
 ### 非公開チャットメタデータのスーパー管理者
 
-`config.yml` の `private-chat-super-admins` に正確な UUID または Minecraft 名を指定すると、管理/容量確認用に DM/グループチャットのメタデータのみ表示できます。この表示ではタイトル/参加者、メッセージ数、おおよその保存サイズ、保存期限状態、クリーンアッププレビュー数だけを表示し、本文は開けません。スーパー管理者は DM/グループセッションをロックしたり、自動削除対象から除外したりできます。これらは管理者専用機能です。
+`config.yml` の `private-chat-super-admins` に exact UUID または Minecraft name を指定すると、管理/容量確認用 DM/group metadata を表示できます。default view は title/participant、message count、storage size、retention state、cleanup preview を表示します。`direct-message.admin-audit.enabled: true` も設定した場合だけ、同じ明示 account が DM body を read-only で開けます。通常 ADMIN/MODERATOR role は自動対象ではなく、page read は audit log に記録されます。super admin は DM/group session lock と retention exclude も管理できます。
 
 管理上影響のある操作は、既定で `plugins/BlueMapWebChat/audit` 配下の日付別テキストログに追記されます。audit ログはサーバー運用者向けで、Web UI には表示されません。
 
