@@ -17,7 +17,7 @@ mvn clean package
 输出:
 
 ```text
-target/BlueMapWebChat-4.6.0.jar
+target/BlueMapWebChat-4.6.1.jar
 ```
 
 ## 安装或升级
@@ -39,9 +39,9 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 条目应包含当前版本 query。
 
 ```text
-addons/bluemap-web-chat/config.js?v=4.6.0-<cache-token>
-addons/bluemap-web-chat/chat.js?v=4.6.0-<cache-token>
-addons/bluemap-web-chat/chat.css?v=4.6.0-<cache-token>
+addons/bluemap-web-chat/config.js?v=4.6.1-<cache-token>
+addons/bluemap-web-chat/chat.js?v=4.6.1-<cache-token>
+addons/bluemap-web-chat/chat.css?v=4.6.1-<cache-token>
 ```
 
 同时确认实际 Web 文件已更新。

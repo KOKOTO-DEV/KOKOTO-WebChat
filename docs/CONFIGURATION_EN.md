@@ -10,6 +10,15 @@ This document describes `plugins/BlueMapWebChat/config.yml`.
 
 New generated configs start with top-level `enabled: false`. In this state, BlueMapWebChat only creates/loads configuration and keeps only `/bmchat reload` available; it does not start web/chat services, listeners, Discord integration, private-message storage, addon installation, upload/emoji initialization, or cleanup tasks. Existing configs without this key are treated as enabled for upgrade compatibility. Review storage, retention, upload, preview, authentication, and exposure settings, then set `enabled: true`.
 
+## Update check
+
+```yaml
+update-check:
+  enabled: true
+```
+
+When enabled, BlueMapWebChat checks Modrinth for a newer stable release in the background. The check interval, release channel, join delay, administrator-only notification permission, and Modrinth/CurseForge download links are built-in defaults and are not separate config options. Update lookup failure never stops plugin startup.
+
 ## Deployment modes
 
 ### BlueMap addon
@@ -109,9 +118,15 @@ direct-message:
   allow-web-send: true
   allow-game-send: true
   capture-game-whispers: true
+
+direct-message:
+  admin-audit:
+    enabled: false
 ```
 
 `direct-message.enabled` enables stored 1:1 threads for linked or previously known players. A→B and B→A use the same UUID-pair thread. `storage`, retention, message-count limits, and notification options are documented in the default config.
+
+`direct-message.admin-audit.enabled` is a separate, default-off content-access switch. When enabled, only accounts also listed in `private-chat-super-admins` can open DM bodies in the read-only audit view. Each page read is audit-logged; message bodies are not copied into the audit log. Ordinary ADMIN/MODERATOR roles do not qualify automatically.
 
 `capture-game-whispers` mirrors non-cancelled `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, and `/t` commands into the sender and recipient BMChat DM thread. It does not resend or replace the Minecraft whisper. Bukkit does not expose a reliable final success result for every whisper plugin, so a valid command targeting a known player is used as the capture criterion.
 
@@ -537,7 +552,7 @@ GIF/JPG/JPEG/WEBP emoji originals automatically get same-folder PNG sidecars for
 
 ## Private chat metadata super admins
 
-`private-chat-super-admins: []` lists exact UUIDs or Minecraft names allowed to see DM/group-chat metadata for moderation/accounting. This view shows participants/titles, message counts, approximate storage size, retention status, and management actions such as metadata-session deletion. Message bodies are never exposed in this view.
+`private-chat-super-admins: []` lists exact UUIDs or Minecraft names allowed to see DM/group-chat metadata for moderation/accounting. The metadata view shows participants/titles, message counts, approximate storage size, retention status, and management actions. DM message bodies are available only when `direct-message.admin-audit.enabled: true`; that view is read-only and every page read is audit-logged.
 
 
 `standalone-web.app-name` and `standalone-web.app-short-name` control the standalone page/PWA name. Reinstall the Home Screen web app after changing them on mobile devices. `web-push.notification-title` controls the default title used for test/system/background push notifications; if it is empty, the plugin uses `standalone-web.app-name`.

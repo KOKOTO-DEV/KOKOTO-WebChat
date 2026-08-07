@@ -10,6 +10,15 @@
 
 새로 생성된 config는 최상단 `enabled: false` 상태입니다. 이 상태에서는 BlueMapWebChat이 config를 생성/로드하기만 하고 `/bmchat reload`만 계속 사용할 수 있으며, 웹/채팅 서비스, 리스너, Discord 연동, DM 저장소, 애드온 설치, 업로드/이모지 초기화, 정리 작업을 시작하지 않습니다. 기존 config에 이 키가 없으면 업그레이드 호환성을 위해 활성 상태로 처리합니다. 저장 방식, 보관 기간, 업로드, 미리보기, 인증, 외부 공개 설정을 확인한 뒤 `enabled: true`로 변경하세요.
 
+## 업데이트 확인
+
+```yaml
+update-check:
+  enabled: true
+```
+
+활성화하면 BlueMapWebChat이 백그라운드에서 Modrinth의 최신 정식 버전을 확인합니다. 확인 주기, 릴리스 채널, 접속 알림 지연, 관리자 전용 알림 권한, Modrinth/CurseForge 다운로드 링크는 내부 기본값으로 사용하며 별도 설정으로 노출하지 않습니다. 업데이트 조회 실패는 플러그인 시작에 영향을 주지 않습니다.
+
 ## 배포 모드
 
 ### BlueMap 애드온
@@ -97,9 +106,15 @@ direct-message:
   allow-web-send: true
   allow-game-send: true
   capture-game-whispers: true
+
+direct-message:
+  admin-audit:
+    enabled: false
 ```
 
 `direct-message.enabled`를 켜면 연동되었거나 접속 기록이 있는 플레이어 사이의 저장형 1:1 스레드를 사용할 수 있습니다. A→B와 B→A는 같은 UUID 쌍의 대화로 저장됩니다. 저장방식, 보관기간, 메시지 수 제한, 알림 옵션은 기본 config의 주석을 따릅니다.
+
+`direct-message.admin-audit.enabled`는 기본값이 꺼진 별도 본문 접근 스위치입니다. 이 값을 켜도 `private-chat-super-admins`에 함께 지정된 계정만 DM 본문을 읽기 전용 감사 화면에서 열 수 있습니다. 페이지 열람은 감사 로그에 남지만 메시지 본문 자체는 로그에 복사하지 않습니다. 일반 ADMIN/MODERATOR 역할은 자동으로 대상이 되지 않습니다.
 
 `capture-game-whispers`는 취소되지 않은 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 명령을 송신자와 수신자의 BMChat DM에 복제합니다. Minecraft 귓속말을 다시 보내거나 대체하지는 않습니다. Bukkit에서 모든 귓속말 플러그인의 최종 성공 여부를 공통으로 알 수 없으므로 정상 형식이며 알려진 플레이어를 대상으로 한 명령을 기록 기준으로 사용합니다.
 
@@ -527,7 +542,7 @@ ui:
 
 ## 비공개 채팅 메타데이터 최고관리자
 
-`private-chat-super-admins: []`에는 DM/그룹채팅 메타데이터를 관리/용량 확인용으로 볼 수 있는 정확한 UUID 또는 마인크래프트 이름을 지정합니다. 이 화면은 참여자/제목, 메시지 수, 대략적인 저장 용량, 보관 상태, 메타데이터 세션 삭제 같은 관리 동작만 제공하며 메시지 본문은 노출하지 않습니다.
+`private-chat-super-admins: []`에는 DM/그룹채팅 메타데이터를 관리/용량 확인용으로 볼 수 있는 정확한 UUID 또는 마인크래프트 이름을 지정합니다. 기본 메타데이터 화면은 참여자/제목, 메시지 수, 대략적인 저장 용량, 보관 상태와 관리 동작을 제공합니다. DM 본문은 `direct-message.admin-audit.enabled: true`일 때만 읽기 전용으로 열 수 있으며 모든 페이지 열람이 감사 로그에 기록됩니다.
 
 
 `standalone-web.app-name`과 `standalone-web.app-short-name`은 standalone 페이지/PWA 이름을 제어합니다. 모바일 홈 화면 웹앱으로 설치한 뒤 값을 바꿨다면 다시 설치해야 반영됩니다. `web-push.notification-title`은 테스트/시스템/백그라운드 푸시의 기본 제목을 제어하며, 비워두면 `standalone-web.app-name`을 사용합니다.

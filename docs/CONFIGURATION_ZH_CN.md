@@ -10,6 +10,15 @@
 
 新生成的 config 顶层默认为 `enabled: false`。在此状态下，BlueMapWebChat 只会生成/读取配置，/bmchat reload 仍可使用，但不会启动 Web/聊天服务、监听器、Discord 集成、私信存储、插件网页安装、上传/表情初始化或清理任务。已有 config 如果没有此键，为了升级兼容会视为已启用。请先检查存储方式、保留期限、上传、预览、认证和对外公开设置，再改为 `enabled: true`。
 
+## 更新检查
+
+```yaml
+update-check:
+  enabled: true
+```
+
+启用后，BlueMapWebChat 会在后台检查 Modrinth 上的最新正式版本。检查间隔、发布通道、进服提示延迟、仅管理员可见的提示权限以及 Modrinth/CurseForge 下载链接均使用内置默认值，不提供额外配置项。更新查询失败不会影响插件启动。
+
 ## 部署模式
 
 ### BlueMap 插件模式
@@ -88,7 +97,13 @@ direct-message:
   allow-web-send: true
   allow-game-send: true
   capture-game-whispers: true
+
+direct-message:
+  admin-audit:
+    enabled: false
 ```
+
+`direct-message.admin-audit.enabled` 是默认关闭的独立正文访问开关。即使启用，也只有同时列在 `private-chat-super-admins` 中的账号可以在只读审计视图中打开私信正文。每次分页读取会写入审计日志，但正文不会复制到日志。普通 ADMIN/MODERATOR 角色不会自动获得权限。
 
 `capture-game-whispers` 会把未取消的 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 复制到发送者和接收者的 BMChat DM 会话。它不会重新发送或替换 Minecraft 私聊。Bukkit 无法统一获得所有私聊插件的最终成功结果，因此以格式正确、目标为已知玩家的命令作为记录条件。
 
@@ -473,7 +488,7 @@ ui:
 
 ## 私信/群组聊天元数据超级管理员
 
-`private-chat-super-admins: []` 用于填写可出于管理/容量检查目的查看 DM/群组聊天元数据的准确 UUID 或 Minecraft 名。该视图只提供参与者/标题、消息数、大致存储大小、保留状态以及元数据会话删除等管理操作，不会显示消息正文。
+`private-chat-super-admins: []` 用于填写可查看私信/群聊元数据的准确 UUID 或 Minecraft 名。元数据视图显示参与者/标题、消息数、大致存储大小、保留状态和管理操作。只有在 `direct-message.admin-audit.enabled: true` 时才能以只读方式打开私信正文，每次分页读取都会写入审计日志。
 
 
 `standalone-web.app-name` 和 `standalone-web.app-short-name` 控制 standalone 页面/PWA 名称。移动端添加到主屏幕后如更改这些值，需要重新添加。`web-push.notification-title` 控制测试/系统/后台推送的默认标题；留空时使用 `standalone-web.app-name`。

@@ -53,3 +53,14 @@ mvn clean package
 - [ ] SQLite relay-column migration preserves existing history.
 - [ ] en-US, ko-KR, ja-JP, and zh-CN language key sets match.
 - [ ] ImageEmojis-Bero 1.9.0: shared-folder PNG, normal chat, `/bmchat reply`, `/bmchat dm`, URL+emoji click coexistence, and remote relay rendering are verified.
+
+## 4.6.1 remote DM search and administrator audit checks
+
+- [ ] `pom.xml`, `plugin.yml`, bundled `config-version`, artifact examples, and cache-facing docs show `4.6.1`.
+- [ ] A config marked `4.6.0` generates `config-migration-4.6.1.yml` containing only `direct-message.admin-audit.enabled: false` and `config-version: "4.6.1"` unless other settings are actually missing.
+- [ ] A relayed game or linked-web sender with a player UUID appears in the existing DM recipient search by display name, real name, and UUID; UUID-less guest/Discord senders do not.
+- [ ] Remote-player identities are restored from retained public history after restart.
+- [ ] Ordinary ADMIN/MODERATOR accounts cannot read other users' DM bodies.
+- [ ] A listed `private-chat-super-admins` account still sees metadata only while `direct-message.admin-audit.enabled` is false.
+- [ ] With both gates enabled, administrator DM rows open a read-only audit view, sending/hiding/mark-read controls remain unavailable, and globally hidden messages are excluded.
+- [ ] Each audit page read appends `admin.dm-audit-read` with actor, thread ID, pagination, limit, and returned count; message bodies are not copied into the audit log.

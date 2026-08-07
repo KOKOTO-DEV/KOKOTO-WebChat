@@ -53,3 +53,14 @@ mvn clean package
 - [ ] SQLite 릴레이 열 마이그레이션 후 기존 기록이 유지된다.
 - [ ] en-US, ko-KR, ja-JP, zh-CN 언어 키가 일치한다.
 - [ ] ImageEmojis-Bero 1.9.0: 공용 폴더 PNG, 일반 채팅, `/bmchat reply`, `/bmchat dm`, URL+이모지 클릭 공존, 원격 릴레이 표시를 확인한다.
+
+## 4.6.1 타 서버 DM 검색·관리자 감사 점검
+
+- [ ] `pom.xml`, `plugin.yml`, 기본 `config-version`, 빌드 산출물 예제와 캐시 관련 문서가 `4.6.1`이다.
+- [ ] `config-version: "4.6.0"` 설정에서 다른 실제 누락이 없다면 `config-migration-4.6.1.yml`에는 `direct-message.admin-audit.enabled: false`와 `config-version: "4.6.1"`만 나온다.
+- [ ] UUID가 포함된 타 서버 게임/연동 웹 발신자를 기존 DM 검색에서 표시 이름, 실제 이름, UUID로 찾을 수 있고 UUID 없는 게스트·Discord 발신자는 제외된다.
+- [ ] 재시작 후 보존된 공개 기록에서 타 서버 플레이어 이름이 DM 검색 대상으로 복원된다.
+- [ ] 일반 ADMIN/MODERATOR 계정은 다른 사용자의 DM 본문을 볼 수 없다.
+- [ ] `private-chat-super-admins`에 등록되어도 `direct-message.admin-audit.enabled: false`이면 메타데이터만 보인다.
+- [ ] 두 조건을 모두 켜면 관리자 DM 행이 읽기 전용 감사 화면으로 열리고 전송·숨김·읽음 처리는 제공하지 않으며 전역 숨김 메시지는 제외된다.
+- [ ] 감사 페이지를 읽을 때마다 actor, thread ID, pagination, limit, returned count가 `admin.dm-audit-read`로 기록되고 본문은 감사 로그에 복사되지 않는다.

@@ -10,6 +10,15 @@
 
 新規生成された config は最上位の `enabled: false` から始まります。この状態では BlueMapWebChat は config の生成/読み込みのみを行い、/bmchat reload は引き続き使用できますが、Web/チャットサービス、リスナー、Discord 連携、DM ストア、アドオン設置、アップロード/絵文字初期化、クリーンアップ処理を開始しません。既存 config にこのキーがない場合は、アップグレード互換性のため有効として扱います。保存方式、保持期間、アップロード、プレビュー、認証、公開設定を確認してから `enabled: true` に変更してください。
 
+## アップデート確認
+
+```yaml
+update-check:
+  enabled: true
+```
+
+有効にすると、BlueMapWebChat はバックグラウンドで Modrinth の最新 stable release を確認します。確認間隔、release channel、join 通知 delay、管理者専用権限、Modrinth/CurseForge download link は内蔵 default を使用し、個別設定としては公開しません。確認失敗で plugin 起動が停止することはありません。
+
 ## 配置モード
 
 ### BlueMap アドオン
@@ -88,7 +97,13 @@ direct-message:
   allow-web-send: true
   allow-game-send: true
   capture-game-whispers: true
+
+direct-message:
+  admin-audit:
+    enabled: false
 ```
+
+`direct-message.admin-audit.enabled` は default off の別 content-access switch です。有効でも `private-chat-super-admins` に指定された account だけが read-only audit view で DM body を開けます。page read は audit log に記録されますが body 自体は log にコピーされません。通常 ADMIN/MODERATOR role は自動対象ではありません。
 
 `capture-game-whispers` は、キャンセルされていない `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` を送信者と受信者の BMChat DM スレッドへ複製します。Minecraft whisper 自体を再送・置換しません。Bukkit は任意の whisper plugin の最終成功結果を共通 API で提供しないため、既知 player 宛ての正しい形式の command を記録基準にします。
 
@@ -473,7 +488,7 @@ ui:
 
 ## 非公開チャットメタデータ・スーパー管理者
 
-`private-chat-super-admins: []` には、管理/容量確認用にDM/グループチャットのメタデータを表示できる正確なUUIDまたはMinecraft名を指定します。この表示では参加者/タイトル、メッセージ数、おおよその保存サイズ、保存期限状態、メタデータセッション削除などの管理操作のみを提供し、本文は表示しません。
+`private-chat-super-admins: []` には管理/容量確認用に DM/group metadata を閲覧できる exact UUID または Minecraft name を指定します。metadata view は participant/title、message count、storage size、retention state と管理操作を表示します。DM body は `direct-message.admin-audit.enabled: true` の場合だけ read-only で開け、各 page read が audit log に記録されます。
 
 
 `standalone-web.app-name` と `standalone-web.app-short-name` は standalone ページ/PWA 名を制御します。モバイルでホーム画面 Web アプリとして追加済みの場合、変更後は再追加してください。`web-push.notification-title` はテスト/システム/バックグラウンド Push の既定タイトルを制御します。空の場合は `standalone-web.app-name` を使用します。

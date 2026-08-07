@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.6.0 Complete User and Operations Manual
+# BlueMapWebChat 4.6.1 Complete User and Operations Manual
 
-This manual describes all BlueMapWebChat 4.6.0 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION_EN.md`. For relay protocol details, see `SERVER_RELAY_EN.md`. For HTTPS deployment, also see `CADDY_HTTPS_EN.md` and `NGINX_HTTPS_EN.md`.
+This manual describes all BlueMapWebChat 4.6.1 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION_EN.md`. For relay protocol details, see `SERVER_RELAY_EN.md`. For HTTPS deployment, also see `CADDY_HTTPS_EN.md` and `NGINX_HTTPS_EN.md`.
 
 ## 1. Overview
 
@@ -47,7 +47,7 @@ For public servers, do not expose port `8899` directly to the Internet. Bind Blu
 Safe initial state:
 
 ```yaml
-config-version: "4.6.0"
+config-version: "4.6.1"
 enabled: false
 ```
 
@@ -60,7 +60,7 @@ BlueMapWebChat never overwrites an existing `config.yml` during an update.
 When `config-version` is missing or differs from the running plugin version, the plugin creates:
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.6.0.yml
+plugins/BlueMapWebChat/config-migration-4.6.1.yml
 ```
 
 Decision rules:
@@ -89,7 +89,7 @@ Upgrade procedure:
 4. After review, set:
 
 ```yaml
-config-version: "4.6.0"
+config-version: "4.6.1"
 ```
 
 When the version matches, future comparisons are skipped.
@@ -504,7 +504,7 @@ Name click actions:
 
 - Local game player: `/w <realName> `
 - Web sender: `/bmchat dm <realName> `
-- Remote-server game sender: `/bmchat dm <realName> `
+- Remote-server game sender: `/bmchat dm <realName>@<server-id> `
 
 ## 14. Public Message Replies
 
@@ -565,7 +565,7 @@ direct-message:
   confirm-hide: true
 ```
 
-Recipients must be known by UUID. A player who never joined or linked cannot be resolved. With `storage: auto`, DM uses JSONL only when public chat storage is JSONL; otherwise it uses SQLite. You may explicitly select `sqlite` or `jsonl`.
+Recipients must be known by UUID. In addition to local join and linked-account records, a relayed game or linked-web message with `playerUuid` registers the sender's display name and real Minecraft name in the new-conversation recipient search. This allows a remote-server sender seen in public chat to be found through the normal DM search and sent through the existing DM path. The latest identity is retained in `known-display-names.yml` and remains searchable after restart. Guest and Discord messages without a player UUID are not registered. With `storage: auto`, DM uses JSONL only when public chat storage is JSONL; otherwise it uses SQLite. You may explicitly select `sqlite` or `jsonl`.
 
 Game commands:
 
@@ -596,7 +596,7 @@ When `capture-game-whispers: true`, the following commands are copied into the s
 /w /msg /tell /whisper /m /pm /message /t
 ```
 
-BlueMapWebChat does not replace the Minecraft whisper. It records a copy for both sender and recipient.
+BlueMapWebChat does not replace a normal same-server Minecraft whisper. It records a copy for both sender and recipient. For a remote target, use `name@server-id`; the same aliases are rewritten to `/bmchat dm name@server-id <message>` and sent through the signed cross-server DM relay. `/r` and `/reply` are not intercepted because they contain no target and remain owned by the server's existing whisper plugin.
 
 ## 16. Group Chat
 
@@ -1090,7 +1090,17 @@ private-chat-super-admins:
   - "00000000-0000-0000-0000-000000000000"
 ```
 
-The metadata view can show room/thread titles and participants, message counts, approximate storage usage, retention state, cleanup previews, and metadata-management actions. It does not expose message bodies.
+The metadata view shows room/thread titles and participants, message counts, approximate storage usage, retention state, cleanup previews, and metadata-management actions.
+
+To allow read-only DM content review, enable the separate switch:
+
+```yaml
+direct-message:
+  admin-audit:
+    enabled: true
+```
+
+Only accounts that satisfy both `private-chat-super-admins` and this switch can open an administrator DM thread. Normal ADMIN/MODERATOR roles are not enough. The audit view cannot send messages, hide participant messages, or mark them read. Every page load writes an `admin.dm-audit-read` record to the audit log without copying message bodies into the log.
 
 ### 28.2 Audit Log
 
@@ -1230,9 +1240,10 @@ bluemapwebchat.dm        Send and read direct messages
 bluemapwebchat.reply     Reply to public messages from Minecraft
 bluemapwebchat.group     Use group chat
 bluemapwebchat.admin     Administer the plugin
+bluemapwebchat.update.notify  Receive update notices (OP by default)
 ```
 
-User permissions are allowed by default. `bluemapwebchat.admin` defaults to OP.
+User permissions are allowed by default. `bluemapwebchat.admin` and `bluemapwebchat.update.notify` default to OP.
 
 ## 33. Data Files and Backup
 
@@ -1363,6 +1374,7 @@ If only BlueMap web assets appear stale, also run `/bluemap reload`.
 
 - `CONFIGURATION_EN.md`: detailed setting reference
 - `SERVER_RELAY_EN.md`: relay topology, authentication, and errors
+- `UPGRADE_4_6_1_EN.md`: 4.6.0 to 4.6.1 upgrade
 - `UPGRADE_4_6_0_EN.md`: 4.5.5 to 4.6.0 upgrade
 - `CADDY_HTTPS_EN.md`: Caddy HTTPS
 - `NGINX_HTTPS_EN.md`: Nginx HTTPS

@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.6.0 完整用户与运维手册
+# BlueMapWebChat 4.6.1 完整用户与运维手册
 
-本文从普通用户和服务器管理员两个角度说明 BlueMapWebChat 4.6.0 的全部功能。逐项配置说明请参阅 `CONFIGURATION_ZH_CN.md`，服务器中继请参阅 `SERVER_RELAY_ZH_CN.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS_ZH_CN.md` 与 `NGINX_HTTPS_ZH_CN.md`。
+本文从普通用户和服务器管理员两个角度说明 BlueMapWebChat 4.6.1 的全部功能。逐项配置说明请参阅 `CONFIGURATION_ZH_CN.md`，服务器中继请参阅 `SERVER_RELAY_ZH_CN.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS_ZH_CN.md` 与 `NGINX_HTTPS_ZH_CN.md`。
 
 ## 1. 插件概述
 
@@ -45,7 +45,7 @@ BlueMapWebChat 用于把 Bukkit/Paper/Spigot 兼容 Minecraft 服务器的聊天
 7. 重启服务器或执行 `/bmchat reload`。
 
 ```yaml
-config-version: "4.6.0"
+config-version: "4.6.1"
 enabled: false
 ```
 
@@ -58,7 +58,7 @@ enabled: false
 当 `config-version` 缺失或与当前插件版本不同，会生成：
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.6.0.yml
+plugins/BlueMapWebChat/config-migration-4.6.1.yml
 ```
 
 判定规则：
@@ -80,7 +80,7 @@ plugins/BlueMapWebChat/config-migration-4.6.0.yml
 确认并合并后设置：
 
 ```yaml
-config-version: "4.6.0"
+config-version: "4.6.1"
 ```
 
 版本一致后将跳过后续比较。
@@ -389,9 +389,7 @@ captcha:
   pass-valid-minutes: 120
 ```
 
-游客/IP 禁言`storage: auto` 仅在公开聊天使用 JSONL 时让私信也使用 JSONL，其他情况使用 SQLite，也可显式选择 `sqlite` 或 `jsonl`。
-
-命令：
+游客/IP 禁言命令：
 
 ```text
 /bmchat guest mute guest <name> [minutes] [reason]
@@ -426,7 +424,7 @@ chat:
 
 - 同服务器游戏玩家：`/w <realName> `
 - Web 发送者：`/bmchat dm <realName> `
-- 其他服务器游戏玩家：`/bmchat dm <realName> `
+- 其他服务器游戏玩家：`/bmchat dm <realName>@<server-id> `
 
 ## 14. 公开消息回复
 
@@ -479,6 +477,10 @@ direct-message:
   confirm-hide: true
 ```
 
+`storage: auto` 仅在公开聊天使用 JSONL 时让私信也使用 JSONL，其他情况使用 SQLite，也可显式选择 `sqlite` 或 `jsonl`。
+
+DM 对象按 UUID 识别。除了本服加入记录和已关联账号之外，服务器中继收到的游戏消息或已关联 Web 消息只要包含 `playerUuid`，其显示名和真实 Minecraft 名也会登记到 Web DM 的新会话对象搜索中。这样可直接在普通 DM 搜索框中查找公开聊天里看到的其他服务器发送者。最新名称会保存在 `known-display-names.yml`，重启后仍可搜索。没有玩家 UUID 的访客和 Discord 消息不会登记。
+
 命令：
 
 ```text
@@ -496,7 +498,7 @@ direct-message:
 
 权限：`bluemapwebchat.dm`
 
-`capture-game-whispers: true` 会把 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 的内容复制到 BMChat 私信线程，但不会替代 Minecraft 原本的私聊。
+`capture-game-whispers: true` 会把 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 的内容复制到 BMChat 私信线程，但不会替代同服务器原本的 Minecraft 私聊。向其他服务器发送时使用 `名称@server-id`，这些别名会转换成 `/bmchat dm 名称@server-id <消息>` 并通过签名的跨服务器 DM relay 发送。由于 `/r`、`/reply` 不包含目标并依赖现有私聊插件的最近联系人状态，因此不会被拦截。
 
 ## 16. 群聊
 
@@ -856,7 +858,17 @@ private-chat-super-admins:
   - "00000000-0000-0000-0000-000000000000"
 ```
 
-只能查看参与者、数量、容量、保留和清理信息，不能查看消息正文。
+默认只能查看参与者、数量、容量、保留和清理信息。
+
+如需只读审计私信正文，还要启用：
+
+```yaml
+direct-message:
+  admin-audit:
+    enabled: true
+```
+
+只有同时满足 `private-chat-super-admins` 和该开关的账号才能打开管理员私信会话。普通 ADMIN/MODERATOR 角色本身不能查看正文。审计视图不能发送消息、隐藏参与者消息或更新已读状态。每次分页读取都会写入 `admin.dm-audit-read` 审计记录，但正文不会复制到审计日志。
 
 审计日志：
 
@@ -969,9 +981,10 @@ bluemapwebchat.dm
 bluemapwebchat.reply
 bluemapwebchat.group
 bluemapwebchat.admin
+bluemapwebchat.update.notify
 ```
 
-用户权限默认允许，管理员权限默认仅 OP。
+用户功能权限默认允许，`bluemapwebchat.admin` 与 `bluemapwebchat.update.notify` 默认仅 OP。
 
 ## 33. 数据文件与备份
 
@@ -1081,6 +1094,7 @@ Web Push：
 
 - `CONFIGURATION_ZH_CN.md`
 - `SERVER_RELAY_ZH_CN.md`
+- `UPGRADE_4_6_1_ZH_CN.md`: 4.6.0→4.6.1 升级
 - `UPGRADE_4_6_0_ZH_CN.md`
 - `CADDY_HTTPS_ZH_CN.md`
 - `NGINX_HTTPS_ZH_CN.md`

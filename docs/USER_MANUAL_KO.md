@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.6.0 통합 사용·운영 매뉴얼
+# BlueMapWebChat 4.6.1 통합 사용·운영 매뉴얼
 
-이 문서는 BlueMapWebChat 4.6.0의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION_KO.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY_KO.md`, HTTPS 구성은 `CADDY_HTTPS_KO.md`와 `NGINX_HTTPS_KO.md`를 함께 참고하세요.
+이 문서는 BlueMapWebChat 4.6.1의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION_KO.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY_KO.md`, HTTPS 구성은 `CADDY_HTTPS_KO.md`와 `NGINX_HTTPS_KO.md`를 함께 참고하세요.
 
 ## 1. 플러그인 개요
 
@@ -47,7 +47,7 @@ BlueMapWebChat은 Minecraft Bukkit/Paper/Spigot 계열 서버의 게임 채팅�
 기본 안전 설정:
 
 ```yaml
-config-version: "4.6.0"
+config-version: "4.6.1"
 enabled: false
 ```
 
@@ -60,7 +60,7 @@ enabled: false
 실행 중인 플러그인 버전과 `config-version`이 다르거나 설정에 버전이 없으면 다음 파일이 생성됩니다.
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.6.0.yml
+plugins/BlueMapWebChat/config-migration-4.6.1.yml
 ```
 
 판정 기준:
@@ -89,7 +89,7 @@ plugins/BlueMapWebChat/config-migration-4.6.0.yml
 4. 검토가 끝나면 실제 `config.yml`에 다음 값을 넣습니다.
 
 ```yaml
-config-version: "4.6.0"
+config-version: "4.6.1"
 ```
 
 버전이 일치하면 이후 비교를 생략합니다.
@@ -518,7 +518,7 @@ chat:
 
 - 같은 서버 게임 플레이어: `/w <실제이름> `
 - 웹 사용자: `/bmchat dm <실제이름> `
-- 다른 서버 게임 플레이어: `/bmchat dm <실제이름> `
+- 다른 서버 게임 플레이어: `/bmchat dm <실제이름>@<server-id> `
 
 ## 14. 공개 메시지 댓글
 
@@ -579,7 +579,7 @@ direct-message:
   confirm-hide: true
 ```
 
-대상은 서버가 UUID를 알고 있는 플레이어입니다. 한 번도 접속하거나 연동하지 않은 이름은 찾을 수 없습니다. `storage: auto`는 공개 채팅 저장방식이 `jsonl`일 때 DM도 JSONL을 사용하고, 그 외에는 SQLite를 사용합니다. 필요하면 `sqlite` 또는 `jsonl`을 직접 지정할 수 있습니다.
+대상은 서버가 UUID를 알고 있는 플레이어입니다. 로컬 접속·계정 연동 기록뿐 아니라 서버 릴레이로 받은 게임/연동 웹 메시지에 `playerUuid`가 있으면 해당 발신자의 표시 이름과 실제 Minecraft 이름을 DM의 새 대화 대상 검색에 등록합니다. 따라서 타 서버 메시지에서 본 이름을 DM 검색창에 입력해 기존 전송 경로로 대화를 시작할 수 있습니다. 최근 이름은 `known-display-names.yml`에 보존되며 재시작 후에도 검색됩니다. UUID가 없는 게스트·Discord 메시지는 DM 대상에 등록하지 않습니다. `storage: auto`는 공개 채팅 저장방식이 `jsonl`일 때 DM도 JSONL을 사용하고, 그 외에는 SQLite를 사용합니다. 필요하면 `sqlite` 또는 `jsonl`을 직접 지정할 수 있습니다.
 
 게임 명령어:
 
@@ -610,7 +610,7 @@ bluemapwebchat.dm
 /w /msg /tell /whisper /m /pm /message /t
 ```
 
-Minecraft 귓속말을 대체하지 않고 기록만 복제합니다. 송신자와 수신자 모두 웹 DM에서 볼 수 있습니다.
+같은 서버의 일반 Minecraft 귓속말은 대체하지 않고 기록만 복제합니다. 송신자와 수신자 모두 웹 DM에서 볼 수 있습니다. 타 서버 대상은 `이름@server-id`로 지정하며, 위 별칭들은 `/bmchat dm 이름@server-id <메시지>`로 변환되어 서명된 서버 간 DM 릴레이로 전송됩니다. 대상이 없는 `/r`, `/reply`는 기존 귓속말 플러그인의 최근 상대 상태와 충돌할 수 있으므로 가로채지 않습니다.
 
 ## 16. 그룹 채팅
 
@@ -1125,7 +1125,7 @@ private-chat-super-admins:
   - "00000000-0000-0000-0000-000000000000"
 ```
 
-볼 수 있는 정보:
+기본적으로 볼 수 있는 정보:
 
 - DM 스레드와 그룹방 제목·참여자
 - 메시지 수
@@ -1133,7 +1133,15 @@ private-chat-super-admins:
 - 보관 정책 상태
 - 정리 미리보기와 메타데이터 관리
 
-메시지 본문은 공개하지 않습니다.
+DM 본문 감사가 필요한 경우 다음 설정을 추가로 켭니다.
+
+```yaml
+direct-message:
+  admin-audit:
+    enabled: true
+```
+
+`private-chat-super-admins`와 `direct-message.admin-audit.enabled`가 모두 적용된 계정만 관리자 메타데이터 목록의 DM 세션을 눌러 읽기 전용으로 본문을 볼 수 있습니다. 일반 ADMIN/MODERATOR 역할만으로는 본문 접근 권한이 생기지 않습니다. 감사 화면에서는 메시지 전송, 참여자별 숨김, 읽음 처리 기능을 제공하지 않습니다. 페이지를 불러올 때마다 `admin.dm-audit-read` 기록이 감사 로그에 추가되며 본문 자체는 감사 로그에 복사하지 않습니다.
 
 ### 28.2 감사 로그
 
@@ -1278,12 +1286,13 @@ bluemapwebchat.dm        DM 송수신 및 조회
 bluemapwebchat.reply     게임에서 공개 댓글 작성
 bluemapwebchat.group     그룹 채팅 사용
 bluemapwebchat.admin     플러그인 관리
+bluemapwebchat.update.notify  업데이트 알림 수신(OP 기본)
 ```
 
 기본값:
 
 - 사용자 기능 권한은 기본 허용
-- `bluemapwebchat.admin`은 OP 기본
+- `bluemapwebchat.admin`, `bluemapwebchat.update.notify`는 OP 기본
 
 ## 33. 데이터 파일과 백업
 
@@ -1414,6 +1423,7 @@ BlueMap 웹 자산만 갱신되지 않으면 `/bluemap reload`를 추가로 사�
 
 - `CONFIGURATION_KO.md`: 설정별 상세 설명
 - `SERVER_RELAY_KO.md`: 릴레이 토폴로지, 인증과 오류
+- `UPGRADE_4_6_1_KO.md`: 4.6.0→4.6.1 업그레이드
 - `UPGRADE_4_6_0_KO.md`: 4.5.5→4.6.0 업그레이드
 - `CADDY_HTTPS_KO.md`: Caddy HTTPS 구성
 - `NGINX_HTTPS_KO.md`: Nginx HTTPS 구성

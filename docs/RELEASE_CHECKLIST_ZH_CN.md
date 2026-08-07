@@ -52,3 +52,14 @@ mvn clean package
 - [ ] 当 `config-version` 缺失或不同时，即使没有其他差异，也生成包含 `config-version` 的 `config-migration-4.6.0.yml`，且不覆盖实际 `config.yml`。
 - [ ] 版本一致时跳过比较并删除同版本的旧报告。
 - [ ] 迁移片段只把缺失设置和变化的默认值写成真实 YAML 设置，不输出自定义值和信息型区块。
+
+## 4.6.1 跨服私信搜索与管理员审计检查
+
+- [ ] `pom.xml`、`plugin.yml`、内置 `config-version`、构建产物示例和缓存文档均为 `4.6.1`。
+- [ ] 使用 `config-version: "4.6.0"` 且无其他缺失项时，`config-migration-4.6.1.yml` 只包含 `direct-message.admin-audit.enabled: false` 和 `config-version: "4.6.1"`。
+- [ ] 带玩家 UUID 的其他服务器游戏/已关联网页发送者可在现有私信搜索中按显示名、真实名和 UUID 查找；无 UUID 的访客/Discord 发送者被排除。
+- [ ] 重启后可从保留的公共聊天历史恢复远程玩家身份。
+- [ ] 普通 ADMIN/MODERATOR 账号不能查看其他用户的私信正文。
+- [ ] 即使列在 `private-chat-super-admins` 中，只要审计开关为 false 就只能查看元数据。
+- [ ] 两个条件都启用时，管理员私信条目以只读审计视图打开，不提供发送/隐藏/已读操作，并排除全局隐藏消息。
+- [ ] 每次分页读取都写入 `admin.dm-audit-read`，包含操作者、会话 ID、分页位置、限制和返回数量；正文不会复制到审计日志。

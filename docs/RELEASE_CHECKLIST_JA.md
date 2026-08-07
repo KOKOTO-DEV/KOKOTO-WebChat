@@ -52,3 +52,14 @@ mvn clean package
 - [ ] `config-version` がない、または異なる場合、他の差分がなくても実 `config.yml` を上書きせず、`config-version` を含む `config-migration-4.6.0.yml` を生成する。
 - [ ] version が一致する場合は比較を省略し、同 version の古い report を削除する。
 - [ ] fragment が missing key と changed default だけを実 YAML 設定として出力し、custom 値と情報用 section を出力しない。
+
+## 4.6.1 remote DM search / 管理者 audit check
+
+- [ ] `pom.xml`, `plugin.yml`, bundled `config-version`, artifact example, cache document が `4.6.1`。
+- [ ] `config-version: "4.6.0"` config では、他の不足がなければ `config-migration-4.6.1.yml` に `direct-message.admin-audit.enabled: false` と `config-version: "4.6.1"` だけが出る。
+- [ ] player UUID を持つ remote game/linked-web sender を既存 DM search で display name、real name、UUID から検索でき、UUID のない guest/Discord sender は除外される。
+- [ ] restart 後に retained public history から remote identity が復元される。
+- [ ] 通常 ADMIN/MODERATOR account は他 user の DM body を閲覧できない。
+- [ ] `private-chat-super-admins` 登録済みでも audit switch が false なら metadata only。
+- [ ] 両 gate 有効時だけ read-only audit view が開き、send/hide/mark-read control はなく global hidden message は除外される。
+- [ ] page read ごとに `admin.dm-audit-read` が audit log に追加され、body 自体は log にコピーされない。

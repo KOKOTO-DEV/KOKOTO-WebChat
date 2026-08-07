@@ -17,7 +17,7 @@ mvn clean package
 출력:
 
 ```text
-target/BlueMapWebChat-4.6.0.jar
+target/BlueMapWebChat-4.6.1.jar
 ```
 
 ## 설치 또는 업그레이드
@@ -39,9 +39,9 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 현재 버전 쿼리가 포함되어야 합니다.
 
 ```text
-addons/bluemap-web-chat/config.js?v=4.6.0-<cache-token>
-addons/bluemap-web-chat/chat.js?v=4.6.0-<cache-token>
-addons/bluemap-web-chat/chat.css?v=4.6.0-<cache-token>
+addons/bluemap-web-chat/config.js?v=4.6.1-<cache-token>
+addons/bluemap-web-chat/chat.js?v=4.6.1-<cache-token>
+addons/bluemap-web-chat/chat.css?v=4.6.1-<cache-token>
 ```
 
 실제 웹 파일 갱신도 확인합니다.

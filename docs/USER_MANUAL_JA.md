@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.6.0 総合ユーザー・運用マニュアル
+# BlueMapWebChat 4.6.1 総合ユーザー・運用マニュアル
 
-この文書は BlueMapWebChat 4.6.0 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION_JA.md`、サーバー間リレーは `SERVER_RELAY_JA.md`、HTTPS は `CADDY_HTTPS_JA.md` と `NGINX_HTTPS_JA.md` を参照してください。
+この文書は BlueMapWebChat 4.6.1 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION_JA.md`、サーバー間リレーは `SERVER_RELAY_JA.md`、HTTPS は `CADDY_HTTPS_JA.md` と `NGINX_HTTPS_JA.md` を参照してください。
 
 ## 1. 概要
 
@@ -45,7 +45,7 @@ BlueMapWebChat は Bukkit/Paper/Spigot 互換 Minecraft サーバーのチャッ
 7. 再起動または `/bmchat reload` を実行します。
 
 ```yaml
-config-version: "4.6.0"
+config-version: "4.6.1"
 enabled: false
 ```
 
@@ -58,7 +58,7 @@ enabled: false
 `config-version` がない、または実行中バージョンと異なる場合、次のファイルが生成されます。
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.6.0.yml
+plugins/BlueMapWebChat/config-migration-4.6.1.yml
 ```
 
 判定基準:
@@ -78,7 +78,7 @@ plugins/BlueMapWebChat/config-migration-4.6.0.yml
 他の設定差分がなくても、設定 version 管理のため `config-version` を含む file を生成します。説明や旧値は `#` comment のみで、実際の `config.yml` は変更されません。確認後に次を設定します。
 
 ```yaml
-config-version: "4.6.0"
+config-version: "4.6.1"
 ```
 
 バージョンが一致すると比較を省略します。
@@ -418,7 +418,7 @@ Placeholder: `{display}`, `{real}`, `{uuid}`, `{source}`
 
 - 同じサーバーの game player: `/w <realName> `
 - Web sender: `/bmchat dm <realName> `
-- 他サーバーの game sender: `/bmchat dm <realName> `
+- 他サーバーの game sender: `/bmchat dm <realName>@<server-id> `
 
 ## 14. 公開メッセージ reply
 
@@ -475,7 +475,7 @@ direct-message:
   confirm-hide: true
 ```
 
-`storage: auto` は公開 chat が JSONL の場合だけ DM も JSONL、それ以外は SQLite を使用します。`sqlite`/`jsonl` の明示指定も可能です。
+DM 宛先は UUID で識別されます。local join/linked account の記録に加えて、server relay で受信した game または linked web message に `playerUuid` がある場合、その送信者の表示名と実 Minecraft 名を Web DM の新規宛先検索へ登録します。公開 chat で見た別サーバーの名前を通常の DM 検索に入力して会話を開始できます。最新の名前は `known-display-names.yml` に保持され、再起動後も検索できます。UUID のない guest/Discord message は登録されません。`storage: auto` は公開 chat が JSONL の場合だけ DM も JSONL、それ以外は SQLite を使用します。`sqlite`/`jsonl` の明示指定も可能です。
 
 Command:
 
@@ -498,7 +498,7 @@ Command:
 bluemapwebchat.dm
 ```
 
-`capture-game-whispers: true` では `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` を BMChat DM にも記録します。Minecraft の whisper 自体は置き換えません。
+`capture-game-whispers: true` では `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` を BMChat DM にも記録します。同一サーバーの通常 whisper 自体は置き換えません。別サーバー宛ては `名前@server-id` を指定すると `/bmchat dm 名前@server-id <message>` に変換され、署名付き cross-server DM relay で送信されます。対象を含まない `/r`, `/reply` は既存 whisper plugin の last-target state と競合するため intercept しません。
 
 ## 16. Group chat
 
@@ -858,7 +858,17 @@ private-chat-super-admins:
   - "00000000-0000-0000-0000-000000000000"
 ```
 
-本文は表示せず、participant、count、size、retention、cleanup metadata のみ扱います。
+default では participant、count、size、retention、cleanup metadata のみ扱います。
+
+DM本文 audit が必要な場合は次も有効にします。
+
+```yaml
+direct-message:
+  admin-audit:
+    enabled: true
+```
+
+`private-chat-super-admins` とこの switch の両方を満たす account だけが管理者 DM thread を read-only で開けます。通常の ADMIN/MODERATOR role だけでは本文を閲覧できません。audit view では送信、participant ごとの hide、read 状態更新はできません。各 page load は `admin.dm-audit-read` として audit log に記録され、本文自体は log にコピーされません。
 
 Audit:
 
@@ -971,9 +981,10 @@ bluemapwebchat.dm
 bluemapwebchat.reply
 bluemapwebchat.group
 bluemapwebchat.admin
+bluemapwebchat.update.notify
 ```
 
-User permission は default true、admin は OP default です。
+User permission は default true、`bluemapwebchat.admin` と `bluemapwebchat.update.notify` は OP default です。
 
 ## 33. Data と backup
 
@@ -1083,6 +1094,7 @@ Web Push:
 
 - `CONFIGURATION_JA.md`
 - `SERVER_RELAY_JA.md`
+- `UPGRADE_4_6_1_JA.md`: 4.6.0→4.6.1 upgrade
 - `UPGRADE_4_6_0_JA.md`
 - `CADDY_HTTPS_JA.md`
 - `NGINX_HTTPS_JA.md`
