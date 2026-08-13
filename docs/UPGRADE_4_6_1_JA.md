@@ -46,6 +46,6 @@ direct-message:
 - 各 page read は audit log に記録され、message body 自体は log にコピーされません。
 - 設定変更後は `/bmchat reload` または再起動を実行します。JAR差し替えには server restart が必要です。
 
-## 修正版 4.6.1 ビルド
+## Cross-server DM version requirement
 
-release number は 4.6.1 のままです。cross-server DM を交換する全サーバーへ修正版 4.6.1 を導入してください。`server · source` のクリックは対象投稿の UUID と origin server ID を直接渡し、remote search と既存 remote thread でも server ID と player UUID を保持します。
+cross-server DM を交換するすべてのサーバーで BlueMapWebChat 4.6.1 以降を使用してください。`server · source` のクリックは対象投稿の UUID と origin server ID を直接渡し、remote search と既存 remote thread でも server ID と player UUID を保持します。

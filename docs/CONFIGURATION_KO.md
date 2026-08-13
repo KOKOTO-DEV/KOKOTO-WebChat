@@ -17,7 +17,7 @@ update-check:
   enabled: true
 ```
 
-활성화하면 BlueMapWebChat이 백그라운드에서 Modrinth의 최신 정식 버전을 확인합니다. 확인 주기, 릴리스 채널, 접속 알림 지연, 관리자 전용 알림 권한, Modrinth/CurseForge 다운로드 링크는 내부 기본값으로 사용하며 별도 설정으로 노출하지 않습니다. 업데이트 조회 실패는 플러그인 시작에 영향을 주지 않습니다.
+활성화하면 BlueMapWebChat이 백그라운드에서 Modrinth의 최신 정식 버전을 확인합니다. OP 또는 `bluemapwebchat.update.notify` 권한 보유자가 로그인하면 제한된 주기로 Modrinth를 다시 확인하므로 새 릴리스 감지가 정기 확인 결과에만 의존하지 않습니다. 확인 주기, 릴리스 채널, 접속 알림 지연, Modrinth/CurseForge 다운로드 링크는 내부 기본값으로 유지합니다. 업데이트 조회 실패는 플러그인 시작을 막지 않으며 경고 로그로 기록됩니다.
 
 ## 배포 모드
 

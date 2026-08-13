@@ -38,6 +38,19 @@ mvn clean package
 
 - [ ] `USER_MANUAL_EN.md`, `USER_MANUAL_KO.md`, `USER_MANUAL_JA.md`, `USER_MANUAL_ZH_CN.md`의 주요 목차가 일치하고 현재 명령어·권한·기본값·기능 동작을 반영한다.
 
+## 4.6.2 전송 상태 릴리스 점검
+
+- [ ] `pom.xml`, `plugin.yml`, 기본 `config-version`, 산출물 예제와 현재 매뉴얼이 `4.6.2`이다.
+- [ ] 검토 완료된 4.6.1 설정에 다른 실제 차이가 없으면 `config-migration-4.6.2.yml`에는 `config-version: "4.6.2"`만 나온다.
+- [ ] 동일 이름이 로컬/원격에 모두 있을 때 서버 미지정 DM은 현재 서버 사용자만 선택하고, 원격 사용자는 서버가 명시된 경우에만 선택한다.
+- [ ] 타 서버 DM은 `pending`으로 시작하며 수신 저장 확인 후에만 `delivered`, HTTP 502·타임아웃·라우팅·수신 거부 시 `failed`가 된다.
+- [ ] 실패 DM 재시도는 같은 relay ID를 사용하며 수신 메시지를 중복 저장하지 않는다.
+- [ ] `pending` 상태에서 재시작하면 `failed` / 재시도 가능 상태로 복구한다.
+- [ ] 웹 DM 응답 유실 시 같은 client message ID로 재시도해 중복 DM을 만들지 않는다.
+- [ ] 그룹채팅 웹 재시도도 같은 client message ID로 기존 저장 메시지를 반환하고 중복 삽입하지 않는다.
+- [ ] 허브/체인 사설 DM 릴레이는 최종 수신 서버 저장 확인 후에만 성공을 반환한다.
+- [ ] DM과 그룹채팅의 모든 메시지에 읽음 상태를 표시한다. 1:1 DM은 상대가 읽기 전 `미확인`, 읽은 뒤 `✓`가 되며, 그룹채팅은 미확인 수신자 수를 숫자로 표시하고 0명이 되면 `✓`가 된다. DM과 그룹채팅의 모든 메시지를 읽음 상태 계산에 포함한다.
+
 ## 4.6.0 릴레이·DM·게임 댓글 점검
 
 - [ ] `config-version`이 없거나 다른 config에서는 다른 차이가 없어도 실제 `config.yml`을 덮어쓰지 않고 `config-version`이 포함된 `config-migration-4.6.0.yml`이 생성된다.

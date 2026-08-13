@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.6.1 Complete User and Operations Manual
+# BlueMapWebChat 4.6.2 Complete User and Operations Manual
 
-This manual describes all BlueMapWebChat 4.6.1 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION_EN.md`. For relay protocol details, see `SERVER_RELAY_EN.md`. For HTTPS deployment, also see `CADDY_HTTPS_EN.md` and `NGINX_HTTPS_EN.md`.
+This manual describes all BlueMapWebChat 4.6.2 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION_EN.md`. For relay protocol details, see `SERVER_RELAY_EN.md`. For HTTPS deployment, also see `CADDY_HTTPS_EN.md` and `NGINX_HTTPS_EN.md`.
 
 ## 1. Overview
 
@@ -47,7 +47,7 @@ For public servers, do not expose port `8899` directly to the Internet. Bind Blu
 Safe initial state:
 
 ```yaml
-config-version: "4.6.1"
+config-version: "4.6.2"
 enabled: false
 ```
 
@@ -60,7 +60,7 @@ BlueMapWebChat never overwrites an existing `config.yml` during an update.
 When `config-version` is missing or differs from the running plugin version, the plugin creates:
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.6.1.yml
+plugins/BlueMapWebChat/config-migration-4.6.2.yml
 ```
 
 Decision rules:
@@ -89,7 +89,7 @@ Upgrade procedure:
 4. After review, set:
 
 ```yaml
-config-version: "4.6.1"
+config-version: "4.6.2"
 ```
 
 When the version matches, future comparisons are skipped.
@@ -596,7 +596,11 @@ When `capture-game-whispers: true`, the following commands are copied into the s
 /w /msg /tell /whisper /m /pm /message /t
 ```
 
-BlueMapWebChat does not replace a normal same-server Minecraft whisper. It records a copy for both sender and recipient. For a remote target, use `name@server-id`; the same aliases are rewritten to `/bmchat dm name@server-id <message>` and sent through the signed cross-server DM relay. `/r` and `/reply` are not intercepted because they contain no target and remain owned by the server's existing whisper plugin.
+BlueMapWebChat does not replace a normal same-server Minecraft whisper. It records a copy for both sender and recipient. For a remote target, use `name@server-id`; the same aliases are rewritten to `/bmchat dm name@server-id <message>` and sent through the signed cross-server DM relay. An unqualified `/bmchat dm <name>` resolves only to a player on the current server. `/r` and `/reply` are not intercepted because they contain no target and remain owned by the server's existing whisper plugin.
+
+### 15.2 Delivery and read status
+
+Normal successful delivery is not labeled. `Sending` appears only while a local send request is pending, and `Failed · Retry` appears only when delivery cannot be confirmed. These compact states are displayed beside the message timestamp. Read status is shown beside the timestamp for every DM message: `Unread` means the single recipient has not read the message yet, and `✓` means the recipient has read it. Group chat remains count-based. For cross-server DMs, the recipient server returns the read acknowledgement through the authenticated relay so the same status is reflected on the message origin. The latest acknowledgement is idempotent and is re-sent when the conversation is viewed, allowing a transient relay or HTTP failure to repair on a later view.
 
 ## 16. Group Chat
 
@@ -617,6 +621,8 @@ group-chat:
 ```
 
 Web features include public/private room creation, optional room passwords stored as PBKDF2 hashes, invites, accept/reject, leave, hide/restore, room settings, unread tracking, per-user message hiding, member kick/block/unblock, and ownership transfer.
+
+Every group message shows its recipient read state. The number is the count of current room members who were already members when the message was sent and have not yet read it; the message sender is not a recipient. When the unread-recipient count reaches zero, the number changes to `✓`. Normal successful delivery itself is not labeled.
 
 Game commands:
 
@@ -1374,6 +1380,7 @@ If only BlueMap web assets appear stale, also run `/bluemap reload`.
 
 - `CONFIGURATION_EN.md`: detailed setting reference
 - `SERVER_RELAY_EN.md`: relay topology, authentication, and errors
+- `UPGRADE_4_6_2_EN.md`: 4.6.1 to 4.6.2 upgrade
 - `UPGRADE_4_6_1_EN.md`: 4.6.0 to 4.6.1 upgrade
 - `UPGRADE_4_6_0_EN.md`: 4.5.5 to 4.6.0 upgrade
 - `CADDY_HTTPS_EN.md`: Caddy HTTPS

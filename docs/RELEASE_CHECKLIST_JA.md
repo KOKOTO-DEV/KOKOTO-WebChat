@@ -38,6 +38,18 @@ mvn clean package
 
 - [ ] 4 言語の `USER_MANUAL_*.md` が同じ主要構成を持ち、現在の command・permission・default・機能動作を反映している。
 
+## 4.6.2 配信状態 release check
+
+- [ ] `pom.xml`, `plugin.yml`, bundled `config-version`, artifact example, current manual が `4.6.2`。
+- [ ] review 済み 4.6.1 config に他の差分がなければ `config-migration-4.6.2.yml` は `config-version: "4.6.2"` だけを出力する。
+- [ ] 同名の local / remote player が存在しても、server 指定なし DM は current server の player だけを選択する。
+- [ ] remote DM は `pending` から始まり、destination store の acknowledgement 後だけ `delivered`、HTTP 502 / timeout / route / destination failure は `failed` になる。
+- [ ] retry は同じ relay ID を再利用し、receiver message を重複保存しない。
+- [ ] pending 中の restart は retryable `failed` として復旧する。
+- [ ] Web DM / group chat の不確実な HTTP 応答は同じ client message ID で安全に retry できる。
+- [ ] hub / chain private relay は final destination の保存確認後だけ success を返す。
+- [ ] DM と group chat の全 message に既読状態を表示する。1 対 1 DM は相手が読む前に `未読`、読んだ後に `✓` を表示し、group chat は未読受信者数を数字で表示して 0 人になると `✓` になる。DM / group chat の全 message を既読状態計算に含める。
+
 ## 4.6.0 relay / DM / ゲーム返信チェック
 
 - [ ] 既存 config を上書きせず upgrade guide を生成する。

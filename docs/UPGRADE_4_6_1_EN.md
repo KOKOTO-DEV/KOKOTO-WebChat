@@ -48,6 +48,6 @@ direct-message:
 - Each page read is written to the configured audit log without copying message bodies into that log.
 - Restart or run `/bmchat reload` after changing configuration. A JAR replacement still requires a server restart.
 
-## Corrected 4.6.1 build
+## Cross-server DM version requirement
 
-The release number remains 4.6.1. Install the corrected 4.6.1 build on every server that exchanges cross-server DMs. Clicking `server · source` now passes the clicked message's UUID and origin server directly, remote search keeps the server ID, and existing remote threads send both destination server ID and player UUID.
+Every server that exchanges cross-server DMs must run BlueMapWebChat 4.6.1 or later. Clicking `server · source` now passes the clicked message's UUID and origin server directly, remote search keeps the server ID, and existing remote threads send both destination server ID and player UUID.

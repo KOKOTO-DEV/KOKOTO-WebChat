@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.6.1 総合ユーザー・運用マニュアル
+# BlueMapWebChat 4.6.2 総合ユーザー・運用マニュアル
 
-この文書は BlueMapWebChat 4.6.1 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION_JA.md`、サーバー間リレーは `SERVER_RELAY_JA.md`、HTTPS は `CADDY_HTTPS_JA.md` と `NGINX_HTTPS_JA.md` を参照してください。
+この文書は BlueMapWebChat 4.6.2 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION_JA.md`、サーバー間リレーは `SERVER_RELAY_JA.md`、HTTPS は `CADDY_HTTPS_JA.md` と `NGINX_HTTPS_JA.md` を参照してください。
 
 ## 1. 概要
 
@@ -45,7 +45,7 @@ BlueMapWebChat は Bukkit/Paper/Spigot 互換 Minecraft サーバーのチャッ
 7. 再起動または `/bmchat reload` を実行します。
 
 ```yaml
-config-version: "4.6.1"
+config-version: "4.6.2"
 enabled: false
 ```
 
@@ -58,7 +58,7 @@ enabled: false
 `config-version` がない、または実行中バージョンと異なる場合、次のファイルが生成されます。
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.6.1.yml
+plugins/BlueMapWebChat/config-migration-4.6.2.yml
 ```
 
 判定基準:
@@ -78,7 +78,7 @@ plugins/BlueMapWebChat/config-migration-4.6.1.yml
 他の設定差分がなくても、設定 version 管理のため `config-version` を含む file を生成します。説明や旧値は `#` comment のみで、実際の `config.yml` は変更されません。確認後に次を設定します。
 
 ```yaml
-config-version: "4.6.1"
+config-version: "4.6.2"
 ```
 
 バージョンが一致すると比較を省略します。
@@ -498,7 +498,11 @@ Command:
 bluemapwebchat.dm
 ```
 
-`capture-game-whispers: true` では `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` を BMChat DM にも記録します。同一サーバーの通常 whisper 自体は置き換えません。別サーバー宛ては `名前@server-id` を指定すると `/bmchat dm 名前@server-id <message>` に変換され、署名付き cross-server DM relay で送信されます。対象を含まない `/r`, `/reply` は既存 whisper plugin の last-target state と競合するため intercept しません。
+`capture-game-whispers: true` では `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` を BMChat DM にも記録します。同一サーバーの通常 whisper 自体は置き換えません。別サーバー宛ては `名前@server-id` を指定すると `/bmchat dm 名前@server-id <message>` に変換され、署名付き cross-server DM relay で送信されます。サーバー指定のない `/bmchat dm <名前>` は現在のサーバー内だけを検索します。対象を含まない `/r`, `/reply` は既存 whisper plugin の last-target state と競合するため intercept しません。
+
+### 15.2 送信・既読状態
+
+正常送信完了には状態ラベルを表示しません。local の送信要求を処理中のときだけ `送信中`、配信を確認できない場合だけ `失敗 · 再試行` を時刻表示の横に短く表示します。既読状態は DM のすべてのメッセージで時刻表示の横に表示し、1 対 1 DM では相手が未読なら `未読`、読んだ後は `✓` を表示します。group chat は従来どおり未読受信者数を数字で表示します。他サーバー DM の既読通知は認証済み server relay で返され、元の message 側にも同じ状態が反映されます。会話を再度開くと最新の既読 ACK を安全に再送するため、一時的な relay / HTTP 障害があっても後の閲覧で既読マークを復旧できます。
 
 ## 16. Group chat
 
@@ -519,6 +523,8 @@ group-chat:
 ```
 
 Web では公開・非公開 room、PBKDF2 hash で保存される password、invite、leave、hide/restore、member kick/block、owner transfer、unread tracking を使用できます。
+
+group chat のすべてのメッセージに、その message の受信者既読状態を表示します。数字は**送信時点ですでに room に参加しており、現在も member である受信者のうち未読の人数**です。message sender は受信者ではないため count 対象には含まれません。未読受信者が 0 人になると数字は `✓` に変わります。正常送信完了自体には状態 label を表示しません。
 
 ```text
 /bmchat group
@@ -1094,6 +1100,7 @@ Web Push:
 
 - `CONFIGURATION_JA.md`
 - `SERVER_RELAY_JA.md`
+- `UPGRADE_4_6_2_JA.md`: 4.6.1→4.6.2 upgrade
 - `UPGRADE_4_6_1_JA.md`: 4.6.0→4.6.1 upgrade
 - `UPGRADE_4_6_0_JA.md`
 - `CADDY_HTTPS_JA.md`

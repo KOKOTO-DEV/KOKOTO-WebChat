@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.6.1 통합 사용·운영 매뉴얼
+# BlueMapWebChat 4.6.2 통합 사용·운영 매뉴얼
 
-이 문서는 BlueMapWebChat 4.6.1의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION_KO.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY_KO.md`, HTTPS 구성은 `CADDY_HTTPS_KO.md`와 `NGINX_HTTPS_KO.md`를 함께 참고하세요.
+이 문서는 BlueMapWebChat 4.6.2의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION_KO.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY_KO.md`, HTTPS 구성은 `CADDY_HTTPS_KO.md`와 `NGINX_HTTPS_KO.md`를 함께 참고하세요.
 
 ## 1. 플러그인 개요
 
@@ -47,7 +47,7 @@ BlueMapWebChat은 Minecraft Bukkit/Paper/Spigot 계열 서버의 게임 채팅�
 기본 안전 설정:
 
 ```yaml
-config-version: "4.6.1"
+config-version: "4.6.2"
 enabled: false
 ```
 
@@ -60,7 +60,7 @@ enabled: false
 실행 중인 플러그인 버전과 `config-version`이 다르거나 설정에 버전이 없으면 다음 파일이 생성됩니다.
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.6.1.yml
+plugins/BlueMapWebChat/config-migration-4.6.2.yml
 ```
 
 판정 기준:
@@ -89,7 +89,7 @@ plugins/BlueMapWebChat/config-migration-4.6.1.yml
 4. 검토가 끝나면 실제 `config.yml`에 다음 값을 넣습니다.
 
 ```yaml
-config-version: "4.6.1"
+config-version: "4.6.2"
 ```
 
 버전이 일치하면 이후 비교를 생략합니다.
@@ -610,7 +610,11 @@ bluemapwebchat.dm
 /w /msg /tell /whisper /m /pm /message /t
 ```
 
-같은 서버의 일반 Minecraft 귓속말은 대체하지 않고 기록만 복제합니다. 송신자와 수신자 모두 웹 DM에서 볼 수 있습니다. 타 서버 대상은 `이름@server-id`로 지정하며, 위 별칭들은 `/bmchat dm 이름@server-id <메시지>`로 변환되어 서명된 서버 간 DM 릴레이로 전송됩니다. 대상이 없는 `/r`, `/reply`는 기존 귓속말 플러그인의 최근 상대 상태와 충돌할 수 있으므로 가로채지 않습니다.
+같은 서버의 일반 Minecraft 귓속말은 대체하지 않고 기록만 복제합니다. 송신자와 수신자 모두 웹 DM에서 볼 수 있습니다. 타 서버 대상은 `이름@server-id`로 지정하며, 위 별칭들은 `/bmchat dm 이름@server-id <메시지>`로 변환되어 서명된 서버 간 DM 릴레이로 전송됩니다. 서버를 지정하지 않은 `/bmchat dm <이름>`은 현재 서버 사용자만 대상으로 합니다. 대상이 없는 `/r`, `/reply`는 기존 귓속말 플러그인의 최근 상대 상태와 충돌할 수 있으므로 가로채지 않습니다.
+
+### 15.2 전송 및 읽음 상태
+
+정상 전송 완료는 별도 문구를 표시하지 않습니다. 로컬 전송 요청을 처리 중일 때만 `전송중`, 전달을 확인할 수 없을 때만 `실패 · 재시도`가 시간 표시 옆에 짧게 표시됩니다. 읽음 상태는 DM의 모든 메시지에서 시간 표시 옆에 표시하며, 1:1 DM은 상대가 아직 읽지 않았으면 `미확인`, 읽으면 `✓`를 표시합니다. 그룹채팅은 기존처럼 미확인 수신자 수를 숫자로 표시합니다. 타 서버 DM은 수신 서버의 읽음 정보를 인증된 서버 릴레이로 돌려보내 원본 메시지 쪽에도 같은 상태를 반영합니다. 대화방을 다시 열 때 최신 읽음 ACK를 안전하게 재전송하므로 일시적인 릴레이 또는 HTTP 실패가 있었어도 이후 열람 시 체크표시를 복구할 수 있습니다.
 
 ## 16. 그룹 채팅
 
@@ -645,6 +649,8 @@ group-chat:
 - 안 읽음 수 추적
 
 게임 명령어:
+
+그룹채팅의 모든 메시지에는 해당 메시지의 수신자 읽음 상태를 표시합니다. 숫자는 **메시지 전송 시점에 이미 방에 있었고 현재도 멤버인 수신자 중 아직 읽지 않은 사람 수**이며, 메시지를 보낸 사람은 수신자가 아니므로 계산 대상에 포함되지 않습니다. 미확인 수신자가 0명이면 숫자 대신 `✓`를 표시합니다. 정상 전송 완료 자체는 별도 문구로 표시하지 않습니다.
 
 ```text
 /bmchat group
@@ -1423,6 +1429,7 @@ BlueMap 웹 자산만 갱신되지 않으면 `/bluemap reload`를 추가로 사�
 
 - `CONFIGURATION_KO.md`: 설정별 상세 설명
 - `SERVER_RELAY_KO.md`: 릴레이 토폴로지, 인증과 오류
+- `UPGRADE_4_6_2_KO.md`: 4.6.1→4.6.2 업그레이드
 - `UPGRADE_4_6_1_KO.md`: 4.6.0→4.6.1 업그레이드
 - `UPGRADE_4_6_0_KO.md`: 4.5.5→4.6.0 업그레이드
 - `CADDY_HTTPS_KO.md`: Caddy HTTPS 구성

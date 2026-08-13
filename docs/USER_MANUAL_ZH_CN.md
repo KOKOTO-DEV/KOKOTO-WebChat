@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.6.1 完整用户与运维手册
+# BlueMapWebChat 4.6.2 完整用户与运维手册
 
-本文从普通用户和服务器管理员两个角度说明 BlueMapWebChat 4.6.1 的全部功能。逐项配置说明请参阅 `CONFIGURATION_ZH_CN.md`，服务器中继请参阅 `SERVER_RELAY_ZH_CN.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS_ZH_CN.md` 与 `NGINX_HTTPS_ZH_CN.md`。
+本文从普通用户和服务器管理员两个角度说明 BlueMapWebChat 4.6.2 的全部功能。逐项配置说明请参阅 `CONFIGURATION_ZH_CN.md`，服务器中继请参阅 `SERVER_RELAY_ZH_CN.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS_ZH_CN.md` 与 `NGINX_HTTPS_ZH_CN.md`。
 
 ## 1. 插件概述
 
@@ -45,7 +45,7 @@ BlueMapWebChat 用于把 Bukkit/Paper/Spigot 兼容 Minecraft 服务器的聊天
 7. 重启服务器或执行 `/bmchat reload`。
 
 ```yaml
-config-version: "4.6.1"
+config-version: "4.6.2"
 enabled: false
 ```
 
@@ -58,7 +58,7 @@ enabled: false
 当 `config-version` 缺失或与当前插件版本不同，会生成：
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.6.1.yml
+plugins/BlueMapWebChat/config-migration-4.6.2.yml
 ```
 
 判定规则：
@@ -80,7 +80,7 @@ plugins/BlueMapWebChat/config-migration-4.6.1.yml
 确认并合并后设置：
 
 ```yaml
-config-version: "4.6.1"
+config-version: "4.6.2"
 ```
 
 版本一致后将跳过后续比较。
@@ -498,7 +498,11 @@ DM 对象按 UUID 识别。除了本服加入记录和已关联账号之外，�
 
 权限：`bluemapwebchat.dm`
 
-`capture-game-whispers: true` 会把 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 的内容复制到 BMChat 私信线程，但不会替代同服务器原本的 Minecraft 私聊。向其他服务器发送时使用 `名称@server-id`，这些别名会转换成 `/bmchat dm 名称@server-id <消息>` 并通过签名的跨服务器 DM relay 发送。由于 `/r`、`/reply` 不包含目标并依赖现有私聊插件的最近联系人状态，因此不会被拦截。
+`capture-game-whispers: true` 会把 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 的内容复制到 BMChat 私信线程，但不会替代同服务器原本的 Minecraft 私聊。向其他服务器发送时使用 `名称@server-id`，这些别名会转换成 `/bmchat dm 名称@server-id <消息>` 并通过签名的跨服务器 DM relay 发送。未指定服务器的 `/bmchat dm <名称>` 只会解析当前服务器上的玩家。由于 `/r`、`/reply` 不包含目标并依赖现有私聊插件的最近联系人状态，因此不会被拦截。
+
+### 15.2 发送与已读状态
+
+正常投递完成不显示状态文字。只有本地发送请求仍在处理中时，才在时间显示旁边显示 `发送中`；无法确认投递时显示 `失败 · 重试`。私信的每一条消息都会在时间旁边显示已读状态：一对一私信在对方尚未阅读时显示 `未读`，阅读后显示 `✓`。群聊继续使用未读接收者人数。跨服务器私信的已读信息会通过认证的服务器中继返回，并在原始消息一侧显示相同状态。重新打开会话时会安全重发最新已读 ACK，因此即使发生临时中继或 HTTP 故障，也可以在之后查看会话时恢复已读标记。
 
 ## 16. 群聊
 
@@ -519,6 +523,8 @@ group-chat:
 ```
 
 Web 支持公开/私有房间、以 PBKDF2 哈希保存的可选密码、邀请、接受/拒绝、退出、隐藏/恢复、成员踢出/封禁、房主转移和未读跟踪。
+
+群聊的每一条消息都会显示该消息的接收者已读状态。数字表示**在消息发送时已经加入房间、当前仍是成员且尚未阅读该消息的接收者人数**。消息发送者不是接收者，因此不计入人数。未读接收者为 0 时显示 `✓`。正常投递完成本身不显示状态文字。
 
 ```text
 /bmchat group
@@ -1094,6 +1100,7 @@ Web Push：
 
 - `CONFIGURATION_ZH_CN.md`
 - `SERVER_RELAY_ZH_CN.md`
+- `UPGRADE_4_6_2_ZH_CN.md`: 4.6.1→4.6.2 升级
 - `UPGRADE_4_6_1_ZH_CN.md`: 4.6.0→4.6.1 升级
 - `UPGRADE_4_6_0_ZH_CN.md`
 - `CADDY_HTTPS_ZH_CN.md`

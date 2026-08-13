@@ -17,7 +17,7 @@ update-check:
   enabled: true
 ```
 
-When enabled, BlueMapWebChat checks Modrinth for a newer stable release in the background. The check interval, release channel, join delay, administrator-only notification permission, and Modrinth/CurseForge download links are built-in defaults and are not separate config options. Update lookup failure never stops plugin startup.
+When enabled, BlueMapWebChat checks Modrinth for a newer stable release in the background. An OP or a player with `bluemapwebchat.update.notify` also triggers a rate-limited refresh on login, so a newly published release is not dependent only on the periodic result. The check interval, release channel, join delay, and Modrinth/CurseForge download links remain built-in defaults. Update lookup failures never stop plugin startup and are logged as warnings.
 
 ## Deployment modes
 

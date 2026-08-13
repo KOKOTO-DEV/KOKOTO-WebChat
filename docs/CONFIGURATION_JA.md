@@ -17,7 +17,7 @@ update-check:
   enabled: true
 ```
 
-有効にすると、BlueMapWebChat はバックグラウンドで Modrinth の最新 stable release を確認します。確認間隔、release channel、join 通知 delay、管理者専用権限、Modrinth/CurseForge download link は内蔵 default を使用し、個別設定としては公開しません。確認失敗で plugin 起動が停止することはありません。
+有効にすると、BlueMapWebChat はバックグラウンドで Modrinth の最新 stable release を確認します。OP または `bluemapwebchat.update.notify` 権限を持つ player がログインすると、レート制限付きで Modrinth を再確認するため、新しい release の検出が定期確認結果だけに依存しません。確認間隔、release channel、join 通知 delay、Modrinth/CurseForge download link は内蔵 default のままです。確認失敗で plugin 起動は停止せず、warning log に記録されます。
 
 ## 配置モード
 

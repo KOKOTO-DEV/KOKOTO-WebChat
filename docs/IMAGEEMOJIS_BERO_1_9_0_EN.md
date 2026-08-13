@@ -1,6 +1,6 @@
 # ImageEmojis-Bero 1.9.0 compatibility
 
-BlueMapWebChat 4.6.1 includes an optional compatibility path for [ImageEmojis-Bero 1.9.0](https://github.com/KOKOTO-DEV/ImageEmojis-Bero). The integration is reflection-based and does not add a hard dependency, so BlueMapWebChat still starts when ImageEmojis-Bero is not installed.
+BlueMapWebChat 4.6.2 includes an optional compatibility path for [ImageEmojis-Bero 1.9.0](https://github.com/KOKOTO-DEV/ImageEmojis-Bero). The integration is reflection-based and does not add a hard dependency, so BlueMapWebChat still starts when ImageEmojis-Bero is not installed.
 
 ## Supported behavior
 
@@ -79,8 +79,8 @@ When several Minecraft servers share one Discord channel, BMChat only lets the o
 - **Game emoji works but web shows a token:** confirm the corresponding file exists under `plugins/BlueMapWebChat/emojis` with the same pack/name.
 - **Emoji in `/bmchat reply` or `/bmchat dm` does not convert:** keep `replaceInCommands: true`.
 - **Remote-server emoji does not render:** synchronize the emoji PNG and pack/name on every receiving server; relay transport alone does not copy resource-pack files.
-- **Clickable URL becomes a reply action:** use the current 4.6.1 source, where URL segments retain `OPEN_URL` precedence and only non-URL text receives the reply suggestion.
+- **Clickable URL becomes a reply action:** use the current 4.6.2 source, where URL segments retain `OPEN_URL` precedence and only non-URL text receives the reply suggestion.
 
 ## Compatibility boundary
 
-The 4.6.1 integration expects the ImageEmojis-Bero 1.9.0 runtime repository shape exposed by `getEmojiRepository().getEmojis()` and emoji model accessors such as `getName()`, `getTemplate()`, and `getAsUtf8Symbol()`. If a future ImageEmojis-Bero release changes those runtime methods, BMChat continues without a hard failure but may fall back to token/plain-broadcast handling until compatibility is updated.
+The 4.6.2 integration expects the ImageEmojis-Bero 1.9.0 runtime repository shape exposed by `getEmojiRepository().getEmojis()` and emoji model accessors such as `getName()`, `getTemplate()`, and `getAsUtf8Symbol()`. If a future ImageEmojis-Bero release changes those runtime methods, BMChat continues without a hard failure but may fall back to token/plain-broadcast handling until compatibility is updated.

@@ -17,7 +17,7 @@ update-check:
   enabled: true
 ```
 
-启用后，BlueMapWebChat 会在后台检查 Modrinth 上的最新正式版本。检查间隔、发布通道、进服提示延迟、仅管理员可见的提示权限以及 Modrinth/CurseForge 下载链接均使用内置默认值，不提供额外配置项。更新查询失败不会影响插件启动。
+启用后，BlueMapWebChat 会在后台检查 Modrinth 上的最新正式版本。OP 或拥有 `bluemapwebchat.update.notify` 权限的玩家登录时会按限频规则重新查询 Modrinth，因此新版本检测不再只依赖定时查询结果。检查间隔、发布通道、进服提示延迟以及 Modrinth/CurseForge 下载链接仍使用内置默认值。更新查询失败不会阻止插件启动，并会记录为警告日志。
 
 ## 部署模式
 

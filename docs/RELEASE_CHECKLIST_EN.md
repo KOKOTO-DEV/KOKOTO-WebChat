@@ -38,6 +38,19 @@ mvn clean package
 
 - [ ] `USER_MANUAL_EN.md`, `USER_MANUAL_KO.md`, `USER_MANUAL_JA.md`, and `USER_MANUAL_ZH_CN.md` exist, use the same major section structure, and reflect current commands, permissions, defaults, and feature behavior.
 
+## 4.6.2 delivery-state release checks
+
+- [ ] `pom.xml`, `plugin.yml`, bundled `config-version`, artifact examples, and current manuals show `4.6.2`.
+- [ ] A reviewed 4.6.1 config generates `config-migration-4.6.2.yml` with only `config-version: "4.6.2"` when there are no other real differences.
+- [ ] An unqualified same-name DM resolves only to the current-server player; a remote player is used only with explicit server-scoped metadata.
+- [ ] Remote DM starts as `pending`, becomes `delivered` only after destination-store acknowledgement, and becomes `failed` on HTTP 502, timeout, routing, or destination rejection.
+- [ ] Retrying a failed DM reuses the same relay ID and does not duplicate the receiver message.
+- [ ] Restarting with an interrupted pending DM restores it as `failed` / retryable.
+- [ ] Web DM request retry reuses the same client message ID when the browser did not receive a response.
+- [ ] Group-chat web retry reuses the same client message ID and returns the existing stored message instead of inserting a duplicate.
+- [ ] Hub/chain private relay reports success only after the final destination confirms storage.
+- [ ] Every DM and group-chat message exposes read state. A 1:1 DM shows the short `Unread` label before the recipient reads it and `✓` afterward; group chat shows the unread-recipient count and changes to `✓` at zero. All DM and group-chat messages are included in the receipt calculation.
+
 ## 4.6.0 relay, DM, and game reply checks
 
 - [ ] A config with a missing/different `config-version` generates `config-migration-4.6.0.yml` without overwriting `config.yml`, even when `config-version` is the only required change.
