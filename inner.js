@@ -12809,6 +12809,134 @@
     return out;
   }
 
+  function privateClientMessageId(prefix = "msg") {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") return prefix + "-" + window.crypto.randomUUID();
+    } catch (_) {}
+    return prefix + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 14);
+  }
+
+  function privateDeliveryStatusHtml(msg, mine, type = "dm") {
+    if (!mine || !msg) return "";
+    const status = String(msg.deliveryStatus || "delivered").toLowerCase();
+    if (status === "pending") {
+      return `<span class="bmwc-delivery-status bmwc-delivery-pending">${esc(t("delivery.pending", "Sending"))}</span>`;
+    }
+    if (status === "failed") {
+      const error = String(msg.deliveryError || "").trim();
+      const attr = type === "group" ? "data-group-retry-message" : "data-dm-retry-message";
+      return `<span class="bmwc-delivery-status bmwc-delivery-failed"${error ? ` title="${esc(error)}"` : ""}><span>${esc(t("delivery.failed", "Failed"))}</span><button type="button" class="bmwc-delivery-retry" ${attr}="${esc(msg.id || "")}">${esc(t("delivery.retry", "Retry"))}</button></span>`;
+    }
+    return "";
+  }
+
+  function privateReadReceiptHtml(msg, type = "dm") {
+    if (!msg) return "";
+    const status = String(msg.deliveryStatus || "delivered").toLowerCase();
+    if (status === "pending" || status === "failed") return "";
+    if (type === "dm") {
+      const count = Number.isFinite(Number(msg.unreadRecipientCount))
+        ? Math.max(0, Number(msg.unreadRecipientCount))
+        : (msg.readByOther === true ? 0 : 1);
+      if (count <= 0) {
+        const label = t("receipt.read", "Read");
+        return `<span class="bmwc-read-receipt bmwc-read-receipt-dm" title="${esc(label)}" aria-label="${esc(label)}">✓</span>`;
+      }
+      const label = t("receipt.unread", "Unread");
+      return `<span class="bmwc-read-receipt bmwc-read-receipt-dm" title="${esc(label)}" aria-label="${esc(label)}">${esc(label)}</span>`;
+    }
+    if (type === "group") {
+      const count = Math.max(0, Number(msg.unreadMemberCount || 0));
+      if (count <= 0) {
+        const label = t("receipt.readAll", "Read by everyone");
+        return `<span class="bmwc-read-receipt bmwc-read-receipt-group" title="${esc(label)}" aria-label="${esc(label)}">✓</span>`;
+      }
+      const label = fmt("receipt.unreadCount", "{count} people have not read this message", {count: String(count)});
+      return `<span class="bmwc-read-receipt bmwc-read-receipt-group" title="${esc(label)}" aria-label="${esc(label)}">${esc(String(count))}</span>`;
+    }
+    return "";
+  }
+
+  function privateMessageMetaStatusHtml(msg, mine, type = "dm") {
+    const delivery = privateDeliveryStatusHtml(msg, mine, type);
+    const receipt = privateReadReceiptHtml(msg, type);
+    if (!delivery && !receipt) return "";
+    return `<span class="bmwc-private-meta-status">${delivery}${receipt}</span>`;
+  }
+
+  function directMessageOptimisticMessage(clientMessageId, message, requestBody) {
+    return {
+      id: "local-dm-" + clientMessageId,
+      threadId: state.dmActiveThreadId || "",
+      senderUuid: "",
+      senderUsername: state.username || "",
+      senderDisplayName: state.username || "",
+      body: message,
+      time: Date.now(),
+      deliveryStatus: "pending",
+      deliveryError: "",
+      clientMessageId,
+      _bmwcDmRequestBody: Object.assign({}, requestBody || {})
+    };
+  }
+
+  function updateOptimisticDirectMessage(clientMessageId, status, error = "") {
+    const item = (state.dmMessages || []).find(msg => String(msg && msg.clientMessageId || "") === String(clientMessageId || ""));
+    if (!item) return false;
+    item.deliveryStatus = status;
+    item.deliveryError = error || "";
+    renderDirectMessageMessages(state.dmMessages, {stickToBottom: true});
+    return true;
+  }
+
+  async function applyDirectMessageSendResponse(res) {
+    if (res && res.thread && res.thread.id) {
+      state.dmActiveThreadId = res.thread.id;
+      state.dmDraftTarget = null;
+    }
+    await loadDirectMessageThreads(true);
+    if (state.dmActiveThreadId) await loadDirectMessageMessages(state.dmActiveThreadId);
+  }
+
+  async function sendDirectMessageAttempt(requestBody, clientMessageId) {
+    try {
+      const res = await api("/dm/send", {method: "POST", body: JSON.stringify(requestBody)});
+      await applyDirectMessageSendResponse(res);
+      return true;
+    } catch (e) {
+      const response = e && e.response || {};
+      updateOptimisticDirectMessage(clientMessageId, "failed", String(response.error || e.message || "send_failed"));
+      return false;
+    }
+  }
+
+  async function retryDirectMessageDelivery(messageId) {
+    messageId = String(messageId || "").trim();
+    if (!messageId || !state.token) return;
+
+    // A local optimistic ID means the request to this BMWC server itself was
+    // uncertain. Re-submit the exact same clientMessageId so the server can
+    // return the already-created message instead of creating a duplicate.
+    if (messageId.startsWith("local-dm-")) {
+      const item = (state.dmMessages || []).find(msg => String(msg && msg.id || "") === messageId);
+      const clientMessageId = String(item && item.clientMessageId || "").trim();
+      const requestBody = item && item._bmwcDmRequestBody ? Object.assign({}, item._bmwcDmRequestBody) : null;
+      if (!item || !clientMessageId || !requestBody) return;
+      item.deliveryStatus = "pending";
+      item.deliveryError = "";
+      renderDirectMessageMessages(state.dmMessages, {stickToBottom: true});
+      await sendDirectMessageAttempt(requestBody, clientMessageId);
+      return;
+    }
+
+    try {
+      await api("/dm/retry", {method: "POST", body: JSON.stringify({token: state.token, messageId})});
+      if (state.dmActiveThreadId) await loadDirectMessageMessages(state.dmActiveThreadId);
+    } catch (e) {
+      alertResponse("alert.dmRetryFailed", "Failed to retry message: {error}", e.response || {error: e.message || "error"});
+    }
+  }
+
   function renderDirectMessageMessages(messages, options = {}) {
     const box = document.getElementById("bmwc-dm-messages");
     if (!box) return;
@@ -12837,7 +12965,7 @@
         const body = String(msg.body || "");
         const senderIdentity = {senderDisplayName: sender, senderUsername: msg.senderUsername || "", senderUuid: msg.senderUuid || ""};
         return `<div class="bmwc-msg bmwc-dm-message${mine ? " bmwc-mine" : ""}" data-dm-message-id="${messageId}">
-          <div class="bmwc-meta bmwc-dm-message-meta">${directMessageIdentityHtml(senderIdentity, "bmwc-sender")}<span class="bmwc-meta-sep" aria-hidden="true">·</span><span class="bmwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span></div>
+          <div class="bmwc-meta bmwc-dm-message-meta">${directMessageIdentityHtml(senderIdentity, "bmwc-sender")}<span class="bmwc-meta-sep" aria-hidden="true">·</span><span class="bmwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span>${state.dmAuditMode ? "" : privateMessageMetaStatusHtml(msg, mine, "dm")}</div>
           ${state.dmAuditMode ? "" : `<button type="button" class="bmwc-dm-message-hide" data-dm-hide-message="${messageId}" title="${esc(t("dm.hideMessage", "Hide this message"))}" aria-label="${esc(t("dm.hideMessage", "Hide this message"))}">×</button>`}
           <div class="bmwc-text bmwc-dm-message-body">${directMessageBodyHtml(body)}</div>
           ${directMessagePreviewHtml(body, rawMessageId)}
@@ -12851,6 +12979,13 @@
           event.preventDefault();
           event.stopPropagation();
           hideDirectMessageForMe(btn.dataset.dmHideMessage || "");
+        });
+      });
+      box.querySelectorAll("[data-dm-retry-message]").forEach(btn => {
+        btn.addEventListener("click", event => {
+          event.preventDefault();
+          event.stopPropagation();
+          retryDirectMessageDelivery(btn.dataset.dmRetryMessage || "");
         });
       });
     }
@@ -13817,7 +13952,8 @@
     if (state.directMessageMaxMessageLength > 0 && message.length > state.directMessageMaxMessageLength) {
       message = message.slice(0, state.directMessageMaxMessageLength);
     }
-    const body = {token: state.token, message};
+    const clientMessageId = privateClientMessageId("dm");
+    const body = {token: state.token, message, clientMessageId};
     if (state.dmActiveThreadId) {
       const thread = (state.dmThreads || []).find(t => t.id === state.dmActiveThreadId);
       if (thread) {
@@ -13845,18 +13981,12 @@
       alert(t("dm.selectPlayerFirst", "Select a player first."));
       return;
     }
+    input.value = "";
+    state.dmMessages = (state.dmMessages || []).concat([directMessageOptimisticMessage(clientMessageId, message, body)]);
+    renderDirectMessageMessages(state.dmMessages, {stickToBottom: true});
     input.disabled = true;
     try {
-      const res = await api("/dm/send", {method: "POST", body: JSON.stringify(body)});
-      input.value = "";
-      if (res && res.thread && res.thread.id) {
-        state.dmActiveThreadId = res.thread.id;
-        state.dmDraftTarget = null;
-      }
-      await loadDirectMessageThreads(true);
-      if (state.dmActiveThreadId) await loadDirectMessageMessages(state.dmActiveThreadId);
-    } catch (e) {
-      alertResponse("alert.dmSendFailed", "Failed to send message: {error}", e.response || {error: e.message || "error"});
+      await sendDirectMessageAttempt(body, clientMessageId);
     } finally {
       input.disabled = false;
       input.focus();
@@ -14534,12 +14664,15 @@
         const mine = state.username && msg.senderUsername && String(msg.senderUsername).toLowerCase() === String(state.username).toLowerCase();
         const rawMessageId = msg.id || "";
         const body = String(msg.body || "");
-        return `<div class="bmwc-msg bmwc-dm-message bmwc-group-message${mine ? " bmwc-mine" : ""}" data-group-message-id="${esc(rawMessageId)}"><div class="bmwc-meta bmwc-dm-message-meta">${directMessageIdentityHtml(senderIdentity, "bmwc-sender")}<span class="bmwc-meta-sep" aria-hidden="true">·</span><span class="bmwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span></div><button type="button" class="bmwc-dm-message-hide" data-group-hide-message="${esc(rawMessageId)}" title="${esc(t("dm.hideMessage", "Hide this message"))}">×</button><div class="bmwc-text bmwc-dm-message-body">${directMessageBodyHtml(body)}</div>${directMessagePreviewHtml(body, rawMessageId)}</div>`;
+        const persisted = /^\d+$/.test(String(rawMessageId));
+        const hideButton = persisted ? `<button type="button" class="bmwc-dm-message-hide" data-group-hide-message="${esc(rawMessageId)}" title="${esc(t("dm.hideMessage", "Hide this message"))}">×</button>` : "";
+        return `<div class="bmwc-msg bmwc-dm-message bmwc-group-message${mine ? " bmwc-mine" : ""}" data-group-message-id="${esc(rawMessageId)}"><div class="bmwc-meta bmwc-dm-message-meta">${directMessageIdentityHtml(senderIdentity, "bmwc-sender")}<span class="bmwc-meta-sep" aria-hidden="true">·</span><span class="bmwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span>${privateMessageMetaStatusHtml(msg, mine, "group")}</div>${hideButton}<div class="bmwc-text bmwc-dm-message-body">${directMessageBodyHtml(body)}</div>${directMessagePreviewHtml(body, rawMessageId)}</div>`;
       }).join("");
       hydrateDirectMessageRenderedContent(box);
       installSenderIdentityToggle(box);
       installTimeToggle(box);
       box.querySelectorAll("[data-group-hide-message]").forEach(btn => btn.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); hideGroupMessage(btn.dataset.groupHideMessage || ""); }));
+      box.querySelectorAll("[data-group-retry-message]").forEach(btn => btn.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); retryGroupChatMessage(btn.dataset.groupRetryMessage || ""); }));
     }
     if (options && options.preserveTop) {
       const delta = Math.max(0, Number(box.scrollHeight || 0) - prevHeight);
@@ -14635,6 +14768,55 @@
     }
   }
 
+  function groupOptimisticMessage(clientMessageId, message, status = "pending", error = "") {
+    return {
+      id: "local-" + clientMessageId,
+      roomId: state.groupActiveRoomId,
+      senderUuid: "",
+      senderUsername: state.username || "",
+      senderDisplayName: state.username || "",
+      body: message,
+      time: Date.now(),
+      deliveryStatus: status,
+      deliveryError: error,
+      clientMessageId
+    };
+  }
+
+  function updateOptimisticGroupMessage(clientMessageId, status, error = "") {
+    const item = (state.groupMessages || []).find(msg => String(msg && msg.clientMessageId || "") === String(clientMessageId || ""));
+    if (!item) return false;
+    item.deliveryStatus = status;
+    item.deliveryError = error || "";
+    renderGroupChatMessages(state.groupMessages, {stickToBottom: true});
+    return true;
+  }
+
+  async function sendGroupChatAttempt(roomId, message, clientMessageId) {
+    try {
+      const res = await api("/group/send", {method: "POST", body: JSON.stringify({token: state.token, roomId, message, clientMessageId})});
+      if (res.room) state.groupActiveRoom = res.room;
+      await loadGroupChatRooms(true);
+      if (state.groupActiveRoomId === roomId) await loadGroupChatMessages(roomId);
+      return true;
+    } catch (e) {
+      const response = e && e.response || {};
+      updateOptimisticGroupMessage(clientMessageId, "failed", String(response.error || e.message || "send_failed"));
+      return false;
+    }
+  }
+
+  async function retryGroupChatMessage(messageId) {
+    const item = (state.groupMessages || []).find(msg => String(msg && msg.id || "") === String(messageId || ""));
+    if (!item || String(item.deliveryStatus || "") !== "failed") return;
+    const clientMessageId = String(item.clientMessageId || "").trim();
+    if (!clientMessageId) return;
+    item.deliveryStatus = "pending";
+    item.deliveryError = "";
+    renderGroupChatMessages(state.groupMessages, {stickToBottom: true});
+    await sendGroupChatAttempt(String(item.roomId || state.groupActiveRoomId || ""), String(item.body || ""), clientMessageId);
+  }
+
   async function sendGroupChatMessage() {
     if (!state.token || !state.groupChatEnabled || !state.groupChatAllowWebSend || !state.groupActiveRoomId) return;
     const input = document.getElementById("bmwc-group-input");
@@ -14642,16 +14824,19 @@
     let message = String(input.value || "").trim();
     if (!message) return;
     if (state.groupChatMaxMessageLength > 0 && message.length > state.groupChatMaxMessageLength) message = message.slice(0, state.groupChatMaxMessageLength);
+    const roomId = state.groupActiveRoomId;
+    const clientMessageId = privateClientMessageId("group");
+    input.value = "";
+    closeGroupChatEmojiPanel();
+    state.groupMessages = (state.groupMessages || []).concat([groupOptimisticMessage(clientMessageId, message)]);
+    renderGroupChatMessages(state.groupMessages, {stickToBottom: true});
     input.disabled = true;
     try {
-      closeGroupChatEmojiPanel();
-      const res = await api("/group/send", {method: "POST", body: JSON.stringify({token: state.token, roomId: state.groupActiveRoomId, message})});
-      input.value = "";
-      if (res.room) state.groupActiveRoom = res.room;
-      await loadGroupChatRooms(true);
-      await loadGroupChatMessages(state.groupActiveRoomId);
-    } catch (e) { alertResponse("alert.groupSendFailed", "Failed to send group message: {error}", e.response || {error: e.message || "error"}); }
-    finally { input.disabled = false; input.focus(); }
+      await sendGroupChatAttempt(roomId, message, clientMessageId);
+    } finally {
+      input.disabled = false;
+      input.focus();
+    }
   }
 
   function groupVisibilityOptionsHtml(current = "private") {

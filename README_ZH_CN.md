@@ -26,7 +26,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.6.1.jar
+target/BlueMapWebChat-4.6.2.jar
 ```
 
 ## 安装
@@ -40,11 +40,13 @@ target/BlueMapWebChat-4.6.1.jar
 7. 重启服务器或执行 `/bmchat reload`。如果 BlueMap Web 资源没有刷新，再执行 `/bluemap reload`。
 
 
-现有 `config.yml` 不会被覆盖。当 `config-version` 缺失或与正在运行的插件版本不同时，插件会比较实际配置与 JAR 内置默认配置，并生成 `plugins/BlueMapWebChat/config-migration-4.6.1.yml`。生成文件会把可直接合并的缺失设置、已变化的默认值以及最终审核用的 `config-version` 标记写成真实 YAML 设置。即使没有其他差异，也会为了配置版本管理生成该文件和 `config-version` 项。版本信息以及旧、新默认值说明只使用 `#` 注释。不会输出自定义值和废弃候选等参考列表。当 `config-version: "4.6.1"` 与插件版本一致时，配置被视为已审核并跳过比较。本次更新参见 `docs/UPGRADE_4_6_1_ZH_CN.md`，之前的主要迁移参见 `docs/UPGRADE_4_6_0_ZH_CN.md`。
+现有 `config.yml` 不会被覆盖。当 `config-version` 缺失或与正在运行的插件版本不同时，插件会比较实际配置与 JAR 内置默认配置，并生成 `plugins/BlueMapWebChat/config-migration-4.6.2.yml`。生成文件会把可直接合并的缺失设置、已变化的默认值以及最终审核用的 `config-version` 标记写成真实 YAML 设置。即使没有其他差异，也会为了配置版本管理生成该文件和 `config-version` 项。版本信息以及旧、新默认值说明只使用 `#` 注释。不会输出自定义值和废弃候选等参考列表。当 `config-version: "4.6.2"` 与插件版本一致时，配置被视为已审核并跳过比较。本次更新参见 `docs/UPGRADE_4_6_2_ZH_CN.md`，上一次更新参见 `docs/UPGRADE_4_6_1_ZH_CN.md`，之前的主要迁移参见 `docs/UPGRADE_4_6_0_ZH_CN.md`。
 
-### 4.6.1 跨服务器私信兼容性重要说明
+### 4.6.2 私信与群聊投递状态和重试
 
-所有交换跨服务器私信的连接服务器都必须使用同一个修正版 **4.6.1 构建**。仅显示相同的版本号并不够；较早的 4.6.1 构建不包含完整的专用私信中继与精确目标传递修复，可能导致只在发送服务器创建会话，而接收服务器没有收到或保存消息。请在所有连接服务器上替换 JAR 并重新启动。
+跨服务器私信在目标服务器确认消息已实际写入之前保持 `pending`；确认后才变为 `delivered`。路由、传输或超时失败会变为可重试的 `failed`，重试继续使用同一个 relay ID，因此即使只是 HTTP 响应丢失，也不会在接收端重复保存消息。Web 私信和群聊同样使用 client message ID，使浏览器在结果不确定时可以安全重试。没有服务器限定的私信名称只解析当前服务器玩家。私信与群聊的每一条消息都会在时间旁边显示已读状态。一对一私信在接收者阅读前显示 `未读`，阅读后显示 `✓`；群聊继续显示未读接收者人数，人数降至 0 时显示 `✓`。发送状态也使用短文本：处理中显示 `发送中`，失败时显示 `失败 · 重试`。
+
+建议所有交换跨服务器私信的服务器使用 BlueMapWebChat 4.6.2 或更高版本。详见 `docs/UPGRADE_4_6_2_ZH_CN.md`。
 
 ## standalone URL
 
@@ -183,6 +185,7 @@ bluemapwebchat.update.notify
 - `docs/USER_MANUAL_ZH_CN.md` - 所有功能的完整用户与运维手册
 - `docs/CONFIGURATION_ZH_CN.md`
 - `docs/SERVER_RELAY_ZH_CN.md` - 服务器间公共聊天中继
+- `docs/UPGRADE_4_6_2_ZH_CN.md` - 4.6.1→4.6.2 升级
 - `docs/UPGRADE_4_6_1_ZH_CN.md` - 4.6.0→4.6.1 升级
 - `docs/UPGRADE_4_6_0_ZH_CN.md` - 4.5.5→4.6.0 配置/数据库升级
 - `docs/CADDY_HTTPS_ZH_CN.md`

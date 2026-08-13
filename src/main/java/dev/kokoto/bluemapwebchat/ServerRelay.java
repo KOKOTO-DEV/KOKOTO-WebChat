@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -39,6 +41,7 @@ public final class ServerRelay implements AutoCloseable {
     private final List<String> peerDiagnostics = new ArrayList<>();
     private final int configuredPeerCount;
     private final ConcurrentHashMap<String, Long> seenRelayIds = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> deliveredRelayIds = new ConcurrentHashMap<>();
     private final ExecutorService executor;
     private final HttpClient httpClient;
     private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -156,18 +159,58 @@ public final class ServerRelay implements AutoCloseable {
         return usableNextHops == 1;
     }
 
-    public boolean publishDirectMessage(String senderUuid, String senderUsername, String senderDisplayName,
-                                        String targetServerId, String targetUuid, String targetUsername,
-                                        String targetDisplayName, String message) {
+    public String createDirectMessageRelayId() {
+        return "dmrelay-" + SecurityUtil.randomToken(16);
+    }
+
+    public CompletableFuture<DirectMessageDelivery> publishDirectMessage(
+            String relayId,
+            String senderUuid, String senderUsername, String senderDisplayName,
+            String targetServerId, String targetUuid, String targetUsername,
+            String targetDisplayName, String message) {
         String target = normalizeId(targetServerId);
-        if (!canRouteDirectMessage(target)) return false;
+        if (!canRouteDirectMessage(target)) {
+            return CompletableFuture.completedFuture(DirectMessageDelivery.failed("remote_server_unavailable", 503));
+        }
         DirectMessageEnvelope envelope = DirectMessageEnvelope.create(
-                serverId, serverName, target,
+                relayId, serverId, serverName, target,
                 senderUuid, senderUsername, senderDisplayName,
                 targetUuid, targetUsername, targetDisplayName, message);
-        if (!envelope.valid()) return false;
+        if (!envelope.valid()) {
+            return CompletableFuture.completedFuture(DirectMessageDelivery.failed("invalid_envelope", 400));
+        }
         markSeen(envelope.relayId);
-        return sendDirectToPeers(envelope, "");
+        CompletableFuture<DirectMessageDelivery> future = sendDirectToPeers(envelope, "");
+        future.whenComplete((delivery, error) -> {
+            if (error != null || delivery == null || !delivery.delivered) {
+                seenRelayIds.remove(envelope.relayId);
+            } else {
+                markDelivered(envelope.relayId);
+            }
+        });
+        return future;
+    }
+
+    public CompletableFuture<Boolean> publishDirectMessageRead(String targetServerId, String messageRelayId) {
+        String target = normalizeId(targetServerId);
+        String relayMessageId = safe(messageRelayId).trim();
+        if (!canRouteDirectMessage(target) || relayMessageId.isBlank()) {
+            return CompletableFuture.completedFuture(false);
+        }
+        DirectMessageReadEnvelope envelope = DirectMessageReadEnvelope.create(
+                serverId, target, relayMessageId);
+        if (!envelope.valid()) return CompletableFuture.completedFuture(false);
+        return sendDirectReadWithRetry(envelope, 0);
+    }
+
+    private CompletableFuture<Boolean> sendDirectReadWithRetry(DirectMessageReadEnvelope envelope, int attempt) {
+        return sendDirectReadToPeers(envelope, "").thenCompose(ok -> {
+            if (ok || attempt >= 2 || closed.get()) return CompletableFuture.completedFuture(ok);
+            long delayMs = attempt == 0 ? 500L : 1500L;
+            return CompletableFuture
+                    .supplyAsync(() -> Boolean.TRUE, CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS))
+                    .thenCompose(ignored -> sendDirectReadWithRetry(envelope, attempt + 1));
+        });
     }
 
     public boolean shouldRelay(ChatMessage msg) {
@@ -336,26 +379,144 @@ public final class ServerRelay implements AutoCloseable {
             return;
         }
         if (envelope.originServerId.equals(serverId)) {
-            markSeen(envelope.relayId);
-            sendJson(exchange, 200, "{\"ok\":true,\"duplicate\":true}");
+            sendJson(exchange, 409, "{\"ok\":false,\"error\":\"relay_loop\"}");
             return;
         }
-        if (!markSeen(envelope.relayId)) {
-            sendJson(exchange, 200, "{\"ok\":true,\"duplicate\":true}");
-            return;
-        }
+
         if (envelope.targetServerId.equals(serverId)) {
+            DirectMessageStore store = plugin.directMessages();
+            if ((store != null && store.hasRelayId(envelope.relayId)) || isDelivered(envelope.relayId)) {
+                markSeen(envelope.relayId);
+                markDelivered(envelope.relayId);
+                sendJson(exchange, 200, "{\"ok\":true,\"delivered\":true,\"duplicate\":true}");
+                return;
+            }
+            if (!markSeen(envelope.relayId)) {
+                sendJson(exchange, 409, "{\"ok\":false,\"error\":\"delivery_in_progress\"}");
+                return;
+            }
             WebChatServer web = plugin.webServer();
             boolean accepted = web != null && web.acceptRelayedDirectMessage(
+                    envelope.relayId,
                     envelope.originServerId, envelope.originServerName,
                     envelope.senderUuid, envelope.senderUsername, envelope.senderDisplayName,
                     envelope.targetUuid, envelope.targetUsername, envelope.targetDisplayName,
                     envelope.message);
             if (!accepted) {
+                seenRelayIds.remove(envelope.relayId);
                 sendJson(exchange, 404, "{\"ok\":false,\"error\":\"dm_target_unavailable\"}");
                 return;
             }
+            markDelivered(envelope.relayId);
             sendJson(exchange, 200, "{\"ok\":true,\"delivered\":true}");
+            return;
+        }
+
+        if (isDelivered(envelope.relayId)) {
+            sendJson(exchange, 200, "{\"ok\":true,\"delivered\":true,\"duplicate\":true}");
+            return;
+        }
+        if (!markSeen(envelope.relayId)) {
+            sendJson(exchange, 409, "{\"ok\":false,\"error\":\"relay_in_progress\"}");
+            return;
+        }
+        if (envelope.hop + 1 >= config.serverRelayMaxHops) {
+            seenRelayIds.remove(envelope.relayId);
+            sendJson(exchange, 409, "{\"ok\":false,\"error\":\"max_hops\"}");
+            return;
+        }
+        envelope.hop++;
+        envelope.fromServerId = serverId;
+        DirectMessageDelivery delivery;
+        try {
+            delivery = sendDirectToPeers(envelope, fromId)
+                    .get(Math.max(2, config.serverRelayRequestTimeoutSeconds + 2L), TimeUnit.SECONDS);
+        } catch (Exception ex) {
+            seenRelayIds.remove(envelope.relayId);
+            sendJson(exchange, 504, "{\"ok\":false,\"error\":\"dm_forward_timeout\"}");
+            return;
+        }
+        if (delivery == null || !delivery.delivered) {
+            seenRelayIds.remove(envelope.relayId);
+            String error = delivery == null ? "dm_route_unavailable" : delivery.error;
+            int status = delivery == null || delivery.httpStatus < 400 ? 502 : delivery.httpStatus;
+            sendJson(exchange, status, "{\"ok\":false,\"error\":" + JsonUtil.quote(error) + "}");
+            return;
+        }
+        markDelivered(envelope.relayId);
+        sendJson(exchange, 200, "{\"ok\":true,\"delivered\":true,\"forwarded\":true}");
+    }
+
+    public void handleIncomingDirectMessageRead(HttpExchange exchange) throws IOException {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            sendJson(exchange, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        if (!isEnabled()) {
+            sendJson(exchange, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}");
+            return;
+        }
+        String protocol = header(exchange, HEADER_VERSION);
+        String fromId = normalizeId(header(exchange, HEADER_FROM));
+        String timestampText = header(exchange, HEADER_TIMESTAMP);
+        String signature = header(exchange, HEADER_SIGNATURE).toLowerCase(Locale.ROOT);
+        ConfigValues.RelayPeer peer = peersById.get(fromId);
+        if (!PROTOCOL_VERSION.equals(protocol)) {
+            sendJson(exchange, 426, "{\"ok\":false,\"error\":\"unsupported_protocol\"}");
+            return;
+        }
+        if (peer == null) {
+            sendJson(exchange, 403, "{\"ok\":false,\"error\":\"unknown_peer\"}");
+            return;
+        }
+        long timestamp;
+        try {
+            timestamp = Long.parseLong(timestampText);
+        } catch (NumberFormatException ex) {
+            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"invalid_timestamp\"}");
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long allowedSkew = config.serverRelayMaxClockSkewSeconds * 1000L;
+        if (timestamp < now - allowedSkew || timestamp > now + allowedSkew) {
+            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"expired_request\"}");
+            return;
+        }
+        byte[] bodyBytes;
+        try {
+            bodyBytes = readLimited(exchange, MAX_BODY_BYTES);
+        } catch (IOException ex) {
+            sendJson(exchange, 413, "{\"ok\":false,\"error\":\"body_too_large\"}");
+            return;
+        }
+        String body = new String(bodyBytes, StandardCharsets.UTF_8);
+        String secret = secretFor(peer);
+        if (secret.isBlank() || signature.isBlank() || !constantTimeEquals(signature, sign(secret, timestampText + "\n" + body))) {
+            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"bad_signature\"}");
+            return;
+        }
+        DirectMessageReadEnvelope envelope = DirectMessageReadEnvelope.fromMap(JsonUtil.parseFlatObject(body));
+        if (!envelope.valid() || !fromId.equals(envelope.fromServerId)
+                || envelope.hop < 0 || envelope.hop >= config.serverRelayMaxHops) {
+            sendJson(exchange, 400, "{\"ok\":false,\"error\":\"invalid_envelope\"}");
+            return;
+        }
+        if (envelope.targetServerId.equals(serverId)) {
+            DirectMessageStore store = plugin.directMessages();
+            DirectMessageStore.ReadReceiptApplyResult applied = store == null ? null : store.applyRemoteReadReceipt(envelope.messageRelayId);
+            if (applied == null || !applied.ok) {
+                String error = applied == null || applied.error == null || applied.error.isBlank() ? "message_not_found" : applied.error;
+                sendJson(exchange, 404, "{\"ok\":false,\"error\":" + JsonUtil.quote(error) + "}");
+                return;
+            }
+            WebChatServer web = plugin.webServer();
+            // Replayed read receipts are intentionally idempotent. Only notify web
+            // clients when the origin-side read position actually advanced; otherwise
+            // two open remote DM windows could keep refreshing each other indefinitely.
+            if (web != null && applied.changed) {
+                web.publishDirectMessageUpdate(applied.localUserUuid, applied.remoteUserUuid, applied.threadId);
+            }
+            sendJson(exchange, 200, "{\"ok\":true,\"read\":true,\"changed\":" + applied.changed + "}");
             return;
         }
         if (envelope.hop + 1 >= config.serverRelayMaxHops) {
@@ -364,27 +525,53 @@ public final class ServerRelay implements AutoCloseable {
         }
         envelope.hop++;
         envelope.fromServerId = serverId;
-        if (!sendDirectToPeers(envelope, fromId)) {
-            sendJson(exchange, 404, "{\"ok\":false,\"error\":\"dm_route_unavailable\"}");
+        boolean forwarded;
+        try {
+            forwarded = sendDirectReadToPeers(envelope, fromId)
+                    .get(Math.max(2, config.serverRelayRequestTimeoutSeconds + 2L), TimeUnit.SECONDS);
+        } catch (Exception ex) {
+            sendJson(exchange, 504, "{\"ok\":false,\"error\":\"dm_read_forward_timeout\"}");
             return;
         }
-        sendJson(exchange, 200, "{\"ok\":true,\"forwarded\":true}");
+        if (!forwarded) {
+            sendJson(exchange, 502, "{\"ok\":false,\"error\":\"dm_read_route_unavailable\"}");
+            return;
+        }
+        sendJson(exchange, 200, "{\"ok\":true,\"read\":true,\"forwarded\":true}");
     }
 
-    private boolean sendDirectToPeers(DirectMessageEnvelope envelope, String excludePeerId) {
-        if (!isEnabled() || envelope == null) return false;
+    private CompletableFuture<Boolean> sendDirectReadToPeers(DirectMessageReadEnvelope envelope, String excludePeerId) {
+        if (!isEnabled() || envelope == null) return CompletableFuture.completedFuture(false);
         String body = envelope.toJson();
         ConfigValues.RelayPeer direct = peersById.get(envelope.targetServerId);
         if (direct != null && !direct.id.equals(excludePeerId)) {
             String secret = secretFor(direct);
-            if (secret.isBlank()) return false;
-            send(direct, body, secret, true);
-            return true;
+            if (secret.isBlank()) return CompletableFuture.completedFuture(false);
+            return sendDirectRead(direct, body, secret);
+        }
+        ConfigValues.RelayPeer nextHop = null;
+        for (ConfigValues.RelayPeer candidate : peersById.values()) {
+            if (candidate.id.equals(excludePeerId) || candidate.id.equals(envelope.originServerId)) continue;
+            if (secretFor(candidate).isBlank()) continue;
+            if (nextHop != null) return CompletableFuture.completedFuture(false);
+            nextHop = candidate;
+        }
+        if (nextHop == null) return CompletableFuture.completedFuture(false);
+        return sendDirectRead(nextHop, body, secretFor(nextHop));
+    }
+
+    private CompletableFuture<DirectMessageDelivery> sendDirectToPeers(DirectMessageEnvelope envelope, String excludePeerId) {
+        if (!isEnabled() || envelope == null) {
+            return CompletableFuture.completedFuture(DirectMessageDelivery.failed("relay_disabled", 503));
+        }
+        String body = envelope.toJson();
+        ConfigValues.RelayPeer direct = peersById.get(envelope.targetServerId);
+        if (direct != null && !direct.id.equals(excludePeerId)) {
+            String secret = secretFor(direct);
+            if (secret.isBlank()) return CompletableFuture.completedFuture(DirectMessageDelivery.failed("dm_route_unavailable", 404));
+            return sendDirect(direct, body, secret);
         }
 
-        // A spoke or chain node has exactly one usable next hop after the sender
-        // and origin are excluded. Do not broadcast private message bodies to
-        // multiple unrelated peers when no explicit destination route is known.
         ConfigValues.RelayPeer nextHop = null;
         for (ConfigValues.RelayPeer peer : peersById.values()) {
             if (peer.id.equals(excludePeerId) || peer.id.equals(envelope.originServerId)) continue;
@@ -392,13 +579,12 @@ public final class ServerRelay implements AutoCloseable {
             if (nextHop != null) {
                 plugin.getLogger().warning("DM relay route to " + envelope.targetServerId
                         + " is ambiguous; configure a direct peer or a single hub/next hop.");
-                return false;
+                return CompletableFuture.completedFuture(DirectMessageDelivery.failed("dm_route_ambiguous", 409));
             }
             nextHop = peer;
         }
-        if (nextHop == null) return false;
-        send(nextHop, body, secretFor(nextHop), true);
-        return true;
+        if (nextHop == null) return CompletableFuture.completedFuture(DirectMessageDelivery.failed("dm_route_unavailable", 404));
+        return sendDirect(nextHop, body, secretFor(nextHop));
     }
 
     private void sendToPeers(RelayEnvelope envelope, String excludePeerId) {
@@ -447,6 +633,72 @@ public final class ServerRelay implements AutoCloseable {
         }
     }
 
+    private CompletableFuture<DirectMessageDelivery> sendDirect(ConfigValues.RelayPeer peer, String body, String secret) {
+        try {
+            String timestamp = Long.toString(System.currentTimeMillis());
+            URI endpoint = relayDirectMessageUri(peer.url);
+            HttpRequest request = HttpRequest.newBuilder(endpoint)
+                    .timeout(Duration.ofSeconds(config.serverRelayRequestTimeoutSeconds))
+                    .header("Content-Type", "application/json; charset=utf-8")
+                    .header(HEADER_VERSION, PROTOCOL_VERSION)
+                    .header(HEADER_FROM, serverId)
+                    .header(HEADER_TIMESTAMP, timestamp)
+                    .header(HEADER_SIGNATURE, sign(secret, timestamp + "\n" + body))
+                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                    .build();
+            return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+                    .handle((response, error) -> {
+                        if (error != null) {
+                            String detail = safe(error.getMessage());
+                            plugin.getLogger().warning("DM relay send failed for peer " + peer.id + ": " + detail);
+                            return DirectMessageDelivery.failed("dm_transport_error", 502);
+                        }
+                        int status = response.statusCode();
+                        Map<String, String> responseBody = JsonUtil.parseFlatObject(response.body());
+                        boolean delivered = Boolean.parseBoolean(String.valueOf(responseBody.getOrDefault("delivered", "false")));
+                        if (status >= 200 && status < 300 && delivered) {
+                            return DirectMessageDelivery.delivered(status);
+                        }
+                        String errorCode = String.valueOf(responseBody.getOrDefault("error", "")).trim();
+                        if (errorCode.isBlank()) {
+                            errorCode = status >= 200 && status < 300 ? "delivery_not_confirmed" : "remote_http_" + status;
+                        }
+                        String detail = compactResponseBody(response.body());
+                        plugin.getLogger().warning("DM relay peer " + peer.id + " did not confirm delivery: HTTP "
+                                + status + (detail.isBlank() ? "" : " (" + detail + ")"));
+                        return DirectMessageDelivery.failed(errorCode, status);
+                    });
+        } catch (Exception ex) {
+            plugin.getLogger().warning("DM relay request could not be created for peer " + peer.id + ": " + ex.getMessage());
+            return CompletableFuture.completedFuture(DirectMessageDelivery.failed("dm_request_error", 500));
+        }
+    }
+
+    private CompletableFuture<Boolean> sendDirectRead(ConfigValues.RelayPeer peer, String body, String secret) {
+        try {
+            String timestamp = Long.toString(System.currentTimeMillis());
+            URI endpoint = relayDirectMessageReadUri(peer.url);
+            HttpRequest request = HttpRequest.newBuilder(endpoint)
+                    .timeout(Duration.ofSeconds(config.serverRelayRequestTimeoutSeconds))
+                    .header("Content-Type", "application/json; charset=utf-8")
+                    .header(HEADER_VERSION, PROTOCOL_VERSION)
+                    .header(HEADER_FROM, serverId)
+                    .header(HEADER_TIMESTAMP, timestamp)
+                    .header(HEADER_SIGNATURE, sign(secret, timestamp + "\n" + body))
+                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                    .build();
+            return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+                    .handle((response, error) -> {
+                        if (error != null || response == null) return false;
+                        if (response.statusCode() < 200 || response.statusCode() >= 300) return false;
+                        Map<String, String> parsed = JsonUtil.parseFlatObject(response.body());
+                        return Boolean.parseBoolean(String.valueOf(parsed.getOrDefault("read", "false")));
+                    });
+        } catch (Exception ex) {
+            return CompletableFuture.completedFuture(false);
+        }
+    }
+
     private URI relayUri(String configured) {
         return relayEndpointUri(configured, "/relay/receive");
     }
@@ -455,11 +707,16 @@ public final class ServerRelay implements AutoCloseable {
         return relayEndpointUri(configured, "/relay/dm/receive");
     }
 
+    private URI relayDirectMessageReadUri(String configured) {
+        return relayEndpointUri(configured, "/relay/dm/read");
+    }
+
     private URI relayEndpointUri(String configured, String endpoint) {
         String url = safe(configured).trim();
         while (url.endsWith("/")) url = url.substring(0, url.length() - 1);
         if (url.endsWith("/relay/receive")) url = url.substring(0, url.length() - "/relay/receive".length());
         if (url.endsWith("/relay/dm/receive")) url = url.substring(0, url.length() - "/relay/dm/receive".length());
+        if (url.endsWith("/relay/dm/read")) url = url.substring(0, url.length() - "/relay/dm/read".length());
         url += endpoint;
         URI uri = URI.create(url);
         String scheme = safe(uri.getScheme()).toLowerCase(Locale.ROOT);
@@ -487,9 +744,28 @@ public final class ServerRelay implements AutoCloseable {
     }
 
     private void cleanupSeen() {
-        if (seenRelayIds.size() < 2048) return;
+        if (seenRelayIds.size() < 2048 && deliveredRelayIds.size() < 2048) return;
         long now = System.currentTimeMillis();
         seenRelayIds.entrySet().removeIf(entry -> entry.getValue() < now);
+        deliveredRelayIds.entrySet().removeIf(entry -> entry.getValue() < now);
+    }
+
+    private void markDelivered(String relayId) {
+        if (relayId == null || relayId.isBlank()) return;
+        long expiry = System.currentTimeMillis() + config.serverRelayDedupeSeconds * 1000L;
+        deliveredRelayIds.put(relayId, expiry);
+        seenRelayIds.put(relayId, expiry);
+    }
+
+    private boolean isDelivered(String relayId) {
+        if (relayId == null || relayId.isBlank()) return false;
+        Long expiry = deliveredRelayIds.get(relayId);
+        if (expiry == null) return false;
+        if (expiry < System.currentTimeMillis()) {
+            deliveredRelayIds.remove(relayId, expiry);
+            return false;
+        }
+        return true;
     }
 
     private String secretFor(ConfigValues.RelayPeer peer) {
@@ -559,6 +835,94 @@ public final class ServerRelay implements AutoCloseable {
         if (!closed.compareAndSet(false, true)) return;
         executor.shutdownNow();
         seenRelayIds.clear();
+        deliveredRelayIds.clear();
+    }
+
+    public static final class DirectMessageDelivery {
+        public final boolean delivered;
+        public final String error;
+        public final int httpStatus;
+
+        private DirectMessageDelivery(boolean delivered, String error, int httpStatus) {
+            this.delivered = delivered;
+            this.error = error == null ? "" : error;
+            this.httpStatus = httpStatus;
+        }
+
+        public static DirectMessageDelivery delivered(int httpStatus) {
+            return new DirectMessageDelivery(true, "", httpStatus);
+        }
+
+        public static DirectMessageDelivery failed(String error, int httpStatus) {
+            return new DirectMessageDelivery(false, error == null || error.isBlank() ? "delivery_failed" : error, httpStatus);
+        }
+    }
+
+    private static final class DirectMessageReadEnvelope {
+        String receiptId;
+        String originServerId;
+        String fromServerId;
+        String targetServerId;
+        String messageRelayId;
+        int hop;
+        long time;
+
+        static DirectMessageReadEnvelope create(String originServerId, String targetServerId, String messageRelayId) {
+            DirectMessageReadEnvelope e = new DirectMessageReadEnvelope();
+            e.receiptId = "dmread-" + SecurityUtil.randomToken(12);
+            e.originServerId = normalizeId(originServerId);
+            e.fromServerId = e.originServerId;
+            e.targetServerId = normalizeId(targetServerId);
+            e.messageRelayId = limitRead(safe(messageRelayId), 180);
+            e.hop = 0;
+            e.time = System.currentTimeMillis();
+            return e;
+        }
+
+        static DirectMessageReadEnvelope fromMap(Map<String, String> map) {
+            DirectMessageReadEnvelope e = new DirectMessageReadEnvelope();
+            e.receiptId = safe(map.get("receiptId"));
+            e.originServerId = normalizeId(map.get("originServerId"));
+            e.fromServerId = normalizeId(map.get("fromServerId"));
+            e.targetServerId = normalizeId(map.get("targetServerId"));
+            e.messageRelayId = safe(map.get("messageRelayId"));
+            e.hop = parseReadInt(map.get("hop"), -1);
+            e.time = parseReadLong(map.get("time"), System.currentTimeMillis());
+            return e;
+        }
+
+        boolean valid() {
+            return receiptId.matches("[A-Za-z0-9._:-]{8,160}")
+                    && !originServerId.isBlank() && originServerId.length() <= 64
+                    && !fromServerId.isBlank() && fromServerId.length() <= 64
+                    && !targetServerId.isBlank() && targetServerId.length() <= 64
+                    && !messageRelayId.isBlank() && messageRelayId.length() <= 180;
+        }
+
+        String toJson() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("receiptId", receiptId);
+            m.put("originServerId", originServerId);
+            m.put("fromServerId", fromServerId);
+            m.put("targetServerId", targetServerId);
+            m.put("messageRelayId", messageRelayId);
+            m.put("hop", hop);
+            m.put("time", time);
+            return JsonUtil.obj(m);
+        }
+
+        private static String limitRead(String value, int max) {
+            String text = safe(value);
+            return text.length() <= max ? text : text.substring(0, max);
+        }
+
+        private static int parseReadInt(String raw, int fallback) {
+            try { return Integer.parseInt(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
+        }
+
+        private static long parseReadLong(String raw, long fallback) {
+            try { return Long.parseLong(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
+        }
     }
 
     private static final class DirectMessageEnvelope {
@@ -577,12 +941,12 @@ public final class ServerRelay implements AutoCloseable {
         String targetDisplayName;
         String message;
 
-        static DirectMessageEnvelope create(String originServerId, String originServerName, String targetServerId,
+        static DirectMessageEnvelope create(String relayId, String originServerId, String originServerName, String targetServerId,
                                             String senderUuid, String senderUsername, String senderDisplayName,
                                             String targetUuid, String targetUsername, String targetDisplayName,
                                             String message) {
             DirectMessageEnvelope e = new DirectMessageEnvelope();
-            e.relayId = "dmrelay-" + SecurityUtil.randomToken(16);
+            e.relayId = safe(relayId).isBlank() ? "dmrelay-" + SecurityUtil.randomToken(16) : limit(safe(relayId), 180);
             e.originServerId = normalizeId(originServerId);
             e.originServerName = safe(originServerName);
             e.fromServerId = e.originServerId;

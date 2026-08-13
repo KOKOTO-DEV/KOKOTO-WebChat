@@ -117,6 +117,7 @@ web:
     dmLoadFailed: "Failed to load messages: {error}"
     dmAuditLoadFailed: "Failed to load DM audit: {error}"
     dmSendFailed: "Failed to send message: {error}"
+    dmRetryFailed: 'Failed to retry message: {error}'
     dmHideFailed: "Failed to hide message: {error}"
     groupLoadFailed: 'Failed to load group chats: {error}'
     groupJoinFailed: 'Failed to join group chat: {error}'
@@ -481,6 +482,15 @@ web:
     retentionLimited: 'Retention: {days} days'
     retentionUnlimited: 'Retention: no time limit'
     backToList: Back to conversation list
+  delivery:
+    pending: 'Sending'
+    failed: 'Failed'
+    retry: 'Retry'
+  receipt:
+    read: 'Read by recipient'
+    readAll: 'Read by all recipients'
+    unread: 'Unread'
+    unreadCount: 'Unread recipients: {count}'
   group:
     title: 'Group chats'
     noRooms: 'No group chats.'
@@ -650,6 +660,7 @@ web:
     replyTargetNotFound: The referenced message could not be found.
     dmEmpty: Message is empty.
     dmFailed: 'Direct message failed: {error}'
+    dmDeliveryFailed: 'Direct message delivery failed. You can retry it from web chat.'
     dmSent: 'Sent to {player}: {message}'
     dmSentEcho: 'to: {player} {message}'
     dmIncoming: 'DM from {player}: {message}'
@@ -718,3 +729,4 @@ web:
     offline: 'Offline.
 
       Check connection.'
+

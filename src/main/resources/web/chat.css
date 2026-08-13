@@ -8747,3 +8747,51 @@ body.bmwc-standalone-mode {
   font-size: 11px;
   line-height: 1.35;
 }
+
+/* Private-message delivery/read state (4.6.2): keep it beside the timestamp. */
+.bmwc-private-meta-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-left: 2px;
+  white-space: nowrap;
+}
+.bmwc-delivery-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: inherit;
+  line-height: inherit;
+  opacity: .78;
+  white-space: nowrap;
+}
+.bmwc-delivery-pending { font-style: italic; }
+.bmwc-delivery-failed { opacity: 1; font-weight: 600; }
+.bmwc-delivery-retry {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.bmwc-delivery-retry:hover,
+.bmwc-delivery-retry:focus-visible { opacity: .8; }
+
+.bmwc-read-receipt {
+  display: inline-flex;
+  align-items: center;
+  min-height: 0;
+  margin: 0;
+  font-size: inherit;
+  font-weight: 700;
+  line-height: inherit;
+  opacity: .72;
+  user-select: none;
+  white-space: nowrap;
+}
+.bmwc-read-receipt-group { font-variant-numeric: tabular-nums; }

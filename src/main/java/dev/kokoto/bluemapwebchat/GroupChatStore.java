@@ -108,9 +108,12 @@ public class GroupChatStore {
                     "sender_uuid TEXT NOT NULL," +
                     "body TEXT NOT NULL," +
                     "created_at INTEGER NOT NULL," +
-                    "hidden INTEGER NOT NULL DEFAULT 0" +
+                    "hidden INTEGER NOT NULL DEFAULT 0," +
+                    "client_message_id TEXT NOT NULL DEFAULT ''" +
                     ")");
+            addColumnIfMissing(st, "group_messages", "client_message_id", "TEXT NOT NULL DEFAULT ''");
             st.execute("CREATE INDEX IF NOT EXISTS idx_group_messages_room ON group_messages(room_id, id)");
+            st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_group_messages_client_id ON group_messages(client_message_id) WHERE client_message_id<>''");
             st.execute("CREATE INDEX IF NOT EXISTS idx_group_messages_created ON group_messages(created_at)");
             st.execute("CREATE TABLE IF NOT EXISTS group_message_state (" +
                     "message_id INTEGER NOT NULL," +
@@ -332,23 +335,48 @@ public class GroupChatStore {
     }
 
     public synchronized SendResult send(String userUuid, String roomId, String body) {
+        return send(userUuid, roomId, body, "");
+    }
+
+    public synchronized SendResult send(String userUuid, String roomId, String body, String clientMessageId) {
         SendResult r = new SendResult();
         String user = normalizeUuid(userUuid);
         String id = cleanId(roomId);
+        String requestId = String.valueOf(clientMessageId == null ? "" : clientMessageId).trim();
+        if (requestId.length() > 180) requestId = requestId.substring(0, 180);
         if (connection == null) { r.error = "store_unavailable"; return r; }
         if (!isMember(user, id)) { r.error = "not_member"; return r; }
         if (isRoomLocked(id)) { r.error = "room_locked"; return r; }
+        if (!requestId.isBlank()) {
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT id FROM group_messages WHERE client_message_id=? AND room_id=? AND sender_uuid=? AND hidden=0 LIMIT 1")) {
+                ps.setString(1, requestId);
+                ps.setString(2, id);
+                ps.setString(3, user);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        r.messageId = rs.getLong(1);
+                        r.ok = true;
+                        r.duplicate = true;
+                        r.room = roomForUser(user, id);
+                        r.message = messageById(user, r.messageId);
+                        return r;
+                    }
+                }
+            } catch (SQLException ex) { r.error = "send_failed"; return r; }
+        }
         String message = String.valueOf(body == null ? "" : body).trim();
         ConfigValues c = plugin.configValues();
         int max = c == null ? 500 : c.groupChatMaxMessageLength;
         if (max > 0 && message.length() > max) message = message.substring(0, max);
         if (message.isBlank()) { r.error = "empty_message"; return r; }
         long now = System.currentTimeMillis();
-        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO group_messages(room_id,sender_uuid,body,created_at,hidden) VALUES(?,?,?,?,0)", Statement.RETURN_GENERATED_KEYS)) {
+        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO group_messages(room_id,sender_uuid,body,created_at,hidden,client_message_id) VALUES(?,?,?,?,0,?)", Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, id);
             ps.setString(2, user);
             ps.setString(3, message);
             ps.setLong(4, now);
+            ps.setString(5, requestId);
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) { if (keys.next()) r.messageId = keys.getLong(1); }
         } catch (SQLException ex) { r.error = "send_failed"; return r; }
@@ -358,6 +386,22 @@ public class GroupChatStore {
         r.room = roomForUser(user, id);
         r.message = messageById(user, r.messageId);
         return r;
+    }
+
+    public synchronized long readPosition(String roomId, String userUuid) {
+        String id = cleanId(roomId);
+        String user = normalizeUuid(userUuid);
+        if (connection == null || id.isBlank() || user.isBlank()) return 0L;
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT COALESCE(last_read_message_id,0) FROM group_members WHERE room_id=? AND user_uuid=?")) {
+            ps.setString(1, id);
+            ps.setString(2, user);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? Math.max(0L, rs.getLong(1)) : 0L;
+            }
+        } catch (SQLException ex) {
+            return 0L;
+        }
     }
 
     public synchronized boolean markRead(String roomId, String userUuid) {
@@ -493,6 +537,7 @@ public class GroupChatStore {
             plugin.getLogger().warning("Failed to list group messages: " + ex.getMessage());
         }
         Collections.reverse(out);
+        for (GroupMessage message : out) message.unreadMemberCount = unreadMemberCountForMessage(message);
         return out;
     }
 
@@ -966,15 +1011,32 @@ public class GroupChatStore {
 
     private GroupMessage messageById(String userUuid, long messageId) {
         if (messageId <= 0) return null;
+        GroupMessage result = null;
         try (PreparedStatement ps = connection.prepareStatement("SELECT id,room_id,sender_uuid,body,created_at FROM group_messages WHERE id=?")) {
             ps.setLong(1, messageId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) return null;
                 String roomId = rs.getString(2);
                 if (!isMember(userUuid, roomId)) return null;
-                return messageFromResult(rs);
+                result = messageFromResult(rs);
             }
         } catch (SQLException ex) { return null; }
+        if (result != null) result.unreadMemberCount = unreadMemberCountForMessage(result);
+        return result;
+    }
+
+    private int unreadMemberCountForMessage(GroupMessage message) {
+        if (message == null || connection == null || message.id <= 0 || message.roomId == null || message.roomId.isBlank()) return 0;
+        String sql = "SELECT COUNT(*) FROM group_members WHERE room_id=? AND user_uuid<>? AND joined_at<=? AND COALESCE(last_read_message_id,0)<?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, message.roomId);
+            ps.setString(2, normalizeUuid(message.senderUuid));
+            ps.setLong(3, message.createdAt);
+            ps.setLong(4, message.id);
+            try (ResultSet rs = ps.executeQuery()) { return rs.next() ? Math.max(0, rs.getInt(1)) : 0; }
+        } catch (SQLException ex) {
+            return 0;
+        }
     }
 
     private GroupMessage messageFromResult(ResultSet rs) throws SQLException {
@@ -1207,6 +1269,7 @@ public class GroupChatStore {
     public static class CreateResult extends ActionResult {}
 
     public static class SendResult extends ActionResult {
+        public boolean duplicate;
         public long messageId;
         public GroupMessage message;
     }

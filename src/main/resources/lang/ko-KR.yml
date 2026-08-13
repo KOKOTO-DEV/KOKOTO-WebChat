@@ -117,6 +117,7 @@ web:
     dmLoadFailed: "메시지를 불러오지 못했습니다: {error}"
     dmAuditLoadFailed: "DM 감사 내용을 불러오지 못했습니다: {error}"
     dmSendFailed: "메시지를 보내지 못했습니다: {error}"
+    dmRetryFailed: '메시지 재전송 실패: {error}'
     dmHideFailed: "메시지를 숨기지 못했습니다: {error}"
     groupLoadFailed: '그룹 채팅을 불러오지 못했습니다: {error}'
     groupJoinFailed: '그룹 채팅방에 입장하지 못했습니다: {error}'
@@ -481,6 +482,15 @@ web:
     retentionLimited: '보관 기간: {days}일'
     retentionUnlimited: '보관 기간: 기한 없음'
     backToList: 대화 목록으로 돌아가기
+  delivery:
+    pending: '전송중'
+    failed: '실패'
+    retry: '재시도'
+  receipt:
+    read: '수신자 읽음'
+    readAll: '모든 수신자 읽음'
+    unread: '미확인'
+    unreadCount: '미확인 수신자: {count}명'
   group:
     title: '그룹 채팅'
     noRooms: '그룹 채팅방이 없습니다.'
@@ -650,6 +660,7 @@ web:
     replyTargetNotFound: 댓글 대상 메시지를 찾을 수 없습니다.
     dmEmpty: 메시지가 비어 있습니다.
     dmFailed: '메시지 전송 실패: {error}'
+    dmDeliveryFailed: 'DM 전송에 실패했습니다. 웹 채팅에서 다시 시도할 수 있습니다.'
     dmSent: '{player}에게 보냈습니다: {message}'
     dmSentEcho: '보냄: {player} {message}'
     dmIncoming: '{player}님의 메시지: {message}'
@@ -717,3 +728,4 @@ web:
     offline: '연결 끊김.
 
       네트워크를 확인해 주세요.'
+

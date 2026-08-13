@@ -117,6 +117,7 @@ web:
     dmLoadFailed: "メッセージの読み込みに失敗しました: {error}"
     dmAuditLoadFailed: "DM監査内容を読み込めませんでした: {error}"
     dmSendFailed: "メッセージの送信に失敗しました: {error}"
+    dmRetryFailed: 'メッセージの再送に失敗しました: {error}'
     dmHideFailed: "メッセージの非表示に失敗しました: {error}"
     groupLoadFailed: 'グループチャットの読み込みに失敗しました: {error}'
     groupJoinFailed: 'グループチャットへの参加に失敗しました: {error}'
@@ -481,6 +482,15 @@ web:
     retentionLimited: '保持期間: {days}日'
     retentionUnlimited: '保持期間: 期限なし'
     backToList: 会話一覧に戻る
+  delivery:
+    pending: '送信中'
+    failed: '失敗'
+    retry: '再試行'
+  receipt:
+    read: '受信者既読'
+    readAll: '全受信者既読'
+    unread: '未読'
+    unreadCount: '未読受信者: {count}人'
   group:
     title: 'グループチャット'
     noRooms: 'グループチャットはありません。'
@@ -647,6 +657,7 @@ web:
     replyTargetNotFound: 返信先のメッセージが見つかりません。
     dmEmpty: メッセージが空です。
     dmFailed: 'DM 送信失敗: {error}'
+    dmDeliveryFailed: 'DM の配信に失敗しました。Web チャットから再試行できます。'
     dmSent: '{player} に送信しました: {message}'
     dmSentEcho: '送信: {player} {message}'
     dmIncoming: '{player} からの DM: {message}'
@@ -717,3 +728,4 @@ web:
     offline: '接続が切れています。
 
       ネットワークを確認してください。'
+

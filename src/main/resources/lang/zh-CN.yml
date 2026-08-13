@@ -117,6 +117,7 @@ web:
     dmLoadFailed: "消息加载失败：{error}"
     dmAuditLoadFailed: "无法加载私信审计内容：{error}"
     dmSendFailed: "消息发送失败：{error}"
+    dmRetryFailed: '重试消息失败：{error}'
     dmHideFailed: "隐藏消息失败：{error}"
     groupLoadFailed: '无法加载群组聊天：{error}'
     groupJoinFailed: '无法加入群组聊天：{error}'
@@ -481,6 +482,15 @@ web:
     retentionLimited: '保留期限：{days} 天'
     retentionUnlimited: '保留期限：无限期'
     backToList: 返回会话列表
+  delivery:
+    pending: '发送中'
+    failed: '失败'
+    retry: '重试'
+  receipt:
+    read: '接收者已读'
+    readAll: '所有接收者已读'
+    unread: '未读'
+    unreadCount: '未读接收者：{count}人'
   group:
     title: '群组聊天'
     noRooms: '没有群组聊天。'
@@ -650,6 +660,7 @@ web:
     replyTargetNotFound: 找不到要回复的消息。
     dmEmpty: 消息为空。
     dmFailed: '私信发送失败: {error}'
+    dmDeliveryFailed: '私信发送失败。可以在网页聊天中重试。'
     dmSent: '已发送给 {player}: {message}'
     dmSentEcho: '发送: {player} {message}'
     dmIncoming: '来自 {player} 的私信: {message}'
@@ -717,3 +728,4 @@ web:
     offline: '连接已断开。
 
       请检查网络。'
+

@@ -1,5 +1,28 @@
 # Changelog
 
+## 4.6.2
+
+- Fixed same-name direct-message routing. A DM target without a server qualifier resolves only on the current server; cross-server targets require explicit server-scoped identity from `name@server-id` or the web UI.
+- Added end-to-end acknowledgement for cross-server DMs. A remote DM remains pending until the destination server confirms that it was stored; routing, HTTP, timeout, and destination failures become retryable failures instead of appearing successfully delivered.
+- Added idempotent DM retry using persistent relay IDs and web client message IDs. Retrying after an uncertain or failed request does not create duplicate sender or receiver messages, and interrupted pending deliveries recover as retryable failures after restart.
+- Added the same browser-side pending/failure/retry and client-message-id duplicate protection to group-chat sends. Normal successful delivery is intentionally not labeled; only the compact localized `Sending` state or `Failed · Retry` action is shown beside the message timestamp.
+- Added read status to every DM and group-chat message, displayed beside the message timestamp. A 1:1 DM shows a short localized unread label (`Unread` in English) until its recipient reads it, then changes to `✓`. Group chat keeps the unread-recipient count and changes to `✓` when that count reaches zero.
+- Added authenticated cross-server DM read acknowledgements so read state for remote DMs is reflected on the message origin server. Read acknowledgements are idempotent and are re-sent when the conversation is viewed, so a temporary relay/HTTP failure does not permanently suppress the read mark.
+- Changed multi-hop private relay acknowledgement so an intermediate hub reports success only after the final destination confirms storage.
+- Fixed update notifications so an eligible administrator login refreshes stale Modrinth release state, OPs are explicitly recognized in addition to the update-notify permission, failed checks are visible in the server log, and reloads do not retain obsolete update-check listeners.
+
+### Cross-server DM compatibility
+
+All servers that exchange cross-server DMs should run **BlueMapWebChat 4.6.2 or later** to use end-to-end delivery confirmation, retry, and remote read-status acknowledgement.
+
+### Configuration
+
+4.6.2 adds no administrator-facing configuration keys and changes no existing setting defaults. The configuration review marker changes to:
+
+```yaml
+config-version: "4.6.2"
+```
+
 ## 4.6.1
 
 - Fixed cross-server direct messaging from the web interface. This includes exact `server-id + player UUID` targeting, shared game/web sessions, destination-server delivery, remote DM search, message-metadata shortcuts, game `/bmchat dm` and `name@server-id` whisper routing, and server identification in the DM window before the first message is sent.
@@ -761,5 +784,4 @@ search:
 - Expanded the Caddy HTTPS setup guide.
 - Expanded the nginx + Certbot HTTPS setup guide.
 - Added installation examples under `examples/caddy` and `examples/nginx`.
-
 

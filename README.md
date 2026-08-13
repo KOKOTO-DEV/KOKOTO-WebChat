@@ -31,7 +31,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.6.1.jar
+target/BlueMapWebChat-4.6.2.jar
 ```
 
 ## Install
@@ -45,13 +45,21 @@ target/BlueMapWebChat-4.6.1.jar
 7. Restart the server or run `/bmchat reload`. Run `/bluemap reload` if BlueMap does not refresh web assets automatically.
 
 
-Existing configs are never overwritten. When `config-version` is missing or differs from the running plugin version, BlueMapWebChat compares the physical `config.yml` with the bundled defaults and writes `plugins/BlueMapWebChat/config-migration-4.6.1.yml`. The generated file contains copy-ready missing settings, changed bundled defaults, and the target `config-version` review marker. Even when no other settings differ, the file is still created so configuration version management remains explicit. Version details and previous/new default values are comments, not YAML settings. Custom values and obsolete-setting notes are omitted. When `config-version: "4.6.1"` already matches the plugin version, the config is treated as reviewed and comparison is skipped. See `docs/UPGRADE_4_6_1_EN.md` for this update and `docs/UPGRADE_4_6_0_EN.md` for the previous major migration.
+Existing configs are never overwritten. When `config-version` is missing or differs from the running plugin version, BlueMapWebChat compares the physical `config.yml` with the bundled defaults and writes `plugins/BlueMapWebChat/config-migration-4.6.2.yml`. The generated file contains copy-ready missing settings, changed bundled defaults, and the target `config-version` review marker. Even when no other settings differ, the file is still created so configuration version management remains explicit. Version details and previous/new default values are comments, not YAML settings. Custom values and obsolete-setting notes are omitted. When `config-version: "4.6.2"` already matches the plugin version, the config is treated as reviewed and comparison is skipped. See `docs/UPGRADE_4_6_2_EN.md` for this update, `docs/UPGRADE_4_6_1_EN.md` for the previous update, and `docs/UPGRADE_4_6_0_EN.md` for the previous major migration.
+
+## 4.6.2 reliable private-message delivery
+
+Remote DMs now remain `pending` until the destination server confirms that the message was stored. Delivery failures become retryable `failed` messages, and retries reuse the same relay ID to avoid duplicate receiver records. Web DM and group-chat sends also use client message IDs so an uncertain browser request can be retried without duplicating an already-stored message. Unqualified DM names always resolve on the current server; remote targets require explicit server-scoped selection. Read status is shown on every DM and group-chat message beside the timestamp. A 1:1 DM shows the short `Unread` label until its recipient reads it, then changes to `✓`; group chat keeps the unread-recipient count and changes to `✓` when the count reaches zero. Delivery UI is also compact: `Sending` while pending and `Failed · Retry` only when delivery cannot be confirmed.
+
+All servers exchanging cross-server DMs should run BlueMapWebChat 4.6.2 or later.
+
+See `docs/UPGRADE_4_6_2_EN.md` for upgrade details.
 
 ## 4.6.1 exact cross-server DM routing
 
 Remote DM recipients are now identified by both `server-id` and player UUID. Clicking `server · source` opens the conversation for that exact server/player pair, even when the same UUID exists on the local server. The message is sent through the signed private relay endpoint and stored by the destination server.
 
-Every server participating in cross-server DM must use this corrected 4.6.1 build. The version number is unchanged, but older 4.6.1 builds do not contain the complete private relay and exact target handoff fixes.
+Every server participating in cross-server DM must run BlueMapWebChat 4.6.1 or later.
 
 ## 4.6.1 cross-server DM discovery and administrator audit
 
@@ -185,7 +193,7 @@ Group chats use a dedicated SQLite store (`group-chat.sqlite-file`, default `gro
 DMs use an independent private-message store. `direct-message.storage: auto` follows `chat.history-storage` when public chat uses `jsonl`; otherwise it uses SQLite. You can also set `direct-message.storage` to `sqlite` or `jsonl` explicitly, using `direct-message.sqlite-file` or `direct-message.jsonl-file`. `direct-message.retention-days: 0` means no time limit; otherwise the DM window title shows the configured retention period and old DM rows are physically removed after that many days. `direct-message.max-messages-per-thread: 0` disables count-based cleanup. `direct-message.confirm-hide` controls whether the web UI asks before hiding a DM from your own view. Because private messages are stored on the server, the feature is disabled by default and should be enabled only after setting a server policy.
 
 
-Game `/w`, `/msg`, `/tell`, and compatible aliases can be mirrored into the same web DM thread with `direct-message.capture-game-whispers`. Clicking a local game sender suggests `/w <realName> `; linked web senders suggest `/bmchat dm <realName> `; remote-server game senders suggest `/bmchat dm <realName>@<server-id> ` so same-name or same-UUID players on different servers remain distinct. Typing `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, or `/t` with the same `name@server-id` target routes that message through the cross-server BMChat DM relay.
+Game `/w`, `/msg`, `/tell`, and compatible aliases can be mirrored into the same web DM thread with `direct-message.capture-game-whispers`. Clicking a local game sender suggests `/w <realName> `; linked web senders suggest `/bmchat dm <realName> `; remote-server game senders suggest `/bmchat dm <realName>@<server-id> ` so same-name or same-UUID players on different servers remain distinct. Typing `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, or `/t` with the same `name@server-id` target routes that message through the cross-server BMChat DM relay. An unqualified `/bmchat dm <name>` always resolves on the current server; a remote target must include `@server-id` or be explicitly selected from the web UI.
 
 ## Custom emoji and game-side emoji plugins
 
@@ -268,6 +276,7 @@ bluemapwebchat.update.notify
 - `docs/USER_MANUAL_EN.md` - complete user and operator manual for all features
 - `docs/CONFIGURATION_EN.md` - configuration reference
 - `docs/SERVER_RELAY_EN.md` - server-to-server public chat relay
+- `docs/UPGRADE_4_6_2_EN.md` - 4.6.1 to 4.6.2 upgrade
 - `docs/UPGRADE_4_6_1_EN.md` - 4.6.0 to 4.6.1 upgrade
 - `docs/UPGRADE_4_6_0_EN.md` - 4.5.5 to 4.6.0 config/database upgrade
 - `docs/CADDY_HTTPS_EN.md` - HTTPS reverse proxy setup

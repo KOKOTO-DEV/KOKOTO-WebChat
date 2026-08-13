@@ -29,7 +29,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.6.1.jar
+target/BlueMapWebChat-4.6.2.jar
 ```
 
 ## 기본 설치
@@ -43,13 +43,21 @@ target/BlueMapWebChat-4.6.1.jar
 7. 서버 재시작 또는 `/bmchat reload`를 실행합니다. BlueMap 쪽 웹 자원이 갱신되지 않으면 `/bluemap reload`도 실행합니다.
 
 
-기존 `config.yml`은 덮어쓰지 않습니다. `config-version`이 없거나 실행 중인 플러그인 버전과 다르면 실제 `config.yml`과 JAR 기본 설정을 비교해 `plugins/BlueMapWebChat/config-migration-4.6.1.yml`을 생성합니다. 생성 파일에는 그대로 병합할 수 있는 누락 설정, 변경된 기본값, 최종 `config-version` 검토 표식을 실제 YAML 설정으로 표시합니다. 다른 차이가 없어도 설정 버전 관리를 위해 파일과 `config-version` 항목은 생성됩니다. 버전 정보와 이전·새 기본값 설명은 `#` 주석으로만 기록합니다. 사용자 지정값과 폐기 후보 같은 참고 목록은 출력하지 않습니다. `config-version: "4.6.1"`이 플러그인 버전과 같으면 이미 검토한 설정으로 간주하고 비교를 생략합니다. 이번 업데이트는 `docs/UPGRADE_4_6_1_KO.md`, 이전 주요 마이그레이션은 `docs/UPGRADE_4_6_0_KO.md`를 참고하세요.
+기존 `config.yml`은 덮어쓰지 않습니다. `config-version`이 없거나 실행 중인 플러그인 버전과 다르면 실제 `config.yml`과 JAR 기본 설정을 비교해 `plugins/BlueMapWebChat/config-migration-4.6.2.yml`을 생성합니다. 생성 파일에는 그대로 병합할 수 있는 누락 설정, 변경된 기본값, 최종 `config-version` 검토 표식을 실제 YAML 설정으로 표시합니다. 다른 차이가 없어도 설정 버전 관리를 위해 파일과 `config-version` 항목은 생성됩니다. 버전 정보와 이전·새 기본값 설명은 `#` 주석으로만 기록합니다. 사용자 지정값과 폐기 후보 같은 참고 목록은 출력하지 않습니다. `config-version: "4.6.2"`이 플러그인 버전과 같으면 이미 검토한 설정으로 간주하고 비교를 생략합니다. 이번 업데이트는 `docs/UPGRADE_4_6_2_KO.md`, 이전 업데이트는 `docs/UPGRADE_4_6_1_KO.md`, 이전 주요 마이그레이션은 `docs/UPGRADE_4_6_0_KO.md`를 참고하세요.
+
+## 4.6.2 DM·그룹채팅 전송 상태 및 재시도
+
+타 서버 DM은 수신 서버가 실제 저장을 확인하기 전까지 `pending` 상태로 유지되며, 최종 저장 확인 후에만 `delivered`가 됩니다. 전송 실패는 `failed`로 표시되고 같은 relay ID로 재시도하므로 응답만 유실된 경우에도 수신 메시지가 중복 저장되지 않습니다. 웹 DM과 그룹채팅도 client message ID를 사용해 브라우저 요청 결과가 불확실한 경우 같은 요청을 안전하게 재시도합니다. 서버가 지정되지 않은 DM 이름은 현재 서버 사용자만 대상으로 하며, 타 서버 사용자는 명시적으로 서버가 포함된 대상을 선택해야 합니다. DM과 그룹채팅의 모든 메시지는 시간 옆에 읽음 상태를 표시합니다. 1:1 DM은 상대가 읽기 전 `미확인`, 읽은 뒤 `✓`로 표시하고, 그룹채팅은 기존처럼 미확인 수신자 수를 숫자로 표시하다 0명이 되면 `✓`로 바뀝니다. 전송 상태도 짧게 `전송중`, 실패 시 `실패 · 재시도`만 표시합니다.
+
+서버 간 DM을 주고받는 모든 서버는 BlueMapWebChat 4.6.2 이상을 사용하는 것을 권장합니다.
+
+자세한 내용은 `docs/UPGRADE_4_6_2_KO.md`를 참고하세요.
 
 ## 4.6.1 타 서버 DM 대상·전송 경로 분리
 
 타 서버 DM 대상은 이제 `서버 ID + 플레이어 UUID` 조합으로 식별합니다. 로컬 서버에 같은 UUID의 사용자가 있어도 `서버명 · 종류`를 누르면 해당 타 서버 사용자의 대화가 열리고, 서명된 전용 DM 릴레이를 통해 대상 서버로 전달됩니다.
 
-서버 간 DM을 사용하는 모든 연결 서버에는 이 수정된 4.6.1 빌드를 설치해야 합니다. 버전 번호는 그대로지만 이전 4.6.1 빌드에는 전용 DM 릴레이와 정확한 대상 전달 수정이 모두 들어 있지 않습니다.
+서버 간 DM을 사용하는 모든 연결 서버는 BlueMapWebChat 4.6.1 이상을 사용해야 합니다.
 
 ## 4.6.1 타 서버 DM 검색과 관리자 감사 열람
 
@@ -179,7 +187,7 @@ URL 설정 참고: HTTPS 리버스 프록시에서는 `web-addon.api-base-url`�
 DM은 공개 채팅 기록과 분리된 전용 저장소를 사용합니다. `direct-message.storage: auto`는 공개 채팅이 `jsonl` 저장방식일 때 DM도 JSONL을 사용하고, 그 외에는 SQLite를 사용합니다. 필요하면 `direct-message.storage`를 `sqlite` 또는 `jsonl`로 직접 지정하고 `direct-message.sqlite-file` 또는 `direct-message.jsonl-file`을 사용할 수 있습니다. `direct-message.retention-days: 0`은 보관 기한 없음이며, 그 외 값은 DM 메시지함 제목 옆에 보관 기간으로 표시되고 해당 일수가 지난 DM 원문은 물리 삭제됩니다. `direct-message.max-messages-per-thread: 0`은 스레드별 개수 정리 없음입니다. `direct-message.confirm-hide`는 웹 UI에서 DM을 내 화면에서 숨길 때 확인창을 띄울지 정합니다. 개인 메시지가 서버에 저장되는 기능이므로 기본값은 비활성화이며, 서버 정책에 맞게 보관 주기를 정한 뒤 켜는 것을 권장합니다.
 
 
-`direct-message.capture-game-whispers`를 켜면 게임의 `/w`, `/msg`, `/tell`류 명령을 같은 웹 DM 스레드에 복제할 수 있습니다. 같은 서버의 게임 발신자 이름을 클릭하면 `/w <실제이름> `, 웹 발신자는 `/bmchat dm <실제이름> `, 다른 서버의 게임 발신자는 `/bmchat dm <실제이름>@<server-id> `가 자동완성됩니다. 또한 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t`에서 대상에 `이름@server-id`를 사용하면 같은 타 서버 BMChat DM 릴레이로 전송됩니다.
+`direct-message.capture-game-whispers`를 켜면 게임의 `/w`, `/msg`, `/tell`류 명령을 같은 웹 DM 스레드에 복제할 수 있습니다. 같은 서버의 게임 발신자 이름을 클릭하면 `/w <실제이름> `, 웹 발신자는 `/bmchat dm <실제이름> `, 다른 서버의 게임 발신자는 `/bmchat dm <실제이름>@<server-id> `가 자동완성됩니다. 또한 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t`에서 대상에 `이름@server-id`를 사용하면 같은 타 서버 BMChat DM 릴레이로 전송됩니다. 서버를 붙이지 않은 `/bmchat dm <이름>`은 항상 현재 서버 사용자만 찾으며, 타 서버 대상은 `@server-id`를 명시하거나 웹 UI에서 해당 서버 사용자를 직접 선택해야 합니다.
 
 ## 커스텀 이모지와 게임 측 이모지 플러그인
 
@@ -262,6 +270,7 @@ bluemapwebchat.update.notify
 - `docs/USER_MANUAL_KO.md` - 전체 기능 사용자·운영자 통합 매뉴얼
 - `docs/CONFIGURATION_KO.md` - 설정 참고
 - `docs/SERVER_RELAY_KO.md` - 서버 간 공개 채팅 릴레이
+- `docs/UPGRADE_4_6_2_KO.md` - 4.6.1→4.6.2 업그레이드
 - `docs/UPGRADE_4_6_1_KO.md` - 4.6.0→4.6.1 업그레이드
 - `docs/UPGRADE_4_6_0_KO.md` - 4.5.5→4.6.0 설정/DB 업그레이드
 - `docs/CADDY_HTTPS_KO.md` - HTTPS 리버스 프록시

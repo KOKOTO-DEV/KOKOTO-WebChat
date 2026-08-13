@@ -510,6 +510,31 @@ public class Storage {
         return displayMatch;
     }
 
+    /**
+     * Resolves only a player known to this server. Remote relay identities are
+     * deliberately excluded so an unqualified name can never jump to another
+     * server merely because the same username/display name was observed there.
+     */
+    public PlayerIdentity findKnownLocalPlayer(String query) {
+        if (query == null || query.isBlank()) return null;
+        String q = query.trim();
+        String qLower = q.toLowerCase(Locale.ROOT);
+        String qPlain = plainLookupText(q).toLowerCase(Locale.ROOT);
+
+        PlayerIdentity byUuid = findKnownPlayerByUuid(qLower);
+        if (byUuid != null && !RemotePlayerRef.isRemote(byUuid.uuid)) return byUuid;
+
+        PlayerIdentity displayMatch = null;
+        for (PlayerIdentity player : listKnownPlayers("", 0)) {
+            if (player == null || player.uuid == null || RemotePlayerRef.isRemote(player.uuid)) continue;
+            if (player.username != null && player.username.equalsIgnoreCase(q)) return player;
+            String display = player.displayName == null ? "" : player.displayName;
+            if (displayMatch == null && display.equalsIgnoreCase(q)) displayMatch = player;
+            if (displayMatch == null && !qPlain.isBlank() && plainLookupText(display).equalsIgnoreCase(qPlain)) displayMatch = player;
+        }
+        return displayMatch;
+    }
+
     private String plainLookupText(String value) {
         String out = String.valueOf(value == null ? "" : value);
         out = out.replaceAll("(?i)[§&]x(?:[§&][0-9a-f]){6}", "");
@@ -560,7 +585,8 @@ public class Storage {
             out.add(player);
         }
         out.sort(Comparator
-                .comparing((PlayerIdentity p) -> String.valueOf(p.displayName == null || p.displayName.isBlank() ? p.username : p.displayName).toLowerCase(Locale.ROOT))
+                .comparingInt((PlayerIdentity p) -> RemotePlayerRef.isRemote(p.uuid) ? 1 : 0)
+                .thenComparing(p -> String.valueOf(p.displayName == null || p.displayName.isBlank() ? p.username : p.displayName).toLowerCase(Locale.ROOT))
                 .thenComparing(p -> String.valueOf(p.username).toLowerCase(Locale.ROOT))
                 .thenComparing(p -> String.valueOf(p.uuid)));
         if (out.size() > max) return new ArrayList<>(out.subList(0, max));

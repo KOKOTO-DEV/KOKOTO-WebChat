@@ -26,7 +26,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.6.1.jar
+target/BlueMapWebChat-4.6.2.jar
 ```
 
 ## インストール
@@ -40,11 +40,13 @@ target/BlueMapWebChat-4.6.1.jar
 7. サーバーを再起動するか `/bmchat reload` を実行します。BlueMap の Web アセットが更新されない場合は `/bluemap reload` も実行します。
 
 
-既存の `config.yml` は上書きされません。`config-version` がない、または実行中のプラグイン version と異なる場合、実ファイルと同梱 default を比較して `plugins/BlueMapWebChat/config-migration-4.6.1.yml` を生成します。生成ファイルには、そのまま merge できる不足設定、変更された default、最終確認用の `config-version` marker を実 YAML 設定として出力します。他の差分がなくても設定 version 管理のため fragment と `config-version` は生成されます。version 情報や旧・新 default の説明は `#` comment にします。custom 値や obsolete 候補の情報一覧は出力しません。`config-version: "4.6.1"` がプラグイン version と一致する場合は確認済みとして比較を省略します。今回の更新は `docs/UPGRADE_4_6_1_JA.md`、前回の major migration は `docs/UPGRADE_4_6_0_JA.md` を参照してください。
+既存の `config.yml` は上書きされません。`config-version` がない、または実行中のプラグイン version と異なる場合、実ファイルと同梱 default を比較して `plugins/BlueMapWebChat/config-migration-4.6.2.yml` を生成します。生成ファイルには、そのまま merge できる不足設定、変更された default、最終確認用の `config-version` marker を実 YAML 設定として出力します。他の差分がなくても設定 version 管理のため fragment と `config-version` は生成されます。version 情報や旧・新 default の説明は `#` comment にします。custom 値や obsolete 候補の情報一覧は出力しません。`config-version: "4.6.2"` がプラグイン version と一致する場合は確認済みとして比較を省略します。今回の更新は `docs/UPGRADE_4_6_2_JA.md`、前回の更新は `docs/UPGRADE_4_6_1_JA.md`、前回の major migration は `docs/UPGRADE_4_6_0_JA.md` を参照してください。
 
-### 4.6.1 サーバー間 DM の互換性に関する重要事項
+### 4.6.2 DM / グループチャットの配信状態と再試行
 
-サーバー間 DM を交換するすべての接続サーバーで、同じ修正版 **4.6.1 ビルド**を使用してください。表示されるバージョン番号が同じだけでは不十分です。古い 4.6.1 ビルドには完全な専用 DM リレーと正確な送信先引き渡し処理が含まれていないため、送信側だけにセッションが作成され、受信側に保存されない場合があります。すべての接続サーバーで JAR を交換して再起動してください。
+他サーバーへの DM は、宛先サーバーが実際に保存したことを確認するまで `pending` のままです。保存確認後に `delivered` となり、経路・通信・タイムアウトなどの失敗時は `failed` となって同じ relay ID で再試行できます。これにより応答だけが失われた場合でも受信側に同じメッセージを重複保存しません。Web DM とグループチャットも client message ID を使い、不確実な HTTP 応答後の再送を重複なく処理します。サーバー指定のない DM 名は現在サーバーのプレイヤーだけを解決します。DM と group chat のすべての message は時刻の横に既読状態を表示します。1 対 1 DM は受信者が読む前は `未読`、読んだ後は `✓`、group chat は未読受信者数を数字で表示し 0 人になると `✓` になります。送信状態も短く `送信中`、失敗時は `失敗 · 再試行` のみ表示します。
+
+サーバー間 DM を交換するすべてのサーバーでは BlueMapWebChat 4.6.2 以降を推奨します。詳細は `docs/UPGRADE_4_6_2_JA.md` を参照してください。
 
 ## standalone の URL
 
@@ -196,6 +198,7 @@ bluemapwebchat.update.notify
 - `docs/USER_MANUAL_JA.md` - 全機能のユーザー・運用総合マニュアル
 - `docs/CONFIGURATION_JA.md`
 - `docs/SERVER_RELAY_JA.md` - サーバー間公開チャットリレー
+- `docs/UPGRADE_4_6_2_JA.md` - 4.6.1→4.6.2 upgrade
 - `docs/UPGRADE_4_6_1_JA.md` - 4.6.0→4.6.1 upgrade
 - `docs/UPGRADE_4_6_0_JA.md` - 4.5.5→4.6.0 設定/DB 更新
 - `docs/CADDY_HTTPS_JA.md`

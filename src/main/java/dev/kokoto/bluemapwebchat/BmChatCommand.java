@@ -343,28 +343,46 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(red(msg("dmEmpty", "Message is empty.")));
             return true;
         }
-        DirectMessageStore.SendResult result = plugin.directMessages().send(senderUuid, target.uuid, message);
+        String relayId = remoteTarget == null ? "" : relay.createDirectMessageRelayId();
+        DirectMessageStore.SendResult result = remoteTarget == null
+                ? plugin.directMessages().send(senderUuid, target.uuid, message)
+                : plugin.directMessages().sendPendingRemote(senderUuid, target.uuid, message, relayId, remoteTarget.serverId, "");
         if (!result.ok) {
             sender.sendMessage(red(msg("dmFailed", "Direct message failed: {error}", "error", result.error)));
             return true;
         }
         WebChatServer server = plugin.webServer();
         String senderDisplayName = plugin.displayPlayerName(player);
+        String threadId = result.thread == null ? "" : result.thread.id;
+        long messageId = result.message == null ? 0L : result.message.id;
         if (server != null) {
-            server.publishDirectMessageUpdate(senderUuid, target.uuid, result.thread == null ? "" : result.thread.id);
-            server.dispatchWebPushDirectMessage(senderUuid, senderDisplayName, target.uuid, target.label(), result.thread == null ? "" : result.thread.id, result.message == null ? 0L : result.message.id, message);
+            server.publishDirectMessageUpdate(senderUuid, target.uuid, threadId);
+            server.dispatchWebPushDirectMessage(senderUuid, senderDisplayName, target.uuid, target.label(), threadId, messageId, message);
         }
         if (remoteTarget != null) {
-            boolean queued = relay.publishDirectMessage(
-                    senderUuid, player.getName(), senderDisplayName,
-                    remoteTarget.serverId, remoteTarget.playerUuid,
-                    target.username == null ? "" : target.username,
-                    target.displayName == null ? "" : target.displayName,
-                    message);
-            if (!queued) {
-                sender.sendMessage(red(msg("dmRemoteServerUnavailable", "The target server is unavailable.")));
-                return true;
-            }
+            final String finalTargetUuid = target.uuid;
+            relay.publishDirectMessage(
+                            relayId,
+                            senderUuid, player.getName(), senderDisplayName,
+                            remoteTarget.serverId, remoteTarget.playerUuid,
+                            target.username == null ? "" : target.username,
+                            target.displayName == null ? "" : target.displayName,
+                            message)
+                    .whenComplete((delivery, error) -> {
+                        boolean delivered = error == null && delivery != null && delivery.delivered;
+                        String errorCode = delivered ? "" : (delivery == null ? "dm_transport_error" : delivery.error);
+                        plugin.directMessages().updateDeliveryStatus(messageId, delivered ? "delivered" : "failed", errorCode);
+                        WebChatServer currentServer = plugin.webServer();
+                        if (currentServer != null) currentServer.publishDirectMessageUpdate(senderUuid, finalTargetUuid, threadId);
+                        if (!delivered) {
+                            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                                Player online = plugin.getServer().getPlayer(player.getUniqueId());
+                                if (online != null) {
+                                    online.sendMessage(red(msg("dmDeliveryFailed", "Direct message delivery failed. You can retry it from web chat.", "error", errorCode)));
+                                }
+                            });
+                        }
+                    });
         } else {
             notifyOnlineRecipient(player, target, message);
         }
@@ -384,17 +402,30 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             String name = input.substring(0, at).trim();
             String serverId = RemotePlayerRef.normalizeServerId(input.substring(at + 1));
             if (!name.isBlank() && !serverId.isBlank()) {
+                String localServerId = "";
+                ServerRelay relay = plugin.serverRelay();
+                if (relay != null) localServerId = RemotePlayerRef.normalizeServerId(relay.serverId());
+                if (localServerId.isBlank() && plugin.configValues() != null) {
+                    localServerId = RemotePlayerRef.normalizeServerId(plugin.configValues().serverRelayServerId);
+                }
+                if (!localServerId.isBlank() && localServerId.equals(serverId)) {
+                    return plugin.storage().findKnownLocalPlayer(name);
+                }
                 for (PlayerIdentity candidate : plugin.storage().listKnownPlayers(name, 200)) {
                     RemotePlayerRef remote = RemotePlayerRef.parse(candidate == null ? "" : candidate.uuid);
                     if (remote == null || !serverId.equals(remote.serverId)) continue;
                     String username = String.valueOf(candidate.username == null ? "" : candidate.username).trim();
                     String displayName = String.valueOf(candidate.displayName == null ? "" : candidate.displayName).trim();
-                    if (username.equalsIgnoreCase(name) || displayName.equalsIgnoreCase(name)
+                    String baseDisplayName = RemotePlayerRef.baseDisplayName(displayName, username, candidate.remoteServerName(), serverId);
+                    if (username.equalsIgnoreCase(name) || baseDisplayName.equalsIgnoreCase(name)
                             || candidate.label().equalsIgnoreCase(name)) return candidate;
                 }
+                return null;
             }
         }
-        return plugin.storage().findKnownPlayer(input);
+        // An unqualified name always means this server. Cross-server DM targets
+        // must be explicitly scoped as name@server-id (or carry a scoped key).
+        return plugin.storage().findKnownLocalPlayer(input);
     }
 
 
@@ -538,7 +569,14 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
 
     private boolean groupReadShow(CommandSender sender, String senderUuid, GroupReadCursor cursor, long direction) {
         int pageSize = Math.max(1, Math.min(100, cursor.pageSize <= 0 ? 20 : cursor.pageSize));
+        long readBefore = plugin.groupChats().readPosition(cursor.roomId, senderUuid);
         List<GroupMessage> messages = plugin.groupChats().listMessages(senderUuid, cursor.roomId, 0L, pageSize);
+        boolean markedRead = plugin.groupChats().markRead(cursor.roomId, senderUuid);
+        long readAfter = plugin.groupChats().readPosition(cursor.roomId, senderUuid);
+        if (markedRead && readAfter > readBefore) {
+            WebChatServer currentServer = plugin.webServer();
+            if (currentServer != null) currentServer.publishGroupChatUpdate(cursor.roomId);
+        }
         sender.sendMessage(ChatColor.AQUA + msg("groupReadTitle", "Group chat {room}:",
                 "room", ChatColor.RESET + cursor.roomName + ChatColor.AQUA));
         if (messages.isEmpty()) {
@@ -865,7 +903,21 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
         int totalPages = Math.max(1, (int) Math.ceil(total / (double) pageSize));
         if (cursor.page < 1) cursor.page = 1;
         if (total > 0 && cursor.page > totalPages) cursor.page = totalPages;
+        String threadId = plugin.directMessages().threadIdForParticipants(senderUuid, cursor.otherUuid);
+        long readBefore = plugin.directMessages().readPosition(threadId, senderUuid);
         List<DirectMessageMessage> messages = plugin.directMessages().listMessagesBetweenPage(senderUuid, cursor.otherUuid, cursor.page, pageSize);
+        long readAfter = plugin.directMessages().readPosition(threadId, senderUuid);
+        if (readAfter > readBefore) {
+            WebChatServer currentServer = plugin.webServer();
+            if (currentServer != null) currentServer.publishDirectMessageUpdate(senderUuid, cursor.otherUuid, threadId);
+        }
+        // The remote receipt is safe to replay. Send it whenever the newest page is
+        // read so a lost acknowledgement is repaired on the next explicit read.
+        if (cursor.page == 1) {
+            DirectMessageStore.RemoteReadReceipt receipt = plugin.directMessages().latestRemoteReadReceipt(threadId, senderUuid);
+            ServerRelay relay = plugin.serverRelay();
+            if (receipt.ok && relay != null) relay.publishDirectMessageRead(receipt.sourceServerId, receipt.relayId);
+        }
         String playerLabel = formatCommandPlayer(cursor.otherDisplayName, cursor.otherUsername, cursor.otherUuid);
         sender.sendMessage(ChatColor.AQUA + msg("dmReadTitlePage", "Direct messages with {player} (page {page}/{pages}):",
                 "player", ChatColor.RESET + playerLabel + ChatColor.AQUA,

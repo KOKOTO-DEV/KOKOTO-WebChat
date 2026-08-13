@@ -28,7 +28,8 @@ final class ConfigMigrationManager {
     private static final Map<String, String> BASELINE_RESOURCES = Map.of(
             "4.5.5", "config-baselines/config-4.5.5.yml",
             "4.6.0", "config-baselines/config-4.6.0.yml",
-            "4.6.1", "config-baselines/config-4.6.1.yml"
+            "4.6.1", "config-baselines/config-4.6.1.yml",
+            "4.6.2", "config-baselines/config-4.6.2.yml"
     );
 
     private ConfigMigrationManager() {

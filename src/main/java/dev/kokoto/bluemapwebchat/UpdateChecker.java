@@ -9,6 +9,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.HandlerList;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -39,6 +40,8 @@ public final class UpdateChecker implements Listener, AutoCloseable {
     private static final long INITIAL_DELAY_TICKS = 60L;
     private static final long CHECK_INTERVAL_TICKS = 12L * 60L * 60L * 20L;
     private static final long JOIN_NOTICE_DELAY_TICKS = 60L;
+    private static final long JOIN_REFRESH_MIN_INTERVAL_MILLIS = 60_000L;
+    private static final long FAILURE_LOG_REPEAT_MILLIS = 30L * 60L * 1000L;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(8);
 
     private final BlueMapWebChatPlugin plugin;
@@ -49,6 +52,9 @@ public final class UpdateChecker implements Listener, AutoCloseable {
 
     private volatile UpdateInfo availableUpdate;
     private volatile String lastLoggedVersion = "";
+    private volatile long lastAttemptMillis;
+    private volatile String lastFailureMessage = "";
+    private volatile long lastFailureLogMillis;
     private BukkitTask checkTask;
 
     public UpdateChecker(BlueMapWebChatPlugin plugin) {
@@ -72,11 +78,26 @@ public final class UpdateChecker implements Listener, AutoCloseable {
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         if (!canReceiveNotice(player)) return;
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> notifyPlayer(player), JOIN_NOTICE_DELAY_TICKS);
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            if (!canReceiveNotice(player) || closed.get()) return;
+            // Show a cached notice immediately when available, then refresh the public
+            // release state so an administrator login can discover a release published
+            // after the server's previous scheduled check.
+            notifyPlayer(player);
+            requestJoinRefresh();
+        }, JOIN_NOTICE_DELAY_TICKS);
+    }
+
+    private void requestJoinRefresh() {
+        if (closed.get()) return;
+        long now = System.currentTimeMillis();
+        if (now - lastAttemptMillis < JOIN_REFRESH_MIN_INTERVAL_MILLIS) return;
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, this::checkNow);
     }
 
     private void checkNow() {
         if (closed.get() || !requestRunning.compareAndSet(false, true)) return;
+        lastAttemptMillis = System.currentTimeMillis();
         try {
             String current = plugin.getDescription().getVersion();
             HttpRequest request = HttpRequest.newBuilder(MODRINTH_API)
@@ -87,12 +108,17 @@ public final class UpdateChecker implements Listener, AutoCloseable {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                plugin.getLogger().fine("Update check skipped: Modrinth returned HTTP " + response.statusCode());
+                warnCheckFailure("Modrinth returned HTTP " + response.statusCode(), null);
                 return;
             }
 
             UpdateInfo newest = newestRelease(response.body());
-            if (newest == null || compareVersions(newest.version, current) <= 0) {
+            if (newest == null) {
+                warnCheckFailure("Modrinth response contained no listed release version", null);
+                return;
+            }
+            clearFailureState();
+            if (compareVersions(newest.version, current) <= 0) {
                 availableUpdate = null;
                 return;
             }
@@ -116,15 +142,38 @@ public final class UpdateChecker implements Listener, AutoCloseable {
             }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
+            warnCheckFailure("update check was interrupted", ex);
         } catch (Exception ex) {
-            plugin.getLogger().log(Level.FINE, "BlueMapWebChat update check failed", ex);
+            warnCheckFailure(ex.getClass().getSimpleName() + (ex.getMessage() == null || ex.getMessage().isBlank() ? "" : ": " + ex.getMessage()), ex);
         } finally {
             requestRunning.set(false);
         }
     }
 
     private boolean canReceiveNotice(Player player) {
-        return player != null && player.isOnline() && player.hasPermission("bluemapwebchat.update.notify");
+        return player != null && player.isOnline()
+                && (player.isOp() || player.hasPermission("bluemapwebchat.update.notify"));
+    }
+
+    private void clearFailureState() {
+        lastFailureMessage = "";
+        lastFailureLogMillis = 0L;
+    }
+
+    private void warnCheckFailure(String detail, Throwable error) {
+        if (closed.get()) return;
+        String safeDetail = detail == null || detail.isBlank() ? "unknown error" : detail;
+        long now = System.currentTimeMillis();
+        boolean changed = !safeDetail.equals(lastFailureMessage);
+        if (!changed && now - lastFailureLogMillis < FAILURE_LOG_REPEAT_MILLIS) return;
+
+        lastFailureMessage = safeDetail;
+        lastFailureLogMillis = now;
+        String message = "BlueMapWebChat update check failed: " + safeDetail
+                + ". Current version=" + plugin.getDescription().getVersion()
+                + ", source=" + MODRINTH_API;
+        if (error == null) plugin.getLogger().warning(message);
+        else plugin.getLogger().log(Level.WARNING, message, error);
     }
 
     private void notifyPlayer(Player player) {
@@ -305,6 +354,7 @@ public final class UpdateChecker implements Listener, AutoCloseable {
             checkTask.cancel();
             checkTask = null;
         }
+        HandlerList.unregisterAll(this);
         notifiedPlayers.clear();
         availableUpdate = null;
     }
