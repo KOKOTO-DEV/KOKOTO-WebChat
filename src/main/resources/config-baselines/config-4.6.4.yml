@@ -2,20 +2,16 @@
 # Core
 # =============================================================================
 
-# BlueMapWebChat 4.7.0 configuration
+# BlueMapWebChat 4.6.4 configuration
 
 # Configuration review marker. Existing setting values are never overwritten on update.
-# BlueMapWebChat always writes config-reference-<version>.yml as a complete copy of the
-# current bundled default config, including all comments, so old configs can be compared directly.
-# On startup/reload, known top-level config blocks are reordered to match the current bundled layout.
-# Existing block text, setting values, and custom comments are preserved; unknown top-level blocks stay last.
-# If this value differs from the running plugin version, BlueMapWebChat also creates
+# If this value differs from the running plugin version, BlueMapWebChat creates
 # config-migration-<version>.yml containing copy-ready missing settings, changed defaults, and the target config-version marker.
-# The migration file is created even when config-version is the only required change.
+# The file is created even when config-version is the only required change.
 # Bundled comment text may be refreshed when it still exactly matches an older built-in
 # comment block. Custom comments and all configured values are preserved.
-# When the versions match, the config is treated as already reviewed and migration comparison is skipped.
-config-version: "4.7.0"
+# When the versions match, the config is treated as already reviewed and comparison is skipped.
+config-version: "4.6.4"
 
 # Master switch for BlueMapWebChat.
 # New generated configs default to false so the plugin creates config.yml first
@@ -193,52 +189,6 @@ chat:
   game-name-hover:
     enabled: false
     text: "&f{real}"
-
-# Colon-delimited text/control tokens processed before messages are stored or relayed.
-# Alias names are intentionally English-only defaults; replace or add aliases in any language.
-# Write aliases without surrounding colons; alias "enter" is typed as :enter:
-# Unknown tokens are left untouched, so normal custom/image emoji tokens keep working.
-# In Minecraft output, real CR/LF input still follows the existing single-line flattening rules.
-# Only newline/blank-line breaks created by these configured tokens are preserved as game line breaks.
-message-tokens:
-  enabled: true
-  # 0 = unlimited. Limits only successful message-token replacements, not emoji tokens.
-  max-replacements-per-message: 24
-  newline:
-    # Inserts one new line. Change or add aliases freely; for example, add "next" to use :next:
-    aliases:
-      - enter
-      - newline
-      - nextline
-      - linebreak
-      - br
-  blank-line:
-    # Inserts one empty line between surrounding text.
-    aliases:
-      - blankline
-      - emptyline
-      - paragraphbreak
-  tab:
-    # Inserts spaces rather than a literal tab control character.
-    aliases:
-      - tab
-      - indent
-    spaces: 4
-  # Optional printable-text substitutions. Replacements cannot contain control characters/newlines.
-  # The map key is only an administrator label; aliases are the actual :token: names.
-  custom: {}
-  # Example printable custom substitutions (replace the custom: {} line above with this block):
-  # custom:
-  #   separator:
-  #     aliases: [separator, divider]
-  #     replacement: "────────────"
-  #   bullet:
-  #     aliases: [bullet]
-  #     replacement: "• "
-  #   arrow:
-  #     aliases: [arrow]
-  #     replacement: "→ "
-
 
 search:
   # Enable the web message search button and /history/search API.
@@ -707,7 +657,7 @@ ui:
   badge-font-size: 10
   # CSS font-family used by default. Empty = built-in default.
   # Local installed fonts are resolved on each user's browser/device, not on the Minecraft server.
-  # Examples: '"Malgun Gothic", sans-serif', '"Noto Sans KR", sans-serif'.
+  # Examples: '"Malgun Gothic", sans-serif', '"Noto Sans KR", sans-serif', '"맑은 고딕", sans-serif'.
   font-family: ""
   user-preferences-control: true
 

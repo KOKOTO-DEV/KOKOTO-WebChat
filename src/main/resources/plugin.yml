@@ -1,7 +1,7 @@
 name: BlueMapWebChat
-version: 4.6.2
+version: 4.7.0
 main: dev.kokoto.bluemapwebchat.BlueMapWebChatPlugin
-api-version: '1.21'
+api-version: '1.18'
 authors: [KOKOTO]
 description: Standalone BlueMap web chat addon with guest chat, account linking, moderation, and optional captcha.
 softdepend: [DiscordSRV]

@@ -167,7 +167,7 @@ public final class ServerRelay implements AutoCloseable {
             String relayId,
             String senderUuid, String senderUsername, String senderDisplayName,
             String targetServerId, String targetUuid, String targetUsername,
-            String targetDisplayName, String message) {
+            String targetDisplayName, String message, String gameMessage) {
         String target = normalizeId(targetServerId);
         if (!canRouteDirectMessage(target)) {
             return CompletableFuture.completedFuture(DirectMessageDelivery.failed("remote_server_unavailable", 503));
@@ -175,7 +175,7 @@ public final class ServerRelay implements AutoCloseable {
         DirectMessageEnvelope envelope = DirectMessageEnvelope.create(
                 relayId, serverId, serverName, target,
                 senderUuid, senderUsername, senderDisplayName,
-                targetUuid, targetUsername, targetDisplayName, message);
+                targetUuid, targetUsername, targetDisplayName, message, gameMessage);
         if (!envelope.valid()) {
             return CompletableFuture.completedFuture(DirectMessageDelivery.failed("invalid_envelope", 400));
         }
@@ -401,7 +401,7 @@ public final class ServerRelay implements AutoCloseable {
                     envelope.originServerId, envelope.originServerName,
                     envelope.senderUuid, envelope.senderUsername, envelope.senderDisplayName,
                     envelope.targetUuid, envelope.targetUsername, envelope.targetDisplayName,
-                    envelope.message);
+                    envelope.message, envelope.gameMessage);
             if (!accepted) {
                 seenRelayIds.remove(envelope.relayId);
                 sendJson(exchange, 404, "{\"ok\":false,\"error\":\"dm_target_unavailable\"}");
@@ -940,11 +940,12 @@ public final class ServerRelay implements AutoCloseable {
         String targetUsername;
         String targetDisplayName;
         String message;
+        String gameMessage;
 
         static DirectMessageEnvelope create(String relayId, String originServerId, String originServerName, String targetServerId,
                                             String senderUuid, String senderUsername, String senderDisplayName,
                                             String targetUuid, String targetUsername, String targetDisplayName,
-                                            String message) {
+                                            String message, String gameMessage) {
             DirectMessageEnvelope e = new DirectMessageEnvelope();
             e.relayId = safe(relayId).isBlank() ? "dmrelay-" + SecurityUtil.randomToken(16) : limit(safe(relayId), 180);
             e.originServerId = normalizeId(originServerId);
@@ -960,6 +961,7 @@ public final class ServerRelay implements AutoCloseable {
             e.targetUsername = limit(safe(targetUsername), 64);
             e.targetDisplayName = limit(safe(targetDisplayName), 128);
             e.message = limit(safe(message), 16384);
+            e.gameMessage = limit(safe(gameMessage), 16384);
             return e;
         }
 
@@ -979,6 +981,7 @@ public final class ServerRelay implements AutoCloseable {
             e.targetUsername = safe(map.get("targetUsername"));
             e.targetDisplayName = safe(map.get("targetDisplayName"));
             e.message = safe(map.get("message"));
+            e.gameMessage = safe(map.get("gameMessage"));
             return e;
         }
 
@@ -995,7 +998,8 @@ public final class ServerRelay implements AutoCloseable {
                     && !targetUuid.isBlank() && targetUuid.length() <= 80
                     && targetUsername.length() <= 64
                     && targetDisplayName.length() <= 128
-                    && !message.isBlank() && message.length() <= 16384;
+                    && !message.isBlank() && message.length() <= 16384
+                    && gameMessage.length() <= 16384;
         }
 
         String toJson() {
@@ -1014,6 +1018,7 @@ public final class ServerRelay implements AutoCloseable {
             m.put("targetUsername", targetUsername);
             m.put("targetDisplayName", targetDisplayName);
             m.put("message", message);
+            if (!gameMessage.isBlank()) m.put("gameMessage", gameMessage);
             return JsonUtil.obj(m);
         }
 
@@ -1044,6 +1049,7 @@ public final class ServerRelay implements AutoCloseable {
         String playerUuid;
         String role;
         String message;
+        String gameMessage;
         String i18nKey;
         String i18nArgs;
         String replyToId;
@@ -1064,6 +1070,7 @@ public final class ServerRelay implements AutoCloseable {
             e.playerUuid = safe(msg.playerUuid);
             e.role = safe(msg.role);
             e.message = safe(msg.message);
+            e.gameMessage = safe(msg.gameMessage);
             e.i18nKey = safe(msg.i18nKey);
             e.i18nArgs = safe(msg.i18nArgs);
             e.replyToId = safe(msg.replyToId);
@@ -1086,6 +1093,7 @@ public final class ServerRelay implements AutoCloseable {
             e.playerUuid = safe(map.get("playerUuid"));
             e.role = safe(map.get("role"));
             e.message = safe(map.get("message"));
+            e.gameMessage = safe(map.get("gameMessage"));
             e.i18nKey = safe(map.get("i18nKey"));
             e.i18nArgs = safe(map.get("i18nArgs"));
             e.replyToId = safe(map.get("replyToId"));
@@ -1104,6 +1112,7 @@ public final class ServerRelay implements AutoCloseable {
                     && playerUuid.length() <= 64
                     && role.length() <= 32
                     && !message.isBlank() && message.length() <= 16384
+                    && gameMessage.length() <= 16384
                     && i18nKey.length() <= 128 && i18nArgs.length() <= 8192
                     && replyToId.length() <= 160
                     && replyToSender.length() <= 96
@@ -1119,6 +1128,7 @@ public final class ServerRelay implements AutoCloseable {
             msg.relayHop = hop;
             msg.realSender = realSender;
             msg.playerUuid = playerUuid;
+            msg.gameMessage = gameMessage;
             msg.i18nKey = i18nKey;
             msg.i18nArgs = i18nArgs;
             msg.replyToId = replyToId;
@@ -1141,6 +1151,7 @@ public final class ServerRelay implements AutoCloseable {
             m.put("playerUuid", playerUuid);
             m.put("role", role);
             m.put("message", message);
+            if (!gameMessage.isBlank()) m.put("gameMessage", gameMessage);
             m.put("i18nKey", i18nKey);
             m.put("i18nArgs", i18nArgs);
             m.put("replyToId", replyToId);

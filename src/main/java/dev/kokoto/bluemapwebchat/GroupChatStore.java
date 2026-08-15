@@ -541,6 +541,33 @@ public class GroupChatStore {
         return out;
     }
 
+    public synchronized List<GroupMessage> adminListMessages(String roomId, long before, int limit) {
+        String id = cleanId(roomId);
+        List<GroupMessage> out = new ArrayList<>();
+        if (connection == null || id.isBlank()) return out;
+        int max = limit <= 0 ? 100 : Math.min(limit, 200);
+        String sql = before > 0
+                ? "SELECT id,room_id,sender_uuid,body,created_at FROM group_messages WHERE room_id=? AND hidden=0 AND id<? ORDER BY id DESC LIMIT ?"
+                : "SELECT id,room_id,sender_uuid,body,created_at FROM group_messages WHERE room_id=? AND hidden=0 ORDER BY id DESC LIMIT ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, id);
+            if (before > 0) {
+                ps.setLong(2, before);
+                ps.setInt(3, max);
+            } else {
+                ps.setInt(2, max);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(messageFromResult(rs));
+            }
+        } catch (SQLException ex) {
+            plugin.getLogger().warning("Failed to list group audit messages: " + ex.getMessage());
+        }
+        Collections.reverse(out);
+        for (GroupMessage message : out) message.unreadMemberCount = unreadMemberCountForMessage(message);
+        return out;
+    }
+
     public synchronized String roomIdForMessage(String userUuid, long messageId) {
         String user = normalizeUuid(userUuid);
         if (connection == null || user.isBlank() || messageId <= 0) return "";

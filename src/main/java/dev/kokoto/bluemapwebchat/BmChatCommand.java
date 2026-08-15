@@ -338,7 +338,9 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(red(msg("dmDirectInputRequired", "Direct messages must be typed directly by the player.")));
             return true;
         }
-        message = stripForDm(message, config.directMessageMaxMessageLength);
+        String rawDmMessage = stripForDm(message, config.directMessageMaxMessageLength);
+        message = plugin.applyMessageTokens(rawDmMessage);
+        String gameMessage = plugin.applyMessageTokensForGame(rawDmMessage);
         if (message.isBlank()) {
             sender.sendMessage(red(msg("dmEmpty", "Message is empty.")));
             return true;
@@ -367,7 +369,7 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
                             remoteTarget.serverId, remoteTarget.playerUuid,
                             target.username == null ? "" : target.username,
                             target.displayName == null ? "" : target.displayName,
-                            message)
+                            message, gameMessage)
                     .whenComplete((delivery, error) -> {
                         boolean delivered = error == null && delivery != null && delivery.delivered;
                         String errorCode = delivered ? "" : (delivery == null ? "dm_transport_error" : delivery.error);
@@ -384,9 +386,9 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
                         }
                     });
         } else {
-            notifyOnlineRecipient(player, target, message);
+            notifyOnlineRecipient(player, target, gameMessage);
         }
-        sender.sendMessage(sentEchoLineForGame(player, target.label(), message));
+        sendTokenGameLines(sender, sentEchoLineForGame(player, target.label(), gameMessage));
         return true;
     }
 
@@ -494,7 +496,9 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(red(msg("groupDirectInputRequired", "Group messages must be typed directly by the player.")));
             return true;
         }
-        message = stripForDm(message, config == null ? 500 : config.groupChatMaxMessageLength);
+        String rawGroupMessage = stripForDm(message, config == null ? 500 : config.groupChatMaxMessageLength);
+        message = plugin.applyMessageTokens(rawGroupMessage);
+        String gameMessage = plugin.applyMessageTokensForGame(rawGroupMessage);
         if (message.isBlank()) {
             sender.sendMessage(red(msg("groupEmpty", "Message is empty.")));
             return true;
@@ -509,10 +513,10 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             server.publishGroupChatUpdate(room.id);
             server.dispatchWebPushGroupMessage(senderUuid, plugin.displayPlayerName(player), room, result.message, room.id);
         }
-        sender.sendMessage(ChatColor.GRAY + transformForCommandDisplay(player, msg("groupSentEcho", "to group {room}: {message}",
+        sendTokenGameLines(sender, ChatColor.GRAY + colorizeForGame(msg("groupSentEcho", "to group {room}: {message}",
                 "room", ChatColor.RESET + room.name + ChatColor.GRAY,
-                "message", ChatColor.RESET + message), 0));
-        notifyOnlineGroupMembers(player, room.id, room.name, message);
+                "message", ChatColor.RESET + gameMessage)));
+        notifyOnlineGroupMembers(player, room.id, room.name, gameMessage);
         return true;
     }
 
@@ -979,7 +983,7 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
         String text = maxLength > 0 ? trim(message, maxLength) : String.valueOf(message == null ? "" : message);
         // DM command output should be delivered as-is; ImageEmojis can handle
         // direct message tokens on its own side.
-        return colorizeForGame(text);
+        return plugin.restoreMessageTokenGameBreaks(colorizeForGame(text));
     }
 
 
@@ -1010,7 +1014,7 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
         String target = targetLabel == null ? "" : targetLabel;
         String body = message == null ? "" : message;
         String rendered = sentEchoLine(ChatColor.RESET + target + ChatColor.GRAY, ChatColor.RESET + body);
-        return ChatColor.GRAY + transformForCommandDisplay(viewer, rendered, 0);
+        return ChatColor.GRAY + colorizeForGame(rendered);
     }
 
     private String incomingLineForGame(String senderName, String message) {
@@ -1028,7 +1032,7 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             Player recipient = plugin.getServer().getPlayer(UUID.fromString(target.uuid));
             if (recipient == null || !recipient.isOnline()) return;
             String senderName = plugin.displayPlayerName(sender);
-            recipient.sendMessage(incomingLineForGame(senderName, message));
+            sendTokenGameLines(recipient, incomingLineForGame(senderName, message));
         } catch (IllegalArgumentException ignored) {
         }
     }
@@ -1046,9 +1050,16 @@ public class BmChatCommand implements CommandExecutor, TabCompleter {
             if (memberUuid == null || memberUuid.equalsIgnoreCase(senderUuid)) continue;
             try {
                 Player recipient = plugin.getServer().getPlayer(UUID.fromString(memberUuid));
-                if (recipient != null && recipient.isOnline()) recipient.sendMessage(line);
+                if (recipient != null && recipient.isOnline()) sendTokenGameLines(recipient, line);
             } catch (IllegalArgumentException ignored) {
             }
+        }
+    }
+
+    private void sendTokenGameLines(CommandSender recipient, String protectedLine) {
+        if (recipient == null) return;
+        for (String line : plugin.splitMessageTokenGameLines(protectedLine)) {
+            recipient.sendMessage(line == null || line.isEmpty() ? " " : line);
         }
     }
 

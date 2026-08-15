@@ -87,6 +87,7 @@ web:
     uploadTooMany: Only {max} file(s) can be selected at once.
     uploadExtensionDenied: 'This file type is not allowed: {name}'
     uploadTooLarge: 'File is too large: {name}'
+    emojiBatchUploadFailed: 'Uploaded {uploaded}/{total}. Failed: {failed}'
     uploadFailed: 'Upload failed: {error}'
     confirmDelete: Hide this message?
     deleteFailed: 'Delete failed: {error}'
@@ -120,6 +121,7 @@ web:
     dmRetryFailed: 'Failed to retry message: {error}'
     dmHideFailed: "Failed to hide message: {error}"
     groupLoadFailed: 'Failed to load group chats: {error}'
+    groupAuditLoadFailed: "Failed to load group audit: {error}"
     groupJoinFailed: 'Failed to join group chat: {error}'
     groupSendFailed: 'Failed to send group message: {error}'
     groupCreateFailed: 'Failed to create group chat: {error}'
@@ -144,6 +146,9 @@ web:
     dmAuditView: 'DM audit (read-only)'
     dmAuditReadOnly: 'This administrator audit view is read-only. Every access is recorded in the audit log.'
     groupMetaOnly: 'Group room metadata'
+    groupAuditTitle: 'Admin group audit'
+    openGroupAudit: 'Open this group chat in read-only audit view.'
+    groupAuditReadOnly: 'This administrator audit view is read-only. Every access is recorded in the audit log.'
     noContentAccess: 'Message contents are not accessible from this view.'
     lockDmThreadHint: 'Lock this DM session to prevent new messages.'
     unlockDmThreadHint: 'Unlock this DM session so messages can be sent again.'
@@ -180,6 +185,7 @@ web:
     unlimited: unlimited
     emojiFolderSelect: Emoji folder
     emojiPackCount: '{count} emojis'
+    emojiBatchResult: 'Uploaded {uploaded}/{total}'
     emojiNoFileSelected: No file selected
     passwordSet: 'password'
     "yes": 'yes'

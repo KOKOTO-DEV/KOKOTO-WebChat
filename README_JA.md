@@ -12,7 +12,7 @@ Bukkit/Paper/Spigot 系サーバー向けの Web チャットプラグインで�
 - ゲストチャット、計算 captcha、クールダウン、分間制限
 - `/bmchat auth <code>` によるアカウント連携、Web パスワードログイン、ローカル管理者
 - Web 管理/モデレーターパネル、メッセージ非表示、ゲスト/IP ミュート、セッション revoke
-- 管理者向けカスタム絵文字管理: フォルダー/ファイルの作成、アップロード、名前変更、削除
+- 管理者向けカスタム絵文字管理: フォルダー/ファイルの作成、複数アップロード、名前変更、移動、削除
 - ImageEmojis-Bero 1.9.0 の token・ゲーム返信・サーバーリレー互換
 - ファイル/クリップボードアップロード、画像/動画/音声/YouTube/Shorts プレビュー、任意の TikTok / X(Twitter) 埋め込み
 - DiscordSRV 連携、Discord CDN メディアキャッシュ
@@ -26,7 +26,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.6.2.jar
+target/BlueMapWebChat-4.7.0.jar
 ```
 
 ## インストール
@@ -40,7 +40,34 @@ target/BlueMapWebChat-4.6.2.jar
 7. サーバーを再起動するか `/bmchat reload` を実行します。BlueMap の Web アセットが更新されない場合は `/bluemap reload` も実行します。
 
 
-既存の `config.yml` は上書きされません。`config-version` がない、または実行中のプラグイン version と異なる場合、実ファイルと同梱 default を比較して `plugins/BlueMapWebChat/config-migration-4.6.2.yml` を生成します。生成ファイルには、そのまま merge できる不足設定、変更された default、最終確認用の `config-version` marker を実 YAML 設定として出力します。他の差分がなくても設定 version 管理のため fragment と `config-version` は生成されます。version 情報や旧・新 default の説明は `#` comment にします。custom 値や obsolete 候補の情報一覧は出力しません。`config-version: "4.6.2"` がプラグイン version と一致する場合は確認済みとして比較を省略します。今回の更新は `docs/UPGRADE_4_6_2_JA.md`、前回の更新は `docs/UPGRADE_4_6_1_JA.md`、前回の major migration は `docs/UPGRADE_4_6_0_JA.md` を参照してください。
+既存の設定値は自動上書きされません。startup/reload 時に既知の最上位 `config.yml` block は 4.7.0 の bundled default 順へ並べ替えられますが、各 block の現在の text、設定値、custom comment は保持されます。default にない最上位 block は既知 block の後ろに元の順序で残ります。既存設定を確認するたびに、BlueMapWebChat は現在の JAR に同梱された完全な default config を全コメント込みでそのままコピーした `plugins/BlueMapWebChat/config-reference-4.7.0.yml` を生成または更新します。この reference は元の設定 version に関係なく作られるため、4.5.x、4.6.x、version marker のない古い config でも 4.7.0 の完全な構成と直接比較できます。`config-version` がない、または実行中の plugin version と異なる場合は、さらに `config-migration-4.7.0.yml` を生成し、不足設定、変更された default、最終 `config-version` marker を示します。`message-tokens.custom: {}` のような空 map も実設定として扱い、不足時は migration に含めます。migration file 末尾には current と reference の text diff も comment として追加します。同一行は出力せず、各差分では最初に file 名、その次の別行に `Line` または `Lines`、さらにその下に実際に異なる内容だけを表示します。差分の source line は元の YAML indent をそのまま保持するため行頭に `#` だけを直接付けて表示し、reference にだけ存在する block は current config への挿入位置も別に表示します。`config-version: "4.7.0"` が一致する場合は migration 比較を省略しますが、完全な reference ファイルは現在の default に維持されます。今回の更新は `docs/UPGRADE_4_7_0_JA.md`、前回は `docs/UPGRADE_4_6_3_JA.md` を参照してください。
+
+### 4.7.0 絵文字の複数アップロードと互換範囲
+
+4.7.0 では設定可能な `:token:` メッセージ置換も追加します。既定 alias は英語のみで、管理者は任意の言語へ変更・追加できます。newline / blank-line / indentation と印字可能な custom 置換をサポートし、未知のトークンは絵文字互換のためそのまま残します。
+
+4.7.0 では管理者の絵文字アップロードも通常のチャットファイルアップロードと同じ picker フローを使います。画面の Upload ボタンで非表示の multiple file input を開き、ファイルを選択すると選択内容をすぐ通常配列へコピーして native input をクリアし、そのまま順次アップロードを開始します。選択後の追加確認 Upload はありません。進捗表示と実転送中のキャンセルは維持され、ファイル上限、総容量制限、重複名処理、監査ログ、PNG sidecar 生成は既存のサーバーアップロード経路をそのまま使用します。
+
+Bukkit/Spigot API baseline を 1.21 から 1.18 に下げ、Java 17 は維持します。このリリースの保守的な Minecraft 対応範囲は **1.18 ～ 26.2** です。Paper 固有の `AsyncChatEvent` は引き続き reflection で検出し、Bukkit の legacy chat event を fallback として使用します。
+
+詳細は `docs/UPGRADE_4_6_4_JA.md` を参照してください。
+
+## 4.6.3 管理者グループチャット監査
+
+4.6.3 ではグループチャット本文を確認できる任意の読み取り専用管理者監査を追加します。DM 監査と同じ `private-chat-super-admins` の明示 account list を使いますが、`group-chat.admin-audit.enabled` は独立したスイッチです。監査者は room に参加せず、既読状態や未読数を変更せず、送信・upload・hide・member 管理もできません。各監査 page read は本文をコピーせず `admin.group-audit-read` として記録されます。
+
+```yaml
+private-chat-super-admins:
+  - "ExactMinecraftNameOrUUID"
+
+group-chat:
+  admin-audit:
+    enabled: true
+```
+
+4.6.3 では DM / グループチャットのライブ更新中に動画・音声が先頭から再生される問題も修正します。プライベートチャットのメッセージ一覧は通常チャットと同様に stable key で既存メッセージを維持し、新規メッセージと配信/既読メタデータだけを更新するため、読み込み済みメディア DOM が保持されます。
+
+詳細は `docs/UPGRADE_4_6_3_JA.md` を参照してください。
 
 ### 4.6.2 DM / グループチャットの配信状態と再試行
 
@@ -226,7 +253,7 @@ SQLite 履歴ストレージを使用している場合、チャットパネル�
 
 ### 非公開チャットメタデータのスーパー管理者
 
-`config.yml` の `private-chat-super-admins` に exact UUID または Minecraft name を指定すると、管理/容量確認用 DM/group metadata を表示できます。default view は title/participant、message count、storage size、retention state、cleanup preview を表示します。`direct-message.admin-audit.enabled: true` も設定した場合だけ、同じ明示 account が DM body を read-only で開けます。通常 ADMIN/MODERATOR role は自動対象ではなく、page read は audit log に記録されます。super admin は DM/group session lock と retention exclude も管理できます。
+`config.yml` の `private-chat-super-admins` に exact UUID または Minecraft name を指定すると、管理/容量確認用 DM/group metadata を表示できます。default view は title/participant、message count、storage size、retention state、cleanup preview を表示します。`direct-message.admin-audit.enabled: true` を設定すると、同じ明示 account が DM body を read-only で開けます。4.6.3 では `group-chat.admin-audit.enabled: true` を別に有効化すると、room へ参加したり read state を変更したりせず group-chat body も read-only で開けます。通常 ADMIN/MODERATOR role は自動対象ではなく、audit page read はすべて audit log に記録されます。super admin は DM/group session lock と retention exclude も管理できます。
 
 管理上影響のある操作は、既定で `plugins/BlueMapWebChat/audit` 配下の日付別テキストログに追記されます。audit ログはサーバー運用者向けで、Web UI には表示されません。
 

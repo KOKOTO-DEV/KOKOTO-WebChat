@@ -87,6 +87,7 @@ web:
     uploadTooMany: 一度に選択できるファイルは{max}個までです。
     uploadExtensionDenied: '許可されていないファイル形式です: {name}'
     uploadTooLarge: 'ファイルが大きすぎます: {name}'
+    emojiBatchUploadFailed: '{total} 件中 {uploaded} 件をアップロードしました。失敗: {failed}'
     uploadFailed: 'アップロード失敗: {error}'
     confirmDelete: このメッセージを非表示にしますか？
     deleteFailed: '削除失敗: {error}'
@@ -120,6 +121,7 @@ web:
     dmRetryFailed: 'メッセージの再送に失敗しました: {error}'
     dmHideFailed: "メッセージの非表示に失敗しました: {error}"
     groupLoadFailed: 'グループチャットの読み込みに失敗しました: {error}'
+    groupAuditLoadFailed: "グループチャット監査内容を読み込めませんでした: {error}"
     groupJoinFailed: 'グループチャットへの参加に失敗しました: {error}'
     groupSendFailed: 'グループメッセージの送信に失敗しました: {error}'
     groupCreateFailed: 'グループチャットの作成に失敗しました: {error}'
@@ -144,6 +146,9 @@ web:
     dmAuditView: 'DM監査（読み取り専用）'
     dmAuditReadOnly: '管理者監査ビューは読み取り専用で、すべての閲覧が監査ログに記録されます。'
     groupMetaOnly: 'グループルームのメタデータ'
+    groupAuditTitle: '管理者グループチャット監査'
+    openGroupAudit: 'このグループチャットを読み取り専用の監査ビューで開きます。'
+    groupAuditReadOnly: '管理者監査ビューは読み取り専用で、すべての閲覧が監査ログに記録されます。'
     noContentAccess: 'この画面ではメッセージ本文を表示できません。'
     lockDmThreadHint: 'このDMセッションをロックして新しいメッセージ送信を防ぎます。'
     unlockDmThreadHint: 'このDMセッションのロックを解除して、再びメッセージを送信できるようにします。'
@@ -180,6 +185,7 @@ web:
     unlimited: 無制限
     emojiFolderSelect: 絵文字フォルダー
     emojiPackCount: '{count} 個の絵文字'
+    emojiBatchResult: '{total} 件中 {uploaded} 件をアップロードしました'
     emojiNoFileSelected: ファイルが選択されていません
     passwordSet: 'パスワード'
     "yes": 'はい'

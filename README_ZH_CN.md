@@ -12,7 +12,7 @@
 - 访客聊天、数学验证码、冷却与每分钟限制
 - 通过 `/bmchat auth <code>` 绑定账号、Web 密码登录、本地管理员账号
 - Web 管理/版主面板、隐藏消息、访客/IP 禁言、撤销会话
-- 管理员自定义表情管理：创建、上传、重命名和删除表情文件夹/文件
+- 管理员自定义表情管理：创建、多文件上传、重命名、移动和删除表情文件夹/文件
 - ImageEmojis-Bero 1.9.0 token、游戏回复与服务器中继兼容
 - 文件/剪贴板上传，图片/视频/音频/YouTube/Shorts 预览，以及可选的 TikTok 和 X/Twitter 嵌入
 - DiscordSRV 转发，Discord CDN 媒体缓存
@@ -26,7 +26,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.6.2.jar
+target/BlueMapWebChat-4.7.0.jar
 ```
 
 ## 安装
@@ -40,7 +40,34 @@ target/BlueMapWebChat-4.6.2.jar
 7. 重启服务器或执行 `/bmchat reload`。如果 BlueMap Web 资源没有刷新，再执行 `/bluemap reload`。
 
 
-现有 `config.yml` 不会被覆盖。当 `config-version` 缺失或与正在运行的插件版本不同时，插件会比较实际配置与 JAR 内置默认配置，并生成 `plugins/BlueMapWebChat/config-migration-4.6.2.yml`。生成文件会把可直接合并的缺失设置、已变化的默认值以及最终审核用的 `config-version` 标记写成真实 YAML 设置。即使没有其他差异，也会为了配置版本管理生成该文件和 `config-version` 项。版本信息以及旧、新默认值说明只使用 `#` 注释。不会输出自定义值和废弃候选等参考列表。当 `config-version: "4.6.2"` 与插件版本一致时，配置被视为已审核并跳过比较。本次更新参见 `docs/UPGRADE_4_6_2_ZH_CN.md`，上一次更新参见 `docs/UPGRADE_4_6_1_ZH_CN.md`，之前的主要迁移参见 `docs/UPGRADE_4_6_0_ZH_CN.md`。
+现有设置值不会被自动覆盖。startup/reload 时，当前 `config.yml` 中已知的顶层配置块会按 4.7.0 内置默认顺序重新排列，但每个块的现有文本、设置值和用户自定义注释都会保留；默认配置中不存在的顶层块会按原顺序保留在已知块之后。每次检查已有配置时，BlueMapWebChat 都会生成或更新 `plugins/BlueMapWebChat/config-reference-4.7.0.yml`；它是当前 JAR 内置完整默认 `config.yml` 的原样副本，并保留全部注释。该 reference 与旧配置版本无关，因此 4.5.x、4.6.x 或没有 `config-version` 的旧配置都可以直接与完整 4.7.0 布局比较。当 `config-version` 缺失或与运行中的插件版本不同时，还会另外生成 `config-migration-4.7.0.yml`，列出缺失设置、已变化的默认值和最终 `config-version` 审核标记。`message-tokens.custom: {}` 这类空 map 也会作为真实设置处理，缺失时会出现在 migration 中。migration 文件末尾还会以注释形式附上当前配置与 reference 的文本 diff。相同的行不会输出；每个差异先显示文件名，再在单独一行显示 `Line` 或 `Lines`，下面只显示实际不同的内容。差异源行只在行首直接加 `#`，因此会原样保留 YAML 自身的缩进。仅存在于 reference 的块还会另行显示应插入当前配置的位置。当 `config-version: "4.7.0"` 已匹配时会跳过 migration 比较，但完整 reference 文件仍会保持为当前默认版本。本次更新参见 `docs/UPGRADE_4_7_0_ZH_CN.md`，上一次更新参见 `docs/UPGRADE_4_6_3_ZH_CN.md`。
+
+### 4.7.0 表情批量上传与兼容范围
+
+4.7.0 还加入可配置的 `:token:` 消息替换。默认 alias 只提供英文，管理员可改成或追加任意语言。支持换行、空行、缩进动作和可打印 custom 替换；未知令牌保持原样以兼容现有表情。
+
+4.7.0 中，管理员表情上传改为使用与普通聊天文件上传相同的文件选择流程。点击 Upload 打开隐藏的 multiple file input；选择文件后立即把选择内容复制为普通数组，清空 native input，并直接开始顺序上传，不再有第二个确认上传步骤。仍保留进度显示和实际传输中的取消；单文件限制、总容量限制、重名处理、审计日志和 PNG sidecar 生成继续使用现有服务器上传路径。
+
+Bukkit/Spigot API 基线从 1.21 下调到 1.18，同时继续使用 Java 17。本版本采用的保守 Minecraft 支持范围为 **1.18 ～ 26.2**。Paper 专用 `AsyncChatEvent` 仍通过 reflection 检测，并保留 Bukkit legacy chat event 作为 fallback。
+
+升级详情请参阅 `docs/UPGRADE_4_6_4_ZH_CN.md`。
+
+## 4.6.3 管理员群聊审计
+
+4.6.3 新增可选的只读管理员群聊正文审计。它使用与私信审计相同的 `private-chat-super-admins` 精确账号列表，但 `group-chat.admin-audit.enabled` 是独立开关。审计者不会加入房间，不会改变已读状态或未读人数，也不能发送、上传、隐藏消息或修改成员。每次审计分页读取都会记录为 `admin.group-audit-read`，审计日志不会复制消息正文。
+
+```yaml
+private-chat-super-admins:
+  - "ExactMinecraftNameOrUUID"
+
+group-chat:
+  admin-audit:
+    enabled: true
+```
+
+4.6.3 还修复了私信/群聊实时刷新时视频和音频从头重新播放的问题。私聊消息列表现在与普通聊天一样按 stable key 保留现有消息，只更新新消息以及投递/已读元数据，因此已加载的媒体 DOM 会持续保持连接。
+
+详情见 `docs/UPGRADE_4_6_3_ZH_CN.md`。
 
 ### 4.6.2 私信与群聊投递状态和重试
 
@@ -228,7 +255,7 @@ DM 使用独立于公开聊天历史的专用存储。`direct-message.storage: a
 
 ### 私信/群组聊天元数据超级管理员
 
-在 `config.yml` 的 `private-chat-super-admins` 中填写准确 UUID 或 Minecraft 名后，可查看用于管理/容量检查的私信与群聊元数据。默认视图显示标题/参与者、消息数、大致存储大小、保留状态和清理预览。只有同时设置 `direct-message.admin-audit.enabled: true` 时，同一明确列出的账号才能只读打开私信正文；普通 ADMIN/MODERATOR 角色不会自动获得权限，每次分页读取都会写入审计日志。超级管理员还可以锁定会话或将其从自动删除中排除。
+在 `config.yml` 的 `private-chat-super-admins` 中填写准确 UUID 或 Minecraft 名后，可查看用于管理/容量检查的私信与群聊元数据。默认视图显示标题/参与者、消息数、大致存储大小、保留状态和清理预览。设置 `direct-message.admin-audit.enabled: true` 后，同一明确列出的账号可以只读打开私信正文。4.6.3 中还可独立启用 `group-chat.admin-audit.enabled: true`，让这些账号无需加入房间、也不会改变已读状态即可只读查看群聊正文。普通 ADMIN/MODERATOR 角色不会自动获得权限，每次审计分页读取都会写入审计日志。超级管理员还可以锁定会话或将其从自动删除中排除。
 
 会影响管理状态的操作默认会按日期追加到 `plugins/BlueMapWebChat/audit` 下的文本审计日志中。审计日志供服务器运营者查看，不会显示在 Web UI 中。
 

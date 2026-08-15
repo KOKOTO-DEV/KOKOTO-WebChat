@@ -1,5 +1,80 @@
 # Changelog
 
+## 4.7.0
+
+- Added administrator custom-emoji multi-file upload using the same browser picker flow as the existing normal chat file upload. The upload control now opens a hidden `multiple` file input; when the picker closes, BlueMapWebChat immediately copies the selected `FileList`, clears the native input, and begins sequential upload without a separate selection/confirmation stage. Upload progress and active-transfer cancel behavior remain available, while per-file extension/size checks, total-storage accounting, unique-name handling, audit logging, and PNG-sidecar generation continue through the existing server endpoint.
+- Expanded the declared Bukkit/Spigot API compatibility baseline from Minecraft 1.21 to 1.18. The plugin remains compiled for Java 17 and builds against Spigot API 1.18.2, keeping the conservative supported range at Minecraft 1.18 through 26.2. Paper `AsyncChatEvent` remains reflection-detected with Bukkit `AsyncPlayerChatEvent` as the hard-linked fallback.
+- Added configurable colon-delimited message tokens. The English defaults provide newline (`:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:`), blank-line (`:blankline:`, `:emptyline:`, `:paragraphbreak:`), and indentation (`:tab:`, `:indent:`) actions. Administrators can replace or add aliases in any language. Optional printable custom substitutions are also supported, while unknown tokens remain untouched for compatibility with custom/image emoji plugins. Minecraft output keeps the existing single-line sanitizers for ordinary CR/LF input, but configured newline/blank-line tokens are carried separately and emitted as explicit Minecraft chat lines at final delivery. Cross-server game rendering of these intentional line breaks requires the receiving BlueMapWebChat server to run the same 4.7.0 token-line delivery support.
+- Fixed bundled config comment refresh so repeated startup/reload passes are idempotent. The public-relay delivery comment is no longer re-added on every refresh, and exact duplicate copies of that bundled comment left by earlier refreshes are collapsed to one without changing setting values or custom comments.
+- Added safe top-level config layout normalization on startup/reload. Known `config.yml` blocks are reordered to the bundled 4.7.0 order without changing their current values or block comments; unknown top-level blocks are retained after known blocks in their original order.
+
+### Configuration
+
+4.7.0 adds the `message-tokens` section. Existing chat, DM, group-chat, relay, emoji, and upload defaults are otherwise unchanged. The configuration review marker changes to:
+
+```yaml
+config-version: "4.7.0"
+```
+
+Existing setting values are not overwritten. On startup/reload, known top-level `config.yml` blocks are reordered to the bundled 4.7.0 layout while each block's current text, values, and custom comments are preserved; unknown top-level blocks remain last in their original order. BlueMapWebChat now writes `config-reference-4.7.0.yml` as a complete byte-for-byte copy of the bundled 4.7.0 default configuration, including comments, whenever an existing config is checked. This gives older or unversioned installations a full current reference independent of the detected baseline. When migration review is required, `config-migration-4.7.0.yml` still contains the concise missing/changed settings and review marker; empty maps such as `message-tokens.custom: {}` are now retained as real missing settings instead of disappearing from the fragment. The bottom of the migration file also contains a comment-only textual diff against `config-reference-4.7.0.yml`. Unchanged lines are omitted; each side prints the file name, a separate `Line` or `Lines` field, and then only the differing text. Reference-only blocks separately show where to insert them in the current config.
+
+Default token configuration:
+
+```yaml
+message-tokens:
+  enabled: true
+  max-replacements-per-message: 24
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br]
+  blank-line:
+    aliases: [blankline, emptyline, paragraphbreak]
+  tab:
+    aliases: [tab, indent]
+    spaces: 4
+  custom: {}
+```
+
+Aliases are written without the surrounding colons in config; users type them as `:alias:`. Administrators may localize aliases freely. Literal custom replacements are restricted to printable text; newline/blank-line/tab behavior uses the dedicated actions instead of escape strings.
+
+## 4.6.3
+
+- Added optional read-only administrator group-chat content audit. Explicit accounts listed in `private-chat-super-admins` can open group-chat message bodies from the administrator metadata view only when `group-chat.admin-audit.enabled: true`.
+- Group-chat audit access does not require room membership and does not join the room, mark messages read, change unread counts, send messages, upload files, hide messages, or modify membership. Ordinary ADMIN/MODERATOR roles do not gain content access automatically.
+- Every group-chat audit page read is recorded as `admin.group-audit-read` with the actor, room ID, pagination position, limit, and returned count. Message bodies are not copied into the audit log.
+- Refreshed the bundled 4.6.3 configuration comments to describe the current update-check, cross-server DM, relay, read-status, and administrator-audit behavior. Existing `config.yml` setting values are not rewritten; only unchanged older bundled comment blocks are refreshed, while custom comments are preserved.
+- Fixed DM/group native video and audio playback during live message/status refreshes. Private-chat message lists now reconcile by stable message key like public chat: existing message/media DOM stays mounted, new messages are inserted without rebuilding the conversation, and delivery/read metadata updates in place. Active playback therefore continues from its current position. Leaving or switching a private conversation now hard-discards that conversation's message/media DOM and private media-open state; re-entering starts from the unopened click-to-load state (or a newly created non-playing media element when click-to-load is disabled), so no previous player is reused or auto-resumed.
+- Fixed pinned-message source metadata in the detached pinned-message window. Clickable Web/Game DM targets and relay server badges now use the same transparent/buttonless metadata styling as normal chat instead of falling back to browser default button chrome.
+
+### Configuration added in 4.6.3
+
+Compared with the bundled 4.6.2 defaults, 4.6.3 adds only:
+
+```yaml
+group-chat:
+  admin-audit:
+    enabled: false
+```
+
+The configuration review marker also changes to:
+
+```yaml
+config-version: "4.6.3"
+```
+
+Both gates are required to open group-chat bodies:
+
+```yaml
+private-chat-super-admins:
+  - "ExactMinecraftNameOrUUID"
+
+group-chat:
+  admin-audit:
+    enabled: true
+```
+
+The existing `direct-message.admin-audit.enabled` switch remains independent and continues to control only DM body auditing.
+
+
 ## 4.6.2
 
 - Fixed same-name direct-message routing. A DM target without a server qualifier resolves only on the current server; cross-server targets require explicit server-scoped identity from `name@server-id` or the web UI.

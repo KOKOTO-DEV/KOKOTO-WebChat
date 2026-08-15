@@ -12,7 +12,7 @@ Bukkit/Paper/Spigot 계열 서버에서 동작하는 웹 채팅 플러그인입�
 - 게스트 채팅, 수학 캡차, 쿨다운/분당 제한
 - `/bmchat auth <code>` 계정 연동, 웹 비밀번호 로그인, 로컬 관리자 계정
 - 관리자/모더레이터 웹 패널, 메시지 숨김, 고정/삭제 표시 토글, 게스트/IP 뮤트, 세션 revoke
-- 관리자 커스텀 이모지 관리: 이모지 폴더/파일 생성, 업로드, 이름 변경, 삭제
+- 관리자 커스텀 이모지 관리: 이모지 폴더/파일 생성, 다중 업로드, 이름 변경, 이동, 삭제
 - ImageEmojis-Bero 1.9.0 토큰·게임 댓글·서버 릴레이 호환
 - 파일/클립보드 업로드, 이미지/영상/오디오/YouTube/Shorts 미리보기, 선택형 TikTok 및 X/Twitter 임베드
 - DiscordSRV 연동, Discord CDN 미디어 캐시
@@ -29,7 +29,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.6.2.jar
+target/BlueMapWebChat-4.7.0.jar
 ```
 
 ## 기본 설치
@@ -43,7 +43,34 @@ target/BlueMapWebChat-4.6.2.jar
 7. 서버 재시작 또는 `/bmchat reload`를 실행합니다. BlueMap 쪽 웹 자원이 갱신되지 않으면 `/bluemap reload`도 실행합니다.
 
 
-기존 `config.yml`은 덮어쓰지 않습니다. `config-version`이 없거나 실행 중인 플러그인 버전과 다르면 실제 `config.yml`과 JAR 기본 설정을 비교해 `plugins/BlueMapWebChat/config-migration-4.6.2.yml`을 생성합니다. 생성 파일에는 그대로 병합할 수 있는 누락 설정, 변경된 기본값, 최종 `config-version` 검토 표식을 실제 YAML 설정으로 표시합니다. 다른 차이가 없어도 설정 버전 관리를 위해 파일과 `config-version` 항목은 생성됩니다. 버전 정보와 이전·새 기본값 설명은 `#` 주석으로만 기록합니다. 사용자 지정값과 폐기 후보 같은 참고 목록은 출력하지 않습니다. `config-version: "4.6.2"`이 플러그인 버전과 같으면 이미 검토한 설정으로 간주하고 비교를 생략합니다. 이번 업데이트는 `docs/UPGRADE_4_6_2_KO.md`, 이전 업데이트는 `docs/UPGRADE_4_6_1_KO.md`, 이전 주요 마이그레이션은 `docs/UPGRADE_4_6_0_KO.md`를 참고하세요.
+기존 설정값은 자동으로 덮어쓰지 않습니다. startup/reload 시 현재 `config.yml`의 알려진 최상위 블록은 4.7.0 기본 순서에 맞춰 재정렬되며, 각 블록의 현재 내용·설정값·사용자 지정 주석은 그대로 보존합니다. 기본 설정에 없는 최상위 블록은 알려진 블록 뒤에 기존 순서대로 유지합니다. 기존 설정을 확인할 때마다 BlueMapWebChat은 현재 JAR의 완전한 기본 설정을 주석까지 그대로 복사한 `plugins/BlueMapWebChat/config-reference-4.7.0.yml`을 생성하거나 최신 상태로 갱신합니다. 이 기준 파일은 기존 설정 버전과 관계없이 만들어지므로 4.5.x, 4.6.x, `config-version`이 없는 오래된 설정도 4.7.0 전체 구조와 직접 비교할 수 있습니다. `config-version`이 없거나 실행 중인 플러그인 버전과 다르면 추가로 `config-migration-4.7.0.yml`을 생성해 누락 설정, 변경된 기본값, 최종 `config-version` 검토 표식을 표시합니다. `message-tokens.custom: {}` 같은 빈 map도 실제 설정으로 취급해 누락된 경우 migration에 포함합니다. migration 파일 하단에는 현재 설정과 reference의 텍스트 diff를 주석으로 추가합니다. 동일한 줄은 출력하지 않으며, 각 차이는 파일명을 먼저 표시한 뒤 `Line` 또는 `Lines`를 별도 줄에 표시하고 그 아래에 실제로 다른 내용만 보여줍니다. 실제 차이 줄은 원본 YAML 들여쓰기를 그대로 유지하도록 줄 앞에 `#`만 직접 붙여 표시하며, reference에만 있는 블록은 현재 config에 넣을 위치도 따로 표시합니다. `config-version: "4.7.0"`이 이미 일치하면 migration 비교는 생략하지만 완전한 reference 파일은 계속 현재 기본값으로 유지합니다. 이번 업데이트는 `docs/UPGRADE_4_7_0_KO.md`, 이전 업데이트는 `docs/UPGRADE_4_6_3_KO.md`, 이전 업데이트는 `docs/UPGRADE_4_6_2_KO.md`, 이전 DM/감사 업데이트는 `docs/UPGRADE_4_6_1_KO.md`를 참고하세요.
+
+## 4.7.0 이모지 다중 업로드 및 호환 범위 확대
+
+4.7.0은 설정 가능한 `:token:` 메시지 치환도 추가합니다. 기본 alias는 영어만 제공하고, 관리자는 어떤 언어든 추가하거나 바꿀 수 있습니다. 줄바꿈/빈 줄/들여쓰기 action과 일반 문자 custom 치환을 지원하며, 알 수 없는 토큰은 기존 이모지 호환을 위해 그대로 둡니다.
+
+4.7.0부터 관리자 이모지 업로드도 일반 채팅 파일 업로드와 같은 파일 선택 흐름을 사용합니다. 화면의 업로드 버튼이 숨겨진 다중 파일 입력창을 열고, 파일을 선택하면 선택 목록을 즉시 복사한 뒤 native input을 비우고 바로 순차 업로드를 시작합니다. 별도의 선택 확인용 업로드 단계는 없습니다. 진행률과 실제 전송 중 취소는 유지되며, 파일당 제한, 전체 이모지 용량 제한, 파일명 중복 처리, 감사 로그, PNG sidecar 생성은 기존 서버 업로드 경로를 그대로 사용합니다.
+
+Bukkit/Spigot API 기준을 1.21에서 1.18로 낮추고 Java 17은 그대로 유지합니다. 이번 릴리스의 보수적인 Minecraft 지원 범위는 **1.18 ~ 26.2**입니다. Paper 전용 `AsyncChatEvent`는 계속 reflection으로 감지하고 Bukkit 구형 채팅 이벤트를 fallback으로 사용합니다.
+
+자세한 내용은 `docs/UPGRADE_4_6_4_KO.md`를 참고하세요.
+
+## 4.6.3 관리자 그룹채팅 감사
+
+4.6.3은 그룹채팅 메시지 본문을 확인할 수 있는 선택적 읽기 전용 관리자 감사 기능을 추가합니다. DM 감사와 같은 `private-chat-super-admins` 정확 계정 목록을 사용하지만 `group-chat.admin-audit.enabled`는 독립적으로 켜야 합니다. 감사자는 방에 가입하지 않으며 읽음 상태·미확인 수를 변경하지 않고, 메시지 전송·업로드·숨김·멤버 관리도 할 수 없습니다. 모든 감사 페이지 열람은 본문을 복사하지 않고 `admin.group-audit-read`로 기록됩니다.
+
+```yaml
+private-chat-super-admins:
+  - "ExactMinecraftNameOrUUID"
+
+group-chat:
+  admin-audit:
+    enabled: true
+```
+
+4.6.3은 DM/그룹채팅 실시간 갱신 중 영상·오디오가 처음부터 다시 재생되는 문제도 수정합니다. 비공개 채팅 메시지 목록은 일반채팅처럼 stable key 기준으로 기존 메시지를 유지하고 새 메시지와 전달/읽음 메타데이터만 갱신하므로, 이미 로드된 미디어 DOM이 계속 유지됩니다.
+
+자세한 내용은 `docs/UPGRADE_4_6_3_KO.md`를 참고하세요.
 
 ## 4.6.2 DM·그룹채팅 전송 상태 및 재시도
 
@@ -293,7 +320,7 @@ SQLite 기록 저장소를 사용할 때 채팅 패널 우측 상단 플로팅 �
 
 ### 비공개 채팅 메타데이터 최고관리자
 
-`config.yml`의 `private-chat-super-admins`에 정확한 UUID 또는 마인크래프트 이름을 지정하면 관리/용량 확인용 DM/그룹채팅 메타데이터를 볼 수 있습니다. 기본 화면은 제목/참여자, 메시지 수, 대략적인 저장 용량, 보관기간 상태와 정리 미리보기를 표시합니다. `direct-message.admin-audit.enabled: true`를 함께 설정한 경우에만 같은 명시 계정이 DM 본문을 읽기 전용으로 열 수 있으며, 일반 ADMIN/MODERATOR 역할은 자동으로 대상이 되지 않습니다. 페이지 열람은 감사 로그에 기록됩니다. 최고관리자는 DM/그룹 세션 잠금과 자동삭제 제외도 관리할 수 있습니다.
+`config.yml`의 `private-chat-super-admins`에 정확한 UUID 또는 마인크래프트 이름을 지정하면 관리/용량 확인용 DM/그룹채팅 메타데이터를 볼 수 있습니다. 기본 화면은 제목/참여자, 메시지 수, 대략적인 저장 용량, 보관기간 상태와 정리 미리보기를 표시합니다. `direct-message.admin-audit.enabled: true`를 함께 설정한 경우 같은 명시 계정이 DM 본문을 읽기 전용으로 열 수 있습니다. 4.6.3에서는 `group-chat.admin-audit.enabled: true`를 별도로 켜면 같은 명시 계정이 방에 참여하거나 읽음 상태를 변경하지 않고 그룹채팅 본문도 읽기 전용으로 열 수 있습니다. 일반 ADMIN/MODERATOR 역할은 자동으로 대상이 되지 않으며 감사 페이지 열람은 모두 감사 로그에 기록됩니다. 최고관리자는 DM/그룹 세션 잠금과 자동삭제 제외도 관리할 수 있습니다.
 
 관리적으로 영향을 주는 행동은 기본적으로 `plugins/BlueMapWebChat/audit` 아래 날짜별 텍스트 로그에 append 됩니다. audit 로그는 서버 운영자 확인용이며 웹 UI에는 표시하지 않습니다.
 

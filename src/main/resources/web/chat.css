@@ -298,10 +298,10 @@
 }
 
 .bmwc-admin-emoji-upload-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  display: flex;
   gap: 6px;
   align-items: stretch;
+  flex-wrap: wrap;
   margin-bottom: 3px;
 }
 
@@ -330,14 +330,22 @@
   white-space: nowrap;
 }
 
-@media (max-width: 480px) {
-  .bmwc-admin-emoji-upload-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
+.bmwc-admin-emoji-upload-stage {
+  margin: 6px 0;
+}
 
-  .bmwc-admin-emoji-upload-row #bmwc-emoji-pack-create {
-    grid-column: 1 / -1;
-  }
+.bmwc-admin-emoji-upload-stage-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.bmwc-admin-emoji-upload-stage .bmwc-upload-progress-head > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bmwc-admin-emoji-list {
@@ -2983,7 +2991,8 @@ body.bmwc-pip-mode {
 
 /* Server relay origin badge: intentionally stronger than the normal source label
    so messages from multiple connected servers are distinguishable at a glance. */
-#bmwc-root .bmwc-server-badge {
+#bmwc-root .bmwc-server-badge,
+.bmwc-pinned-backdrop .bmwc-server-badge {
   display: inline-flex;
   align-items: center;
   max-width: min(180px, 45vw);
@@ -3002,7 +3011,9 @@ body.bmwc-pip-mode {
 }
 
 #bmwc-root.bmwc-theme-light .bmwc-server-badge,
-#bmwc-root.bmwc-theme-system .bmwc-server-badge {
+#bmwc-root.bmwc-theme-system .bmwc-server-badge,
+.bmwc-pinned-backdrop.bmwc-theme-light .bmwc-server-badge,
+.bmwc-pinned-backdrop.bmwc-theme-system .bmwc-server-badge {
   border-color: hsla(var(--bmwc-server-hue, 210), 72%, 38%, 0.68);
   background: hsla(var(--bmwc-server-hue, 210), 72%, 48%, 0.15);
   color: hsl(var(--bmwc-server-hue, 210), 72%, 32%) !important;
@@ -3010,7 +3021,8 @@ body.bmwc-pip-mode {
 
 /* A UUID-backed game/web sender can be opened directly from the
    "server · source" metadata without depending on recipient search. */
-#bmwc-root .bmwc-message-dm-target {
+#bmwc-root .bmwc-message-dm-target,
+.bmwc-pinned-backdrop .bmwc-message-dm-target {
   -webkit-appearance: none;
   appearance: none;
   display: inline-flex;
@@ -3030,17 +3042,22 @@ body.bmwc-pip-mode {
 }
 
 #bmwc-root .bmwc-message-dm-target:hover .bmwc-source-label,
-#bmwc-root .bmwc-message-dm-target:focus-visible .bmwc-source-label {
+#bmwc-root .bmwc-message-dm-target:focus-visible .bmwc-source-label,
+.bmwc-pinned-backdrop .bmwc-message-dm-target:hover .bmwc-source-label,
+.bmwc-pinned-backdrop .bmwc-message-dm-target:focus-visible .bmwc-source-label {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 #bmwc-root .bmwc-message-dm-target:hover .bmwc-server-badge,
-#bmwc-root .bmwc-message-dm-target:focus-visible .bmwc-server-badge {
+#bmwc-root .bmwc-message-dm-target:focus-visible .bmwc-server-badge,
+.bmwc-pinned-backdrop .bmwc-message-dm-target:hover .bmwc-server-badge,
+.bmwc-pinned-backdrop .bmwc-message-dm-target:focus-visible .bmwc-server-badge {
   filter: brightness(1.14);
 }
 
-#bmwc-root .bmwc-message-dm-target:focus-visible {
+#bmwc-root .bmwc-message-dm-target:focus-visible,
+.bmwc-pinned-backdrop .bmwc-message-dm-target:focus-visible {
   outline: 1px solid rgba(130, 190, 255, 0.78);
   outline-offset: 2px;
 }

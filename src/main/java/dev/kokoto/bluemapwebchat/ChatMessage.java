@@ -16,6 +16,8 @@ public class ChatMessage {
     public int relayHop;
     public String role;
     public String message;
+    // Transient game-render variant. Not persisted or exposed to web clients.
+    public String gameMessage;
     public String i18nKey;
     public String i18nArgs;
     public String replyToId;
@@ -30,6 +32,11 @@ public class ChatMessage {
         this.sender = sender;
         this.role = role;
         this.message = message;
+    }
+
+    public ChatMessage withGameMessage(String gameMessage) {
+        this.gameMessage = gameMessage == null ? "" : gameMessage;
+        return this;
     }
 
     public ChatMessage withRealSender(String realSender, String playerUuid) {

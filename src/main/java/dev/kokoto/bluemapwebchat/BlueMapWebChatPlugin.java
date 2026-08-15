@@ -30,6 +30,8 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        ConfigCommentManager.refresh(this);
+        ConfigLayoutManager.reorder(this);
         reloadConfig();
         ConfigMigrationManager.check(this);
         configValues = ConfigValues.load(getConfig());
@@ -80,9 +82,27 @@ public class BlueMapWebChatPlugin extends JavaPlugin {
         getLogger().info("BlueMapWebChat disabled.");
     }
 
+    public String applyMessageTokens(String text) {
+        return MessageTokenProcessor.apply(text, configValues);
+    }
+
+    public String applyMessageTokensForGame(String text) {
+        return MessageTokenProcessor.applyForGameDisplay(text, configValues);
+    }
+
+    public String restoreMessageTokenGameBreaks(String text) {
+        return MessageTokenProcessor.restoreGameDisplayBreaks(text);
+    }
+
+    public java.util.List<String> splitMessageTokenGameLines(String text) {
+        return MessageTokenProcessor.splitGameDisplayLines(text);
+    }
+
     public void reloadPlugin() {
         stopRuntimeServices();
         saveRuntimeState();
+        ConfigCommentManager.refresh(this);
+        ConfigLayoutManager.reorder(this);
         reloadConfig();
         ConfigMigrationManager.check(this);
         configValues = ConfigValues.load(getConfig());

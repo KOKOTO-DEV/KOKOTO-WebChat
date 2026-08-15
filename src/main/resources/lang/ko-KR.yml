@@ -87,6 +87,7 @@ web:
     uploadTooMany: 한 번에 {max}개 파일만 선택할 수 있습니다.
     uploadExtensionDenied: '허용되지 않은 파일 형식입니다: {name}'
     uploadTooLarge: '파일이 너무 큽니다: {name}'
+    emojiBatchUploadFailed: '{total}개 중 {uploaded}개 업로드됨. 실패: {failed}'
     uploadFailed: '업로드 실패: {error}'
     confirmDelete: 이 메시지를 숨길까요?
     deleteFailed: '삭제 실패: {error}'
@@ -120,6 +121,7 @@ web:
     dmRetryFailed: '메시지 재전송 실패: {error}'
     dmHideFailed: "메시지를 숨기지 못했습니다: {error}"
     groupLoadFailed: '그룹 채팅을 불러오지 못했습니다: {error}'
+    groupAuditLoadFailed: "그룹채팅 감사 내용을 불러오지 못했습니다: {error}"
     groupJoinFailed: '그룹 채팅방에 입장하지 못했습니다: {error}'
     groupSendFailed: '그룹 메시지를 보내지 못했습니다: {error}'
     groupCreateFailed: '그룹 채팅방을 만들지 못했습니다: {error}'
@@ -144,6 +146,9 @@ web:
     dmAuditView: 'DM 감사 열람(읽기 전용)'
     dmAuditReadOnly: '관리자 감사 화면은 읽기 전용이며 모든 열람이 감사 로그에 기록됩니다.'
     groupMetaOnly: '그룹 채팅방 메타데이터'
+    groupAuditTitle: '관리자 그룹채팅 감사'
+    openGroupAudit: '이 그룹채팅을 읽기 전용 감사 화면으로 엽니다.'
+    groupAuditReadOnly: '관리자 감사 화면은 읽기 전용이며 모든 열람이 감사 로그에 기록됩니다.'
     noContentAccess: '이 화면에서는 메시지 본문을 볼 수 없습니다.'
     lockDmThreadHint: '이 DM 세션을 잠가 새 메시지 전송을 막습니다.'
     unlockDmThreadHint: '이 DM 세션의 잠금을 해제해 다시 메시지를 보낼 수 있게 합니다.'
@@ -180,6 +185,7 @@ web:
     unlimited: 무제한
     emojiFolderSelect: 이모지 폴더
     emojiPackCount: 이모지 {count}개
+    emojiBatchResult: '{total}개 중 {uploaded}개 업로드됨'
     emojiNoFileSelected: 선택된 파일 없음
     passwordSet: '비밀번호'
     "yes": '예'

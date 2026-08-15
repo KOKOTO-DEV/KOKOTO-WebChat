@@ -70,6 +70,7 @@ public class ConfigValues {
     public boolean groupChatAllowRoomPasswords;
     public boolean groupChatConfirmLeave;
     public boolean groupChatConfirmHide;
+    public boolean groupChatAdminAuditEnabled;
     public int groupChatRetentionDays;
     public int groupChatMaxMessagesPerRoom;
     public int groupChatMaxMessageLength;
@@ -80,6 +81,13 @@ public class ConfigValues {
     public String groupChatSqliteFile;
     public int maxMessageLength;
     public int maxUrlMessageLength;
+    public boolean messageTokensEnabled;
+    public int messageTokensMaxReplacements;
+    public List<String> messageTokenNewlineAliases;
+    public List<String> messageTokenBlankLineAliases;
+    public List<String> messageTokenTabAliases;
+    public int messageTokenTabSpaces;
+    public Map<String, String> messageTokenCustomReplacements;
     public String webUserToGameFormat;
     public String webGuestToGameFormat;
     public String webAdminToGameFormat;
@@ -480,6 +488,7 @@ public class ConfigValues {
         v.groupChatAllowRoomPasswords = c.getBoolean("group-chat.allow-room-passwords", true);
         v.groupChatConfirmLeave = c.getBoolean("group-chat.confirm-leave", true);
         v.groupChatConfirmHide = c.getBoolean("group-chat.confirm-hide", true);
+        v.groupChatAdminAuditEnabled = c.getBoolean("group-chat.admin-audit.enabled", false);
         v.groupChatRetentionDays = Math.max(0, c.getInt("group-chat.retention-days", 30));
         v.groupChatMaxMessagesPerRoom = Math.max(0, c.getInt("group-chat.max-messages-per-room", 1000));
         v.groupChatMaxMessageLength = Math.max(0, c.getInt("group-chat.max-message-length", 500));
@@ -491,6 +500,38 @@ public class ConfigValues {
         v.maxMessageLength = Math.max(0, c.getInt("chat.max-message-length", 120));
         v.maxUrlMessageLength = Math.max(0, c.getInt("chat.max-url-message-length", 2048));
         if (v.maxMessageLength > 0 && v.maxUrlMessageLength > 0 && v.maxUrlMessageLength < v.maxMessageLength) v.maxUrlMessageLength = v.maxMessageLength;
+        v.messageTokensEnabled = c.getBoolean("message-tokens.enabled", true);
+        v.messageTokensMaxReplacements = Math.max(0, c.getInt("message-tokens.max-replacements-per-message", 24));
+        v.messageTokenNewlineAliases = c.getStringList("message-tokens.newline.aliases");
+        if (v.messageTokenNewlineAliases == null || v.messageTokenNewlineAliases.isEmpty()) {
+            v.messageTokenNewlineAliases = List.of("enter", "newline", "nextline", "linebreak", "br");
+        }
+        v.messageTokenBlankLineAliases = c.getStringList("message-tokens.blank-line.aliases");
+        if (v.messageTokenBlankLineAliases == null || v.messageTokenBlankLineAliases.isEmpty()) {
+            v.messageTokenBlankLineAliases = List.of("blankline", "emptyline", "paragraphbreak");
+        }
+        v.messageTokenTabAliases = c.getStringList("message-tokens.tab.aliases");
+        if (v.messageTokenTabAliases == null || v.messageTokenTabAliases.isEmpty()) {
+            v.messageTokenTabAliases = List.of("tab", "indent");
+        }
+        v.messageTokenTabSpaces = Math.max(1, Math.min(16, c.getInt("message-tokens.tab.spaces", 4)));
+        v.messageTokenCustomReplacements = new LinkedHashMap<>();
+        org.bukkit.configuration.ConfigurationSection tokenCustom = c.getConfigurationSection("message-tokens.custom");
+        if (tokenCustom != null) {
+            for (String key : tokenCustom.getKeys(false)) {
+                org.bukkit.configuration.ConfigurationSection item = tokenCustom.getConfigurationSection(key);
+                if (item == null) continue;
+                String replacement = String.valueOf(item.getString("replacement", ""));
+                replacement = replacement.replaceAll("[\\p{Cntrl}]", "");
+                if (replacement.isEmpty()) continue;
+                List<String> aliases = item.getStringList("aliases");
+                if (aliases == null || aliases.isEmpty()) aliases = List.of(key);
+                for (String alias : aliases) {
+                    String normalized = MessageTokenProcessor.normalizeAlias(alias);
+                    if (!normalized.isBlank()) v.messageTokenCustomReplacements.putIfAbsent(normalized, replacement);
+                }
+            }
+        }
         v.webUserToGameFormat = c.getString("chat.web-user-to-game-format", "[Web] {player}: {message}");
         v.webGuestToGameFormat = c.getString("chat.web-guest-to-game-format", "[Web Guest] {guest}: {message}");
         v.webAdminToGameFormat = c.getString("chat.web-admin-to-game-format", "[Web Admin] {player}: {message}");

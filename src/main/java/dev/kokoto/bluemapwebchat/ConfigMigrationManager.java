@@ -29,7 +29,10 @@ final class ConfigMigrationManager {
             "4.5.5", "config-baselines/config-4.5.5.yml",
             "4.6.0", "config-baselines/config-4.6.0.yml",
             "4.6.1", "config-baselines/config-4.6.1.yml",
-            "4.6.2", "config-baselines/config-4.6.2.yml"
+            "4.6.2", "config-baselines/config-4.6.2.yml",
+            "4.6.3", "config-baselines/config-4.6.3.yml",
+            "4.6.4", "config-baselines/config-4.6.4.yml",
+            "4.7.0", "config-baselines/config-4.7.0.yml"
     );
 
     private ConfigMigrationManager() {
@@ -41,7 +44,14 @@ final class ConfigMigrationManager {
 
         String targetVersion = String.valueOf(plugin.getDescription().getVersion()).trim();
         Path reportPath = plugin.getDataFolder().toPath().resolve("config-migration-" + targetVersion + ".yml");
+        Path referencePath = plugin.getDataFolder().toPath().resolve("config-reference-" + targetVersion + ".yml");
         Path legacyGuidePath = plugin.getDataFolder().toPath().resolve("config-upgrade-" + targetVersion + ".yml");
+
+        try {
+            writeReferenceConfig(plugin, referencePath);
+        } catch (Exception ex) {
+            plugin.getLogger().warning("Failed to create the full config reference " + referencePath + ": " + ex.getMessage());
+        }
 
         try {
             YamlConfiguration actual = YamlConfiguration.loadConfiguration(configPath.toFile());
@@ -69,19 +79,20 @@ final class ConfigMigrationManager {
                     : loadBundledYaml(plugin, BASELINE_RESOURCES.get(baselineVersion));
 
             MigrationDiff diff = compare(actual, previousDefaults, currentDefaults);
-            writeReport(reportPath, targetVersion, declaredVersion, baselineVersion, diff);
+            writeReport(reportPath, referencePath, configPath, targetVersion, declaredVersion, baselineVersion, diff);
             Files.deleteIfExists(legacyGuidePath);
 
             String detected = declaredVersion.isBlank() ? "not set" : declaredVersion;
             if (diff.missingSettings.isEmpty() && diff.changedDefaults.isEmpty()) {
                 plugin.getLogger().warning("Config version review is required: config-version=" + detected
                         + ", plugin-version=" + targetVersion
-                        + ". No other missing settings or changed bundled defaults were found. Existing config.yml was not modified. "
-                        + "Review " + reportPath + ", merge its config-version marker, and run /bmchat reload or restart the server.");
+                        + ". No other missing settings or changed bundled defaults were found. Existing config setting values were not modified. "
+                        + "Review " + reportPath + " and the full current default reference " + referencePath
+                        + ", merge its config-version marker only after review, and run /bmchat reload or restart the server.");
             } else {
                 plugin.getLogger().warning("Config migration review is required: config-version=" + detected
                         + ", plugin-version=" + targetVersion
-                        + ". Existing config.yml was not modified. Review " + reportPath
+                        + ". Existing config setting values were not modified. Review " + reportPath + " and the full current default reference " + referencePath
                         + " (missing=" + diff.missingSettings.size()
                         + ", changed-defaults=" + diff.changedDefaults.size() + ") and set config-version to \""
                         + targetVersion + "\" only after the review is complete.");
@@ -89,6 +100,20 @@ final class ConfigMigrationManager {
         } catch (Exception ex) {
             plugin.getLogger().warning("Failed to create the config migration report: " + ex.getMessage());
         }
+    }
+
+    private static void writeReferenceConfig(BlueMapWebChatPlugin plugin, Path referencePath) throws Exception {
+        byte[] bundled;
+        try (InputStream in = plugin.getResource("config.yml")) {
+            if (in == null) throw new IllegalStateException("Missing bundled resource: config.yml");
+            bundled = in.readAllBytes();
+        }
+        Files.createDirectories(referencePath.getParent());
+        if (Files.isRegularFile(referencePath)) {
+            byte[] existing = Files.readAllBytes(referencePath);
+            if (java.util.Arrays.equals(existing, bundled)) return;
+        }
+        Files.write(referencePath, bundled, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
     }
 
     private static void applyMigrationSafeRuntimeFallbacks(BlueMapWebChatPlugin plugin, YamlConfiguration actual) {
@@ -157,7 +182,13 @@ final class ConfigMigrationManager {
         LinkedHashMap<String, Object> out = new LinkedHashMap<>();
         Set<String> paths = new LinkedHashSet<>(yaml.getKeys(true));
         for (String path : paths) {
-            if (yaml.isConfigurationSection(path)) continue;
+            if (yaml.isConfigurationSection(path)) {
+                ConfigurationSection section = yaml.getConfigurationSection(path);
+                if (section != null && section.getKeys(false).isEmpty()) {
+                    out.put(path, new LinkedHashMap<>());
+                }
+                continue;
+            }
             out.put(path, normalizeValue(yaml.get(path)));
         }
         return out;
@@ -189,6 +220,8 @@ final class ConfigMigrationManager {
     }
 
     private static void writeReport(Path reportPath,
+                                    Path referencePath,
+                                    Path configPath,
                                     String targetVersion,
                                     String declaredVersion,
                                     String baselineVersion,
@@ -209,8 +242,12 @@ final class ConfigMigrationManager {
         String baseline = baselineVersion.isBlank() ? "not available" : baselineVersion;
         StringBuilder header = new StringBuilder();
         header.append("# BlueMapWebChat configuration migration fragment\n");
-        header.append("# Existing config.yml was not modified.\n");
+        header.append("# Existing config setting values were not modified by migration.\n");
+        header.append("# Before this report, known top-level config blocks may be reordered to the current bundled layout; block text, values, and custom comments are preserved.\n");
+        header.append("# Unchanged older bundled comment text may have been refreshed separately; custom comments are preserved.\n");
         header.append("# Only settings missing from config.yml, bundled defaults that changed, and the target config-version marker are listed below.\n");
+        header.append("# For the complete current default configuration with every bundled comment, compare against ")
+                .append(referencePath.getFileName()).append(".\n");
         header.append("# Merge the required values into the matching locations in config.yml.\n");
         header.append("# Detected config version: ").append(commentValue(detected)).append("\n");
         header.append("# Target plugin version: ").append(commentValue(targetVersion)).append("\n");
@@ -231,9 +268,212 @@ final class ConfigMigrationManager {
 
         header.append("#\n# The config-version entry below is the final review marker. Merge it only after reviewing the fragment.\n\n");
 
+        String lineDiff = buildCommentedLineDiff(configPath, referencePath);
+        String body = header + fragment.saveToString();
+        if (!body.endsWith("\n")) body += "\n";
+        body += "\n" + lineDiff;
+
         Files.createDirectories(reportPath.getParent());
-        Files.writeString(reportPath, header + fragment.saveToString(), StandardCharsets.UTF_8,
+        Files.writeString(reportPath, body, StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+    }
+
+    private static String buildCommentedLineDiff(Path configPath, Path referencePath) throws Exception {
+        List<String> current = Files.readAllLines(configPath, StandardCharsets.UTF_8);
+        List<String> reference = Files.readAllLines(referencePath, StandardCharsets.UTF_8);
+        List<LineDiffEntry> entries = lineDiff(current, reference);
+
+        String referenceName = commentValue(referencePath.getFileName());
+        StringBuilder out = new StringBuilder();
+        out.append("# =============================================================================\n");
+        out.append("# Current config.yml vs ").append(referenceName).append(" line diff\n");
+        out.append("# =============================================================================\n");
+        out.append("# This section is comments only and does not change the YAML fragment above.\n");
+        out.append("# Only differing text lines are shown; unchanged lines are omitted.\n");
+        out.append("# '-' = text present only in the current config.yml.\n");
+        out.append("# '+' = text present only in ").append(referenceName).append(".\n");
+        out.append("# File position and line contents are printed on separate lines for readability.\n");
+        out.append("# Differing source lines are prefixed with # only, preserving their original indentation exactly.\n");
+        out.append("# Line numbers describe config.yml at report-generation time; run /bmchat reload after edits to regenerate them.\n");
+
+        boolean hasChange = entries.stream().anyMatch(entry -> entry.kind != LineDiffKind.SAME);
+        if (!hasChange) {
+            out.append("# No textual differences found.\n");
+            return out.toString();
+        }
+
+        int block = 0;
+        int i = 0;
+        while (i < entries.size()) {
+            while (i < entries.size() && entries.get(i).kind == LineDiffKind.SAME) i++;
+            if (i >= entries.size()) break;
+
+            int start = i;
+            while (i + 1 < entries.size() && entries.get(i + 1).kind != LineDiffKind.SAME) i++;
+            int end = i;
+
+            List<LineDiffEntry> currentOnly = new ArrayList<>();
+            List<LineDiffEntry> referenceOnly = new ArrayList<>();
+            for (int j = start; j <= end; j++) {
+                LineDiffEntry entry = entries.get(j);
+                if (entry.kind == LineDiffKind.CURRENT_ONLY) currentOnly.add(entry);
+                else if (entry.kind == LineDiffKind.REFERENCE_ONLY) referenceOnly.add(entry);
+            }
+
+            block++;
+            out.append("#\n# Difference ").append(block).append("\n#\n");
+            if (!currentOnly.isEmpty()) {
+                appendDiffSide(out, "-", "Current config.yml", currentOnly, true);
+            }
+            if (!currentOnly.isEmpty() && !referenceOnly.isEmpty()) out.append("#\n");
+            if (!referenceOnly.isEmpty()) {
+                appendDiffSide(out, "+", referenceName, referenceOnly, false);
+            }
+            if (currentOnly.isEmpty() && !referenceOnly.isEmpty()) {
+                int anchor = referenceOnly.get(0).currentAnchorLine;
+                out.append("#\n# Insert in Current config.yml\n");
+                appendCurrentInsertLocation(out, anchor, current.size());
+            }
+            i++;
+        }
+        return out.toString();
+    }
+
+    private static void appendDiffSide(StringBuilder out,
+                                       String marker,
+                                       String fileName,
+                                       List<LineDiffEntry> entries,
+                                       boolean currentSide) {
+        out.append("# ").append(marker).append(" ").append(fileName).append("\n");
+        int first = currentSide ? entries.get(0).currentLine : entries.get(0).referenceLine;
+        int last = currentSide
+                ? entries.get(entries.size() - 1).currentLine
+                : entries.get(entries.size() - 1).referenceLine;
+        if (first == last) out.append("# Line ").append(first).append("\n");
+        else out.append("# Lines ").append(first).append("-").append(last).append("\n");
+        for (LineDiffEntry entry : entries) {
+            out.append("#").append(diffLineText(entry.text)).append("\n");
+        }
+    }
+
+    private static void appendCurrentInsertLocation(StringBuilder out, int currentAnchorLine, int currentSize) {
+        if (currentAnchorLine <= 0) {
+            out.append("# Before Line 1\n");
+        } else if (currentAnchorLine >= currentSize) {
+            out.append("# After Line ").append(currentSize).append("\n");
+        } else {
+            out.append("# After Line ").append(currentAnchorLine).append("\n");
+        }
+    }
+
+    private static List<LineDiffEntry> lineDiff(List<String> current, List<String> reference) {
+        long cells = (long) (current.size() + 1) * (reference.size() + 1);
+        if (cells <= 2_000_000L) return exactLineDiff(current, reference);
+        return boundedLineDiff(current, reference);
+    }
+
+    private static List<LineDiffEntry> exactLineDiff(List<String> current, List<String> reference) {
+        int n = current.size();
+        int m = reference.size();
+        int[][] lcs = new int[n + 1][m + 1];
+        for (int i = n - 1; i >= 0; i--) {
+            for (int j = m - 1; j >= 0; j--) {
+                if (Objects.equals(current.get(i), reference.get(j))) {
+                    lcs[i][j] = lcs[i + 1][j + 1] + 1;
+                } else {
+                    lcs[i][j] = Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+                }
+            }
+        }
+
+        List<LineDiffEntry> out = new ArrayList<>();
+        int i = 0;
+        int j = 0;
+        while (i < n || j < m) {
+            if (i < n && j < m && Objects.equals(current.get(i), reference.get(j))) {
+                out.add(LineDiffEntry.same(i + 1, j + 1, current.get(i)));
+                i++;
+                j++;
+            } else if (i < n && (j >= m || lcs[i + 1][j] >= lcs[i][j + 1])) {
+                out.add(LineDiffEntry.currentOnly(i + 1, j, current.get(i)));
+                i++;
+            } else {
+                out.add(LineDiffEntry.referenceOnly(i, j + 1, reference.get(j)));
+                j++;
+            }
+        }
+        return out;
+    }
+
+    private static List<LineDiffEntry> boundedLineDiff(List<String> current, List<String> reference) {
+        final int lookAhead = 48;
+        List<LineDiffEntry> out = new ArrayList<>();
+        int i = 0;
+        int j = 0;
+        while (i < current.size() || j < reference.size()) {
+            if (i < current.size() && j < reference.size() && Objects.equals(current.get(i), reference.get(j))) {
+                out.add(LineDiffEntry.same(i + 1, j + 1, current.get(i)));
+                i++;
+                j++;
+                continue;
+            }
+            if (i >= current.size()) {
+                out.add(LineDiffEntry.referenceOnly(i, j + 1, reference.get(j++)));
+                continue;
+            }
+            if (j >= reference.size()) {
+                out.add(LineDiffEntry.currentOnly(i + 1, j, current.get(i++)));
+                continue;
+            }
+
+            int currentMatch = findAhead(current, i + 1, reference.get(j), lookAhead);
+            int referenceMatch = findAhead(reference, j + 1, current.get(i), lookAhead);
+            if (currentMatch >= 0 && (referenceMatch < 0 || currentMatch - i <= referenceMatch - j)) {
+                while (i < currentMatch) out.add(LineDiffEntry.currentOnly(i + 1, j, current.get(i++)));
+            } else if (referenceMatch >= 0) {
+                while (j < referenceMatch) out.add(LineDiffEntry.referenceOnly(i, j + 1, reference.get(j++)));
+            } else {
+                out.add(LineDiffEntry.currentOnly(i + 1, j, current.get(i++)));
+                out.add(LineDiffEntry.referenceOnly(i, j + 1, reference.get(j++)));
+            }
+        }
+        return out;
+    }
+
+    private static int findAhead(List<String> lines, int start, String target, int maxDistance) {
+        int end = Math.min(lines.size(), start + maxDistance);
+        for (int i = start; i < end; i++) {
+            if (Objects.equals(lines.get(i), target)) return i;
+        }
+        return -1;
+    }
+
+    private static String diffLineText(String value) {
+        return String.valueOf(value == null ? "" : value);
+    }
+
+    private enum LineDiffKind {
+        SAME,
+        CURRENT_ONLY,
+        REFERENCE_ONLY
+    }
+
+    private record LineDiffEntry(LineDiffKind kind,
+                                 int currentLine,
+                                 int referenceLine,
+                                 int currentAnchorLine,
+                                 String text) {
+        static LineDiffEntry same(int currentLine, int referenceLine, String text) {
+            return new LineDiffEntry(LineDiffKind.SAME, currentLine, referenceLine, currentLine, text);
+        }
+
+        static LineDiffEntry currentOnly(int currentLine, int referenceAnchorLine, String text) {
+            return new LineDiffEntry(LineDiffKind.CURRENT_ONLY, currentLine, referenceAnchorLine, currentLine, text);
+        }
+
+        static LineDiffEntry referenceOnly(int currentAnchorLine, int referenceLine, String text) {
+            return new LineDiffEntry(LineDiffKind.REFERENCE_ONLY, currentAnchorLine, referenceLine, currentAnchorLine, text);
+        }
     }
 
     private static String commentValue(Object value) {

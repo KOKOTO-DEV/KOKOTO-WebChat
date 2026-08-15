@@ -144,6 +144,7 @@ public class WebChatServer {
         server.createContext(p + "/group/rooms", this::handleGroupRooms);
         server.createContext(p + "/group/players", this::handleGroupPlayers);
         server.createContext(p + "/group/messages", this::handleGroupMessages);
+        server.createContext(p + "/admin/group/messages", this::handleAdminGroupMessages);
         server.createContext(p + "/group/create", this::handleGroupCreate);
         server.createContext(p + "/group/join", this::handleGroupJoin);
         server.createContext(p + "/group/leave", this::handleGroupLeave);
@@ -583,13 +584,16 @@ public class WebChatServer {
 
     public ChatMessage publishFromGame(String player, String realPlayerName, String playerUuid, String message) {
         ConfigValues config = plugin.configValues();
-        String text = stripChatMessage(message, config);
+        String rawText = stripChatMessage(message, config);
+        String text = plugin.applyMessageTokens(rawText);
+        String gameText = plugin.applyMessageTokensForGame(rawText);
         if (text.isBlank()) return null;
         if (plugin.discordBridge() != null && plugin.discordBridge().shouldSuppressGameEcho(player, text)) {
             return null;
         }
         prewarmExternalMediaCache(text);
         ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "game", player, "USER", text)
+                .withGameMessage(gameText)
                 .withRealSender(stripControl(realPlayerName, 64), stripControl(playerUuid, 64));
         prepareServerRelay(msg);
         addHistory(msg);
@@ -609,10 +613,12 @@ public class WebChatServer {
     public ChatMessage publishReplyFromGame(Player player, String replyToId, String message, String gameDisplayMessage) {
         if (player == null) return null;
         ConfigValues config = plugin.configValues();
-        String text = canonicalizeKnownEmojiTokens(stripChatMessage(message, config), config);
+        String rawText = stripChatMessage(message, config);
+        String text = canonicalizeKnownEmojiTokens(plugin.applyMessageTokens(rawText), config);
         if (text.isBlank()) return null;
-        String gameText = stripChatMessage(gameDisplayMessage, config);
-        if (gameText.isBlank()) gameText = text;
+        String rawGameText = stripChatMessage(gameDisplayMessage, config);
+        String gameText = plugin.applyMessageTokensForGame(rawGameText);
+        if (gameText.isBlank()) gameText = plugin.applyMessageTokensForGame(rawText);
 
         ChatMessage target = findHistoryMessageById(stripControl(replyToId, 96));
         if (target == null || target.hidden) return null;
@@ -624,6 +630,7 @@ public class WebChatServer {
 
         prewarmExternalMediaCache(text);
         ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "game", displayName, "USER", text)
+                .withGameMessage(gameText)
                 .withRealSender(stripControl(realName, 64), stripControl(uuid, 64))
                 .withReply(target.id, stripControl(target.sender, 64), messageReplyPreview(target));
         prepareServerRelay(msg);
@@ -638,12 +645,15 @@ public class WebChatServer {
 
     public void publishFromDiscord(String sender, String message) {
         ConfigValues config = plugin.configValues();
-        String text = stripChatMessage(message, config);
+        String rawText = stripChatMessage(message, config);
+        String text = plugin.applyMessageTokens(rawText);
+        String gameText = plugin.applyMessageTokensForGame(rawText);
         String safeSender = stripControl(sender, 64);
         if (text.isBlank()) return;
         if (safeSender.isBlank()) safeSender = "Discord";
         prewarmExternalMediaCache(text);
-        ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "discord", safeSender, "DISCORD", text);
+        ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "discord", safeSender, "DISCORD", text)
+                .withGameMessage(gameText);
         prepareServerRelay(msg);
         addHistory(msg);
         broadcast(msg);
@@ -1184,7 +1194,9 @@ public class WebChatServer {
         Map<String, String> body = JsonUtil.parseFlatObject(JsonUtil.readBody(ex.getRequestBody()));
         String ip = remoteIp(ex);
         ConfigValues config = plugin.configValues();
-        String message = stripChatMessage(body.get("message"), config);
+        String rawMessage = stripChatMessage(body.get("message"), config);
+        String message = plugin.applyMessageTokens(rawMessage);
+        String gameMessage = plugin.applyMessageTokensForGame(rawMessage);
         if (message.isBlank()) {
             sendJson(ex, 400, "{\"ok\":false,\"error\":\"empty_message\"}");
             return;
@@ -1195,11 +1207,11 @@ public class WebChatServer {
         String replyToSender = body.get("replyToSender");
         String replyToPreview = body.get("replyToPreview");
         if (ctx != null) {
-            handleUserSend(ex, ctx, message, replyToId, replyToSender, replyToPreview);
+            handleUserSend(ex, ctx, message, gameMessage, replyToId, replyToSender, replyToPreview);
             return;
         }
 
-        handleGuestSend(ex, body, ip, message, replyToId, replyToSender, replyToPreview);
+        handleGuestSend(ex, body, ip, message, gameMessage, replyToId, replyToSender, replyToPreview);
     }
 
 
@@ -1420,7 +1432,9 @@ public class WebChatServer {
             return;
         }
 
-        String message = stripDirectMessage(body.get("message"), config.directMessageMaxMessageLength);
+        String rawDmMessage = stripDirectMessage(body.get("message"), config.directMessageMaxMessageLength);
+        String message = plugin.applyMessageTokens(rawDmMessage);
+        String gameNoticeMessage = plugin.applyMessageTokensForGame(rawDmMessage);
         if (message.isBlank()) {
             sendJson(ex, 400, "{\"ok\":false,\"error\":\"empty_message\"}");
             return;
@@ -1474,7 +1488,7 @@ public class WebChatServer {
                 relay.publishDirectMessage(
                                 finalRelayId,
                                 ctx.account.uuid, senderUsername, senderDisplayName,
-                                remote.serverId, remote.playerUuid, targetUsername, targetDisplayName, message)
+                                remote.serverId, remote.playerUuid, targetUsername, targetDisplayName, message, gameNoticeMessage)
                         .whenComplete((delivery, error) -> completeRemoteDirectMessageDelivery(
                                 ctx.account.uuid, finalTargetUuid, threadId, messageId, delivery, error));
                 if (!result.duplicate) {
@@ -1483,7 +1497,7 @@ public class WebChatServer {
             }
         } else if (!result.duplicate) {
             dispatchWebPushDirectMessage(ctx.account.uuid, plugin.displayNameForAccount(ctx.account), target.uuid, target.label(), threadId, messageId, message);
-            notifyOnlineDirectMessage(ctx.account, target, message);
+            notifyOnlineDirectMessage(ctx.account, target, gameNoticeMessage);
         }
 
         String threadJson = result.thread == null ? "null" : result.thread.toJson();
@@ -1547,7 +1561,7 @@ public class WebChatServer {
         relay.publishDirectMessage(
                         relayId,
                         ctx.account.uuid, senderUsername, senderDisplayName,
-                        remote.serverId, remote.playerUuid, targetUsername, targetDisplayName, retry.message.body)
+                        remote.serverId, remote.playerUuid, targetUsername, targetDisplayName, retry.message.body, retry.message.body)
                 .whenComplete((delivery, error) -> completeRemoteDirectMessageDelivery(
                         ctx.account.uuid, retry.targetUuid, threadId, messageId, delivery, error));
         sendJson(ex, 202, "{\"ok\":true,\"status\":\"pending\",\"messageId\":" + messageId + "}");
@@ -1634,7 +1648,7 @@ public class WebChatServer {
         if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
         ConfigValues config = plugin.configValues();
         if (config == null || !config.groupChatEnabled || plugin.groupChats() == null || !plugin.groupChats().available()) {
-            sendJson(ex, 200, "{\"ok\":true,\"enabled\":false,\"unread\":0,\"privateChatSuperAdmin\":false,\"rooms\":[],\"invites\":[],\"hiddenRooms\":[],\"adminRooms\":[],\"cleanupPreview\":null}"); return;
+            sendJson(ex, 200, "{\"ok\":true,\"enabled\":false,\"unread\":0,\"privateChatSuperAdmin\":false,\"groupChatContentAccess\":false,\"rooms\":[],\"invites\":[],\"hiddenRooms\":[],\"adminRooms\":[],\"cleanupPreview\":null}"); return;
         }
         SessionContext ctx = sessionFromQuery(ex);
         if (!validGroupUser(ctx)) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
@@ -1646,6 +1660,7 @@ public class WebChatServer {
         for (GroupInvite invite : plugin.groupChats().listInvites(ctx.account.uuid, 100)) invites.add(invite.toJson());
         List<String> hiddenRooms = plugin.groupChats().listHiddenRoomsJson(ctx.account.uuid, limit);
         boolean privateChatSuperAdmin = isPrivateChatSuperAdmin(ctx);
+        boolean groupChatContentAccess = privateChatSuperAdmin && config.groupChatAdminAuditEnabled;
         List<String> adminRooms = new ArrayList<>();
         String cleanupPreview = "null";
         if (privateChatSuperAdmin) {
@@ -1654,6 +1669,7 @@ public class WebChatServer {
         }
         sendJson(ex, 200, "{\"ok\":true,\"enabled\":true,\"unread\":" + plugin.groupChats().unreadCount(ctx.account.uuid)
                 + ",\"privateChatSuperAdmin\":" + privateChatSuperAdmin
+                + ",\"groupChatContentAccess\":" + groupChatContentAccess
                 + ",\"rooms\":[" + String.join(",", rooms) + "]"
                 + ",\"invites\":[" + String.join(",", invites) + "]"
                 + ",\"hiddenRooms\":[" + String.join(",", hiddenRooms) + "]"
@@ -1705,6 +1721,44 @@ public class WebChatServer {
         List<String> messages = new ArrayList<>();
         for (GroupMessage message : plugin.groupChats().listMessages(ctx.account.uuid, roomId, before, limit)) messages.add(message.toJson());
         sendJson(ex, 200, "{\"ok\":true,\"unread\":" + plugin.groupChats().unreadCount(ctx.account.uuid) + ",\"messages\":[" + String.join(",", messages) + "]}");
+    }
+
+    private void handleAdminGroupMessages(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        ConfigValues config = plugin.configValues();
+        if (config == null || !config.groupChatEnabled || !config.groupChatAdminAuditEnabled
+                || plugin.groupChats() == null || !plugin.groupChats().available()) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"group_audit_disabled\"}");
+            return;
+        }
+        SessionContext ctx = sessionFromQuery(ex);
+        if (!isPrivateChatSuperAdmin(ctx)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}");
+            return;
+        }
+        Map<String,String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
+        String roomId = stripControl(q.get("roomId"), 120).trim();
+        if (roomId.isBlank()) {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"missing_room\"}");
+            return;
+        }
+        long before = parseLong(q.get("before"), 0L);
+        int limit = boundedInt(q.get("limit"), 100, 1, 200);
+        List<String> items = new ArrayList<>();
+        for (GroupMessage message : plugin.groupChats().adminListMessages(roomId, before, limit)) {
+            items.add(message.toJson());
+        }
+        audit(ctx, "admin.group-audit-read", Map.of(
+                "roomId", roomId,
+                "before", before,
+                "limit", limit,
+                "returned", items.size()
+        ));
+        sendJson(ex, 200, "{\"ok\":true,\"audit\":true,\"messages\":[" + String.join(",", items) + "]}");
     }
 
     private void handleGroupCreate(HttpExchange ex) throws IOException {
@@ -1798,16 +1852,19 @@ public class WebChatServer {
         if (config == null || !config.groupChatAllowWebSend) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"web_send_disabled\"}"); return; }
         GroupRequest req = groupRequest(ex);
         if (!req.ok) return;
+        String rawGroupMessage = String.valueOf(req.body.get("message") == null ? "" : req.body.get("message"));
+        String message = plugin.applyMessageTokens(rawGroupMessage);
+        String gameNoticeMessage = plugin.applyMessageTokensForGame(rawGroupMessage);
         GroupChatStore.SendResult result = plugin.groupChats().send(
                 req.ctx.account.uuid,
                 req.body.get("roomId"),
-                req.body.get("message"),
+                message,
                 stripControl(req.body.get("clientMessageId"), 180).trim());
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
         publishGroupChatUpdate(result.room == null ? req.body.get("roomId") : result.room.id);
         if (!result.duplicate) {
             dispatchWebPushGroupMessage(req.ctx.account.uuid, plugin.displayNameForAccount(req.ctx.account), result.room, result.message, req.body.get("roomId"));
-            notifyOnlineGroupMembers(req.ctx.account, result.room, result.message, req.body.get("roomId"));
+            notifyOnlineGroupMembers(req.ctx.account, result.room, result.message, req.body.get("roomId"), gameNoticeMessage);
         }
         sendJson(ex, 200, "{\"ok\":true,\"room\":" + (result.room == null ? "null" : result.room.toJson()) + ",\"message\":" + (result.message == null ? "null" : result.message.toJson()) + "}");
     }
@@ -1989,19 +2046,19 @@ public class WebChatServer {
                 java.util.Map<String, String> vars = new java.util.HashMap<>();
                 vars.put("player", ChatColor.RESET + String.valueOf(senderName == null ? "" : senderName) + ChatColor.LIGHT_PURPLE);
                 vars.put("message", ChatColor.RESET + body);
-                recipient.sendMessage(ChatColor.LIGHT_PURPLE + plugin.langManager().text("command.dmIncoming", "DM from {player}: {message}", vars));
+                sendTokenGameLines(recipient, ChatColor.LIGHT_PURPLE + plugin.langManager().text("command.dmIncoming", "DM from {player}: {message}", vars));
             } catch (IllegalArgumentException ignored) {
             }
         });
     }
 
-    private void notifyOnlineGroupMembers(Account sender, GroupRoom room, GroupMessage message, String fallbackRoomId) {
+    private void notifyOnlineGroupMembers(Account sender, GroupRoom room, GroupMessage message, String fallbackRoomId, String gameNoticeMessage) {
         if (sender == null || plugin.groupChats() == null || message == null) return;
         String roomId = room != null && room.id != null && !room.id.isBlank() ? room.id : String.valueOf(fallbackRoomId == null ? "" : fallbackRoomId);
         if (roomId.isBlank()) return;
         String roomName = room != null && room.name != null && !room.name.isBlank() ? room.name : roomId;
         String senderName = plugin.displayNameForAccount(sender);
-        String body = colorizeForGame(trimForNotice(message.body, 100));
+        String body = colorizeForGame(trimForNotice(gameNoticeMessage == null || gameNoticeMessage.isBlank() ? message.body : gameNoticeMessage, 100));
         java.util.Map<String, String> vars = new java.util.HashMap<>();
         vars.put("room", ChatColor.RESET + roomName + ChatColor.AQUA);
         vars.put("player", ChatColor.RESET + senderName + ChatColor.AQUA);
@@ -2014,7 +2071,7 @@ public class WebChatServer {
                 if (memberUuid == null || memberUuid.isBlank()) continue;
                 try {
                     Player recipient = Bukkit.getPlayer(java.util.UUID.fromString(memberUuid));
-                    if (recipient != null && recipient.isOnline()) recipient.sendMessage(line);
+                    if (recipient != null && recipient.isOnline()) sendTokenGameLines(recipient, line);
                 } catch (IllegalArgumentException ignored) {
                 }
             }
@@ -2049,7 +2106,7 @@ public class WebChatServer {
         return false;
     }
 
-    private void handleUserSend(HttpExchange ex, SessionContext ctx, String message, String replyToId, String replyToSender, String replyToPreview) throws IOException {
+    private void handleUserSend(HttpExchange ex, SessionContext ctx, String message, String gameMessage, String replyToId, String replyToSender, String replyToPreview) throws IOException {
         if (emojiTokenLimitExceeded(message, plugin.configValues())) {
             sendJson(ex, 400, "{\"ok\":false,\"error\":\"emoji_limit\"}");
             return;
@@ -2060,6 +2117,7 @@ public class WebChatServer {
         }
         prewarmExternalMediaCache(message);
         ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "web", plugin.displayNameForAccount(ctx.account), ctx.account.role.name(), message)
+                .withGameMessage(gameMessage)
                 .withRealSender(stripControl(ctx.account.safeUsername(), 64), stripControl(ctx.account.uuid, 64));
         attachReplyIfPresent(msg, replyToId, replyToSender, replyToPreview);
         prepareServerRelay(msg);
@@ -2075,7 +2133,7 @@ public class WebChatServer {
         publishServerRelay(msg);
     }
 
-    private void handleGuestSend(HttpExchange ex, Map<String, String> body, String ip, String message, String replyToId, String replyToSender, String replyToPreview) throws IOException {
+    private void handleGuestSend(HttpExchange ex, Map<String, String> body, String ip, String message, String gameMessage, String replyToId, String replyToSender, String replyToPreview) throws IOException {
         ConfigValues config = plugin.configValues();
         if (emojiTokenLimitExceeded(message, config)) {
             sendJson(ex, 400, "{\"ok\":false,\"error\":\"emoji_limit\"}");
@@ -2128,7 +2186,8 @@ public class WebChatServer {
         }
 
         prewarmExternalMediaCache(message);
-        ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "guest", guestName, "GUEST", message);
+        ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "guest", guestName, "GUEST", message)
+                .withGameMessage(gameMessage);
         attachReplyIfPresent(msg, replyToId, replyToSender, replyToPreview);
         prepareServerRelay(msg);
         if (config.broadcastWebChatToWeb) {
@@ -5800,7 +5859,7 @@ public class WebChatServer {
     public boolean acceptRelayedDirectMessage(String relayId, String originServerId, String originServerName,
                                                String senderUuid, String senderUsername, String senderDisplayName,
                                                String targetUuid, String targetUsername, String targetDisplayName,
-                                               String rawMessage) {
+                                               String rawMessage, String rawGameMessage) {
         ConfigValues config = plugin.configValues();
         if (config == null || !config.directMessageEnabled || plugin.directMessages() == null
                 || !plugin.directMessages().available()) return false;
@@ -5809,6 +5868,8 @@ public class WebChatServer {
         String senderRealUuid = RemotePlayerRef.normalizePlayerUuid(stripControl(senderUuid, 80));
         String targetRealUuid = RemotePlayerRef.normalizePlayerUuid(stripControl(targetUuid, 80));
         String message = stripDirectMessage(rawMessage, config.directMessageMaxMessageLength);
+        String gameNoticeMessage = String.valueOf(rawGameMessage == null ? "" : rawGameMessage);
+        if (gameNoticeMessage.isBlank()) gameNoticeMessage = message;
         if (originId.isBlank() || senderRealUuid.isBlank() || targetRealUuid.isBlank() || message.isBlank()) return false;
 
         PlayerIdentity target = storage.findKnownPlayerByUuid(targetRealUuid);
@@ -5836,7 +5897,7 @@ public class WebChatServer {
         long messageId = result.message == null ? 0L : result.message.id;
         publishDirectMessageUpdate(remoteSenderKey, targetRealUuid, threadId);
         dispatchWebPushDirectMessage(remoteSenderKey, remoteSenderDisplay, targetRealUuid, target.label(), threadId, messageId, message);
-        notifyOnlineDirectMessage(remoteSenderDisplay, target, message);
+        notifyOnlineDirectMessage(remoteSenderDisplay, target, gameNoticeMessage);
         return true;
     }
 
@@ -5874,11 +5935,22 @@ public class WebChatServer {
         storage.updateLastDisplayName(remoteKey, username, remoteDisplay);
     }
 
+    private String gameMessageSource(ChatMessage msg) {
+        if (msg == null) return "";
+        if (msg.gameMessage != null && !msg.gameMessage.isBlank()) return msg.gameMessage;
+        return String.valueOf(msg.message == null ? "" : msg.message);
+    }
+
+    private String restoreTokenGameBreaks(String value) {
+        return plugin.restoreMessageTokenGameBreaks(value);
+    }
+
     private void sendRelayedToGame(ChatMessage msg, String format) {
         ConfigValues config = plugin.configValues();
         String rawTemplate = String.valueOf(format == null ? "" : format);
         String template = translateGameFormatCodes(rawTemplate);
-        String gameMessage = renderImageEmojiSymbolsForGame(messageForGameChat(msg == null ? "" : msg.message, config));
+        String gameMessageProtected = renderImageEmojiSymbolsForGame(messageForGameChat(gameMessageSource(msg), config));
+        String gameMessage = restoreTokenGameBreaks(gameMessageProtected);
         String source = stripControl(msg == null ? "" : msg.source, 32);
         String serverId = stripControl(msg == null ? "" : msg.originServerId, 64);
         String serverName = stripControl(msg == null || msg.originServerName == null || msg.originServerName.isBlank() ? serverId : msg.originServerName, 96);
@@ -5896,11 +5968,11 @@ public class WebChatServer {
                 .replace("{real_sender}", realSender)
                 .replace("{uuid}", playerUuid)
                 .replace("{role}", role)
-                .replace("{message}", gameMessage);
+                .replace("{message}", gameMessageProtected);
         line = applyAutomaticServerGamePrefix(rawTemplate, line, serverName, msg, config);
         line = sanitizeSingleGameLine(applyReplyGameLinePrefix(msg, line, config), 32768);
         final String finalReplyLine = gameReplyPreviewLine(msg, config);
-        final GameLineHover finalHover = gameLineHover(msg, line, gameMessage, config);
+        final GameLineHover finalHover = gameLineHover(msg, restoreTokenGameBreaks(line), gameMessage, config);
         final String finalLine = line;
         boolean preservePlainForReply = shouldPreservePlainBroadcastForGameEmojiTokens(
                 String.valueOf(msg == null ? "" : msg.replyToPreview), finalReplyLine, config);
@@ -5919,7 +5991,8 @@ public class WebChatServer {
         // This keeps user-provided literals such as "&n", "&l", "&a" intact when relayed to game chat.
         String rawTemplate = String.valueOf(format == null ? "" : format);
         String template = translateGameFormatCodes(rawTemplate);
-        String gameMessage = renderImageEmojiSymbolsForGame(messageForGameChat(msg == null ? "" : msg.message, config));
+        String gameMessageProtected = renderImageEmojiSymbolsForGame(messageForGameChat(gameMessageSource(msg), config));
+        String gameMessage = restoreTokenGameBreaks(gameMessageProtected);
         String sender = String.valueOf(msg == null || msg.sender == null ? "" : msg.sender);
         String serverId = stripControl(msg == null ? "" : msg.originServerId, 64);
         String serverName = stripControl(msg == null || msg.originServerName == null || msg.originServerName.isBlank() ? serverId : msg.originServerName, 96);
@@ -5928,12 +6001,12 @@ public class WebChatServer {
                 .replace("{server_id}", serverId)
                 .replace("{player}", sender)
                 .replace("{guest}", sender)
-                .replace("{message}", gameMessage);
+                .replace("{message}", gameMessageProtected);
         line = applyReplyGameLinePrefix(msg, line, config);
         line = applyAutomaticServerGamePrefix(rawTemplate, line, serverName, msg, config);
 
         final String finalReplyLine = gameReplyPreviewLine(msg, config);
-        final GameLineHover finalHover = gameLineHover(msg, line, gameMessage, config);
+        final GameLineHover finalHover = gameLineHover(msg, restoreTokenGameBreaks(line), gameMessage, config);
         final String finalLine = line;
         boolean preservePlainForReply = shouldPreservePlainBroadcastForGameEmojiTokens(
                 String.valueOf(msg == null ? "" : msg.replyToPreview), finalReplyLine, config);
@@ -5955,7 +6028,8 @@ public class WebChatServer {
         String rawTemplate = String.valueOf(config.replyGameCommandFormat == null ? "" : config.replyGameCommandFormat);
         if (rawTemplate.isBlank()) rawTemplate = "&8[&dReply&8] &f{player}&7: &f{message}";
         String template = translateGameFormatCodes(rawTemplate);
-        String gameMessage = renderImageEmojiSymbolsForGame(messageForGameChat(gameDisplayMessage, config));
+        String gameMessageProtected = renderImageEmojiSymbolsForGame(messageForGameChat(gameDisplayMessage, config));
+        String gameMessage = restoreTokenGameBreaks(gameMessageProtected);
         String serverId = stripControl(msg.originServerId, 64);
         String serverName = stripControl(msg.originServerName == null || msg.originServerName.isBlank() ? serverId : msg.originServerName, 96);
         String sender = stripControl(msg.sender, 96);
@@ -5964,13 +6038,13 @@ public class WebChatServer {
                 .replace("{server_id}", serverId)
                 .replace("{player}", sender)
                 .replace("{sender}", sender)
-                .replace("{message}", gameMessage);
+                .replace("{message}", gameMessageProtected);
         line = applyReplyGameLinePrefix(msg, line, config);
         line = applyAutomaticServerGamePrefix(rawTemplate, line, serverName, msg, config);
         line = sanitizeSingleGameLine(line, 32768);
 
         String replyPreview = gameReplyPreviewLine(msg, config);
-        GameLineHover interaction = gameLineHover(msg, line, gameMessage, config);
+        GameLineHover interaction = gameLineHover(msg, restoreTokenGameBreaks(line), gameMessage, config);
         boolean preservePreview = shouldPreservePlainBroadcastForGameEmojiTokens(msg.replyToPreview, replyPreview, config);
         boolean preserveLine = shouldPreservePlainBroadcastForGameEmojiTokens(gameDisplayMessage, line, config);
         final String finalLine = line;
@@ -6244,6 +6318,15 @@ public class WebChatServer {
 
     private void broadcastGameLine(String line, boolean preservePlainForGameEmojiTokens, ConfigValues config, GameLineHover hover) {
         if (line == null || line.isEmpty()) return;
+        List<String> lines = plugin.splitMessageTokenGameLines(line);
+        for (int i = 0; i < lines.size(); i++) {
+            String rendered = visibleGameLine(lines.get(i));
+            GameLineHover lineHover = i == 0 ? hover : (hover == null ? GameLineHover.empty() : hover.withoutSender());
+            broadcastSingleGameLine(rendered, preservePlainForGameEmojiTokens, config, lineHover);
+        }
+    }
+
+    private void broadcastSingleGameLine(String line, boolean preservePlainForGameEmojiTokens, ConfigValues config, GameLineHover hover) {
         boolean hasClickableUrl = config != null && config.clickableUrlsInGame && containsUrl(line);
         boolean hasHover = hover != null && hover.enabled();
         if (!hasClickableUrl && !hasHover) {
@@ -6252,17 +6335,25 @@ public class WebChatServer {
         }
 
         if (preservePlainForGameEmojiTokens) {
-            // Keep a single plain Bukkit chat line so external game-side emoji
-            // plugins can render :pack/name: tokens. Do not repeat URL-only
-            // clickable reference lines here; that made URL fallback output appear
-            // as duplicated/comment-like two-line chat in Minecraft.
-            // This intentionally disables hover/click metadata for this rare
-            // compatibility path.
+            // Keep plain Bukkit chat output so external game-side emoji plugins can
+            // render :pack/name: tokens. Configured line-break tokens are already
+            // split into explicit Minecraft message packets above.
             Bukkit.broadcastMessage(line);
             return;
         }
 
         broadcastInteractiveLine(line, hasClickableUrl, hover);
+    }
+
+    private String visibleGameLine(String line) {
+        return line == null || line.isEmpty() ? " " : line;
+    }
+
+    private void sendTokenGameLines(Player recipient, String protectedLine) {
+        if (recipient == null || !recipient.isOnline()) return;
+        for (String line : plugin.splitMessageTokenGameLines(protectedLine)) {
+            recipient.sendMessage(visibleGameLine(line));
+        }
     }
 
     private boolean containsUrl(String line) {
@@ -6310,30 +6401,41 @@ public class WebChatServer {
                                                    java.util.Collection<? extends Player> recipients) {
         ConfigValues config = plugin.configValues();
         String originalMessage = String.valueOf(renderedMessage == null ? "" : renderedMessage);
-        String message = renderImageEmojiSymbolsForGame(originalMessage);
-        String line = sanitizeSingleGameLine(renderedLine, 32768);
-        if (!message.equals(originalMessage) && !originalMessage.isBlank() && line.contains(originalMessage)) {
-            line = line.replace(originalMessage, message);
+        String protectedMessage = msg != null && msg.gameMessage != null && !msg.gameMessage.isBlank()
+                ? msg.gameMessage : originalMessage;
+        String message = renderImageEmojiSymbolsForGame(protectedMessage);
+        String lineSource = String.valueOf(renderedLine == null ? "" : renderedLine);
+        if (!originalMessage.isBlank() && !protectedMessage.equals(originalMessage) && lineSource.contains(originalMessage)) {
+            lineSource = lineSource.replace(originalMessage, protectedMessage);
         }
-        GameLineHover interaction = gameLineHover(msg, line, message, config);
-        boolean clickableUrls = config != null && config.clickableUrlsInGame && containsUrl(line);
+        String line = sanitizeSingleGameLine(lineSource, 32768);
+        String restoredMessage = restoreTokenGameBreaks(message);
+        String restoredLine = restoreTokenGameBreaks(line);
+        message = restoredMessage;
+        GameLineHover interaction = gameLineHover(msg, restoredLine, message, config);
+        java.util.Collection<? extends Player> targets = recipients == null
+                ? Bukkit.getOnlinePlayers()
+                : recipients;
         try {
-            TextComponent component = buildInteractiveLine(line, clickableUrls, interaction);
-            java.util.Collection<? extends Player> targets = recipients == null
-                    ? Bukkit.getOnlinePlayers()
-                    : recipients;
-            for (Player player : targets) {
-                if (player != null && player.isOnline()) player.spigot().sendMessage(component);
+            List<String> lines = plugin.splitMessageTokenGameLines(line);
+            for (int i = 0; i < lines.size(); i++) {
+                String rendered = visibleGameLine(lines.get(i));
+                GameLineHover lineHover = i == 0 ? interaction : interaction.withoutSender();
+                boolean clickableUrls = config != null && config.clickableUrlsInGame && containsUrl(rendered);
+                TextComponent component = buildInteractiveLine(rendered, clickableUrls, lineHover);
+                for (Player player : targets) {
+                    if (player != null && player.isOnline()) player.spigot().sendMessage(component);
+                }
             }
             // The original AsyncChatEvent remains active for non-player viewers, so
             // Paper writes the normal chat log from its Async Chat Thread. Do not echo
             // this manually to the console from the main server thread.
         } catch (Throwable t) {
             plugin.getLogger().warning("Clickable local game chat failed; falling back to plain player delivery: " + t.getMessage());
-            java.util.Collection<? extends Player> targets = recipients == null
-                    ? Bukkit.getOnlinePlayers()
-                    : recipients;
-            for (Player player : targets) if (player != null && player.isOnline()) player.sendMessage(line);
+            for (String split : plugin.splitMessageTokenGameLines(line)) {
+                String rendered = visibleGameLine(split);
+                for (Player player : targets) if (player != null && player.isOnline()) player.sendMessage(rendered);
+            }
         }
     }
 

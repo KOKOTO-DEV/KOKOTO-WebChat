@@ -14,14 +14,14 @@ A web chat plugin for Bukkit/Paper/Spigot-compatible Minecraft servers. It can r
 - Guest chat with math captcha, cooldowns, and a 50 messages/minute default guest rate limit
 - `/bmchat auth <code>` account linking, web password login, local admin accounts
 - Web admin/moderator panel, message hiding, pin/delete action toggle, guest/IP mutes, session revoke
-- Admin custom emoji manager: create, upload, rename, and delete emoji folders/files
+- Admin custom emoji manager: create, multi-file upload, rename, move, and delete emoji folders/files
 - ImageEmojis-Bero 1.9.0 compatibility for token-preserving web/game/reply/relay rendering
 - File and clipboard upload, image/video/audio/YouTube/Shorts previews, plus optional TikTok and X/Twitter embeds
 - DiscordSRV relay and Discord CDN media cache
 - Message replies with clickable referenced-message previews, optional game-side reply previews, pinned messages, virtual scrolling, draggable/resizable window, PIP
 - Optional 1:1 direct-message threads for linked/known players, with unread badges and per-thread retention
 - Remote-server player discovery in the existing web DM recipient search
-- Optional read-only administrator DM content audit with exact-account allowlist and audit logging
+- Optional read-only administrator DM and group-chat content audit with exact-account allowlist and audit logging
 - Built-in UI languages: en-US, ko-KR, ja-JP, zh-CN
 
 ## Build
@@ -31,7 +31,7 @@ mvn clean package
 ```
 
 ```text
-target/BlueMapWebChat-4.6.2.jar
+target/BlueMapWebChat-4.7.0.jar
 ```
 
 ## Install
@@ -45,7 +45,34 @@ target/BlueMapWebChat-4.6.2.jar
 7. Restart the server or run `/bmchat reload`. Run `/bluemap reload` if BlueMap does not refresh web assets automatically.
 
 
-Existing configs are never overwritten. When `config-version` is missing or differs from the running plugin version, BlueMapWebChat compares the physical `config.yml` with the bundled defaults and writes `plugins/BlueMapWebChat/config-migration-4.6.2.yml`. The generated file contains copy-ready missing settings, changed bundled defaults, and the target `config-version` review marker. Even when no other settings differ, the file is still created so configuration version management remains explicit. Version details and previous/new default values are comments, not YAML settings. Custom values and obsolete-setting notes are omitted. When `config-version: "4.6.2"` already matches the plugin version, the config is treated as reviewed and comparison is skipped. See `docs/UPGRADE_4_6_2_EN.md` for this update, `docs/UPGRADE_4_6_1_EN.md` for the previous update, and `docs/UPGRADE_4_6_0_EN.md` for the previous major migration.
+Existing setting values are never overwritten. On startup/reload, known top-level `config.yml` blocks are reordered to match the bundled 4.7.0 layout while each block's current text, values, and custom comments are preserved; unknown top-level blocks remain after known blocks in their original order. Whenever an existing config is checked, BlueMapWebChat writes `plugins/BlueMapWebChat/config-reference-4.7.0.yml` as an exact copy of the current bundled default configuration, including every bundled comment. This reference is generated regardless of how old the installed config is, so 4.5.x/4.6.x or unversioned configs can be compared directly with the complete 4.7.0 layout. When `config-version` is missing or differs from the running plugin version, BlueMapWebChat additionally writes `config-migration-4.7.0.yml` with copy-ready missing settings, changed bundled defaults, and the target `config-version` review marker. Empty maps such as `message-tokens.custom: {}` are treated as real settings and are included when missing. The bottom of the migration file also contains a comment-only current-vs-reference text diff. Unchanged lines are omitted. For each difference, the file name is shown first, then `Line` or `Lines` on a separate line, followed by only the differing text; each differing source line is prefixed directly with `#` so its original YAML indentation is preserved exactly, and reference-only blocks also show where to insert them in the current config. When `config-version: "4.7.0"` already matches, migration comparison is skipped, while the full reference file is still kept current. See `docs/UPGRADE_4_7_0_EN.md` for this update, `docs/UPGRADE_4_6_3_EN.md` for the previous update, `docs/UPGRADE_4_6_2_EN.md` for the previous update, and `docs/UPGRADE_4_6_1_EN.md` for the previous DM/audit update.
+
+## 4.7.0 multi-upload and compatibility
+
+4.7.0 also adds configurable colon-delimited message tokens. English defaults cover newline, blank-line, and indentation actions, and administrators can add aliases in any language or printable custom substitutions. Unknown tokens remain untouched for emoji compatibility.
+
+4.7.0 allows administrators to select multiple custom emoji image files at once using the same file-picker flow as normal chat uploads. The Upload control opens a hidden multi-file input; after files are selected, BlueMapWebChat immediately copies the selection, clears the native input, and begins sequential upload without a second confirmation step. Upload progress and active-transfer cancel remain available, while per-file limits, total emoji storage limits, filename de-duplication, audit logging, and PNG sidecar generation continue through the existing server path.
+
+The Bukkit/Spigot API baseline is lowered from 1.21 to 1.18 while the plugin remains on Java 17. The conservative supported Minecraft range for this release is **1.18 through 26.2**. Paper-specific `AsyncChatEvent` handling remains reflection-based and the Bukkit legacy chat event remains the fallback.
+
+See `docs/UPGRADE_4_6_4_EN.md` for upgrade details.
+
+## 4.6.3 administrator group-chat audit
+
+4.6.3 adds optional read-only administrator access to group-chat message bodies. It uses the same exact-account `private-chat-super-admins` allowlist as DM audit, but has an independent `group-chat.admin-audit.enabled` switch. Audit access does not join the room, mark messages read, change unread counts, send/upload/hide content, or modify membership. Every audit page read is logged as `admin.group-audit-read` without copying message bodies into the audit log.
+
+```yaml
+private-chat-super-admins:
+  - "ExactMinecraftNameOrUUID"
+
+group-chat:
+  admin-audit:
+    enabled: true
+```
+
+4.6.3 also fixes DM/group native video and audio playback during live refreshes. Private-chat message lists now reconcile existing messages by stable key like public chat, so loaded media DOM remains mounted while new messages and delivery/read metadata are updated. Playback therefore continues instead of restarting from the beginning.
+
+See `docs/UPGRADE_4_6_3_EN.md` for upgrade details.
 
 ## 4.6.2 reliable private-message delivery
 
@@ -275,7 +302,9 @@ bluemapwebchat.update.notify
 
 - `docs/USER_MANUAL_EN.md` - complete user and operator manual for all features
 - `docs/CONFIGURATION_EN.md` - configuration reference
-- `docs/SERVER_RELAY_EN.md` - server-to-server public chat relay
+- `docs/SERVER_RELAY_EN.md` - server-to-server public/private chat relay
+- `docs/UPGRADE_4_7_0_EN.md` - 4.6.3 to 4.7.0 upgrade
+- `wiki/` - GitHub Wiki source pages using safe page names without `and` / `&`
 - `docs/UPGRADE_4_6_2_EN.md` - 4.6.1 to 4.6.2 upgrade
 - `docs/UPGRADE_4_6_1_EN.md` - 4.6.0 to 4.6.1 upgrade
 - `docs/UPGRADE_4_6_0_EN.md` - 4.5.5 to 4.6.0 config/database upgrade
@@ -295,7 +324,7 @@ Font note: Installed fonts must be typed by their CSS font-family name. Chat set
 
 ### Private chat metadata super admins
 
-Set `private-chat-super-admins` in `config.yml` to exact UUIDs or Minecraft names for users who may see DM/group-chat metadata for moderation/accounting. By default this view shows titles/participants, message counts, approximate stored byte sizes, retention status, and cleanup preview counts. When `direct-message.admin-audit.enabled: true` is also set, the same explicitly listed users may open DM bodies in a read-only audit view; ordinary ADMIN/MODERATOR roles do not qualify automatically, and every page read is audit-logged. Super admins can also lock a DM/group session or exclude it from automatic retention cleanup.
+Set `private-chat-super-admins` in `config.yml` to exact UUIDs or Minecraft names for users who may see DM/group-chat metadata for moderation/accounting. By default this view shows titles/participants, message counts, approximate stored byte sizes, retention status, and cleanup preview counts. When `direct-message.admin-audit.enabled: true` is also set, the same explicitly listed users may open DM bodies in a read-only audit view. In 4.6.3, `group-chat.admin-audit.enabled: true` independently allows the same explicitly listed users to open group-chat bodies without joining the room or changing read state. Ordinary ADMIN/MODERATOR roles do not qualify automatically, and every audit page read is logged. Super admins can also lock a DM/group session or exclude it from automatic retention cleanup.
 
 Administrative actions are also appended to date-based text audit files under `plugins/BlueMapWebChat/audit` by default. The audit log is intended for server operators and is not shown in the web UI.
 

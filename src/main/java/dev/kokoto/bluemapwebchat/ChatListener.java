@@ -148,6 +148,7 @@ public class ChatListener implements Listener {
 
         String message = String.valueOf(rawMessage == null ? "" : rawMessage)
                 .replace('\n', ' ').replace('\r', ' ').trim();
+        message = plugin.applyMessageTokens(message);
         int max = Math.max(0, config.directMessageMaxMessageLength);
         if (max > 0 && message.length() > max) message = message.substring(0, max);
         if (message.isBlank()) return;
@@ -286,6 +287,8 @@ public class ChatListener implements Listener {
         // :pack/name: tokens instead of a later ImageEmojis font symbol.
         if (event != null) {
             originalChatMessages.put(event, event.getMessage());
+            String transformed = plugin.applyMessageTokens(event.getMessage());
+            if (!transformed.equals(event.getMessage())) event.setMessage(transformed);
         }
     }
 
@@ -298,15 +301,17 @@ public class ChatListener implements Listener {
 
         ConfigValues config = plugin.configValues();
         WebChatServer server = plugin.webServer();
+        boolean tokenMultiline = hasConfiguredGameLineBreak(message);
         boolean interactive = config != null && config.replyGameClickEnabled
                 && config.replyGameClickLocalChat && config.broadcastIngameChatToWeb && server != null;
-        if (!interactive) {
+        if (!interactive && !tokenMultiline) {
             publishCapturedGameChat(event.getPlayer(), message);
             return;
         }
 
         ChatMessage msg = publishCapturedGameChat(event.getPlayer(), message);
-        if (msg == null) return;
+        if (msg == null && tokenMultiline) msg = transientTokenGameMessage(event.getPlayer(), message);
+        if (msg == null || server == null) return;
         String gameMessage = String.valueOf(event.getMessage() == null ? "" : event.getMessage());
         String line;
         try {
@@ -320,9 +325,10 @@ public class ChatListener implements Listener {
         // interactive BMChat component separately and are removed from the native route
         // to prevent duplicate lines.
         event.getRecipients().clear();
+        ChatMessage finalMsg = msg;
         String finalLine = line;
         plugin.getServer().getScheduler().runTask(plugin,
-                () -> server.broadcastClickableLocalGameMessage(msg, finalLine, gameMessage, recipients));
+                () -> server.broadcastClickableLocalGameMessage(finalMsg, finalLine, gameMessage, recipients));
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -369,7 +375,25 @@ public class ChatListener implements Listener {
         if (event == null) return;
         String message = paperPlainText(callNoArg(event, "originalMessage"));
         if (message.isBlank()) message = paperPlainText(callNoArg(event, "message"));
-        if (!message.isBlank()) originalPaperChatMessages.put(event, message);
+        if (!message.isBlank()) {
+            originalPaperChatMessages.put(event, message);
+            applyPaperMessageTokens(event);
+        }
+    }
+
+
+    private void applyPaperMessageTokens(Event event) {
+        if (event == null) return;
+        try {
+            Object current = callNoArg(event, "message");
+            String plain = paperPlainText(current);
+            String transformed = plugin.applyMessageTokens(plain);
+            if (plain.equals(transformed)) return;
+            Class<?> componentClass = Class.forName("net.kyori.adventure.text.Component");
+            Object replacement = componentClass.getMethod("text", String.class).invoke(null, transformed);
+            event.getClass().getMethod("message", componentClass).invoke(event, replacement);
+        } catch (Throwable ignored) {
+        }
     }
 
     private void onPaperChat(Event event) {
@@ -381,23 +405,26 @@ public class ChatListener implements Listener {
 
         ConfigValues config = plugin.configValues();
         WebChatServer server = plugin.webServer();
+        boolean tokenMultiline = hasConfiguredGameLineBreak(original);
         boolean interactive = config != null && config.replyGameClickEnabled
                 && config.replyGameClickLocalChat && config.broadcastIngameChatToWeb && server != null;
-        if (!interactive) {
+        if (!interactive && !tokenMultiline) {
             publishCapturedGameChat(player, original);
             return;
         }
 
         ChatMessage msg = publishCapturedGameChat(player, original);
-        if (msg == null || player == null) return;
+        if (msg == null && tokenMultiline) msg = transientTokenGameMessage(player, original);
+        if (msg == null || player == null || server == null) return;
         String gameMessage = paperPlainText(callNoArg(event, "message"));
         if (gameMessage.isBlank()) gameMessage = original;
         String line = "<" + player.getDisplayName() + "> " + gameMessage;
         List<Player> recipients = paperPlayerViewers(event);
         removePaperPlayerViewers(event);
+        ChatMessage finalMsg = msg;
         String finalGameMessage = gameMessage;
         plugin.getServer().getScheduler().runTask(plugin,
-                () -> server.broadcastClickableLocalGameMessage(msg, line, finalGameMessage, recipients));
+                () -> server.broadcastClickableLocalGameMessage(finalMsg, line, finalGameMessage, recipients));
     }
 
     private void removePaperPlayerViewers(Event event) {
@@ -418,6 +445,20 @@ public class ChatListener implements Listener {
         }
         players.addAll(plugin.getServer().getOnlinePlayers());
         return players;
+    }
+
+    private boolean hasConfiguredGameLineBreak(String message) {
+        String protectedText = plugin.applyMessageTokensForGame(String.valueOf(message == null ? "" : message));
+        return plugin.splitMessageTokenGameLines(protectedText).size() > 1;
+    }
+
+    private ChatMessage transientTokenGameMessage(Player player, String message) {
+        if (player == null) return null;
+        String raw = String.valueOf(message == null ? "" : message);
+        String displayName = plugin.displayPlayerName(player);
+        return new ChatMessage(System.currentTimeMillis(), "game", displayName, "USER", plugin.applyMessageTokens(raw))
+                .withGameMessage(plugin.applyMessageTokensForGame(raw))
+                .withRealSender(player.getName(), player.getUniqueId().toString());
     }
 
     private ChatMessage publishCapturedGameChat(Player player, String message) {

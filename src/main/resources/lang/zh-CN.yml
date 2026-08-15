@@ -87,6 +87,7 @@ web:
     uploadTooMany: 一次最多只能选择 {max} 个文件。
     uploadExtensionDenied: '不允许的文件类型: {name}'
     uploadTooLarge: '文件太大: {name}'
+    emojiBatchUploadFailed: '已上传 {uploaded}/{total}。失败: {failed}'
     uploadFailed: '上传失败: {error}'
     confirmDelete: 要隐藏这条消息吗？
     deleteFailed: '删除失败: {error}'
@@ -120,6 +121,7 @@ web:
     dmRetryFailed: '重试消息失败：{error}'
     dmHideFailed: "隐藏消息失败：{error}"
     groupLoadFailed: '无法加载群组聊天：{error}'
+    groupAuditLoadFailed: "无法加载群聊审计内容：{error}"
     groupJoinFailed: '无法加入群组聊天：{error}'
     groupSendFailed: '无法发送群组消息：{error}'
     groupCreateFailed: '无法创建群组聊天：{error}'
@@ -144,6 +146,9 @@ web:
     dmAuditView: '私信审计（只读）'
     dmAuditReadOnly: '管理员审计视图为只读，每次查看都会写入审计日志。'
     groupMetaOnly: '群组聊天室元数据'
+    groupAuditTitle: '管理员群聊审计'
+    openGroupAudit: '在只读审计视图中打开此群聊。'
+    groupAuditReadOnly: '管理员审计视图为只读，每次查看都会写入审计日志。'
     noContentAccess: '此视图无法查看消息正文。'
     lockDmThreadHint: '锁定此私信会话，阻止发送新消息。'
     unlockDmThreadHint: '解锁此私信会话，允许再次发送消息。'
@@ -180,6 +185,7 @@ web:
     unlimited: 无限制
     emojiFolderSelect: 表情文件夹
     emojiPackCount: '{count} 个表情'
+    emojiBatchResult: '已上传 {uploaded}/{total}'
     emojiNoFileSelected: 未选择文件
     passwordSet: '密码'
     "yes": '是'
