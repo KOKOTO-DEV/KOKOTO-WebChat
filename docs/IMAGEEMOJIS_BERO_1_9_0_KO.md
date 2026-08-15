@@ -1,6 +1,6 @@
 # ImageEmojis-Bero 1.9.0 호환
 
-BlueMapWebChat 4.6.2은 [ImageEmojis-Bero 1.9.0](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)과 연동할 수 있는 선택형 호환 경로를 포함합니다. reflection 기반이라 hard dependency를 추가하지 않으며, ImageEmojis-Bero가 없어도 BlueMapWebChat 자체는 정상 시작합니다.
+BlueMapWebChat 4.7.0은 [ImageEmojis-Bero 1.9.0](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)과 연동할 수 있는 선택형 호환 경로를 포함합니다. reflection 기반이라 hard dependency를 추가하지 않으며, ImageEmojis-Bero가 없어도 BlueMapWebChat 자체는 정상 시작합니다.
 
 ## 지원 동작
 
@@ -79,8 +79,8 @@ ImageEmojis-Bero는 같은 이름의 Discord 이모지로 템플릿을 변환할
 - **게임에서는 보이지만 웹에서 토큰으로 보임:** 같은 팩/이름의 파일이 `plugins/BlueMapWebChat/emojis` 아래에도 있는지 확인합니다.
 - **`/bmchat reply`나 `/bmchat dm`의 이모지가 변환되지 않음:** `replaceInCommands: true`를 유지합니다.
 - **다른 서버에서 온 이모지가 안 보임:** 모든 수신 서버에 같은 이모지 PNG와 팩/이름을 동기화해야 합니다. 채팅 릴레이는 리소스팩 파일을 복사하지 않습니다.
-- **링크 클릭 대신 댓글 명령만 나옴:** URL 조각에는 `OPEN_URL`을 우선 적용하고 URL이 아닌 본문에만 댓글 동작을 넣는 현재 4.6.2 소스를 사용합니다.
+- **링크 클릭 대신 댓글 명령만 나옴:** URL 조각에는 `OPEN_URL`을 우선 적용하고 URL이 아닌 본문에만 댓글 동작을 넣는 현재 4.7.0 소스를 사용합니다.
 
 ## 호환 경계
 
-4.6.2 연동은 ImageEmojis-Bero 1.9.0에서 제공하는 `getEmojiRepository().getEmojis()` runtime 저장소와 각 이모지 모델의 `getName()`, `getTemplate()`, `getAsUtf8Symbol()` 접근자를 기준으로 합니다. 이후 ImageEmojis-Bero 버전에서 이 runtime API가 바뀌더라도 BMChat이 hard failure로 중지되지는 않지만, 호환 코드가 갱신되기 전까지 토큰 또는 plain broadcast fallback으로 동작할 수 있습니다.
+4.7.0 연동은 ImageEmojis-Bero 1.9.0에서 제공하는 `getEmojiRepository().getEmojis()` runtime 저장소와 각 이모지 모델의 `getName()`, `getTemplate()`, `getAsUtf8Symbol()` 접근자를 기준으로 합니다. 이후 ImageEmojis-Bero 버전에서 이 runtime API가 바뀌더라도 BMChat이 hard failure로 중지되지는 않지만, 호환 코드가 갱신되기 전까지 토큰 또는 plain broadcast fallback으로 동작할 수 있습니다.

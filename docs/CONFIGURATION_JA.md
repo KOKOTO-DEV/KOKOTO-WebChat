@@ -4,7 +4,7 @@
 
 ## 設定 version と migration fragment
 
-`config-version` は自動 schema 変換番号ではなく、管理者が設定確認を完了した marker です。実行中の plugin version と一致すれば確認済みとして比較を省略します。ない、または異なる場合は実 `config.yml` と同梱 default を比較し、実 config を変更せず `config-migration-<plugin-version>.yml` を生成します。生成ファイルには、そのまま merge できる不足設定、変更された default、最終確認 marker の `config-version` を実 YAML 設定として記録します。他の差分がなくても設定 version 管理のため file を生成します。version 情報と旧・新 default は `#` comment で、custom 値や obsolete 候補の情報一覧は出力しません。必要な値を merge し、確認完了時だけ `config-version` も merge してください。version が一致するまで起動と `/bmchat reload` ごとにファイルを更新します。
+`config-version` は自動 schema 変換番号ではなく、管理者が設定確認を完了した marker です。既存の設定値は自動上書きしません。startup/reload 時に既知の最上位 config block を bundled default 順へ並べ替えますが、各 block の現在の text・設定値・user-custom comment は保持し、default にない最上位 block は最後に元の順序で残します。既存 config を確認するたびに `config-reference-<plugin-version>.yml` を現在の JAR に同梱された完全な default `config.yml` の原文コピーとして生成し、同梱コメントもすべて保持します。この完全 reference は検出した旧 version に依存しないため、非常に古い config や version marker のない config を現在 default と比較する基準にできます。`config-version` がない、または異なる場合は、さらに `config-migration-<plugin-version>.yml` を生成して不足設定、変更された default、最終 review marker を示します。`message-tokens.custom: {}` のような空 map も実設定として扱い、不足時は migration に出力します。version marker が一致する場合は migration 比較を省略しますが、完全 reference は現在 default に維持します。別途、実 `config.yml` の comment が以前の BMWC bundled comment と完全一致する場合は現在の説明へ更新されることがありますが、設定値と user-custom comment は変更しません。生成された migration ファイルの末尾には、現在の `config.yml` と完全 reference の text diff も comment として出力します。同一行は出力しません。各差分では file 名を先に表示し、次の別行に `Line` または `Lines`、その下に実際に異なる内容だけを表示します。差分 source line は元の YAML indent をそのまま保持するため行頭に `#` だけを直接付けます。reference にだけ存在する連続 block は current config への挿入位置も別に表示します。Line 番号は report 生成時点の `config.yml` を基準にするため、設定編集後に `/bmchat reload` を実行すると現在の Line 番号で再生成されます。必要な値を手動 merge し、確認完了後だけ `config-version` を merge してください。
 
 ## 全体有効化スイッチ
 
@@ -89,6 +89,42 @@ emoji:
 
 チャット履歴は `chat.history-storage` で `memory`、`jsonl`、`sqlite` のいずれかを選びます。`chat.history-size` と `chat.history-retention-days` は 3 つのモードで共通です。`0` は件数/期間の制限なしを意味します。新規生成された config は最上位の `enabled: false` から始まるため、これらの値を確認して `enabled: true` にするまでクリーンアップ処理は実行されません。サーバー方針として古いチャットの自動削除が必要な場合は、`30` や `90` などの正の保持日数を設定してください。アップロードと外部メディアキャッシュの保持設定も同じ考え方です。`chat.history-file` は JSONL のみ、`chat.history-sqlite-file` は SQLite のみで使われます。
 
+## メッセージトークン
+
+`message-tokens.enabled` は colon 区切りの管理者定義 text/control alias を有効にします。config には colon を付けず alias 名だけを記述し、たとえば `enter` は chat で `:enter:` と入力します。標準 alias は英語のみで、管理者が任意の言語へ変更・追加できます。未登録 alias はそのまま残るため custom/ImageEmojis token と共存できます。
+
+```yaml
+message-tokens:
+  enabled: true
+  max-replacements-per-message: 24
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br]
+  blank-line:
+    aliases: [blankline, emptyline, paragraphbreak]
+  tab:
+    aliases: [tab, indent]
+    spaces: 4
+  custom: {}
+```
+
+- `max-replacements-per-message: 0` は成功した message-token 置換数を制限しません。
+- `newline` は改行 1 行です。
+- `blank-line` は改行 2 つで空行 1 行を作ります。
+- `tab.spaces` は 1～16 に制限され、literal tab control character ではなく space を挿入します。
+- `custom` は printable text の置換のみで、control character/newline は除去されます。
+- `:\n:` のような backslash escape は意図的に解釈しません。
+- Minecraft の通常 CR/LF は従来の 1 行 flatten を維持します。`newline`/`blank-line` alias で作成した改行だけを別管理し、最終 game delivery で明示的な複数 chat line として送ります。server relay でも受信側に同じ 4.7.0 token-line support が必要です。
+
+`custom: {}` を次のような block に置き換えて printable substitution を追加できます。
+
+```yaml
+message-tokens:
+  custom:
+    separator:
+      aliases: [separator, divider]
+      replacement: "────────────"
+```
+
 ## 1:1 ダイレクトメッセージスレッド
 
 ```yaml
@@ -102,6 +138,8 @@ direct-message:
   admin-audit:
     enabled: false
 ```
+
+`group-chat.admin-audit.enabled` は 4.6.3 で追加された独立した default-off の group content access switch です。有効化しても account が `private-chat-super-admins` に指定されている必要があります。管理者 view は read-only で room membership を必要とせず、room 参加や read state 更新も行いません。各 page read は body を audit log にコピーせず `admin.group-audit-read` として記録されます。
 
 `direct-message.admin-audit.enabled` は default off の別 content-access switch です。有効でも `private-chat-super-admins` に指定された account だけが read-only audit view で DM body を開けます。page read は audit log に記録されますが body 自体は log にコピーされません。通常 ADMIN/MODERATOR role は自動対象ではありません。
 
@@ -488,7 +526,7 @@ ui:
 
 ## 非公開チャットメタデータ・スーパー管理者
 
-`private-chat-super-admins: []` には管理/容量確認用に DM/group metadata を閲覧できる exact UUID または Minecraft name を指定します。metadata view は participant/title、message count、storage size、retention state と管理操作を表示します。DM body は `direct-message.admin-audit.enabled: true` の場合だけ read-only で開け、各 page read が audit log に記録されます。
+`private-chat-super-admins: []` には管理/容量確認用に DM/group metadata を閲覧できる exact UUID または Minecraft name を指定します。metadata view は participant/title、message count、storage size、retention state と管理操作を表示します。DM body は `direct-message.admin-audit.enabled: true`、group-chat body は `group-chat.admin-audit.enabled: true` の場合だけ read-only で開け、どちらも各 page read が audit log に記録されます。
 
 
 `standalone-web.app-name` と `standalone-web.app-short-name` は standalone ページ/PWA 名を制御します。モバイルでホーム画面 Web アプリとして追加済みの場合、変更後は再追加してください。`web-push.notification-title` はテスト/システム/バックグラウンド Push の既定タイトルを制御します。空の場合は `standalone-web.app-name` を使用します。

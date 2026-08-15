@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.6.2 통합 사용·운영 매뉴얼
+# BlueMapWebChat 4.7.0 통합 사용·운영 매뉴얼
 
-이 문서는 BlueMapWebChat 4.6.2의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION_KO.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY_KO.md`, HTTPS 구성은 `CADDY_HTTPS_KO.md`와 `NGINX_HTTPS_KO.md`를 함께 참고하세요.
+이 문서는 BlueMapWebChat 4.7.0의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION_KO.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY_KO.md`, HTTPS 구성은 `CADDY_HTTPS_KO.md`와 `NGINX_HTTPS_KO.md`를 함께 참고하세요.
 
 ## 1. 플러그인 개요
 
@@ -47,7 +47,7 @@ BlueMapWebChat은 Minecraft Bukkit/Paper/Spigot 계열 서버의 게임 채팅�
 기본 안전 설정:
 
 ```yaml
-config-version: "4.6.2"
+config-version: "4.7.0"
 enabled: false
 ```
 
@@ -55,13 +55,15 @@ enabled: false
 
 ## 4. 설정 업그레이드와 마이그레이션 파일
 
-기존 `config.yml`은 업데이트 시 자동으로 덮어쓰지 않습니다.
+기존 설정값은 업데이트 시 자동으로 덮어쓰지 않습니다. startup/reload 시 알려진 최상위 설정 블록을 4.7.0 기본 순서에 맞춰 재정렬하지만 각 블록의 현재 내용·설정값·사용자 지정 주석은 보존하며, 기본에 없는 최상위 블록은 마지막에 기존 순서대로 유지합니다.
 
 실행 중인 플러그인 버전과 `config-version`이 다르거나 설정에 버전이 없으면 다음 파일이 생성됩니다.
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.6.2.yml
+plugins/BlueMapWebChat/config-migration-4.7.0.yml
 ```
+
+플러그인은 `plugins/BlueMapWebChat/config-reference-4.7.0.yml`도 생성합니다. 이 파일은 현재 JAR의 완전한 기본 config를 주석까지 그대로 복사한 기준 파일입니다. 오래된 설정이나 `config-version`이 없는 설정은 이 파일과 전체 구조를 비교하고, migration fragment는 실제 반영할 차이 목록으로 사용하세요. migration 파일 하단에는 현재 설정과 reference의 텍스트 diff를 주석으로 추가하되 동일한 줄은 출력하지 않습니다. 각 차이는 파일명, 별도 줄의 `Line` 또는 `Lines`, 실제로 다른 내용 순서로 표시합니다. 실제 차이 줄은 원본 YAML 들여쓰기를 그대로 유지하도록 줄 앞에 `#`만 직접 붙이며, reference 전용 블록은 현재 config에 넣을 위치도 따로 표시합니다.
 
 판정 기준:
 
@@ -69,7 +71,7 @@ plugins/BlueMapWebChat/config-migration-4.6.2.yml
 |---|---|
 | `config-version` 없음 | 다른 차이가 0개여도 대상 버전 표식이 든 마이그레이션 파일 생성 |
 | `config-version`이 플러그인 버전과 다름 | 누락·변경 설정과 대상 버전 표식이 든 마이그레이션 파일 생성·갱신 |
-| `config-version`이 플러그인 버전과 같음 | 검토 완료로 간주하고 비교 및 파일 생성을 생략하며, 남은 동일 버전 안내 파일 제거 |
+| `config-version`이 플러그인 버전과 같음 | 검토 완료로 간주해 migration 비교/보고서 생성을 생략하고 오래된 migration 안내는 제거하지만, 전체 reference 파일은 계속 최신 상태로 유지 |
 
 이 파일에는 다음 항목이 실제 YAML 설정 구조로 기록됩니다.
 
@@ -89,7 +91,7 @@ plugins/BlueMapWebChat/config-migration-4.6.2.yml
 4. 검토가 끝나면 실제 `config.yml`에 다음 값을 넣습니다.
 
 ```yaml
-config-version: "4.6.2"
+config-version: "4.7.0"
 ```
 
 버전이 일치하면 이후 비교를 생략합니다.
@@ -289,6 +291,30 @@ chat:
 ```
 
 일반 메시지와 URL 중심 메시지를 별도로 제한할 수 있습니다. `0`은 제한 없음입니다.
+
+### 8.5 메시지 토큰
+
+BlueMapWebChat 4.7.0은 메시지를 저장하거나 릴레이하기 전에 관리자가 설정한 `:alias:` 토큰을 치환할 수 있습니다. 기본 alias는 영어만 제공하며 관리자가 원하는 언어의 alias로 바꾸거나 추가할 수 있습니다.
+
+- `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 다음 줄
+- `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 빈 줄 1개
+- `:tab:`, `:indent:` → 설정된 수의 공백(기본 4칸)
+
+알 수 없는 토큰은 그대로 유지하므로 ImageEmojis/커스텀 이모지 토큰과 충돌하지 않습니다. `:\n:` 같은 백슬래시 escape는 해석하지 않습니다. `custom`에는 출력 가능한 일반 문자 치환을 추가할 수 있습니다. Minecraft에서는 일반 CR/LF 입력은 기존처럼 한 줄로 평탄화하고, `newline`/`blank-line` alias가 만든 줄바꿈만 최종 게임 출력에서 명시적인 여러 채팅 줄로 보냅니다. 서버간 릴레이의 게임 출력도 같은 4.7.0 token-line 처리가 수신 서버에 있어야 합니다.
+
+```yaml
+message-tokens:
+  enabled: true
+  max-replacements-per-message: 24
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br]
+  blank-line:
+    aliases: [blankline, emptyline, paragraphbreak]
+  tab:
+    aliases: [tab, indent]
+    spaces: 4
+  custom: {}
+```
 
 ## 9. 채팅 기록과 검색
 
@@ -1429,6 +1455,8 @@ BlueMap 웹 자산만 갱신되지 않으면 `/bluemap reload`를 추가로 사�
 
 - `CONFIGURATION_KO.md`: 설정별 상세 설명
 - `SERVER_RELAY_KO.md`: 릴레이 토폴로지, 인증과 오류
+- `UPGRADE_4_6_4_KO.md`: 4.6.3→4.7.0 업그레이드
+- `UPGRADE_4_6_3_KO.md`: 4.6.2→4.6.3 업그레이드
 - `UPGRADE_4_6_2_KO.md`: 4.6.1→4.6.2 업그레이드
 - `UPGRADE_4_6_1_KO.md`: 4.6.0→4.6.1 업그레이드
 - `UPGRADE_4_6_0_KO.md`: 4.5.5→4.6.0 업그레이드
@@ -1440,3 +1468,8 @@ BlueMap 웹 자산만 갱신되지 않으면 `/bluemap reload`를 추가로 사�
 - `OPERATIONS_SECURITY_KO.md`: 공개 운영 보안
 - `I18N_KO.md`: 다국어 파일 관리
 - `RELEASE_CHECKLIST_KO.md`: 배포 전 검사
+
+### 관리자 그룹채팅 본문 감사 (4.6.3)
+
+`group-chat.admin-audit.enabled: true`를 설정하고 정확한 마인크래프트 이름 또는 UUID를 `private-chat-super-admins`에 등록해야 하며 두 조건이 모두 필요합니다. 조건을 만족한 관리자는 해당 방의 멤버가 아니어도 관리자 그룹 메타데이터 목록에서 본문을 읽기 전용으로 열 수 있습니다. 감사 화면은 방에 참여하지 않고 읽음/미확인 수를 변경하지 않으며 메시지 전송·업로드·숨김·멤버 변경도 제공하지 않습니다. 각 페이지 열람은 `admin.group-audit-read`로 기록되고 메시지 본문은 감사 로그에 복사하지 않습니다.
+

@@ -77,3 +77,26 @@ mvn clean package
 - [ ] `private-chat-super-admins`에 등록되어도 `direct-message.admin-audit.enabled: false`이면 메타데이터만 보인다.
 - [ ] 두 조건을 모두 켜면 관리자 DM 행이 읽기 전용 감사 화면으로 열리고 전송·숨김·읽음 처리는 제공하지 않으며 전역 숨김 메시지는 제외된다.
 - [ ] 감사 페이지를 읽을 때마다 actor, thread ID, pagination, limit, returned count가 `admin.dm-audit-read`로 기록되고 본문은 감사 로그에 복사되지 않는다.
+
+## 4.7.0 다중 업로드 및 호환성 확인
+
+- [ ] 기존 설정 버전과 관계없이 `config-reference-4.7.0.yml`이 기본 `config.yml`과 byte-for-byte 동일하게 주석까지 포함해 생성된다.
+- [ ] startup/reload 시 알려진 최상위 `config.yml` 블록이 4.7.0 기본 순서로 재정렬되지만 YAML 값과 블록 주석은 유지되고, 기본에 없는 최상위 블록은 마지막에 기존 순서대로 남는다.
+- [ ] bundled `config.yml`의 message-token 기본 alias/예시는 영어만 사용하며, 언어별 alias는 관리자가 설정으로 추가하는 방식으로 문서화되어 있다.
+- [ ] `en-US.yml`, `ko-KR.yml`, `ja-JP.yml`, `zh-CN.yml`의 key 집합이 동일하고 빈/null 번역이 없다.
+- [ ] 생성된 4.7.0 migration 보고서 하단에는 현재 설정과 reference의 텍스트 diff가 주석으로 나오며, 동일한 줄은 제외하고 파일명과 `Line`/`Lines`를 실제 차이 내용과 별도 줄로 표시하며 reference 전용 블록은 삽입 위치도 표시한다.
+- [ ] `pom.xml`과 `plugin.yml` 버전이 4.7.0이다.
+- [ ] `plugin.yml`은 `api-version: '1.18'`, POM은 Java 17 + Spigot API 1.18.2를 사용한다.
+- [ ] 관리자 이모지 Upload 버튼이 일반 업로드와 같은 숨겨진 다중 파일 picker를 열고, 파일 선택 직후 별도 확인 단계 없이 순차 업로드를 시작하며 각 선택 파일을 정확히 한 번만 전송한다.
+- [ ] 중간 파일이 실패해도 뒤의 선택 파일 업로드가 계속된다.
+- [ ] game-link sidecar가 켜진 경우 GIF/JPG/WEBP의 PNG sidecar 생성이 유지된다.
+- [ ] 검토 완료된 4.6.3 config는 새 `message-tokens` 설정(`custom: {}` 포함)과 `config-version: "4.7.0"`이 들어간 migration을 만들고, 더 오래되거나 버전 표식이 없는 config도 현재 4.7.0 전체 키와 비교된다.
+
+## 4.6.3 관리자 그룹채팅 감사 확인
+
+- [ ] 이전 기본 주석을 그대로 쓰는 config는 해당 주석 블록만 4.6.3 설명으로 갱신되고 YAML 설정값이나 사용자 지정 주석은 변경되지 않는다.
+- [ ] `config-version: "4.6.2"` 설정은 다른 누락이 없을 때 `group-chat.admin-audit.enabled: false`와 `config-version: "4.6.3"`이 포함된 `config-migration-4.6.3.yml`을 생성한다.
+- [ ] `private-chat-super-admins`에 등록되어 있어도 `group-chat.admin-audit.enabled: false`이면 그룹은 메타데이터만 보인다.
+- [ ] 두 조건을 모두 켜면 등록된 최고관리자는 방 멤버가 아니어도 그룹 본문을 읽기 전용으로 열 수 있고 읽음/미확인 수는 변하지 않는다.
+- [ ] 각 감사 페이지 열람은 actor/room/pagination/count를 포함한 `admin.group-audit-read`를 남기며 본문은 감사 로그에 복사하지 않는다.
+

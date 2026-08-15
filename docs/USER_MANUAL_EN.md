@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.6.2 Complete User and Operations Manual
+# BlueMapWebChat 4.7.0 Complete User and Operations Manual
 
-This manual describes all BlueMapWebChat 4.6.2 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION_EN.md`. For relay protocol details, see `SERVER_RELAY_EN.md`. For HTTPS deployment, also see `CADDY_HTTPS_EN.md` and `NGINX_HTTPS_EN.md`.
+This manual describes all BlueMapWebChat 4.7.0 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION_EN.md`. For relay protocol details, see `SERVER_RELAY_EN.md`. For HTTPS deployment, also see `CADDY_HTTPS_EN.md` and `NGINX_HTTPS_EN.md`.
 
 ## 1. Overview
 
@@ -22,8 +22,11 @@ The default HTTP port is `8899`, the default API prefix is `/api`, and the defau
 
 Required:
 
-- A Bukkit/Paper/Spigot-compatible server running the Java version required by the server platform
+- A Bukkit/Paper/Spigot-compatible Minecraft server in the conservative supported range **1.18 through 26.2**
+- **Java 17 or newer as required by the selected Minecraft server version**; BlueMapWebChat itself is compiled for Java 17
 - Permission to install plugin JAR files
+
+BlueMapWebChat 4.7.0 declares `api-version: '1.18'` and compiles against `spigot-api:1.18.2-R0.1-SNAPSHOT`. Minecraft 1.17 and older are not claimed by this release.
 
 Optional integrations:
 
@@ -47,7 +50,7 @@ For public servers, do not expose port `8899` directly to the Internet. Bind Blu
 Safe initial state:
 
 ```yaml
-config-version: "4.6.2"
+config-version: "4.7.0"
 enabled: false
 ```
 
@@ -55,13 +58,15 @@ While disabled, the web service, chat forwarding, and cleanup tasks do not start
 
 ## 4. Configuration Upgrade and Migration Fragment
 
-BlueMapWebChat never overwrites an existing `config.yml` during an update.
+BlueMapWebChat never overwrites existing setting values during an update. On startup/reload, known top-level config blocks are reordered to the bundled 4.7.0 layout while each block's current text, values, and custom comments are preserved; unknown top-level blocks remain last in their original order.
 
 When `config-version` is missing or differs from the running plugin version, the plugin creates:
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.6.2.yml
+plugins/BlueMapWebChat/config-migration-4.7.0.yml
 ```
+
+The plugin also writes `plugins/BlueMapWebChat/config-reference-4.7.0.yml`, an exact full copy of the current bundled default config including comments. Use this file as the authoritative comparison source for older or unversioned configurations; the migration fragment remains the concise list of changes to review. At the bottom of the migration file, a comment-only textual diff shows only differing lines. Each side prints the file name, then `Line` or `Lines` on its own line, followed by the differing text. Each differing source line is prefixed directly with `#`, preserving its original YAML indentation; reference-only blocks also show their insertion position in the current config.
 
 Decision rules:
 
@@ -69,7 +74,7 @@ Decision rules:
 |---|---|
 | `config-version` is missing | Create the migration file with the target version marker even when there are zero other differences |
 | `config-version` differs from the plugin version | Create or refresh the migration file with missing/changed settings and the target version marker |
-| `config-version` matches the plugin version | Treat the configuration as reviewed, skip comparison and file creation, and remove stale same-version guidance |
+| `config-version` matches the plugin version | Treat the configuration as reviewed, skip migration comparison/report creation, remove stale migration guidance, and still keep the full reference current |
 
 The file contains copy-ready YAML for:
 
@@ -89,7 +94,7 @@ Upgrade procedure:
 4. After review, set:
 
 ```yaml
-config-version: "4.6.2"
+config-version: "4.7.0"
 ```
 
 When the version matches, future comparisons are skipped.
@@ -289,6 +294,38 @@ chat:
 ```
 
 Normal text and URL-oriented messages can use different limits. `0` means unlimited.
+
+
+### 8.5 Message Tokens
+
+BlueMapWebChat 4.7.0 can replace administrator-configured `:alias:` tokens before messages are stored or relayed. The built-in alias names are English-only defaults, but aliases can be replaced or extended in any language.
+
+Default controls:
+
+- `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → one new line
+- `:blankline:`, `:emptyline:`, `:paragraphbreak:` → one empty line
+- `:tab:`, `:indent:` → configurable spaces (4 by default)
+
+Unknown tokens are left unchanged, so ImageEmojis/custom emoji tokens continue to work. Backslash escape forms such as `:\n:` are not supported. Printable custom replacements can also be configured, for example `:separator:` → `────────────`.
+
+For Minecraft output, ordinary CR/LF characters still follow the existing one-line flattening behavior. Only line breaks produced by configured `newline` / `blank-line` aliases are carried through that sanitizer and emitted as explicit Minecraft chat lines at final delivery, so `:enter:` works without changing the treatment of arbitrary pasted newlines. For server-relayed game output, the receiving BlueMapWebChat server must also have the same 4.7.0 token-line delivery support; an older receiver flattens the normal relayed LF.
+
+```yaml
+message-tokens:
+  enabled: true
+  max-replacements-per-message: 24
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br]
+  blank-line:
+    aliases: [blankline, emptyline, paragraphbreak]
+  tab:
+    aliases: [tab, indent]
+    spaces: 4
+  custom: {}
+```
+
+The server-side processor is shared by normal chat, direct messages, group chat, supported Minecraft command/chat paths, and relayed messages, so the stored/relayed content contains the resolved line breaks or printable replacement text.
+
 
 ## 9. History and Search
 
@@ -808,7 +845,7 @@ Tokens:
 
 `token-format: short` inserts `:pack/name:`. `legacy` inserts `:emoji:pack/name:`. Both formats are accepted for parsing.
 
-Administrators can create folders, upload files, rename items, and delete items from the web emoji manager. Renaming a file or pack can break rendering of historical messages that contain the old token.
+Administrators can create folders, select **multiple PNG/JPG/JPEG/GIF/WEBP files in one picker operation**, upload them immediately through the same validated per-file upload path used by normal chat uploads, rename items, and delete items from the web emoji manager. Multi-file uploads run sequentially and keep the existing per-file validation, storage accounting, unique-name allocation, audit logging, and PNG-sidecar generation. Renaming a file or pack can break rendering of historical messages that contain the old token.
 
 ### 21.1 In-Game Emoji Handling
 
@@ -1380,6 +1417,8 @@ If only BlueMap web assets appear stale, also run `/bluemap reload`.
 
 - `CONFIGURATION_EN.md`: detailed setting reference
 - `SERVER_RELAY_EN.md`: relay topology, authentication, and errors
+- `UPGRADE_4_6_4_EN.md`: 4.6.3→4.7.0 upgrade
+- `UPGRADE_4_6_3_EN.md`: 4.6.2 to 4.6.3 upgrade
 - `UPGRADE_4_6_2_EN.md`: 4.6.1 to 4.6.2 upgrade
 - `UPGRADE_4_6_1_EN.md`: 4.6.0 to 4.6.1 upgrade
 - `UPGRADE_4_6_0_EN.md`: 4.5.5 to 4.6.0 upgrade
@@ -1391,3 +1430,8 @@ If only BlueMap web assets appear stale, also run `/bluemap reload`.
 - `OPERATIONS_SECURITY_EN.md`: public operations security
 - `I18N_EN.md`: language files and fallback
 - `RELEASE_CHECKLIST_EN.md`: release checklist
+
+### Administrator group-chat body audit (4.6.3)
+
+Set `group-chat.admin-audit.enabled: true` and list the exact Minecraft name or UUID in `private-chat-super-admins`. Both gates are required. A qualifying administrator may open group-chat bodies from the administrator room metadata list even when they are not a room member. The audit view is read-only: it does not join the room, mark messages read, change unread counts, send/upload/hide messages, or change membership. Every page read records `admin.group-audit-read`; message bodies are not copied into the audit log.
+

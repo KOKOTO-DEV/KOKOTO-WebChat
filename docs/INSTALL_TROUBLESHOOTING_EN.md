@@ -17,7 +17,7 @@ mvn clean package
 Output:
 
 ```text
-target/BlueMapWebChat-4.6.2.jar
+target/BlueMapWebChat-4.7.0.jar
 ```
 
 ## Install or upgrade
@@ -39,9 +39,9 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 The entries should include the current version query, for example:
 
 ```text
-addons/bluemap-web-chat/config.js?v=4.6.2-<cache-token>
-addons/bluemap-web-chat/chat.js?v=4.6.2-<cache-token>
-addons/bluemap-web-chat/chat.css?v=4.6.2-<cache-token>
+addons/bluemap-web-chat/config.js?v=4.7.0-<cache-token>
+addons/bluemap-web-chat/chat.js?v=4.7.0-<cache-token>
+addons/bluemap-web-chat/chat.css?v=4.7.0-<cache-token>
 ```
 
 Also verify the actual web files were updated:

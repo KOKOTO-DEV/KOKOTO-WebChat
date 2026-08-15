@@ -77,3 +77,26 @@ mvn clean package
 - [ ] A listed `private-chat-super-admins` account still sees metadata only while `direct-message.admin-audit.enabled` is false.
 - [ ] With both gates enabled, administrator DM rows open a read-only audit view, sending/hiding/mark-read controls remain unavailable, and globally hidden messages are excluded.
 - [ ] Each audit page read appends `admin.dm-audit-read` with actor, thread ID, pagination, limit, and returned count; message bodies are not copied into the audit log.
+
+## 4.7.0 multi-upload and compatibility checks
+
+- [ ] `pom.xml` and `plugin.yml` report 4.7.0.
+- [ ] Startup/reload with an existing config writes `config-reference-4.7.0.yml` byte-for-byte equal to the bundled `config.yml`, including comments, regardless of the old config version.
+- [ ] Startup/reload reorders known top-level `config.yml` blocks to the bundled 4.7.0 order without changing YAML values or block comments; unknown top-level blocks remain last in their original order.
+- [ ] Bundled `config.yml` message-token aliases/examples are English-only; localized aliases are documented as administrator-configurable rather than shipped in the default config.
+- [ ] `en-US.yml`, `ko-KR.yml`, `ja-JP.yml`, and `zh-CN.yml` have identical key sets and no empty/null translations.
+- [ ] A generated 4.7.0 migration report ends with a comment-only current-vs-reference text diff that omits unchanged lines, prints file name and `Line`/`Lines` separately from the differing text, and shows an insertion position for reference-only blocks.
+- [ ] `plugin.yml` declares `api-version: '1.18'` and the POM uses Spigot API 1.18.2 with Java 17.
+- [ ] The administrator emoji Upload control opens the same hidden multiple-file picker pattern used by normal uploads; selecting files immediately starts sequential upload without a second confirmation step, and each selected file is submitted exactly once.
+- [ ] A failed emoji file does not prevent later selected files from uploading.
+- [ ] GIF/JPG/WEBP files still receive PNG sidecars when game-link sidecars are enabled.
+- [ ] A reviewed 4.6.3 config produces a 4.7.0 migration fragment containing the new `message-tokens` settings (including `custom: {}`) plus `config-version: "4.7.0"`; an older/unversioned config is also compared against all current 4.7.0 keys.
+
+## 4.6.3 administrator group-chat audit checks
+
+- [ ] A config with unchanged older bundled comments refreshes those comment blocks to the 4.6.3 wording without changing YAML setting values or user-custom comments.
+- [ ] A config marked `4.6.2` generates `config-migration-4.6.3.yml` containing `group-chat.admin-audit.enabled: false` and `config-version: "4.6.3"` when no other settings are missing.
+- [ ] `group-chat.admin-audit.enabled: false` keeps administrator group rows metadata-only even for accounts listed in `private-chat-super-admins`.
+- [ ] With both gates enabled, a listed super administrator can open a group body without room membership; the view is read-only and does not mark messages read or change unread counts.
+- [ ] Every audit page read writes `admin.group-audit-read` with actor/room/pagination/count and does not copy message bodies into the audit log.
+

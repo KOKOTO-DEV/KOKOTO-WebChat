@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.6.2 総合ユーザー・運用マニュアル
+# BlueMapWebChat 4.7.0 総合ユーザー・運用マニュアル
 
-この文書は BlueMapWebChat 4.6.2 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION_JA.md`、サーバー間リレーは `SERVER_RELAY_JA.md`、HTTPS は `CADDY_HTTPS_JA.md` と `NGINX_HTTPS_JA.md` を参照してください。
+この文書は BlueMapWebChat 4.7.0 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION_JA.md`、サーバー間リレーは `SERVER_RELAY_JA.md`、HTTPS は `CADDY_HTTPS_JA.md` と `NGINX_HTTPS_JA.md` を参照してください。
 
 ## 1. 概要
 
@@ -45,7 +45,7 @@ BlueMapWebChat は Bukkit/Paper/Spigot 互換 Minecraft サーバーのチャッ
 7. 再起動または `/bmchat reload` を実行します。
 
 ```yaml
-config-version: "4.6.2"
+config-version: "4.7.0"
 enabled: false
 ```
 
@@ -53,13 +53,15 @@ enabled: false
 
 ## 4. 設定マイグレーション
 
-既存の `config.yml` は自動上書きされません。
+既存の設定値は自動上書きされません。startup/reload 時に既知の最上位 config block を 4.7.0 bundled default 順へ並べ替えますが、各 block の現在の text・設定値・custom comment は保持し、default にない最上位 block は最後に元の順序で残します。
 
 `config-version` がない、または実行中バージョンと異なる場合、次のファイルが生成されます。
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.6.2.yml
+plugins/BlueMapWebChat/config-migration-4.7.0.yml
 ```
+
+プラグインは `plugins/BlueMapWebChat/config-reference-4.7.0.yml` も生成します。これは現在 JAR の完全な default config をコメント込みでそのままコピーした基準ファイルです。古い config や version marker のない config はこの完全 reference と比較し、migration fragment は実際に確認する差分一覧として使用してください。migration file 末尾には current と reference の text diff を comment として追加しますが、同一行は出力しません。各差分は file 名、別行の `Line` または `Lines`、実際に異なる内容の順で表示します。差分 source line は元の YAML indent を保持するため行頭に `#` だけを直接付け、reference-only block は current config への挿入位置も別に表示します。
 
 判定基準:
 
@@ -67,7 +69,7 @@ plugins/BlueMapWebChat/config-migration-4.6.2.yml
 |---|---|
 | `config-version` がない | 他の差分が 0 件でも対象 version marker を含む migration file を生成 |
 | `config-version` が plugin version と異なる | 不足・変更設定と対象 version marker を含む file を生成・更新 |
-| `config-version` が plugin version と一致 | 確認済みとして比較と file 生成を省略し、残っている同 version の案内 file を削除 |
+| `config-version` が plugin version と一致 | 確認済みとして migration 比較/report 生成を省略し、古い migration 案内は削除するが、完全 reference file は最新状態に維持 |
 
 含まれる内容:
 
@@ -78,7 +80,7 @@ plugins/BlueMapWebChat/config-migration-4.6.2.yml
 他の設定差分がなくても、設定 version 管理のため `config-version` を含む file を生成します。説明や旧値は `#` comment のみで、実際の `config.yml` は変更されません。確認後に次を設定します。
 
 ```yaml
-config-version: "4.6.2"
+config-version: "4.7.0"
 ```
 
 バージョンが一致すると比較を省略します。
@@ -246,6 +248,30 @@ chat:
 ```
 
 `0` は無制限です。
+
+### 8.5 メッセージトークン
+
+BlueMapWebChat 4.7.0 は、保存または relay の前に管理者設定の `:alias:` token を置換できます。標準 alias は英語のみで、管理者が任意の言語の alias に変更・追加できます。
+
+- `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 改行 1 行
+- `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 空行 1 行
+- `:tab:`, `:indent:` → 設定数の space（既定 4）
+
+未知の token はそのまま残るため、ImageEmojis/custom emoji token と共存できます。`:\n:` のような backslash escape は解釈しません。`custom` には printable text の置換を追加できます。Minecraft では通常の CR/LF は従来どおり 1 行へ flatten し、`newline`/`blank-line` alias で作成した改行だけを最終 game delivery で明示的な複数 chat line として送ります。server relay の game 表示でも受信側に同じ 4.7.0 token-line 対応が必要です。
+
+```yaml
+message-tokens:
+  enabled: true
+  max-replacements-per-message: 24
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br]
+  blank-line:
+    aliases: [blankline, emptyline, paragraphbreak]
+  tab:
+    aliases: [tab, indent]
+    spaces: 4
+  custom: {}
+```
 
 ## 9. 履歴と検索
 
@@ -1100,6 +1126,8 @@ Web Push:
 
 - `CONFIGURATION_JA.md`
 - `SERVER_RELAY_JA.md`
+- `UPGRADE_4_6_4_JA.md`: 4.6.3→4.7.0 upgrade
+- `UPGRADE_4_6_3_JA.md`: 4.6.2→4.6.3 upgrade
 - `UPGRADE_4_6_2_JA.md`: 4.6.1→4.6.2 upgrade
 - `UPGRADE_4_6_1_JA.md`: 4.6.0→4.6.1 upgrade
 - `UPGRADE_4_6_0_JA.md`
@@ -1111,3 +1139,8 @@ Web Push:
 - `OPERATIONS_SECURITY_JA.md`
 - `I18N_JA.md`
 - `RELEASE_CHECKLIST_JA.md`
+
+### 管理者 group-chat body audit (4.6.3)
+
+`group-chat.admin-audit.enabled: true` を設定し、exact Minecraft name または UUID を `private-chat-super-admins` に登録する必要があります。両方の条件が必須です。対象管理者は room member でなくても管理者 room metadata list から body を read-only で開けます。audit view は room 参加、read/unread state 更新、message send/upload/hide、membership 変更を行いません。各 page read は `admin.group-audit-read` として記録され、message body は audit log にコピーされません。
+

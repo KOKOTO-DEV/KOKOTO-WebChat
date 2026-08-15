@@ -4,7 +4,7 @@
 
 ## 配置版本与迁移片段
 
-`config-version` 不是自动转换架构的编号，而是管理员已完成配置审核的标记。当它与正在运行的插件版本一致时会跳过比较。缺失或不同时，插件会比较实际 `config.yml` 与 JAR 内置默认配置，生成 `config-migration-<plugin-version>.yml`，但不会修改真实配置。生成文件会把可直接合并的缺失设置、已变化的默认值以及最终审核标记 `config-version` 写成真实 YAML 设置。即使没有其他差异，也会为了配置版本管理生成该文件。版本信息以及旧、新默认值使用 `#` 注释，不输出自定义值和废弃候选等参考列表。先合并需要的值，仅在审核完成后再合并 `config-version`。在版本一致前，每次启动和 `/bmchat reload` 都会更新该文件。
+`config-version` 不是自动转换架构的编号，而是管理员已完成配置审核的标记。现有设置值不会被自动覆盖。startup/reload 时会把已知顶层配置块按 bundled 默认顺序重新排列，同时保留每个块的当前文本、设置值和用户自定义注释；默认配置中没有的顶层块会按原顺序保留在最后。每次检查已有配置时，插件都会生成 `config-reference-<plugin-version>.yml`，内容是当前 JAR 内置完整默认 `config.yml` 的原样副本，并保留全部内置注释。这个完整 reference 不依赖检测到的旧版本，因此非常旧或没有版本标记的配置也可以直接与当前默认配置比较。如果 `config-version` 缺失或不同，还会另外生成 `config-migration-<plugin-version>.yml`，列出缺失设置、已变化的默认值和最终审核标记。`message-tokens.custom: {}` 这类空 map 也按真实设置处理，缺失时会写入 migration。版本标记匹配时会跳过 migration 比较，但完整 reference 文件仍保持为当前默认内容。另外，如果真实 `config.yml` 中的注释仍与旧版 BMWC 内置注释完全一致，则可能刷新为当前说明，但不会修改设置值或用户自定义注释。生成的 migration 文件末尾还会以注释形式附上当前 `config.yml` 与完整 reference 的文本 diff。相同的行不会输出。每个差异先显示文件名，再在下一行显示 `Line` 或 `Lines`，下面只显示实际不同的内容。差异源行只在行首直接加 `#`，因此会原样保留 YAML 自身的缩进；仅 reference 中存在的连续块还会另行显示在当前 config 中的插入位置。行号以生成 migration 报告时的 `config.yml` 为准，编辑配置后执行 `/bmchat reload` 即可按当前行号重新生成。请手动合并需要的值，并仅在审核完成后合并 `config-version`。
 
 ## 总开关
 
@@ -89,6 +89,42 @@ emoji:
 
 聊天记录通过 `chat.history-storage` 选择 `memory`、`jsonl` 或 `sqlite`。`chat.history-size` 和 `chat.history-retention-days` 在三种模式中共用。`0` 表示不限制数量/期限。新生成的 config 顶层默认为 `enabled: false`，因此在检查这些值并设置 `enabled: true` 前不会执行清理任务。如果服务器策略需要自动清理旧聊天，请设置正数保留天数，例如 `30` 或 `90`。上传和外部媒体缓存保留设置也按同样方式工作。`chat.history-file` 仅用于 JSONL，`chat.history-sqlite-file` 仅用于 SQLite。
 
+## 消息令牌
+
+`message-tokens.enabled` 启用以冒号包围的管理员自定义文本/控制 alias。配置中只写不带冒号的 alias 名，例如 `enter` 在聊天中输入为 `:enter:`。内置 alias 只提供英文默认值，管理员可改成或追加任意语言。未注册 alias 保持原样，因此不会破坏自定义/ImageEmojis 令牌。
+
+```yaml
+message-tokens:
+  enabled: true
+  max-replacements-per-message: 24
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br]
+  blank-line:
+    aliases: [blankline, emptyline, paragraphbreak]
+  tab:
+    aliases: [tab, indent]
+    spaces: 4
+  custom: {}
+```
+
+- `max-replacements-per-message: 0` 表示不限制成功的 message-token 替换次数。
+- `newline` 插入一个换行。
+- `blank-line` 插入两个换行，从而留下一个空行。
+- `tab.spaces` 限制为 1～16，并插入空格而不是 literal tab 控制字符。
+- `custom` 只支持可打印文本替换，control character/newline 会被移除。
+- `:\n:` 这类 backslash escape 不会被解释。
+- Minecraft 中普通 CR/LF 继续按原有规则压成单行。只有 `newline`/`blank-line` alias 产生的换行会单独跟踪，并在最终游戏投递时作为明确的多条聊天行发送。服务器中继也要求接收端具备相同的 4.7.0 token-line 支持。
+
+可把 `custom: {}` 替换为下面的块来添加可打印文本替换：
+
+```yaml
+message-tokens:
+  custom:
+    separator:
+      aliases: [separator, divider]
+      replacement: "────────────"
+```
+
 ## 1:1 私信会话线程
 
 ```yaml
@@ -102,6 +138,8 @@ direct-message:
   admin-audit:
     enabled: false
 ```
+
+`group-chat.admin-audit.enabled` 是 4.6.3 新增的独立、默认关闭的群聊正文访问开关。即使启用，账号仍必须列在 `private-chat-super-admins` 中。管理员视图为只读，不要求房间成员身份，也不会加入房间或更新已读状态；每次分页读取都会记录为 `admin.group-audit-read`，且不会把消息正文复制到审计日志。
 
 `direct-message.admin-audit.enabled` 是默认关闭的独立正文访问开关。即使启用，也只有同时列在 `private-chat-super-admins` 中的账号可以在只读审计视图中打开私信正文。每次分页读取会写入审计日志，但正文不会复制到日志。普通 ADMIN/MODERATOR 角色不会自动获得权限。
 
@@ -488,7 +526,7 @@ ui:
 
 ## 私信/群组聊天元数据超级管理员
 
-`private-chat-super-admins: []` 用于填写可查看私信/群聊元数据的准确 UUID 或 Minecraft 名。元数据视图显示参与者/标题、消息数、大致存储大小、保留状态和管理操作。只有在 `direct-message.admin-audit.enabled: true` 时才能以只读方式打开私信正文，每次分页读取都会写入审计日志。
+`private-chat-super-admins: []` 用于填写可查看私信/群聊元数据的准确 UUID 或 Minecraft 名。元数据视图显示参与者/标题、消息数、大致存储大小、保留状态和管理操作。只有在 `direct-message.admin-audit.enabled: true` 时才能以只读方式打开私信正文，只有在 `group-chat.admin-audit.enabled: true` 时才能打开群聊正文；两种审计视图的每次分页读取都会写入审计日志。
 
 
 `standalone-web.app-name` 和 `standalone-web.app-short-name` 控制 standalone 页面/PWA 名称。移动端添加到主屏幕后如更改这些值，需要重新添加。`web-push.notification-title` 控制测试/系统/后台推送的默认标题；留空时使用 `standalone-web.app-name`。

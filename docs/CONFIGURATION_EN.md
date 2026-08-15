@@ -4,7 +4,7 @@ This document describes `plugins/BlueMapWebChat/config.yml`.
 
 ## Configuration version and migration fragment
 
-`config-version` is an administrator review marker, not an automatic schema converter. If it matches the running plugin version, BlueMapWebChat assumes the configuration has already been reviewed and skips the comparison. If it is missing or different, the plugin compares the physical `config.yml` with the bundled defaults and writes `config-migration-<plugin-version>.yml` without changing the real config. The generated file contains copy-ready missing settings, changed bundled defaults, and the target `config-version` review marker as real YAML settings. It is still created when no other differences exist, so configuration version management remains explicit. Version information and previous/new default details are comments; preserved custom values and obsolete-setting notes are omitted. Merge the required values and merge `config-version` only after review. The file is regenerated on startup and `/bmchat reload` until the versions match.
+`config-version` is an administrator review marker, not an automatic schema converter. BlueMapWebChat does not overwrite existing setting values. On startup/reload it normalizes the order of known top-level config blocks to the bundled layout while preserving each block's current text, values, and custom comments; unknown top-level blocks remain last in their original order. Whenever an existing config is checked, it writes `config-reference-<plugin-version>.yml` as an exact copy of the current bundled default config, including all bundled comments. This full reference does not depend on the detected old version and is the recommended comparison source for very old or unversioned configs. If `config-version` is missing or different, the plugin additionally writes `config-migration-<plugin-version>.yml` with copy-ready missing settings, changed bundled defaults, and the target review marker. Empty maps such as `message-tokens.custom: {}` are treated as real settings and are reported when absent. If the version marker matches, migration comparison is skipped, but the full reference file is still kept current. Separately, unchanged older bundled comment blocks in the real `config.yml` may be refreshed to current wording; setting values and user-custom comments are never changed. The bottom of each generated migration file also includes a comment-only textual diff between the current `config.yml` and the full reference. Unchanged lines are omitted. Each side shows the file name first, then `Line` or `Lines` on a separate line, followed by only the differing text. Each differing source line is prefixed directly with `#`, preserving its original YAML indentation exactly. Reference-only blocks also show the insertion position in the current config. These line numbers describe `config.yml` at report-generation time, so run `/bmchat reload` after editing to regenerate them. Merge required values manually and merge `config-version` only after review.
 
 ## Master switch
 
@@ -105,6 +105,45 @@ Supported values:
 
 `chat.history-size` and `chat.history-retention-days` are shared by `memory`, `jsonl`, and `sqlite`. `0` means unlimited for each setting. New generated configs start with top-level `enabled: false`, so cleanup does not run until you review these values and set `enabled: true`. Use positive values such as `30` or `90` when your server policy requires automatic old-chat cleanup. Upload and external-media cache retention settings work the same way. `chat.history-file` is used only by JSONL; `chat.history-sqlite-file` is used only by SQLite. When `chat.history-sqlite-migrate-jsonl` is true, an empty SQLite DB imports `chat.history-file` once. Keep normal file backups of `history.db` before manual editing, large cleanup, or migration.
 
+
+## Message tokens
+
+`message-tokens.enabled` enables colon-delimited administrator-defined text/control aliases. Aliases are configured without surrounding colons; alias `enter` is typed as `:enter:`. The default aliases are English-only and may be replaced or extended in any language. Unknown aliases remain untouched, preserving custom/image emoji tokens.
+
+```yaml
+message-tokens:
+  enabled: true
+  max-replacements-per-message: 24
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br]
+  blank-line:
+    aliases: [blankline, emptyline, paragraphbreak]
+  tab:
+    aliases: [tab, indent]
+    spaces: 4
+  custom: {}
+```
+
+- `max-replacements-per-message: 0` means unlimited successful message-token replacements.
+- `newline` inserts one line break.
+- `blank-line` inserts two line-break characters, leaving one empty line.
+- `tab.spaces` is clamped to 1–16 and inserts spaces rather than a literal tab control character.
+- `custom` supports printable text replacements only; control characters/newlines are removed from custom replacement values.
+- Backslash escape syntax such as `:\n:` is intentionally not interpreted.
+- Minecraft keeps its existing single-line sanitization for ordinary CR/LF input. Line breaks created by configured `newline` / `blank-line` tokens are tracked separately and emitted as explicit chat lines only at final game delivery, so `:enter:` can create a new game chat line without making arbitrary pasted newlines bypass the existing flattening rule. A relayed receiving server must run the same 4.7.0 token-line delivery support; older receivers flatten the ordinary relayed LF.
+
+Example custom aliases:
+
+```yaml
+message-tokens:
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br, next]
+  custom:
+    separator:
+      aliases: [separator, divider, line]
+      replacement: "────────────"
+```
+
 ## Message search
 
 `/history/search` and the in-chat search modal are available for message text and sender searches when stored history is enabled. The search options section can filter by date/time range, sender, source, and system/event inclusion. The search button is in the floating chat-panel area so the input row stays compact, and search results use a scrollable list with the configured chat theme/font settings. Search results can jump to the matching message using the existing history-around navigation. i18n-backed system/event messages are searched and displayed in the requested web UI language when possible. Search can be disabled with `search.enabled`, and the single `search.result-limit` setting controls both the web UI result count and the `/history/search` API limit. There is no separate internal maximum: setting it to 2000 returns up to 2000 results, while setting it to 10 returns up to 10. Very large values such as 10000 or 100000 are accepted, but they can slow searches, increase response size, and add significant CPU, memory, and database load. The default is 50, and 50-200 is recommended for normal use. Existing config files from older versions need these keys added manually or merged from the default config.
@@ -125,6 +164,8 @@ direct-message:
 ```
 
 `direct-message.enabled` enables stored 1:1 threads for linked or previously known players. A→B and B→A use the same UUID-pair thread. `storage`, retention, message-count limits, and notification options are documented in the default config.
+
+`group-chat.admin-audit.enabled` is an independent, default-off group-content access switch added in 4.6.3. It still requires the account to be listed in `private-chat-super-admins`. The administrator view is read-only, does not require room membership, does not join the room or update read state, and every page read is logged as `admin.group-audit-read` without copying message bodies into the audit log.
 
 `direct-message.admin-audit.enabled` is a separate, default-off content-access switch. When enabled, only accounts also listed in `private-chat-super-admins` can open DM bodies in the read-only audit view. Each page read is audit-logged; message bodies are not copied into the audit log. Ordinary ADMIN/MODERATOR roles do not qualify automatically.
 
@@ -512,7 +553,7 @@ Collapsed pinned-message bar text follows the configured chat font and message f
 > The theme can also be changed per browser from Chat settings. Changing the theme resets visual settings such as text colors, background colors, and shadows to that theme's defaults.
 
 
-Admin custom emoji manager note: renaming an emoji file or folder changes the `:emoji:pack/name:` token. Existing chat messages that reference the old token may no longer render unless the old file/folder name is kept.
+Admin custom emoji manager note: the 4.7.0 manager uses a hidden multi-file picker and starts sequential upload immediately after selection, reusing the existing per-file validation/upload endpoint. Renaming an emoji file or folder changes the `:emoji:pack/name:` token. Existing chat messages that reference the old token may no longer render unless the old file/folder name is kept.
 
 
 ## Custom emoji and game-side emoji plugins
@@ -552,7 +593,7 @@ GIF/JPG/JPEG/WEBP emoji originals automatically get same-folder PNG sidecars for
 
 ## Private chat metadata super admins
 
-`private-chat-super-admins: []` lists exact UUIDs or Minecraft names allowed to see DM/group-chat metadata for moderation/accounting. The metadata view shows participants/titles, message counts, approximate storage size, retention status, and management actions. DM message bodies are available only when `direct-message.admin-audit.enabled: true`; that view is read-only and every page read is audit-logged.
+`private-chat-super-admins: []` lists exact UUIDs or Minecraft names allowed to see DM/group-chat metadata for moderation/accounting. The metadata view shows participants/titles, message counts, approximate storage size, retention status, and management actions. DM message bodies are available only when `direct-message.admin-audit.enabled: true`, and group-chat bodies only when `group-chat.admin-audit.enabled: true`; both views are read-only and every page read is audit-logged.
 
 
 `standalone-web.app-name` and `standalone-web.app-short-name` control the standalone page/PWA name. Reinstall the Home Screen web app after changing them on mobile devices. `web-push.notification-title` controls the default title used for test/system/background push notifications; if it is empty, the plugin uses `standalone-web.app-name`.

@@ -17,7 +17,7 @@ mvn clean package
 出力:
 
 ```text
-target/BlueMapWebChat-4.6.2.jar
+target/BlueMapWebChat-4.7.0.jar
 ```
 
 ## インストールまたはアップグレード
@@ -39,9 +39,9 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 現在バージョンの query が含まれている必要があります。
 
 ```text
-addons/bluemap-web-chat/config.js?v=4.6.2-<cache-token>
-addons/bluemap-web-chat/chat.js?v=4.6.2-<cache-token>
-addons/bluemap-web-chat/chat.css?v=4.6.2-<cache-token>
+addons/bluemap-web-chat/config.js?v=4.7.0-<cache-token>
+addons/bluemap-web-chat/chat.js?v=4.7.0-<cache-token>
+addons/bluemap-web-chat/chat.css?v=4.7.0-<cache-token>
 ```
 
 実際の Web ファイル更新も確認します。

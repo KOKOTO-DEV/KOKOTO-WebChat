@@ -4,7 +4,7 @@
 
 ## 설정 버전과 마이그레이션 설정 조각
 
-`config-version`은 자동 스키마 변환 번호가 아니라 관리자가 설정 검토를 마쳤다는 표식입니다. 실행 중인 플러그인 버전과 같으면 이미 검토한 것으로 보고 비교를 생략합니다. 없거나 다르면 실제 `config.yml`과 JAR 기본 설정을 비교해 `config-migration-<플러그인버전>.yml`을 생성하며 실제 config는 수정하지 않습니다. 생성 파일에는 그대로 병합 가능한 누락 설정, 변경된 기본값, 최종 검토 표식인 `config-version`을 실제 YAML 설정으로 기록합니다. 다른 차이가 없어도 설정 버전 관리를 위해 파일을 생성합니다. 버전 정보와 이전·새 기본값은 `#` 주석이고, 사용자 지정값과 폐기 후보 참고 목록은 출력하지 않습니다. 필요한 값을 병합한 뒤 검토가 끝났을 때만 `config-version`도 병합하세요. 버전이 일치할 때까지 서버 시작과 `/bmchat reload`마다 파일을 갱신합니다.
+`config-version`은 자동 스키마 변환 번호가 아니라 관리자가 설정 검토를 마쳤다는 표식입니다. 기존 설정값은 자동으로 덮어쓰지 않습니다. startup/reload 시 알려진 최상위 설정 블록을 bundled 기본 순서에 맞춰 재정렬하지만 각 블록의 현재 내용·설정값·사용자 지정 주석은 보존하며, 기본에 없는 최상위 블록은 마지막에 기존 순서대로 유지합니다. 기존 설정을 확인할 때마다 `config-reference-<플러그인버전>.yml`을 현재 JAR의 완전한 기본 `config.yml` 원본으로 생성하며, 기본 주석도 모두 그대로 포함합니다. 이 전체 reference는 감지된 이전 버전에 의존하지 않으므로 아주 오래된 설정이나 `config-version`이 없는 설정을 현재 기본값과 비교할 때 기준으로 사용하면 됩니다. `config-version`이 없거나 다르면 추가로 `config-migration-<플러그인버전>.yml`을 생성해 누락 설정, 변경된 기본값, 최종 검토 표식을 표시합니다. `message-tokens.custom: {}` 같은 빈 map도 실제 설정으로 취급해 누락 시 migration에 기록합니다. 버전 표식이 일치하면 migration 비교는 생략하지만 전체 reference 파일은 계속 현재 기본값으로 유지합니다. 별도로 실제 `config.yml`의 주석이 이전 BMWC 기본 주석과 정확히 같은 경우에는 현재 설명으로 갱신될 수 있지만 설정값과 사용자 지정 주석은 변경하지 않습니다. 생성된 migration 파일 하단에는 현재 `config.yml`과 전체 reference의 텍스트 diff도 주석으로 표시됩니다. 동일한 줄은 출력하지 않습니다. 각 차이는 파일명을 먼저 표시하고 다음 줄에 `Line` 또는 `Lines`를 표시한 뒤, 그 아래에 실제로 다른 내용만 보여줍니다. 실제 차이 줄은 원본 YAML 들여쓰기를 그대로 유지하도록 줄 앞에 `#`만 직접 붙여 표시합니다. reference에만 있는 연속 블록은 현재 config에 넣을 위치도 별도로 표시합니다. 줄 번호는 migration 파일을 생성한 시점의 `config.yml` 기준이므로 설정을 수정한 뒤 `/bmchat reload`를 실행하면 현재 줄 번호로 다시 생성됩니다. 필요한 값을 수동 병합한 뒤 검토가 끝났을 때만 `config-version`을 병합하세요.
 
 ## 전체 활성화 스위치
 
@@ -98,6 +98,42 @@ emoji:
 채팅 기록 보관은 `chat.history-storage`로 `memory`, `jsonl`, `sqlite` 중 하나를 고르고, `chat.history-size`와 `chat.history-retention-days`를 세 모드가 공통으로 사용합니다. `0`은 각각 개수/기간 제한 없음입니다. 새로 생성된 config는 최상단 `enabled: false` 상태이므로, 이 값들을 검토하고 `enabled: true`로 바꾸기 전까지 정리 작업이 실행되지 않습니다. 서버 정책상 자동 정리가 필요하면 `30`, `90` 같은 양수 보관일을 설정하세요. 업로드와 외부 미디어 캐시 보관 설정도 같은 방식으로 동작합니다. `chat.history-file`은 JSONL에서만, `chat.history-sqlite-file`은 SQLite에서만 사용됩니다.
 
 
+## 메시지 토큰
+
+`message-tokens.enabled`는 콜론으로 감싼 관리자 정의 텍스트/제어 alias를 활성화합니다. config에는 콜론 없이 alias만 적고, 예를 들어 `enter`는 채팅에서 `:enter:`로 입력합니다. 기본 alias는 영어만 제공하며 관리자가 원하는 언어로 바꾸거나 추가할 수 있습니다. 등록되지 않은 alias는 그대로 유지하므로 커스텀/ImageEmojis 토큰과 충돌하지 않습니다.
+
+```yaml
+message-tokens:
+  enabled: true
+  max-replacements-per-message: 24
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br]
+  blank-line:
+    aliases: [blankline, emptyline, paragraphbreak]
+  tab:
+    aliases: [tab, indent]
+    spaces: 4
+  custom: {}
+```
+
+- `max-replacements-per-message: 0`은 성공한 message-token 치환 횟수를 제한하지 않습니다.
+- `newline`은 다음 줄 1개를 만듭니다.
+- `blank-line`은 줄바꿈 두 개를 넣어 사이에 빈 줄 1개를 만듭니다.
+- `tab.spaces`는 1~16으로 제한되며 실제 tab 제어문자 대신 공백을 넣습니다.
+- `custom`은 출력 가능한 일반 문자 치환만 지원하며 control character/newline은 제거됩니다.
+- `:\n:` 같은 backslash escape는 의도적으로 해석하지 않습니다.
+- Minecraft의 일반 CR/LF 입력은 기존 한 줄 평탄화 규칙을 유지합니다. `newline`/`blank-line` alias로 만든 줄바꿈만 별도로 추적해 최종 게임 전송 시 명시적인 여러 채팅 줄로 출력합니다. 서버간 relay에서도 수신 서버에 같은 4.7.0 token-line 지원이 필요합니다.
+
+관리자가 언어별 alias나 일반 문자 치환을 추가하려면 예를 들어 다음처럼 `custom: {}`를 블록으로 교체할 수 있습니다.
+
+```yaml
+message-tokens:
+  custom:
+    separator:
+      aliases: [separator, divider]
+      replacement: "────────────"
+```
+
 ## 1:1 메시지함 / DM 스레드
 
 ```yaml
@@ -113,6 +149,8 @@ direct-message:
 ```
 
 `direct-message.enabled`를 켜면 연동되었거나 접속 기록이 있는 플레이어 사이의 저장형 1:1 스레드를 사용할 수 있습니다. A→B와 B→A는 같은 UUID 쌍의 대화로 저장됩니다. 저장방식, 보관기간, 메시지 수 제한, 알림 옵션은 기본 config의 주석을 따릅니다.
+
+`group-chat.admin-audit.enabled`는 4.6.3에서 추가된 별도의 기본 OFF 그룹 본문 접근 스위치입니다. 이 값을 켜도 계정이 `private-chat-super-admins`에 함께 지정되어 있어야 합니다. 관리자 화면은 읽기 전용이며 방 참여 권한이 없어도 열 수 있지만 실제로 방에 참여하지 않고 읽음 상태도 변경하지 않습니다. 각 페이지 열람은 본문을 감사 로그에 복사하지 않은 채 `admin.group-audit-read`로 기록됩니다.
 
 `direct-message.admin-audit.enabled`는 기본값이 꺼진 별도 본문 접근 스위치입니다. 이 값을 켜도 `private-chat-super-admins`에 함께 지정된 계정만 DM 본문을 읽기 전용 감사 화면에서 열 수 있습니다. 페이지 열람은 감사 로그에 남지만 메시지 본문 자체는 로그에 복사하지 않습니다. 일반 ADMIN/MODERATOR 역할은 자동으로 대상이 되지 않습니다.
 
@@ -542,7 +580,7 @@ ui:
 
 ## 비공개 채팅 메타데이터 최고관리자
 
-`private-chat-super-admins: []`에는 DM/그룹채팅 메타데이터를 관리/용량 확인용으로 볼 수 있는 정확한 UUID 또는 마인크래프트 이름을 지정합니다. 기본 메타데이터 화면은 참여자/제목, 메시지 수, 대략적인 저장 용량, 보관 상태와 관리 동작을 제공합니다. DM 본문은 `direct-message.admin-audit.enabled: true`일 때만 읽기 전용으로 열 수 있으며 모든 페이지 열람이 감사 로그에 기록됩니다.
+`private-chat-super-admins: []`에는 DM/그룹채팅 메타데이터를 관리/용량 확인용으로 볼 수 있는 정확한 UUID 또는 마인크래프트 이름을 지정합니다. 기본 메타데이터 화면은 참여자/제목, 메시지 수, 대략적인 저장 용량, 보관 상태와 관리 동작을 제공합니다. DM 본문은 `direct-message.admin-audit.enabled: true`, 그룹채팅 본문은 `group-chat.admin-audit.enabled: true`일 때만 읽기 전용으로 열 수 있으며 두 감사 화면 모두 모든 페이지 열람이 감사 로그에 기록됩니다.
 
 
 `standalone-web.app-name`과 `standalone-web.app-short-name`은 standalone 페이지/PWA 이름을 제어합니다. 모바일 홈 화면 웹앱으로 설치한 뒤 값을 바꿨다면 다시 설치해야 반영됩니다. `web-push.notification-title`은 테스트/시스템/백그라운드 푸시의 기본 제목을 제어하며, 비워두면 `standalone-web.app-name`을 사용합니다.

@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.6.2 完整用户与运维手册
+# BlueMapWebChat 4.7.0 完整用户与运维手册
 
-本文从普通用户和服务器管理员两个角度说明 BlueMapWebChat 4.6.2 的全部功能。逐项配置说明请参阅 `CONFIGURATION_ZH_CN.md`，服务器中继请参阅 `SERVER_RELAY_ZH_CN.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS_ZH_CN.md` 与 `NGINX_HTTPS_ZH_CN.md`。
+本文从普通用户和服务器管理员两个角度说明 BlueMapWebChat 4.7.0 的全部功能。逐项配置说明请参阅 `CONFIGURATION_ZH_CN.md`，服务器中继请参阅 `SERVER_RELAY_ZH_CN.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS_ZH_CN.md` 与 `NGINX_HTTPS_ZH_CN.md`。
 
 ## 1. 插件概述
 
@@ -45,7 +45,7 @@ BlueMapWebChat 用于把 Bukkit/Paper/Spigot 兼容 Minecraft 服务器的聊天
 7. 重启服务器或执行 `/bmchat reload`。
 
 ```yaml
-config-version: "4.6.2"
+config-version: "4.7.0"
 enabled: false
 ```
 
@@ -53,13 +53,15 @@ enabled: false
 
 ## 4. 配置迁移
 
-更新时不会覆盖现有 `config.yml`。
+更新时不会自动覆盖现有设置值。startup/reload 时会把已知顶层配置块按 4.7.0 bundled 默认顺序重新排列，同时保留各块的当前文本、设置值和用户自定义注释；默认中不存在的顶层块会按原顺序保留在最后。
 
 当 `config-version` 缺失或与当前插件版本不同，会生成：
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.6.2.yml
+plugins/BlueMapWebChat/config-migration-4.7.0.yml
 ```
+
+插件还会生成 `plugins/BlueMapWebChat/config-reference-4.7.0.yml`。它是当前 JAR 完整默认配置的原样副本，并保留全部注释。旧配置或没有版本标记的配置应与这个完整 reference 比较，而 migration fragment 用作需要审核的精简差异列表。migration 文件末尾还会以注释形式附上当前配置与 reference 的文本 diff，但不会输出相同的行。每个差异按文件名、单独一行的 `Line` 或 `Lines`、实际不同内容的顺序显示。差异源行只在行首直接加 `#`，因此会原样保留 YAML 自身的缩进；仅 reference 中存在的块还会另行显示其在当前 config 中的插入位置。
 
 判定规则：
 
@@ -67,7 +69,7 @@ plugins/BlueMapWebChat/config-migration-4.6.2.yml
 |---|---|
 | 缺少 `config-version` | 即使其他差异为 0，也生成只包含目标版本标记的迁移文件 |
 | `config-version` 与插件版本不同 | 生成或更新包含缺失/变化设置及目标版本标记的迁移文件 |
-| `config-version` 与插件版本一致 | 视为已审核，跳过比较和文件生成，并删除遗留的同版本提示文件 |
+| `config-version` 与插件版本一致 | 视为已审核，跳过 migration 比较/报告生成并删除旧 migration 提示，但完整 reference 文件仍保持为当前版本 |
 
 文件包含可复制的实际 YAML：
 
@@ -80,7 +82,7 @@ plugins/BlueMapWebChat/config-migration-4.6.2.yml
 确认并合并后设置：
 
 ```yaml
-config-version: "4.6.2"
+config-version: "4.7.0"
 ```
 
 版本一致后将跳过后续比较。
@@ -250,6 +252,30 @@ chat:
 ```
 
 `0` 表示不限制。
+
+### 8.5 消息令牌
+
+BlueMapWebChat 4.7.0 可以在消息保存或中继前替换管理员配置的 `:alias:` 令牌。内置 alias 只提供英文默认值，管理员可以改成或追加任意语言的 alias。
+
+- `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 换行 1 次
+- `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 留 1 个空行
+- `:tab:`, `:indent:` → 配置数量的空格（默认 4）
+
+未知令牌保持原样，因此不会破坏 ImageEmojis/自定义表情令牌。不会解释 `:\n:` 这类反斜杠 escape。`custom` 可添加仅包含可打印文本的替换。Minecraft 中普通 CR/LF 仍按原有规则压成单行，只有 `newline`/`blank-line` alias 产生的换行会在最终游戏投递时作为明确的多条聊天行发送。服务器中继的游戏显示也要求接收端具备相同的 4.7.0 token-line 支持。
+
+```yaml
+message-tokens:
+  enabled: true
+  max-replacements-per-message: 24
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br]
+  blank-line:
+    aliases: [blankline, emptyline, paragraphbreak]
+  tab:
+    aliases: [tab, indent]
+    spaces: 4
+  custom: {}
+```
 
 ## 9. 历史记录与搜索
 
@@ -1100,6 +1126,8 @@ Web Push：
 
 - `CONFIGURATION_ZH_CN.md`
 - `SERVER_RELAY_ZH_CN.md`
+- `UPGRADE_4_6_4_ZH_CN.md`: 4.6.3→4.7.0 升级
+- `UPGRADE_4_6_3_ZH_CN.md`: 4.6.2→4.6.3 升级
 - `UPGRADE_4_6_2_ZH_CN.md`: 4.6.1→4.6.2 升级
 - `UPGRADE_4_6_1_ZH_CN.md`: 4.6.0→4.6.1 升级
 - `UPGRADE_4_6_0_ZH_CN.md`
@@ -1111,3 +1139,8 @@ Web Push：
 - `OPERATIONS_SECURITY_ZH_CN.md`
 - `I18N_ZH_CN.md`
 - `RELEASE_CHECKLIST_ZH_CN.md`
+
+### 管理员群聊正文审计（4.6.3）
+
+需要设置 `group-chat.admin-audit.enabled: true`，并把准确的 Minecraft 名或 UUID 列入 `private-chat-super-admins`；两个条件都必须满足。符合条件的管理员即使不是房间成员，也可以从管理员房间元数据列表中只读打开群聊正文。审计视图不会加入房间、更新已读/未读状态、发送/上传/隐藏消息或修改成员关系。每次分页读取都会记录为 `admin.group-audit-read`，消息正文不会复制到审计日志。
+

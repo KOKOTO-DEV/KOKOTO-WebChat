@@ -1,6 +1,6 @@
 # ImageEmojis-Bero 1.9.0 互換性
 
-BlueMapWebChat 4.6.2 には [ImageEmojis-Bero 1.9.0](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) 向けの任意互換経路があります。reflection ベースで hard dependency は追加されず、ImageEmojis-Bero が未導入でも BlueMapWebChat は起動できます。
+BlueMapWebChat 4.7.0 には [ImageEmojis-Bero 1.9.0](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) 向けの任意互換経路があります。reflection ベースで hard dependency は追加されず、ImageEmojis-Bero が未導入でも BlueMapWebChat は起動できます。
 
 ## 対応動作
 

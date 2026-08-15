@@ -75,3 +75,26 @@ mvn clean package
 - [ ] 即使列在 `private-chat-super-admins` 中，只要审计开关为 false 就只能查看元数据。
 - [ ] 两个条件都启用时，管理员私信条目以只读审计视图打开，不提供发送/隐藏/已读操作，并排除全局隐藏消息。
 - [ ] 每次分页读取都写入 `admin.dm-audit-read`，包含操作者、会话 ID、分页位置、限制和返回数量；正文不会复制到审计日志。
+
+## 4.7.0 多文件上传与兼容性检查
+
+- [ ] 无论旧配置版本如何，都会生成与内置 `config.yml` byte-for-byte 一致并保留全部注释的 `config-reference-4.7.0.yml`。
+- [ ] startup/reload 会把已知顶层 `config.yml` 块按 4.7.0 默认顺序重新排列，但不会改变 YAML 值或块注释；默认中不存在的顶层块按原顺序保留在最后。
+- [ ] bundled `config.yml` 的 message-token 默认 alias/示例只使用英文；多语言 alias 作为管理员可配置项记录在文档中。
+- [ ] `en-US.yml`, `ko-KR.yml`, `ja-JP.yml`, `zh-CN.yml` 的 key 集合完全一致，且没有空/null 翻译。
+- [ ] 生成的 4.7.0 migration 报告末尾以注释形式附带当前配置与 reference 的文本 diff，省略相同行，将文件名与 `Line`/`Lines` 和实际差异内容分行显示，并为仅 reference 中存在的块显示插入位置。
+- [ ] `pom.xml` 和 `plugin.yml` 均为 4.7.0。
+- [ ] `plugin.yml` 声明 `api-version: '1.18'`，POM 使用 Java 17 + Spigot API 1.18.2。
+- [ ] 管理员表情 Upload 按钮使用与普通上传相同的隐藏多文件 picker；选择文件后无需第二次确认即开始顺序上传，并确保每个所选文件只提交一次。
+- [ ] 中间某个文件失败时，后续文件仍继续上传。
+- [ ] 开启 game-link sidecar 后，GIF/JPG/WEBP 仍会生成 PNG sidecar。
+- [ ] 已审核的 4.6.3 config 会生成包含新 `message-tokens` 设置（包括 `custom: {}`）和 `config-version: "4.7.0"` 的 migration；更旧或没有版本标记的 config 也会与当前 4.7.0 全部键比较。
+
+## 4.6.3 管理员群聊审计检查
+
+- [ ] 仍使用旧版内置注释的配置只会把这些注释块刷新为 4.6.3 说明，不会修改 YAML 配置值或用户自定义注释。
+- [ ] `config-version: "4.6.2"` 且无其他缺失项时，生成的 `config-migration-4.6.3.yml` 包含 `group-chat.admin-audit.enabled: false` 和 `config-version: "4.6.3"`。
+- [ ] 即使列在 `private-chat-super-admins` 中，只要 `group-chat.admin-audit.enabled: false`，群聊仍只能查看元数据。
+- [ ] 两个条件都启用后，列出的超级管理员即使不是房间成员，也可以只读打开群聊正文，且不会改变已读/未读状态。
+- [ ] 每次审计分页读取都会记录包含 actor/room/pagination/count 的 `admin.group-audit-read`，正文不会复制到审计日志。
+

@@ -75,3 +75,26 @@ mvn clean package
 - [ ] `private-chat-super-admins` 登録済みでも audit switch が false なら metadata only。
 - [ ] 両 gate 有効時だけ read-only audit view が開き、send/hide/mark-read control はなく global hidden message は除外される。
 - [ ] page read ごとに `admin.dm-audit-read` が audit log に追加され、body 自体は log にコピーされない。
+
+## 4.7.0 multi-upload / compatibility checks
+
+- [ ] 元の config version に関係なく `config-reference-4.7.0.yml` が bundled `config.yml` と byte-for-byte 同一で、コメントも含めて生成される。
+- [ ] startup/reload で既知の最上位 `config.yml` block が 4.7.0 default 順へ並べ替えられるが、YAML 値と block comment は変わらず、default にない最上位 block は最後に元の順序で残る。
+- [ ] bundled `config.yml` の message-token 標準 alias/example は英語のみで、各言語 alias は管理者が設定で追加する方式として文書化されている。
+- [ ] `en-US.yml`, `ko-KR.yml`, `ja-JP.yml`, `zh-CN.yml` の key set が一致し、空/null translation がない。
+- [ ] 生成された 4.7.0 migration report 末尾に current/reference の text diff が comment として出力され、同一行を除外し、file 名と `Line`/`Lines` を実際の差分内容とは別行に表示し、reference-only block は挿入位置も表示する。
+- [ ] `pom.xml` と `plugin.yml` が 4.7.0。
+- [ ] `plugin.yml` は `api-version: '1.18'`、POM は Java 17 + Spigot API 1.18.2。
+- [ ] 管理者 emoji の Upload ボタンが通常 upload と同じ非表示 multiple-file picker を開き、選択直後に追加確認なしで順次 upload を開始し、各選択ファイルを正確に1回だけ送信する。
+- [ ] 途中のファイルが失敗しても残りの upload が継続する。
+- [ ] game-link sidecar 有効時に GIF/JPG/WEBP の PNG sidecar 生成が維持される。
+- [ ] review 済み 4.6.3 config は新しい `message-tokens` 設定（`custom: {}` を含む）と `config-version: "4.7.0"` を含む migration を生成し、さらに古い/marker のない config も現在の 4.7.0 全 key と比較される。
+
+## 4.6.3 管理者 group-chat audit checks
+
+- [ ] 以前の bundled comment をそのまま使う config では、その comment block だけが 4.6.3 の説明へ更新され、YAML 設定値や user-custom comment は変更されない。
+- [ ] `config-version: "4.6.2"` config は他の不足がなければ `group-chat.admin-audit.enabled: false` と `config-version: "4.6.3"` を含む `config-migration-4.6.3.yml` を生成する。
+- [ ] `private-chat-super-admins` 登録済みでも `group-chat.admin-audit.enabled: false` なら group は metadata-only。
+- [ ] 両方を有効化すると、登録 super administrator は room member でなくても body を read-only で開け、read/unread state は変化しない。
+- [ ] audit page read ごとに actor/room/pagination/count を含む `admin.group-audit-read` が記録され、body は audit log にコピーされない。
+
