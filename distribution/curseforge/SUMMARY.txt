@@ -1,1 +1,0 @@
-Multi-platform Minecraft web chat with map/standalone UI, DM & groups, secure relay, filters, rich media, notifications, and Bukkit/Paper companion-plugin integrations.

@@ -1,1 +1,0 @@
-KOKOTO WebChat 5.0.0 — multi-platform release, map/standalone expansion, relay/DM/groups, content filters, rich-media scroll stability and companion-plugin integration
