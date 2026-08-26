@@ -459,7 +459,7 @@ Existing configs that still contain old generated display names such as `KOKOTO 
 
 - Overviewer integration: `docs/OVERVIEWER_INTEGRATION.md`
 
-## Forge Stage 1
+## Forge
 
 Forge uses exact-target server JARs for Minecraft 1.18.2 through 26.2. The Forge tree is split into `src/common` plus `compat118`, `compatClassic`, `compatModern`, and `compat26`; see `kwc-platform-forge/README.md` and `docs/FORGE_INTEGRATION.md`. Direct BlueMapAPI integration is limited to Forge 26.1.2/26.2; older Forge targets use the loader-neutral filesystem/static-map adapters. Build helpers select JDK 17/21/25 per exact target; use `kwc-platform-forge/build-all.bat` (Windows) or `build-all.sh` instead of forcing every ForgeGradle generation through one system JVM.
 
