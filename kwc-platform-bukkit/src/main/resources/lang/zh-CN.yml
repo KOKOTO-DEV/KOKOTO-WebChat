@@ -1,0 +1,913 @@
+web:
+  title:
+    full: KOKOTO WebChat
+    minimized: 聊天
+  status:
+    connecting: 连接中...
+    guest: 访客
+    reconnecting: 重新连接中...
+    loggedIn: 已登录
+  button:
+    emoji: 表情
+    admin: 管理
+    login: 登录
+    upload: 附件
+    resizeEmojiPanel: 拖动调整表情选择器大小
+    resizeLock: 锁定大小调整
+    resizeUnlock: 解锁大小调整
+    resize: 调整大小
+    send: 发送
+    reset: 重置
+    close: 关闭
+    start: 开始
+    save: 保存
+    edit: 编辑
+    test: 测试
+    skip: 跳过
+    logout: 退出登录
+    setPassword: 设置密码
+    clearHistory: 清空网页历史
+    mute: 禁言
+    unmute: 解除禁言
+    revoke: 撤销会话
+    delete: 删除
+    accept: 接受
+    decline: 拒绝
+    cancel: 取消
+    reply: 回复
+    pin: 置顶
+    moderationActionsEnable: 启用固定/删除
+    moderationActionsDisable: 停用固定/删除
+    unpin: 取消置顶
+    moveUp: 上移
+    move: 移动
+    moveSelected: 移动所选
+    moveDown: 下移
+    commands: 命令
+    search: 搜索
+    groupChats: 群组聊天
+    directMessages: 消息
+    pip: PIP
+    run: 运行
+    jumpLatest: 跳到最新消息
+    createPack: 创建文件夹
+    uploadEmoji: 上传
+    deselectAll: 取消全选
+    selectAll: 全选
+    deleteSelected: 删除所选
+    deletePack: 删除文件夹
+    change: 更改
+    rename: 更改
+    renamePack: 重命名文件夹
+    hide: '隐藏'
+  placeholder:
+    guestName: 访客名称
+    captchaAnswer: 答案
+    message: 消息
+    username: 用户名
+    password: 密码
+    newPassword: 新密码
+    muteTarget: 访客名称或 IP
+    minutes: 分钟
+    reason: 原因
+    emojiPack: 新表情包/文件夹名称
+  reply:
+    composing: 回复 {sender}
+    jump: 跳转到被回复的消息
+    notFound: 找不到引用的消息。
+  message:
+    deleted: '[已删除]'
+  emoji:
+    empty: 没有配置表情。
+    emptyPack: 无表情
+  alert:
+    emojiTooMany: 每条消息最多只能使用 {max} 个表情。
+    rateLimited: 发送太快了，请稍后再试。
+    sendFailed: '发送失败: {error}'
+    serverUnavailable: 无法连接到聊天服务器。
+    uploadNotAllowed: 不允许上传文件。
+    uploadTooMany: 一次最多只能选择 {max} 个文件。
+    uploadExtensionDenied: '不允许的文件类型: {name}'
+    uploadTooLarge: '文件太大: {name}'
+    emojiBatchUploadFailed: '已上传 {uploaded}/{total}。失败: {failed}'
+    uploadFailed: '上传失败: {error}'
+    confirmDelete: 要隐藏这条消息吗？
+    deleteFailed: '删除失败: {error}'
+    confirmClearHistory: 要清空网页聊天历史吗？
+    adminActionFailed: '管理操作失败：{error}'
+    failed: '失败: {error}'
+    loginFailed: '登录失败: {error}'
+    codeFailed: '代码生成失败: {error}'
+    saveFailed: '保存失败: {error}'
+    pinFailed: 置顶失败：{error}
+    unpinFailed: 取消置顶失败：{error}
+    movePinFailed: '调整顺序失败: {error}'
+    emojiPackNameRequired: 请输入文件夹名称。
+    emojiFileRequired: 请选择表情文件。
+    confirmDeleteEmoji: 要删除这个表情吗？
+    emojiMoveSelectRequired: 请选择要移动的表情。
+    emojiMoveTargetRequired: 请选择目标文件夹。
+    emojiMoveTargetSame: 请选择其他文件夹。
+    confirmMoveEmoji: 要将此表情移动到 {pack} 文件夹吗？
+    confirmMoveSelectedEmoji: 要将选中的 {count} 个表情移动到 {pack} 文件夹吗？
+    moveFailed: "移动失败：{error}"
+    emojiSelectRequired: 请选择要删除的表情。
+    confirmDeleteSelectedEmoji: 要删除选中的 {count} 个表情吗？
+    confirmDeleteEmojiPack: 要删除文件夹 {pack} 及其中所有表情吗？
+    emojiRenameNameRequired: 请输入新名称。
+    confirmRenameEmoji: 要将此表情重命名为 {name} 吗？使用旧名称的表情标记将不再匹配。
+    confirmRenameEmojiPack: 要将文件夹 {pack} 重命名为 {name} 吗？此文件夹中的表情标记将会改变。
+    dmLoadFailed: "消息加载失败：{error}"
+    dmAuditLoadFailed: "无法加载私信审计内容：{error}"
+    dmSendFailed: "消息发送失败：{error}"
+    dmRetryFailed: '重试消息失败：{error}'
+    dmHideFailed: "隐藏消息失败：{error}"
+    groupLoadFailed: '无法加载群组聊天：{error}'
+    groupAuditLoadFailed: "无法加载群聊审计内容：{error}"
+    groupJoinFailed: '无法加入群组聊天：{error}'
+    groupSendFailed: '无法发送群组消息：{error}'
+    groupCreateFailed: '无法创建群组聊天：{error}'
+    groupInviteFailed: '无法邀请玩家：{error}'
+    groupLeaveFailed: '无法退出群组聊天：{error}'
+    groupHideFailed: '无法隐藏消息：{error}'
+    groupActionFailed: '群组操作失败：{error}'
+    groupSettingsFailed: '无法保存群组设置：{error}'
+    renameFailed: '重命名失败: {error}'
+  admin:
+    title: KOKOTO WebChat 管理
+    summary: 摘要
+    mutes: 禁言
+    sessions: 会话
+    loading: 加载中...
+    failed: '失败: {error}'
+    revokeConfirm: 要撤销 {username} 的所有会话吗？
+    online: 在线
+    privateMetaOnly: '仅显示私信元数据'
+    privateContentAccess: '管理员私信审计（可查看正文）'
+    openDmAudit: '在只读审计视图中打开此私信会话。'
+    dmAuditView: '私信审计（只读）'
+    dmAuditReadOnly: '管理员审计视图为只读，每次查看都会写入审计日志。'
+    groupMetaOnly: '群组聊天室元数据'
+    groupAuditTitle: '管理员群聊审计'
+    openGroupAudit: '在只读审计视图中打开此群聊。'
+    groupAuditReadOnly: '管理员审计视图为只读，每次查看都会写入审计日志。'
+    noContentAccess: '此视图无法查看消息正文。'
+    lockDmThreadHint: '锁定此私信会话，阻止发送新消息。'
+    unlockDmThreadHint: '解锁此私信会话，允许再次发送消息。'
+    excludeDmRetentionHint: '将此私信会话排除在自动清理之外。'
+    includeDmRetentionHint: '将此私信会话重新纳入自动清理。'
+    deleteDmThreadHint: '删除此私信会话的元数据、消息和上传文件。'
+    lockGroupRoomHint: '锁定此群聊，阻止发送新消息。'
+    unlockGroupRoomHint: '解锁此群聊，允许再次发送消息。'
+    excludeGroupRetentionHint: '将此群聊排除在自动清理之外。'
+    includeGroupRetentionHint: '将此群聊重新纳入自动清理。'
+    deleteGroupRoomHint: '删除此群聊的元数据、消息和上传文件。'
+    messages: '消息'
+    storage: '占用'
+    archived: '已归档'
+    accounts: 账户
+    onlinePlayers: 在线玩家
+    none: 无
+    muteGuestIp: 禁言访客/IP
+    typeGuest: 访客
+    typeIp: IP
+    currentMutes: 当前禁言
+    expires: 到期
+    never: 永不
+    emojis: 表情
+    emojiTitle: 自定义表情
+    emojiMoveTarget: 目标文件夹
+    emojiNoOtherFolder: 没有其他文件夹
+    emojiCurrent: 当前表情
+    emojiLimits: 单文件 {file} KB / 总计 {total} MB
+    emojiFileLimit: 单个文件最多可上传 {file}
+    emojiStorageUsage: 表情容量 {current} / {total}
+    emojiStorageCurrent: 表情容量 {current}
+    emojiStorageLimit: 表情最大容量 {total}
+    unlimited: 无限制
+    emojiFolderSelect: 已选文件夹
+    emojiPackCount: '{count} 个表情'
+    emojiBatchResult: '已上传 {uploaded}/{total}'
+    emojiNoFileSelected: 未选择文件
+    passwordSet: '密码'
+    "yes": '是'
+    "no": '否'
+    lastLogin: '最后登录'
+    retentionRemaining: '自动删除：{time}'
+    retentionUnlimited: '自动删除：无期限'
+    retentionUnknown: '自动删除：未知'
+    retentionExpired: '自动删除：即将删除'
+    retentionMinutes: '剩余 {value} 分钟'
+    retentionHours: '剩余 {value} 小时'
+    retentionDays: '剩余 {value} 天'
+    deleteThread: '删除'
+    deleteRoom: '删除'
+    confirmDeleteDmThread: '要删除此 DM 会话及全部元数据/消息/上传文件吗？此操作无法撤销。'
+    confirmDeleteGroupRoom: '要删除此群聊会话及全部元数据/消息/上传文件吗？此操作无法撤销。'
+    lock: '锁定'
+    unlock: '解锁'
+    locked: '已锁定'
+    excludeRetention: '排除'
+    includeRetention: '纳入'
+    retentionExempt: '已排除自动删除'
+    dmCleanupPreview: 'DM 清理预览'
+    groupCleanupPreview: '群聊清理预览'
+    cleanupRetentionDays: '保留 {days} 天'
+    cleanupNoRetention: '无时间限制'
+    cleanupPreviewBody: '旧消息 {expired} 条，空会话 {empty} 个，锁定 {locked} 个，排除 {exempt} 个'
+    filter: '过滤'
+    settings: 设置
+    discordAlertNoChannels: '没有可用的 DiscordSRV 频道'
+    setting:
+      guest-enabled: '访客访问'
+      guest-allow-custom-name: '访客自定义名称'
+      guest-cooldown-seconds: '访客发送间隔（秒）'
+      guest-max-messages-per-minute: '访客每分钟消息数'
+      captcha-mode: 'CAPTCHA 模式'
+      captcha-require-on-each-message: '每条消息 CAPTCHA'
+      captcha-pass-valid-minutes: 'CAPTCHA 有效时间（分钟）'
+      auth-password-login: '密码登录'
+      auth-remember-session-days: '普通会话期限（天）'
+      admin-admin-session-expire-hours: '管理员会话期限（小时）'
+      moderation-enabled: '管理功能'
+      upload-enabled: '文件上传'
+      upload-allow-guest-upload: '访客上传'
+      upload-allow-user-upload: '普通用户上传'
+      upload-allow-moderator-upload: '版主上传'
+      upload-allow-admin-upload: '管理员上传'
+      upload-cooldown-seconds: '上传间隔（秒）'
+      upload-max-uploads-per-minute: '每分钟上传数'
+      upload-max-file-size-mb: '最大文件大小（MB）'
+      upload-max-total-size-mb: '总上传大小上限（MB）'
+      upload-max-files-per-message: '每条消息文件数'
+      upload-retention-days: '上传保留天数'
+      upload-filename-mode: '上传文件名'
+      ui-user-profiles-enabled: '用户聊天设置配置文件'
+      ui-user-profiles-max-profiles: '每个用户的最大配置文件数'
+      ui-user-profiles-allow-import-export: '允许导入/导出配置文件'
+      admin-alerts-discord-enabled: 'Discord 管理员关键词提醒'
+      admin-alerts-discord-channel: 'Discord 提醒频道'
+      admin-alerts-discord-sources-public-chat: '检测公共聊天'
+      admin-alerts-discord-sources-relay-chat: '检测中继公共聊天'
+      admin-alerts-discord-sources-dm: '检测私信'
+      admin-alerts-discord-sources-group-chat: '检测群聊'
+      admin-alerts-discord-mention: 'Discord 提及'
+      admin-alerts-discord-case-sensitive: '关键词区分大小写'
+      admin-alerts-discord-keywords: '管理员提醒关键词'
+      content-filter-enabled: '启用过滤'
+      content-filter-scopes-public: '公开聊天'
+      content-filter-scopes-group: '群聊'
+      content-filter-scopes-dm: 'DM'
+      content-filter-block-show-matched-word: '显示匹配词'
+      content-filter-mask-text: '掩码文本'
+      content-filter-anti-evasion-unicode-normalization: 'Unicode 规范化'
+      content-filter-anti-evasion-compact-match: '紧凑匹配'
+      content-filter-anti-evasion-interleave-match: '插入检测'
+      content-filter-anti-evasion-interleave-max-gap: '最大插入间隔'
+      content-filter-anti-evasion-interleave-unlimited-gap: '无限间隔检测'
+      content-filter-anti-evasion-collapse-repeats: '折叠重复字符'
+      content-filter-anti-evasion-repeat-limit: '重复上限'
+    settingsGroupGuestCaptcha: '访客 / CAPTCHA'
+    settingsGroupAuthSessions: '认证 / 会话'
+    settingsGroupProfiles: '用户配置文件'
+    settingsGroupUploads: '上传'
+    settingsGroupDiscordAlerts: 'Discord 管理员提醒'
+    filterGroupGeneral: '基本 / 适用范围'
+    filterGroupBehavior: '拦截 / 过滤'
+    filterGroupAntiEvasion: '规避检测'
+    settingsHint: 这些设置会立即生效并写入 config.yml。修改会话期限时，当前有效会话也会按创建时间重新计算。
+    settingsSaved: '已保存并重新读取服务器值。会话更新: {updated}，过期: {expired}'
+    settingsNoChanges: '没有更改的设置。'
+    settingsSaving: '保存中...'
+    settingsVerifyFailed: '无法从 config.yml 验证保存结果。'
+    settingsVerifyMismatch: '{setting} 保存验证失败。'
+    optionCaptchaOff: '关闭'
+    optionCaptchaMath: '数学题'
+    optionFilenameRandom: '随机文件名'
+    optionFilenameOriginal: '原始文件名'
+    optionMentionNone: '无'
+    filterHint: '已注册的 KWC 表情令牌会受到保护，不参与拦截/过滤。未注册的 :fake: 令牌按普通文本处理。'
+    filterGuideTitle: '自定义规则示例'
+    filterGuideChoose: '大量简单的拦截/过滤词请使用 TXT 列表；需要不同动作、替换候选或逐词替换时使用自定义规则。'
+    filterGuideBlockTitle: '1. 拦截整条消息'
+    filterGuideBlockExample: '动作: 拦截\n目标词:\n广告内容\n诈骗链接'
+    filterGuideMaskTitle: '2. 仅遮罩命中的文本'
+    filterGuideMaskExample: '动作: 遮罩\n目标词:\nword1\nword2\n结果: 命中部分 → content-filter.mask.text'
+    filterGuideReplaceTitle: '3. 使用公共候选词替换'
+    filterGuideReplaceExample: '动作: 替换\n目标词:\nword1\nword2\n替换候选:\n较温和表达\n另一种表达\n模式: 第一个或随机'
+    filterGuideMappingTitle: '4. 每个词使用不同替换值'
+    filterGuideMappingExample: '逐词替换:\nword1 => 替换 A\nword2 => 替换 B'
+    filterGuideMappingNote: '逐词替换左侧的词即使没有写在“目标词”中，也会自动成为匹配词。逐词替换优先于公共替换候选。'
+    filterGuideEvasionTitle: '5. 规避检测示例'
+    filterGuideEvasionText: 'compact 可检测 ''word 1''、''word-1'' 这类插入分隔符的规避；interleave 可在 interleave-max-gap 范围内检测 ''woXrd'' 这类插入字母/数字的规避。像 ''ㅅㅂ'' 这样的纯韩文字母规则只作为字母缩写规则，不代表所有具有相同初声的完整韩语词。'
+    filterGuideTest: '保存后使用下方“测试”。它不会发送消息，可同时检查 TXT 列表和自定义规则，即使实时过滤器尚未启用也可以测试。'
+    filterRules: '自定义规则'
+    filterWordLists: '过滤词列表'
+    filterWordListsSummary: '{files} 个文件 · {words} 个启用词'
+    filterWordListsHint: '使用 filter-lists/ 目录中的 UTF-8 .txt 文件。每行一个词，并可为每个列表选择拦截或过滤。空行和以 # 开头的行会被忽略。'
+    filterWordListsEmpty: '没有已注册的过滤词列表文件。'
+    filterListNew: '新建列表'
+    filterListImport: '导入 TXT'
+    filterListName: '文件名'
+    filterListWords: '过滤词'
+    filterListWordsHint: '每行一个词。以 # 开头的行为注释。'
+    filterListWordCount: '{count} 个词'
+    filterListBlockOnly: '每个列表可选择拦截或过滤；相同匹配范围存在自定义规则时优先使用自定义规则。'
+    filterListDisable: '停用'
+    filterListEnable: '启用'
+    filterListDeleteConfirm: '删除 {name}？'
+    filterRuleEditor: 规则编辑
+    filterWords: '目标词'
+    filterReplacements: '替换候选'
+    filterMappings: '逐词替换'
+    filterTest: 测试
+    filterTesting: '测试中...'
+    filterTestText: 要测试的文本
+    enabled: 启用
+    filterRuleId: '规则 ID'
+    filterAction: '动作'
+    filterReplacementMode: '替换方式'
+    filterReplacementModeHint: '如果设置了逐词替换，则优先使用逐词替换值。'
+    filterWordsHint: '每行一个目标词'
+    filterReplacementsHint: '用于 replace；每行一个'
+    filterMappingsHint: '原词 => 替换词'
+    filterNewRule: '新规则'
+    filterScopePublic: '公开'
+    filterScopeGroup: '群组'
+    filterScopeDm: 'DM'
+    filterRulesCount: '{count}条'
+    filterRulesEmpty: 'config.yml 中没有自定义过滤规则。'
+    filterDisabled: '已停用'
+    filterActionBlock: '拦截'
+    filterActionMask: '掩码'
+    filterListActionMask: '过滤'
+    filterActionReplace: '替换'
+    filterModeFirst: '使用第一个替换词'
+    filterModeRandom: '从替换词中随机选择'
+    filterClearEditor: '清空'
+    filterTestHint: '无需发送消息即可测试过滤词列表和自定义规则。即使实时过滤器已关闭也可以测试。'
+    filterTestBlocked: '已拦截'
+    filterTestChanged: '已更改'
+    filterTestNoMatch: '无匹配'
+    filterTestRule: '规则'
+    filterTestWord: '词语'
+    filterTestMatch: '匹配'
+    filterTestRuleCount: '已加载规则：{count}条'
+    filterTestListWordCount: '列表词数: {count}'
+    filterTestInput: '测试输入'
+  prompt:
+    createEmojiPack: 新文件夹名称
+    renameEmoji: 新表情名称
+    renameEmojiPack: 新文件夹名称
+  login:
+    title: KOKOTO WebChat 登录
+    tabLogin: 登录
+    tabLink: 绑定
+    description: 使用已绑定账户登录。
+  search:
+    title: 搜索消息
+    placeholder: 搜索消息内容或发送者
+    searching: 正在搜索...
+    noResults: 没有匹配的消息。
+    resultCount: '{count} 个结果'
+    failed: 搜索失败。
+    options: 选项
+    from: 开始
+    to: 结束
+    sender: 发送者
+    senderPlaceholder: 可选发送者
+    source: 来源
+    sourceAll: 全部
+    sourceGame: 游戏
+    sourceWeb: 网页
+    sourceDiscord: Discord
+    sourceSystem: 系统/事件
+    includeSystem: 包含系统/事件消息
+    enterQueryOrFilter: 请输入搜索词，或至少选择一个选项。
+  link:
+    description: 请在游戏内输入以下命令。
+    commandHint: /kchat auth <code>
+    statusReady: 点击开始生成代码。
+    statusWaiting: 等待在游戏内输入 /kchat auth {code} ...
+    statusLinked: 绑定完成。
+    statusExpired: 代码已过期。
+  password:
+    title: 设置密码
+    description: 设置网页密码后，下次无需进入游戏即可登录聊天。
+  account:
+    role: 角色
+    local: '本地'
+    linked: '已关联'
+  pip:
+    unsupported: 此浏览器不支持 Document Picture-in-Picture。请尝试桌面版 Chrome 或 Edge。
+    openFailed: 无法打开 Picture-in-Picture 窗口：{error}
+  preferences:
+    title: 聊天设置
+    theme: 主题
+    themeDefault: 默认
+    themeSystem: 系统
+    themeDark: 深色
+    themeLight: 浅色
+    themeHighContrast: 高对比度
+    languageAndTheme: 语言和主题
+    windowSettings: 窗口设置
+    fontSettings: 字体设置
+    themeResetNote: 切换主题时，聊天外观设置会重置为该主题的默认值。
+    fontSize: 字体大小
+    fontFamily: 字体
+    fontCustom: 自定义字体
+    fontCustomPlaceholder: 已安装字体名称或 CSS font-family
+    fontApply: 应用
+    fontTest: 检测
+    fontHelp: font-family 名称可在系统字体设置中查看。
+    fontExample: 示例：Malgun Gothic、Noto Sans KR、D2Coding。
+    fontDetected: 此浏览器中已检测到：{name}
+    fontNotDetected: 未检测到。请确认 font-family 名称是否正确，或此设备是否已安装该字体。
+    fontGeneric: CSS 通用字体族：{name}
+    fontUnknown: 此浏览器无法检测该字体。
+    textColor: 文字颜色
+    uiTextColor: UI 文字颜色
+    textShadow: 文字阴影
+    textShadowNone: 无
+    textShadowAuto: 自动
+    textShadowDark: 深色阴影
+    textShadowLight: 浅色阴影
+    textShadowCustom: 自定义
+    textShadowCustomValue: 自定义阴影
+    textShadowCustomColor: 阴影颜色
+    textShadowCustomX: 水平偏移
+    textShadowCustomY: 垂直偏移
+    textShadowCustomBlur: 模糊
+    textShadowCustomOpacity: 不透明度
+    textShadowCustomPreview: 阴影预览
+    textShadowCustomPlaceholder: 0 1px 2px rgba(0, 0, 0, 0.85)
+    inputBackgroundColor: 输入框背景颜色
+    notifications: '通知'
+    notificationsPage: '浏览器系统通知'
+    notificationsPageHelp: '浏览器通知仅可在支持通知功能的浏览器中使用。'
+    notificationsEnable: '启用通知'
+    notificationsDisable: '关闭通知'
+    notificationsTest: '测试通知'
+    notificationsPermissionDenied: '此浏览器中的通知权限已被阻止。'
+    notificationsUnsupported: '此浏览器不支持通知。'
+    webPush: '移动/后台推送'
+    webPushHelp: '移动推送需要启用移动推送并允许通知权限。'
+    webPushEnable: '启用通知'
+    webPushDisable: '关闭通知'
+    webPushUnsupported: '此浏览器或服务器配置无法使用 Web Push。'
+    webPushServerDisabled: '服务器配置中已禁用通知。请在 config.yml 中启用 notifications.enabled。'
+    webPushInsecure: '移动推送需要 HTTPS 或 localhost。'
+    webPushNoServiceWorker: '此浏览器不支持 Service Worker。'
+    webPushNoPushManager: '此浏览器不支持 Push API。'
+    webPushStandaloneRequired: 在 iOS/iPadOS 上，需要先将此聊天页面添加到主屏幕并作为 Web App 打开，才能使用移动/后台推送。
+    webPushEnabledStatus: '此设备已启用移动/后台推送。'
+    webPushDisabledStatus: '已在此浏览器禁用。'
+    notifyTypes: '通知类型'
+    notifyTypesHelp: '登录用户的通知类型设置按账户同步，并同时用于浏览器通知和 Web Push。'
+    notifyNormalChat: '普通聊天'
+    notifyDm: '私信'
+    notifyGroupChat: '群聊'
+    notifyReplies: '回复'
+    notifyMentions: '提及'
+    notifySystem: '服务器'
+    notifySystemAll: '全部'
+    notifySystemJoinLeave: '仅加入/退出'
+    notifySystemOff: '关闭'
+    notifyKeywords: '关键词提醒'
+    notifyKeywordsList: '关键词提醒词'
+    notifyKeywordsHelp: '使用逗号或换行分隔。登录用户的关键词会在此 KWC 服务器上的多个浏览器间同步；访客仅保存在当前浏览器。'
+    notifyKeywordsApply: '应用关键词'
+    notifyKeywordsSaved: '关键词提醒已保存。'
+    notifyKeywordsNeedsApply: '关键词列表已更改。点击应用关键词以更新推送过滤。'
+    notifyDisabledByServer: '已被服务器配置禁用。'
+    keywordNotificationTitle: '关键词：{keyword}'
+    notifyPreview: '消息预览'
+    notificationsServerDisabled: '服务器配置已禁用通知。'
+    notificationsEnabledStatus: '浏览器通知已启用。'
+    notificationsAllowedDisabledStatus: '浏览器权限已允许，但聊天设置中已关闭。'
+    notificationsNotRequestedStatus: '请点击启用通知并允许浏览器通知权限。'
+    webPushTest: '测试通知'
+    webPushTestSent: '测试推送已发送。请检查此设备的通知区域。'
+    webPushHowToTest: '移动/后台 Push 使用相同的通知开关和通知类型选项。支持的浏览器会在启用通知时自动刷新订阅。'
+    webPushFailedHttp: 'Web Push 失败：HTTP {status}'
+    webPushInvalidVapid: 'Web Push 失败：VAPID 密钥无效。'
+    webPushServiceUnavailable: 'Web Push 失败：浏览器推送服务不可用。请稍后重试，或使用通知测试立即重试。'
+    webPushTimeout: 'Web Push 失败：请求超时。'
+    webPushInvalidDocument: 'Web Push 失败：addon iframe 文档无法直接注册 Service Worker。请刷新已更新的 chat.js，让 BlueMap 父页面执行注册。'
+    webPushParentUnavailable: 'Web Push 失败：addon 父页面注册桥不可用。'
+    webPushFailedWithMessage: 'Web Push 失败：{message}'
+    webPushFailed: 'Web Push 失败。'
+    advancedSettings: '高级设置'
+    backgroundColor: 背景颜色
+    presets: 已保存的聊天设置
+    presetSave: 保存
+    presetLoad: 加载
+    presetDelete: 删除
+    presetExport: '导出'
+    presetNew: '新建配置'
+    presetImport: '导入'
+    presetServerHelp: '登录用户可以将多个聊天设置配置文件保存到 KWC 账户，并在其他设备上加载。'
+    presetLocalHelp: '访客配置文件仅保存在此浏览器中。'
+    presetImportFailed: '导入失败。'
+    presetExportFailed: '导出失败。'
+    presetName: '设置名称'
+    presetNamePrompt: 设置名称
+    presetEmpty: 没有已保存的设置。
+    presetSaved: 已保存。
+    presetLoaded: 已加载。
+    presetDeleted: 已删除。
+    presetSaveFailed: '保存失败。浏览器存储可能被阻止。'
+    presetSelectRequired: 请先选择已保存的设置。
+    presetConfirmDelete: 要删除已保存的设置 {name} 吗？
+    language: 语言
+    languageDefault: 默认
+    fontDefault: 默认
+    fontSystem: 系统
+    note: '此设置窗口可通过拖动标题移动。'
+    noteDrag: 此设置窗口可通过拖动标题移动。
+  opacity:
+    title: 透明度
+  role:
+    admin:
+      short: 管理
+    moderator:
+      short: MOD
+    user:
+      short: USER
+    guest:
+      short: 访客
+  upload:
+    ready: 就绪
+    preparing: 正在准备上传...
+    progress: '正在上传 {current}/{total}: {name}'
+    canceling: 正在取消...
+    canceled: 上传已取消。
+    complete: 上传完成。
+    dropTitle: 拖放文件以上传
+    dropSubtitle: 在聊天面板内松开即可上传。
+    dropDenied: 不允许上传文件。
+    dropBusy: 已有上传正在进行。
+  media:
+    videoUnavailable: 视频预览不可用
+    audioUnavailable: 音频预览不可用
+    imageUnavailable: 图片预览不可用
+    youtube: YouTube
+    youtubeTitle: YouTube 视频
+    youtubeShorts: YouTube Shorts
+    youtubeShortsTitle: YouTube Shorts
+    loadTikTok: ▶ TikTok
+    loadXPost: ▶ X 帖子
+    openTikTok: 在 TikTok 打开
+    tiktok: TikTok
+    loadVideo: ▶ 视频
+    loadAudio: ▶ 音频
+  error:
+    unknown: 未知错误
+    content_blocked: '消息包含被禁止的内容，无法发送。'
+    content_blockedWord: '消息包含禁用词“{word}”，无法发送。'
+    network: 网络错误
+    invalid_response: 服务器响应无效
+    method_not_allowed: 不允许的请求方法
+    empty_message: 消息为空
+    thread_locked: 该 DM 会话已被管理员锁定
+    room_locked: 该群组聊天已被管理员锁定
+    permission_denied: 权限不足
+    guest_disabled: 访客聊天已禁用
+    captcha_failed: 验证码验证失败
+    blocked_name: 该访客名称已被屏蔽
+    guest_muted: 访客聊天已被禁言
+    guest_mutedWithReason: 访客聊天已被禁言：{reason}
+    rate_limited: 请求过于频繁，请稍后再试。
+    upload_disabled: 文件上传已禁用
+    multipart_required: 上传请求无效
+    file_too_large: 文件过大
+    total_size_exceeded: 已超过表情总容量限制
+    total_size_exceededWithUsage: 已超过表情总容量限制。当前 {current}，所选文件 {file}，最大 {max}。
+    upload_storage_quota_exceeded: 已超过上传存储容量上限。请删除旧上传文件或提高 upload.max-total-size-mb。
+    file_missing: 没有上传文件
+    upload_permission_denied: 你没有上传文件的权限
+    extension_not_allowed: 不允许的文件类型
+    invalid_path: 文件路径无效
+    not_found: 未找到
+    invalid_file: 文件无效
+    invalid_url: URL 无效
+    not_available: 不可用
+    auth_disabled: 账户绑定已禁用
+    password_login_disabled: 密码登录已禁用
+    login_locked: 登录失败次数过多。请稍后再试。
+    invalid_login: 用户名或密码无效
+    admin_ip_not_allowed: 不允许从此 IP 进行管理员登录
+    not_logged_in: 尚未登录
+    password_too_short: 密码至少需要 6 个字符
+    admin_panel_disabled: 网页管理面板已禁用
+    empty_value: 值为空
+    pinned_disabled: 置顶消息已禁用
+    message_not_found: 找不到消息
+    pin_limit_reached: 已达到置顶消息数量上限
+    commands_disabled: 网页命令已禁用
+    command_not_found: 找不到命令
+    invalid_command: 命令无效
+    command_failed: 命令运行失败
+    command_too_long: 命令过长
+    dmLoadFailed: '无法加载消息: {error}'
+    dmHideFailed: '无法隐藏消息: {error}'
+    dmSendFailed: '无法发送消息: {error}'
+    dm_disabled: 私信已禁用
+    dm_audit_disabled: 私信正文审计功能已禁用
+    web_send_disabled: Web 私信发送已禁用
+    player_not_found: 找不到玩家
+    remote_server_unavailable: 无法连接到目标服务器
+    self_message: 不能给自己发送私信
+  dm:
+    title: 消息
+    noThreads: 没有会话线程。
+    selectThread: 选择一个会话
+    emptyThread: 还没有消息。
+    searchPlayer: 搜索玩家
+    newMessage: 新消息
+    openForPlayer: '打开与 {player} 的私信'
+    selectPlayerFirst: 请先选择玩家。
+    showThreads: 显示会话列表
+    hideThreads: 隐藏会话列表
+    showThreadsShort: 展开
+    hideThreadsShort: 收起
+    confirmHideMessage: 要仅从自己的视图隐藏这条消息吗？
+    hideMessage: 仅为我隐藏这条消息
+    threadList: 会话列表
+    showConversationList: 显示列表
+    showCurrentConversation: 仅当前会话
+    retentionLimited: '保留期限：{days} 天'
+    retentionUnlimited: '保留期限：无限期'
+    backToList: 返回会话列表
+  delivery:
+    pending: '发送中'
+    failed: '失败'
+    retry: '重试'
+  receipt:
+    read: '接收者已读'
+    readAll: '所有接收者已读'
+    unread: '未读'
+    unreadCount: '未读接收者：{count}人'
+  group:
+    title: '群组聊天'
+    noRooms: '没有群组聊天。'
+    backToList: '返回群聊列表'
+    selectRoom: '选择房间'
+    emptyRoom: '还没有消息。'
+    newRoom: '新建房间'
+    untitled: '未命名房间'
+    public: '公开'
+    private: '私密'
+    roomName: '房间名称'
+    visibility: '可见性'
+    passwordProtected: '密码'
+    passwordOptionalLabel: '密码（可选）'
+    passwordSettingsLabel: '密码（留空则移除）'
+    membersShort: '人'
+    join: '加入'
+    invite: '邀请'
+    invites: '邀请'
+    settings: '设置'
+    leave: '退出'
+    namePrompt: '房间名称'
+    visibilityChoice: '要将此房间设为公开房间吗？\n确定 = 公开，取消 = 私密'
+    visibilityPrompt: '可见性：public 或 private'
+    passwordPrompt: '房间密码'
+    passwordOptionalPrompt: '密码（没有则留空）'
+    passwordSettingsPrompt: '密码：留空则移除，取消则保持不变'
+    searchPlayer: '搜索要邀请的玩家'
+    invitePrompt: '玩家名或 UUID'
+    inviteSentTo: '已向 {player} 发送邀请。'
+    inviteSent: '邀请已发送。'
+    confirmInvite: '要邀请 {player} 加入此群聊吗？'
+    confirmLeave: '要退出此群组聊天吗？'
+    confirmHideMessage: '要从你的视图中隐藏此消息吗？'
+    manage: '管理'
+    manageNote: '房间管理员可以踢出、封禁或转移房主。此处不显示消息正文。'
+    memberListNote: '成员可以查看参与者列表。管理操作仅对房间管理员显示。'
+    memberOnlineCount: '{online}/{total} 在线'
+    online: '在线'
+    offline: '离线'
+    kick: '踢出'
+    ban: '封禁'
+    transferOwner: '转移房主'
+    noMembers: '没有成员。'
+    confirmKick: '要将 {player} 踢出此房间吗？'
+    confirmBan: '要在此房间封禁 {player} 吗？'
+    confirmTransferOwner: '要将房主转移给 {player} 吗？'
+    confirmHideRoom: '要从你的群组聊天列表中隐藏此房间吗？'
+    retentionLimited: '保留期：{days} 天'
+    retentionUnlimited: '保留期：无限期'
+
+    members: '成员'
+    banned: '已封禁'
+    unban: '解除封禁'
+    bannedUsers: '已封禁用户'
+    noBans: '没有已封禁用户。'
+    confirmUnban: '要解除 {player} 在此房间的封禁吗？'
+    hiddenRooms: '已隐藏的房间'
+    showRoom: '重新显示'
+    hiddenRoomHint: '已从你的列表隐藏'
+  announcement:
+    minecraft-join: 🟢 {player} 加入了服务器。
+    minecraft-quit: 🔴 {player} 离开了服务器。
+    first-join: ✨ {player} 首次加入了服务器。
+    death: ☠ {message}
+    advancement: 🏆 {player} 完成了进度 [{advancement}]。
+    server-start: 🟢 服务器已启动。
+    server-stop: 🔴 服务器正在停止。
+    world-change: 🌍 {player} 移动到了 {to_world}。
+    gamemode-change: 🎮 {player} 的游戏模式已更改为 {to_gamemode}。
+    level-change: ⭐ {player} 的等级从 {old_level} 变为 {new_level}。
+    bed-enter: 💤 {player} 上床了。
+    web-login: 🌐 {name} 登录了网页聊天。
+    web-logout: 🌐 {name} 退出了网页聊天。
+  notifications:
+    inbox: '通知箱'
+    empty: '没有错过的通知。'
+    clear: '清空通知'
+    replyTitle: '来自 {sender} 的回复'
+
+  notification:
+    reply: '回复'
+    keyword: '关键词'
+    dm: '私信'
+    groupChat: '群聊'
+    testBody: '测试推送已发送。'
+
+  sender:
+    unknown: 未知
+    server: 服务器
+    discord: Discord
+    originalId: '原始ID: {name}'
+    displayName: '显示名称: {name}'
+    command: 命令
+    system: 服务器
+  source:
+    game: 游戏
+    web: 网页
+    guest: 访客
+    discord: Discord
+    system: 服务器
+    server: 服务器
+    event: 服务器
+  command:
+    onlyPlayers: 此命令只能由玩家使用。
+    noPermission: 你没有权限。
+    passwordSet: Web 聊天密码已设置。
+    disabledByConfig: KOKOTO WebChat 已在 config.yml 中禁用。
+    configReloaded: KOKOTO WebChat 配置已重新加载。
+    configReloadFailed: 'KOKOTO WebChat 配置重新加载失败: {error}'
+    guestNoMutes: 没有访客/IP 禁言。
+    guestMutesTitle: 'KOKOTO WebChat 禁言列表:'
+    guestMuteEntry: '- {type}:{value} 原因={reason} 过期={expires}'
+    guestMuteAdded: '已添加禁言: {type}:{value} ({minutes} 分钟)'
+    guestMuteRemoved: 禁言已移除。
+    guestMuteNotFound: 未找到禁言。
+    guestUnknownSubcommand: 未知的 guest 子命令。
+    sessionsTitle: 'KOKOTO WebChat 会话: {count}'
+    sessionEntry: '- {username} {role} ip={ip}'
+    revokeDone: 已撤销 {username} 的 {count} 个会话。
+    adminLocalDisabled: 本地管理员账号创建已禁用。
+    adminCreated: '已创建本地管理员账号: {username}'
+    adminSetPasswordHint: '设置密码: /kchat admin password {username} <password>'
+    adminAccountNotFound: 未找到账号。
+    adminPasswordSetFor: '密码已设置: {username}'
+    adminRoleInvalid: 角色必须是 user、moderator 或 admin。
+    adminRoleChanged: '{username} 的角色已更改为 {role}。'
+    adminUnknownSubcommand: 未知的 admin 子命令。
+    helpAuth: 关联 Web 账号
+    helpPassword: 设置 Web 登录密码
+    helpStatus: 显示运行状态
+    helpReload: 重新加载配置
+    helpAdmin: 管理管理员账号和角色
+    helpGuest: 管理访客/IP 禁言
+    helpSessions: 列出 Web 会话
+    helpRevoke: 撤销 Web 会话
+    helpFilter: 管理过滤规则
+    helpSettings: 查看或修改实时设置
+    filterStatus: '过滤: {state} / public={public} group={group} dm={dm} / rules={rules}'
+    filterListTitle: '过滤规则: {count}'
+    filterRuleNotFound: '找不到过滤规则: {id}'
+    filterRuleRemoved: '已删除过滤规则: {id}'
+    filterRuleAdded: '已添加过滤规则: {id}'
+    filterWordRequired: 必须输入目标词。
+    filterTestResult: 'blocked={blocked} changed={changed} rule={rule} mode={mode} -> {message}'
+    contentFilterBlocked: '消息包含被禁止的内容，无法发送。'
+    contentFilterBlockedWord: '消息包含禁用词 {word}，无法发送。'
+    settingsShowHint: '使用 /kchat settings show <key> 或 /kchat settings set <key> <value>。'
+    settingsUnsupported: '不支持的设置: {key}'
+    settingsFailed: '设置修改失败: {error}'
+    settingsUpdated: '已更新 {key}={value}。会话更新={updated}，过期={expired}。'
+    helpDm: 发送私信
+    helpDmList: 列出私信会话
+    helpDmHide: 从自己的视图隐藏私信
+    helpDmRead: 读取 1 对 1 消息会话
+    helpReply: 回复公开 KWC 消息
+    replyClickHint: "点击回复 (#{id})"
+    helpGroup: '发送群聊消息'
+    helpGroupList: '列出已加入的群聊'
+    helpGroupRead: '读取群聊'
+    groupDisabled: '群聊已禁用。'
+    groupDirectInputRequired: '群聊消息必须由玩家直接输入。'
+    groupRoomNotFound: '找不到群聊房间，或你不是成员。'
+    groupEmpty: '消息为空。'
+    groupFailed: '群聊失败：{error}'
+    groupSentEcho: '已发送到群组 {room}：{message}'
+    groupTitle: '群聊：{count}'
+    groupNoRooms: '没有已加入的群聊。'
+    groupReadTitle: '群聊 {room}：'
+    groupNoMessages: '此群聊中没有消息。'
+    groupReadHint: '发送：/kchat group {room} <message>'
+    groupReadNoCursor: '请先打开群聊：/kchat group read <room>'
+    groupReadNavHint: '使用 /kchat group prev 查看较新的消息，使用 /kchat group next 查看较旧的消息。'
+    groupReadFirstPage: '已经是最新的群聊页面。'
+    groupReadLastPage: '已经是最旧的群聊页面。'
+    groupIncoming: '群组 {room} 中 {player}：{message}'
+    dmDisabled: 私信已禁用。
+    dmTitle: '私信: {count} 条未读'
+    dmTitlePage: '私信: {count} 条未读（第 {page}/{pages} 页）'
+    dmListNavHint: '使用 /kchat dm list prev 查看较新的会话，使用 /kchat dm list next 查看较旧的会话。'
+    dmListFirstPage: '已经是最新的会话列表页。'
+    dmListLastPage: '已经是最旧的会话列表页。'
+    dmNoThreads: 没有私信会话。
+    dmGameSendDisabled: 游戏内私信发送已禁用。
+    dmDirectInputRequired: "DM 只能通过玩家直接输入的命令发送。"
+    dmPlayerNotFound: 找不到玩家。玩家必须至少加入过一次。
+    dmRemoteServerUnavailable: 无法连接到目标服务器。
+    replyDisabled: 游戏内回复功能已禁用。
+    replyDirectInputRequired: 回复只能通过玩家直接输入的命令发送。
+    replyEmpty: 回复消息为空。
+    replyTargetNotFound: 找不到要回复的消息。
+    dmEmpty: 消息为空。
+    dmFailed: '私信发送失败: {error}'
+    dmDeliveryFailed: '私信发送失败。可以在网页聊天中重试。'
+    dmSent: '已发送给 {player}: {message}'
+    dmSentEcho: '发送: {player} {message}'
+    dmIncoming: '来自 {player} 的私信: {message}'
+    dmReadTitle: '与 {player} 的消息:'
+    dmReadTitlePage: '与 {player} 的消息（第 {page}/{pages} 页）:'
+    dmReadPageHint: '下一页: /kchat dm read {player} {page} {pageSize}'
+    dmReadNavHint: '使用 /kchat dm prev 查看较新的消息，使用 /kchat dm next 查看较旧的消息。'
+    dmReadNoCursor: '请先打开一个会话: /kchat dm read <player>'
+    dmReadFirstPage: '已经是最新页。'
+    dmReadLastPage: '已经是最旧页。'
+    dmNoMessages: 此会话中没有消息。
+    dmMe: 我
+    dmHideHint: '仅从自己视图隐藏: /kchat dm hide <messageId>'
+    dmInvalidMessageId: 消息 ID 无效。
+    dmHideFailed: "隐藏消息失败。"
+    dmHidden: 已从你的视图隐藏该消息。
+    never: 永不
+    authInvalid: 无效的认证请求。
+    authCodeExpired: 认证代码不存在或已过期。
+    authComplete: Web 聊天账号关联完成。请返回浏览器。
+    dmUnreadNotice: 你有 {count} 条未读私信。请打开网页聊天消息框，或使用 /kchat dm list。
+  pinned:
+    count: 置顶消息：{count}
+    compact: '{count}'
+    single: '{title}'
+    multiple: '{title} 等 {rest} 条'
+    more: '等 {rest} 条'
+    title: 置顶消息
+    empty: 没有置顶消息。
+    untitled: 置顶消息
+    pinnedBy: 由 {user} 置顶
+  commands:
+    title: 服务器命令
+    description: 从网页界面运行预先允许的服务器命令。
+    descriptionAll: 从网页界面运行任意服务器控制台命令。
+    directPlaceholder: 输入不带 / 的命令
+    runDirect: 运行命令
+    search: 搜索预设命令
+    noMatches: 没有匹配的命令。
+    notAvailable: 命令面板不可用。
+    confirm: 要运行命令吗？ /{command}
+    submitted: 命令已提交：{label}
+    failed: 命令运行失败：{error}
+    tooLong: 命令过长。最多 {max} 个字符。
+    maxLengthHint: 最多 {max} 个字符
+  update:
+    available: '有新版本 {latest}。当前版本：{current}'
+    openDownload: 打开下载页面
+    modrinth: Modrinth
+    curseforge: CurseForge
+  system:
+    command-executed: '{executor} 执行了 Web 命令：{label}'
+    command-executed-by: '{executor} 执行了 Web 命令：{label}'
+    note: 服务器事件和 Web 命令结果等系统消息在存在 i18n 键时会在 Web UI 中翻译。config.yml 中的自定义 announcement 文本会作为回退文本保留。
+  history:
+    end: 没有更多可显示的消息。
+    loading: '正在加载历史。
+
+      请稍候。'
+    failed: '加载失败。
+
+      请稍后重试。'
+    timeout: '响应较慢。
+
+      请稍后重试。'
+    offline: '连接已断开。
+
+      请检查网络。'
+

@@ -1,0 +1,17 @@
+# KOKOTO WebChat starter blocked-word list (English)
+# UTF-8, one term per line. Conservative strong-profanity starter set; customize as needed.
+fuck
+fucker
+fucking
+motherfucker
+motherfucking
+shit
+bullshit
+shithead
+asshole
+bitch
+cunt
+dickhead
+douchebag
+fuckwit
+fuckhead

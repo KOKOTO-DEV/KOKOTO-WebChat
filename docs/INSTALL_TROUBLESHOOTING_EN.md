@@ -1,4 +1,4 @@
-# BlueMapWebChat Installation and Troubleshooting
+# KOKOTO WebChat Installation and Troubleshooting
 
 ## Requirements
 
@@ -17,17 +17,17 @@ mvn clean package
 Output:
 
 ```text
-target/BlueMapWebChat-4.7.0.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.0.0-Bukkit-1.18-26.2.jar
 ```
 
 ## Install or upgrade
 
 1. Stop the Minecraft server.
-2. Replace the old BlueMapWebChat jar in `plugins/` with the new jar.
+2. Replace the old KOKOTO WebChat jar in `plugins/` with the new jar.
 3. Start the server.
-4. Check `plugins/BlueMapWebChat/config.yml`.
-5. Run `/bmchat reload` or restart if you changed important paths.
-6. Run `/bluemap reload` if BlueMap does not pick up webapp changes automatically.
+4. Check `plugins/KOKOTO-WebChat/config.yml`.
+5. Run `/kchat reload` or restart if you changed important paths.
+6. `/kchat reload` requests `bluemap reload light` automatically after changing the BlueMap webapp integration. If that dispatch fails, run `/bluemap reload light` manually.
 7. Hard-refresh the browser.
 
 ## Verify web addon registration
@@ -39,28 +39,29 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 The entries should include the current version query, for example:
 
 ```text
-addons/bluemap-web-chat/config.js?v=4.7.0-<cache-token>
-addons/bluemap-web-chat/chat.js?v=4.7.0-<cache-token>
-addons/bluemap-web-chat/chat.css?v=4.7.0-<cache-token>
+addons/kokoto-web-chat/config.js?v=5.0.0-<cache-token>
+addons/kokoto-web-chat/chat.js?v=5.0.0-<cache-token>
+addons/kokoto-web-chat/chat.css?v=5.0.0-<cache-token>
 ```
 
 Also verify the actual web files were updated:
 
 ```bash
-find /opt/minecraft/server -path "*addons/bluemap-web-chat/chat.js" -printf "%p  %TY-%Tm-%Td %TH:%TM\n"
+find /opt/minecraft/server -path "*addons/kokoto-web-chat/chat.js" -printf "%p  %TY-%Tm-%Td %TH:%TM\n"
 ```
 
 ## BlueMap webroot mismatch
 
-If `/api/config` works but the chat panel does not appear, BlueMap may be serving a different webroot than the one configured in BlueMapWebChat.
+If `/api/config` works but the chat panel does not appear, BlueMap may be serving a different webroot than the one configured in KOKOTO WebChat.
 
 Check BlueMap's `webapp.conf` and make sure these match your setup:
 
 ```yaml
-web-addon:
-  bluemap-web-root: "bluemap/web"
-  bluemap-webapp-conf: "plugins/BlueMap/webapp.conf"
-  addon-path: "addons/bluemap-web-chat"
+adapters:
+  bluemap:
+    bluemap-web-root: "bluemap/web"
+    bluemap-webapp-conf: "plugins/BlueMap/webapp.conf"
+    addon-path: "addons/kokoto-web-chat"
 ```
 
 ## Browser cache
@@ -77,12 +78,12 @@ You can also check the loaded version in the console:
 
 ## BlueMap still loads an older addon version
 
-If BlueMap still loads an older BlueMapWebChat addon version after updating, run `/bmchat reload` once more or restart the server, then hard-refresh the browser.
+If BlueMap still loads an older KOKOTO WebChat addon version after updating, run `/kchat reload` once more or restart the server, then hard-refresh the browser.
 
 ## HTTPS reverse proxy
 
 For public servers, use HTTPS through Caddy or nginx. See:
 
 - `docs/CADDY_HTTPS_EN.md` and `examples/caddy/Caddyfile`
-- `docs/NGINX_HTTPS_EN.md` and `examples/nginx/bluemapwebchat.conf`
+- `docs/NGINX_HTTPS_EN.md` and `examples/nginx/kchat.conf`
 

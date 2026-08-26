@@ -1,0 +1,24 @@
+modLoader="javafml"
+loaderVersion="[${loader_major},)"
+license="MIT"
+
+[[mods]]
+modId="kokoto_webchat"
+version="5.0.0"
+displayName="KOKOTO WebChat"
+authors="KOKOTO"
+description='Server-side KOKOTO WebChat Forge platform module.'
+
+[[dependencies.kokoto_webchat]]
+modId="forge"
+mandatory=true
+versionRange="[${forge_version},)"
+ordering="NONE"
+side="SERVER"
+
+[[dependencies.kokoto_webchat]]
+modId="minecraft"
+mandatory=true
+versionRange="[${minecraft_version},${minecraft_next})"
+ordering="NONE"
+side="SERVER"

@@ -1,0 +1,39 @@
+plugins { id 'base' }
+
+def targets = [
+    '1.18.2',
+    '1.19.2',
+    '1.19.4',
+    '1.20.1',
+    '1.20.2',
+    '1.20.4',
+    '1.20.6',
+    '1.21.1',
+    '1.21.3',
+    '1.21.4',
+    '1.21.5',
+    '1.21.8',
+    '1.21.10',
+    '1.21.11',
+    '26.1.2',
+    '26.2',
+]
+
+def windows = System.getProperty('os.name').toLowerCase().contains('windows')
+def previous = null
+targets.each { mc ->
+    def taskName = 'buildForge' + mc.replace('.','_')
+    def task = tasks.register(taskName, Exec) {
+        workingDir projectDir
+        if (windows) commandLine 'cmd', '/c', 'build-target.bat', mc
+        else commandLine 'sh', './build-target.sh', mc
+    }
+    if (previous != null) task.configure { mustRunAfter previous }
+    previous = task
+}
+
+tasks.register('buildAllForge') {
+    group = 'build'
+    description = 'Build every exact Forge target using the target-required Gradle and JDK launcher.'
+    dependsOn targets.collect { 'buildForge' + it.replace('.','_') }
+}

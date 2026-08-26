@@ -1,4 +1,4 @@
-# BlueMapWebChat Upload Security Notes
+# KOKOTO WebChat Upload Security Notes
 
 File upload is convenient but can be abused on public servers. The default configuration keeps guest uploads disabled.
 
@@ -34,35 +34,36 @@ upload:
 Same-domain HTTPS reverse proxy example:
 
 ```yaml
-web-addon:
-  api-base-url: "/bmwc/api"
+http:
+  path-prefix: "/api"
+  public-prefix: "/chat"
 
 upload:
-  # Recommended: leave empty so uploads follow /bmwc/api automatically.
+  # Recommended: leave empty so uploads follow /chat/api automatically.
   public-base-url: ""
 
 emoji:
-  # Recommended: leave empty so emoji files follow /bmwc/api automatically.
+  # Recommended: leave empty so emoji files follow /chat/api automatically.
   public-base-url: ""
 ```
 
-Legacy explicit forms are also accepted:
+Explicit overrides, when intentionally needed:
 
 ```yaml
 upload:
-  public-base-url: "/bmwc/api"        # plugin appends /uploads
-  # or: "/bmwc/api/uploads"
+  public-base-url: "/chat/api"        # plugin appends /uploads
+  # or: "/chat/api/uploads"
 
 emoji:
-  public-base-url: "/bmwc/api"        # plugin appends /emojis
-  # or: "/bmwc/api/emojis"
+  public-base-url: "/chat/api"        # plugin appends /emojis
+  # or: "/chat/api/emojis"
 ```
 
 A leading slash is treated as a same-origin browser path. You do not need to use a full FQDN for same-domain proxy deployments.
 
-If the upload endpoint uses the same reverse-proxied API path as the BlueMap addon, keep `upload.public-base-url` empty or set it to the shared API base such as `/bmwc/api`. The legacy full resource path `/bmwc/api/uploads` is still accepted.
+If the upload endpoint uses the same reverse-proxied API path as the BlueMap addon, keep `upload.public-base-url` empty or set it to the shared API base such as `/chat/api`. The legacy full resource path `/chat/api/uploads` is still accepted.
 
-For custom emoji files, the same rule applies: keep `emoji.public-base-url` empty, or use `/bmwc/api` or `/bmwc/api/emojis` for legacy/custom deployments.
+For custom emoji files, the same rule applies: keep `emoji.public-base-url` empty, or use `/chat/api` or `/chat/api/emojis` for legacy/custom deployments.
 
 
 ## Allowed extensions
@@ -86,13 +87,13 @@ upload:
     - flac
 ```
 
-BlueMapWebChat limits by extension and size, but it is still recommended to serve uploads from a constrained directory and use HTTPS for public deployment. `upload.max-total-size-mb` can additionally cap the total size of regular files stored directly in `upload.directory`; `0` disables the quota. When enabled, the server deletes the oldest unreferenced uploads first, and rejects the new upload if protected/referenced files still keep the folder over the limit.
+KOKOTO WebChat limits by extension and size, but it is still recommended to serve uploads from a constrained directory and use HTTPS for public deployment. `upload.max-total-size-mb` can additionally cap the total size of regular files stored directly in `upload.directory`; `0` disables the quota. When enabled, the server deletes the oldest unreferenced uploads first, and rejects the new upload if protected/referenced files still keep the folder over the limit.
 
 Archive formats such as `zip` are not included in the default public-server example. Add them manually only when you intentionally want general file sharing.
 
 ### URL setting resolution
 
-`web-addon.api-base-url` is the primary HTTPS public API path. Leave `standalone-web.api-base-url`, `upload.public-base-url`, and `emoji.public-base-url` empty unless you need a compatibility override. Empty standalone follows `web-addon.api-base-url`; empty upload/emoji append `/uploads` and `/emojis`. Absolute browser paths such as `/bmwc/api` are used as-is. Relative values without a leading `/` are resolved against `http.cors-origin` when it is a real origin. Full `https://...` URLs are used as-is.
+`http.public-prefix + http.path-prefix` is the canonical HTTPS public API path (`/chat/api` by default). Adapter and standalone API overrides normally stay empty and are independent. Empty upload/emoji values follow the canonical API base and append `/uploads` and `/emojis`.
 
 
 Admin custom emoji manager note: renaming an emoji file or folder changes the `:emoji:pack/name:` token. Existing chat messages that reference the old token may no longer render unless the old file/folder name is kept.

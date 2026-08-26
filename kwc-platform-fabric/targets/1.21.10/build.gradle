@@ -1,0 +1,30 @@
+plugins { id 'net.fabricmc.fabric-loom-remap' version '1.17-SNAPSHOT' }
+
+group='dev.kokoto.webchat'
+version='5.0.0'
+base { archivesName='KOKOTO-WebChat-5.0.0-Fabric-1.21.10' }
+
+repositories { mavenCentral(); maven { url 'https://repo.bluecolored.de/releases' } }
+sourceSets.main.java.srcDirs=['../../src/common/java','../../src/compatV2/java','../../src/compatModern/java','../../../kwc-core/src/main/java','../../../kwc-adapter-bluemap/src/main/java','../../../kwc-adapter-squaremap/src/main/java','../../../kwc-adapter-dynmap/src/main/java','../../../kwc-adapter-pl3xmap/src/main/java','../../../kwc-adapter-liveatlas/src/main/java','../../../kwc-adapter-unmined/src/main/java','../../../kwc-adapter-overviewer/src/main/java']
+sourceSets.main.resources.srcDirs=['../../../kwc-standalone-frontend/src/main/resources','../../../kwc-adapter-bluemap/src/main/resources','../../../kwc-adapter-squaremap/src/main/resources','../../../kwc-adapter-dynmap/src/main/resources','../../../kwc-adapter-pl3xmap/src/main/resources','../../../kwc-adapter-liveatlas/src/main/resources','../../../kwc-adapter-unmined/src/main/resources','../../../kwc-adapter-overviewer/src/main/resources']
+
+dependencies {
+    minecraft 'com.mojang:minecraft:1.21.10'
+    mappings loom.officialMojangMappings()
+    modImplementation 'net.fabricmc:fabric-loader:0.19.3'
+    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.138.4+1.21.10'
+    implementation include('org.xerial:sqlite-jdbc:3.53.2.0')
+    implementation include('org.yaml:snakeyaml:2.4')
+}
+
+def metadata=tasks.register('generateModMetadata',Copy) {
+    from('../../src/common/templates')
+    into(layout.buildDirectory.dir('generated/resources'))
+    expand(version:'5.0.0',minecraft_version:'1.21.10',loader_version:'0.19.3',java_version:'21')
+}
+tasks.named('processResources').configure { dependsOn(metadata); from(layout.buildDirectory.dir('generated/resources')); from('../../../kwc-platform-bukkit/src/main/resources') { include 'config.yml'; include 'config-baselines/**'; include 'lang/**'; include 'filter-lists-default/**' } }
+
+tasks.withType(JavaCompile).configureEach { options.release=21; options.encoding='UTF-8' }
+java { sourceCompatibility=JavaVersion.toVersion(21); targetCompatibility=JavaVersion.toVersion(21); withSourcesJar() }
+tasks.withType(AbstractArchiveTask).configureEach { archiveBaseName.set('KOKOTO-WebChat-5.0.0-Fabric-1.21.10'); archiveVersion.set('') }
+jar { from('../../../LICENSE') { rename { 'LICENSE_KOKOTO-WebChat' } } }

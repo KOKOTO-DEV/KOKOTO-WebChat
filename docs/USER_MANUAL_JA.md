@@ -1,10 +1,13 @@
-# BlueMapWebChat 4.7.0 総合ユーザー・運用マニュアル
+# KOKOTO WebChat 5.0.0 総合ユーザー・運用マニュアル
 
-この文書は BlueMapWebChat 4.7.0 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION_JA.md`、サーバー間リレーは `SERVER_RELAY_JA.md`、HTTPS は `CADDY_HTTPS_JA.md` と `NGINX_HTTPS_JA.md` を参照してください。
+> **5.0.0 運用:** Web Admin **Filter** で公開/グループ/任意 DM の block/mask/replace ルールとテストを管理し、**Settings** で guest/CAPTCHA、セッション、moderation、upload、filter の安全なライブ設定を管理します。ゲーム側は `/kchat filter` / `/kchat settings`。セッション期間変更は期限切れセッションを復活させず作成時刻基準で既存対象を再計算します。`upload.filename-mode: original` は新規アップロードの安全な Unicode 元名を保持し重複時に番号を付けます。
+
+
+この文書は KOKOTO WebChat 5.0.0 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION_JA.md`、サーバー間リレーは `SERVER_RELAY_JA.md`、HTTPS は `CADDY_HTTPS_JA.md` と `NGINX_HTTPS_JA.md` を参照してください。
 
 ## 1. 概要
 
-BlueMapWebChat は Bukkit/Paper/Spigot 互換 Minecraft サーバーのチャットをブラウザーに接続するプラグインです。
+KOKOTO WebChat は Minecraft サーバーのチャットをブラウザーに接続するサーバー側 Web チャットです。5.0.0 は Bukkit/Paper/Spigot に加え、Fabric 1.18.2〜26.2、NeoForge 1.20.2〜26.2、Forge 1.18.2〜26.2 の exact-target build を提供します。
 
 主な利用形態:
 
@@ -16,116 +19,188 @@ BlueMapWebChat は Bukkit/Paper/Spigot 互換 Minecraft サーバーのチャッ
 - DiscordSRV 連携
 - 複数 Minecraft サーバー間の公開チャットリレー
 
-標準 HTTP ポートは `8899`、API prefix は `/api`、standalone path は `/chat` です。
+標準 HTTP ポートは `8899`、API prefix は `/api`、standalone の内部 path は `/` で、既定のリバースプロキシでは `/chat` として公開します。
 
 ## 2. 必要環境
 
 必須:
 
-- Bukkit/Paper/Spigot 互換サーバー
-- プラグイン JAR を配置できる管理権限
+- 対応 platform: Bukkit/Paper/Spigot **1.18〜26.2**、Fabric exact-target **1.18.2〜26.2**、NeoForge exact-target **1.20.2〜26.2**、Forge exact-target **1.18.2〜26.2**
+- 選択した Minecraft/server target が要求する Java。Bukkit artifact は Java 17 target です。Fabric/NeoForge/Forge exact-target build script は Minecraft target に応じて JDK 17/21/25 を選択し、26.x は Java 25 を使用します。
+- Bukkit 系は `plugins/`、Fabric/NeoForge/Forge は `mods/` に platform JAR を配置できる管理権限
 
 任意連携:
 
 - BlueMap
 - DiscordSRV
-- ImageEmojis-Bero 1.9.0
+- ImageEmojis-Bero 1.9.x
 - Caddy または Nginx
 
 公開運用では `8899` を直接インターネットへ公開せず、`127.0.0.1:8899` に bind して HTTPS reverse proxy 経由で公開することを推奨します。
 
 ## 3. インストールと初回有効化
 
-1. JAR を `plugins/` に配置します。
+1. Bukkit/Paper/Spigot は対応 JAR を `plugins/` に、Fabric/NeoForge/Forge は対応 platform JAR を `mods/` に配置します。
 2. サーバーを一度起動します。
-3. `plugins/BlueMapWebChat/config.yml` を確認します。
+3. `<KWC data dir>/config.yml` を確認します。`<KWC data dir>` は Bukkit 系では `plugins/KOKOTO-WebChat`、Fabric/NeoForge/Forge では `config/KOKOTO-WebChat` です。
 4. 新規設定は `enabled: false` です。
 5. URL、保存方式、保持期間、認証、アップロード制限を確認します。
 6. 必要な機能を設定し `enabled: true` にします。
-7. 再起動または `/bmchat reload` を実行します。
+7. 再起動または `/kchat reload` を実行します。
 
 ```yaml
-config-version: "4.7.0"
+config-version: "5.0.0"
 enabled: false
 ```
 
-無効時は Web サービス、チャット転送、cleanup task は開始されません。管理者の `/bmchat reload` は使用できます。
+無効時は Web サービス、チャット転送、cleanup task は開始されません。管理者の `/kchat reload` は使用できます。
 
 ## 4. 設定マイグレーション
 
-既存の設定値は自動上書きされません。startup/reload 時に既知の最上位 config block を 4.7.0 bundled default 順へ並べ替えますが、各 block の現在の text・設定値・custom comment は保持し、default にない最上位 block は最後に元の順序で残します。
+既存値は保持しますが、active migration では古い config text を継承しません。現在の bundled `config.yml` を新しい template として作成し、既存 operator 値だけを overlay します。旧 comment・順序・空白・indent は破棄され、最新 bundled comment/layout を使用します。
 
-`config-version` がない、または実行中バージョンと異なる場合、次のファイルが生成されます。
+現在 version の完全な reference は常に次へ生成されます。
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.7.0.yml
+<KWC data dir>/config-reference-5.0.0.yml
 ```
 
-プラグインは `plugins/BlueMapWebChat/config-reference-4.7.0.yml` も生成します。これは現在 JAR の完全な default config をコメント込みでそのままコピーした基準ファイルです。古い config や version marker のない config はこの完全 reference と比較し、migration fragment は実際に確認する差分一覧として使用してください。migration file 末尾には current と reference の text diff を comment として追加しますが、同一行は出力しません。各差分は file 名、別行の `Line` または `Lines`、実際に異なる内容の順で表示します。差分 source line は元の YAML indent を保持するため行頭に `#` だけを直接付け、reference-only block は current config への挿入位置も別に表示します。
+これは JAR 内の bundled `config.yml` を **comment と string scalar の double-quote 表記まで含めてそのまま**コピーした管理者確認用 file で、migration template には使用しません。`/kchat reload` は live service を停止する前に YAML を検証し、不正な YAML なら現在の実行設定を維持します。
+
+`config-version` がない、または実行 version と異なる場合、KWC は実 `config.yml` に対して一度だけ migration を行います。
+
+- 最新 bundled `config.yml` を新しい file の template にします。
+- 既存 operator 値をその template に overlay します。
+- 旧 comment・順序・空白・indent は引き継ぎません。
+- 旧 marker が `*_auto_migration` でない場合、実 version upgrade 前に元の `config.yml` を backup します。
+- 既存設定の bundled default が新 version で変わった場合は自動上書きせず review 対象に残します。
+- 実ファイルを `config-version: "5.0.0_auto_migration"` とします。
+
+その後、次を生成します。
+
+```text
+<KWC data dir>/config-migration-5.0.0.yml
+```
+
+これは不足設定を copy/paste する fragment ではなく **review report** です。自動挿入数、operator 判断が必要な default 変更、最終確認用の正確な version marker、current-vs-reference text diff を記録します。不足設定と comment はすでに実 config の適切な位置へ挿入されるため、diff の先頭に巨大な reference-only block として並びません。
 
 判定基準:
 
-| 実際の `config.yml` | 動作 |
+| 実 `config.yml` | 動作 |
 |---|---|
-| `config-version` がない | 他の差分が 0 件でも対象 version marker を含む migration file を生成 |
-| `config-version` が plugin version と異なる | 不足・変更設定と対象 version marker を含む file を生成・更新 |
-| `config-version` が plugin version と一致 | 確認済みとして migration 比較/report 生成を省略し、古い migration 案内は削除するが、完全 reference file は最新状態に維持 |
+| `config-version` がない/以前/異なる | migration を実行し `5.0.0_auto_migration` にして migration/review report を生成 |
+| `config-version: "5.0.0_auto_migration"` | 自動 migration 有効。startup/reload ごとに最新 bundled `config.yml` から再構築し、現在値を overlay して report/diff を更新 |
+| `config-version: "5.0.0"` | 現在 version の自動 migration を停止。同一 version の migration/backfill を skip し、古い migration 案内を削除 |
 
-含まれる内容:
-
-- 現在の設定にない新規項目
-- 旧 default のままで、新バージョンで default が変更された項目
-- 最終確認 marker の対象 `config-version`
-
-他の設定差分がなくても、設定 version 管理のため `config-version` を含む file を生成します。説明や旧値は `#` comment のみで、実際の `config.yml` は変更されません。確認後に次を設定します。
+この marker は **review 状態ではなく自動 migration の有効/無効**を表します。
 
 ```yaml
-config-version: "4.7.0"
+# 確認済みでも自動 migration を継続
+config-version: "5.0.0_auto_migration"
+
+# 同一 version の自動 migration を停止
+config-version: "5.0.0"
 ```
 
-バージョンが一致すると比較を省略します。
-
+後で実際の plugin version upgrade が発生した場合は、新しい version の `_auto_migration` 状態に入ります。
 ## 5. 配布モード
 
 ### 5.1 BlueMap addon
 
 ```yaml
-web-addon:
-  auto-install: true
-  auto-patch-webapp-conf: true
-standalone-web:
-  enabled: false
+adapters:
+  bluemap:
+    auto-install: true
+    auto-patch-webapp-conf: true
+frontend:
+  standalone:
+    enabled: false
 ```
 
-Web asset が更新されない場合:
+Bukkit では KWC が BlueMap の web directory と `webapp.conf` を更新します。Fabric/NeoForge および Forge 26.1.2/26.2 + BlueMap 5.21+ では BlueMapAPI 2.8.0 から web root を取得し、script/style を API 登録するため `webapp.conf` は変更しません。BlueMap 連携が有効な場合、`/kchat reload` は `bluemap reload light` を自動要求し、次の BlueMap API `onEnable` で新しい KWC 設定を再登録します。
 
-```text
-/bluemap reload
-```
+### 5.2 Pl3xMap 埋め込みモード
 
-### 5.2 standalone のみ
+Pl3xMap を導入した Bukkit/Paper 系または Fabric サーバーでは次のように有効化します。
 
 ```yaml
-web-addon:
-  auto-install: false
-  auto-patch-webapp-conf: false
-standalone-web:
-  enabled: true
-  path: "/chat"
+adapters:
+  pl3xmap:
+    enabled: true
+    api-base-url: ""
+```
+
+KWC は現在の Pl3xMap `config.yml` にある `settings.web-directory.path` を読み取り（`settings.yml` は旧版/フォーク向け fallback のみ）、Pl3xMap web root 内の KWC 専用 `kokoto-web-chat` asset と `index.html` の KWC marker block だけを管理します。Pl3xMap が Web file を再生成した場合は `/kchat reload` で再確認できます。現在の Pl3xMap 26.2 は Bukkit/Paper 系および Fabric/Quilt 向けで、NeoForge 向けではありません。direct HTTP では空の `api-base-url` が KWC `:8899/api` を使用し、NAT で外部 KWC port が変わる場合は実際の公開 API URL を指定します。
+
+### 5.3 LiveAtlas 埋め込みモード
+
+LiveAtlas は Dynmap、squaremap、Pl3xMap、Overviewer、または複数 server を表示できる static frontend です。Bukkit/Fabric/NeoForge/Forge では次のように有効化します。
+
+```yaml
+adapters:
+  liveatlas:
+    enabled: true
+    api-base-url: ""
+    web-root: ""
+```
+
+`web-root` が空の場合、`window.liveAtlasConfig` などの LiveAtlas marker を含む `index.html` だけを自動認識します。Caddy/nginx の別 directory から配信する場合は、server から見える共有/マウント済み path を `web-root` に指定します。KWC が管理するのは `kokoto-web-chat/` と marker block のみです。LiveAtlas file 更新後は `/kchat reload` を実行してください。同じ物理 web root に LiveAtlas adapter と backend 固有 adapter を同時指定しないでください。
+
+### 5.4 uNmINeD static Web export
+
+uNmINeD は Minecraft server 内で動く plugin ではなく、自己完結した static Web map を生成します。先に map を export し、その directory を KWC に指定します。
+
+```yaml
+adapters:
+  unmined:
+    enabled: true
+    api-base-url: ""
+    web-root: "/srv/www/unmined"
+```
+
+現在の uNmINeD export は `index.html`、旧 export は `unmined.index.html` の場合があります。KWC は uNmINeD marker を確認した file だけを patch し、`kokoto-web-chat/` と marker block だけを管理して map tile/library file は変更しません。uNmINeD で再 export すると HTML または KWC 所有 directory が置き換わる場合があるため、その後 `/kchat reload` を実行します。別 host で配信する場合は Minecraft server から変更できるよう export directory を共有/マウントしてください。
+
+### 5.5 Minecraft Overviewer static Web map
+
+Minecraft Overviewer は設定した `outputdir` に Leaflet ベースの static Web map を render します。先に map を生成し、その directory を KWC に指定します。
+
+```yaml
+adapters:
+  overviewer:
+    enabled: true
+    api-base-url: ""
+    web-root: "/srv/www/overviewer"
+```
+
+KWC は Overviewer 固有の生成 marker/asset を確認できる `index.html` だけを patch し、独自の `kokoto-web-chat/` directory と marker block だけを管理して Overviewer tile/config/Leaflet asset は変更しません。後の Overviewer render または `--update-web-assets` で HTML が再生成される場合があるため、その後 `/kchat reload` を実行します。別 host で render/配信する場合は Minecraft server から変更できるよう output directory を共有/マウントしてください。独自の persistent template を管理する場合は Overviewer の `customwebassets` option を別途利用できます。
+
+### 5.6 standalone のみ
+
+```yaml
+adapters:
+  bluemap:
+    auto-install: false
+    auto-patch-webapp-conf: false
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
 ```
 
 ```text
-http://server.example.com:8899/chat
+http://server.example.com:8899/
 ```
 
-### 5.3 両方を使用
+### 5.7 両方を使用
 
 ```yaml
-web-addon:
-  auto-install: true
-  auto-patch-webapp-conf: true
-standalone-web:
-  enabled: true
+adapters:
+  bluemap:
+    auto-install: true
+    auto-patch-webapp-conf: true
+frontend:
+  standalone:
+    enabled: true
 ```
 
 アカウント、履歴、通知、サーバー設定は共有されます。
@@ -140,8 +215,9 @@ http:
   port: 8899
   path-prefix: "/api"
   cors-origin: "*"
-web-addon:
-  api-base-url: ""
+adapters:
+  bluemap:
+    api-base-url: ""
 ```
 
 HTTPS reverse proxy:
@@ -151,26 +227,30 @@ http:
   host: "127.0.0.1"
   port: 8899
   path-prefix: "/api"
+  public-prefix: "/chat"
   cors-origin: "https://map.example.com"
   trusted-proxies:
     - "127.0.0.1"
     - "::1"
-web-addon:
-  api-base-url: "/bmwc/api"
-standalone-web:
-  enabled: true
-  api-base-url: ""
+adapters:
+  bluemap:
+    enabled: true
+    api-base-url: ""
+frontend:
+  standalone:
+    enabled: true
+    api-base-url: ""
 ```
 
 公開例:
 
 ```text
 https://map.example.com/
-https://map.example.com/bmwc/api
-https://map.example.com/bmwc/chat
+https://map.example.com/chat/api
+https://map.example.com/chat
 ```
 
-通常は `standalone-web.api-base-url`、`upload.public-base-url`、`emoji.public-base-url` を空にします。`X-Forwarded-For` は `trusted-proxies` に登録された proxy からのみ信頼されます。
+通常は `frontend.standalone.api-base-url`、`upload.public-base-url`、`emoji.public-base-url` を空にします。`X-Forwarded-For` は `trusted-proxies` に登録された proxy からのみ信頼されます。
 
 IP 判定確認用:
 
@@ -180,6 +260,40 @@ http:
 ```
 
 確認後は無効にしてください。
+
+#### 逆配置: standalone を `/`、BlueMap を `/chat/`
+
+標準配置とは逆にすることもできます。内部 standalone path は `/` のまま、`http.public-prefix: ""` に設定し、`/chat/` だけ prefix を除去して BlueMap に送り、それ以外を KWC に送ります。
+
+```yaml
+http:
+  host: "127.0.0.1"
+  port: 8899
+  path-prefix: "/api"
+  public-prefix: ""
+
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
+    api-base-url: ""
+
+adapters:
+  bluemap:
+    enabled: true
+    api-base-url: ""
+```
+
+公開 path:
+
+```text
+https://map.example.com/       KWC standalone
+https://map.example.com/api    KWC API
+https://map.example.com/chat/  BlueMap
+```
+
+`frontend.standalone.path` を `/chat` に変更しません。外部配置は reverse proxy と `http.public-prefix` が決めます。
+
 
 ## 7. Web UI
 
@@ -196,7 +310,7 @@ http:
 - 通知設定
 - 管理・moderation panel
 
-ユーザー設定は browser localStorage に保存されます。Panel は移動・resize・size 記憶に対応し、browser-local notification inbox で最近の通知対象 event を確認できます。
+5.0.0 から login user の表示設定は複数の KWC account profile として保存でき、guest のみ browser-local preset を使います。window 位置・size・minimize 状態、最後に選択した profile ID、Web Push 登録は localStorage/device-local のままです。login user の notification 種別と keyword alert は browser ごとではなく account 共通です。browser-local notification inbox で最近の通知対象 event を確認できます。
 
 ```yaml
 ui:
@@ -251,13 +365,15 @@ chat:
 
 ### 8.5 メッセージトークン
 
-BlueMapWebChat 4.7.0 は、保存または relay の前に管理者設定の `:alias:` token を置換できます。標準 alias は英語のみで、管理者が任意の言語の alias に変更・追加できます。
+KOKOTO WebChat 5.0.0 は、保存または relay の前に管理者設定の `:alias:` token を置換できます。標準 alias は英語のみで、管理者が任意の言語の alias に変更・追加できます。
 
 - `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 改行 1 行
 - `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 空行 1 行
 - `:tab:`, `:indent:` → 設定数の space（既定 4）
 
 未知の token はそのまま残るため、ImageEmojis/custom emoji token と共存できます。`:\n:` のような backslash escape は解釈しません。`custom` には printable text の置換を追加できます。Minecraft では通常の CR/LF は従来どおり 1 行へ flatten し、`newline`/`blank-line` alias で作成した改行だけを最終 game delivery で明示的な複数 chat line として送ります。server relay の game 表示でも受信側に同じ 4.7.0 token-line 対応が必要です。
+
+YAML の list 設定は inline (`aliases: [bullet, arrow]`) と block (`aliases:` の次行に `- bullet`) の両形式を使用できます。indent は通常の ASCII space のみを使用し、tab と全角 space は使用できません。不正な設定は `/kchat reload` が live service を停止する前に拒否するため、現在の実行設定と UI 言語は維持されます。
 
 ```yaml
 message-tokens:
@@ -312,13 +428,13 @@ search:
 Web で code を発行し、ゲームで実行:
 
 ```text
-/bmchat auth <code>
+/kchat auth <code>
 ```
 
 権限:
 
 ```text
-bluemapwebchat.auth
+kwc.auth
 ```
 
 ```yaml
@@ -333,7 +449,8 @@ auth:
 Web password:
 
 ```text
-/bmchat password <newPassword>
+/kchat password <newPassword>
+/kchat status
 ```
 
 ```yaml
@@ -349,22 +466,22 @@ Permission から ADMIN を自動設定:
 ```yaml
 auth:
   auto-admin-from-permission: true
-  admin-permission: "bluemapwebchat.admin"
+  admin-permission: "kwc.admin"
 ```
 
 ローカル管理者:
 
 ```text
-/bmchat admin create <id>
-/bmchat admin password <id> <password>
-/bmchat admin role <id> <user|moderator|admin>
+/kchat admin create <id>
+/kchat admin password <id> <password>
+/kchat admin role <id> <user|moderator|admin>
 ```
 
 Session:
 
 ```text
-/bmchat sessions
-/bmchat revoke <username>
+/kchat sessions
+/kchat revoke <username>
 ```
 
 ## 11. セキュリティ
@@ -414,11 +531,11 @@ captcha:
 Mute command:
 
 ```text
-/bmchat guest mute guest <name> [minutes] [reason]
-/bmchat guest mute ip <address> [minutes] [reason]
-/bmchat guest unmute guest <name>
-/bmchat guest unmute ip <address>
-/bmchat guest list
+/kchat guest mute guest <name> [minutes] [reason]
+/kchat guest mute ip <address> [minutes] [reason]
+/kchat guest unmute guest <name>
+/kchat guest unmute ip <address>
+/kchat guest list
 ```
 
 ## 13. プレイヤー名・hover・click
@@ -443,8 +560,8 @@ Placeholder: `{display}`, `{real}`, `{uuid}`, `{source}`
 名前 click:
 
 - 同じサーバーの game player: `/w <realName> `
-- Web sender: `/bmchat dm <realName> `
-- 他サーバーの game sender: `/bmchat dm <realName>@<server-id> `
+- Web sender: `/kchat dm <realName> `
+- 他サーバーの game sender: `/kchat dm <realName>@<server-id> `
 
 ## 14. 公開メッセージ reply
 
@@ -466,19 +583,19 @@ reply:
 本文 click:
 
 ```text
-/bmchat reply <messageId> 
+/kchat reply <messageId> 
 ```
 
 送信:
 
 ```text
-/bmchat reply <messageId> <message>
+/kchat reply <messageId> <message>
 ```
 
 権限:
 
 ```text
-bluemapwebchat.reply
+kwc.reply
 ```
 
 URL 部分はリンクを開き、URL 以外だけ reply command を提案します。chat formatter と競合する場合は `local-game-chat: false` にします。
@@ -506,25 +623,25 @@ DM 宛先は UUID で識別されます。local join/linked account の記録に
 Command:
 
 ```text
-/bmchat dm
-/bmchat dm list [pageSize]
-/bmchat dm unread [pageSize]
-/bmchat dm list next
-/bmchat dm list prev
-/bmchat dm <player> <message>
-/bmchat dm read <player> [pageSize]
-/bmchat dm next
-/bmchat dm prev
-/bmchat dm hide <messageId>
+/kchat dm
+/kchat dm list [pageSize]
+/kchat dm unread [pageSize]
+/kchat dm list next
+/kchat dm list prev
+/kchat dm <player> <message>
+/kchat dm read <player> [pageSize]
+/kchat dm next
+/kchat dm prev
+/kchat dm hide <messageId>
 ```
 
 権限:
 
 ```text
-bluemapwebchat.dm
+kwc.dm
 ```
 
-`capture-game-whispers: true` では `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` を BMChat DM にも記録します。同一サーバーの通常 whisper 自体は置き換えません。別サーバー宛ては `名前@server-id` を指定すると `/bmchat dm 名前@server-id <message>` に変換され、署名付き cross-server DM relay で送信されます。サーバー指定のない `/bmchat dm <名前>` は現在のサーバー内だけを検索します。対象を含まない `/r`, `/reply` は既存 whisper plugin の last-target state と競合するため intercept しません。
+`capture-game-whispers: true` では `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` を KWC DM にも記録します。同一サーバーの通常 whisper 自体は置き換えません。別サーバー宛ては `名前@server-id` を指定すると `/kchat dm 名前@server-id <message>` に変換され、署名付き cross-server DM relay で送信されます。サーバー指定のない `/kchat dm <名前>` は現在のサーバー内だけを検索します。対象を含まない `/r`, `/reply` は既存 whisper plugin の last-target state と競合するため intercept しません。
 
 ### 15.2 送信・既読状態
 
@@ -553,18 +670,18 @@ Web では公開・非公開 room、PBKDF2 hash で保存される password、in
 group chat のすべてのメッセージに、その message の受信者既読状態を表示します。数字は**送信時点ですでに room に参加しており、現在も member である受信者のうち未読の人数**です。message sender は受信者ではないため count 対象には含まれません。未読受信者が 0 人になると数字は `✓` に変わります。正常送信完了自体には状態 label を表示しません。
 
 ```text
-/bmchat group
-/bmchat group list
-/bmchat group rooms
-/bmchat group <room|id> <message>
-/bmchat group send <room|id> <message>
-/bmchat group read <room|id> [pageSize]
-/bmchat group next
-/bmchat group prev
-/bmchat gc ...
+/kchat group
+/kchat group list
+/kchat group rooms
+/kchat group <room|id> <message>
+/kchat group send <room|id> <message>
+/kchat group read <room|id> [pageSize]
+/kchat group next
+/kchat group prev
+/kchat gc ...
 ```
 
-権限: `bluemapwebchat.group`
+権限: `kwc.group`
 
 ## 17. System/event announcement
 
@@ -614,6 +731,8 @@ upload:
 対応: PNG/JPG/JPEG/GIF/WEBP, MP4/WEBM, MP3/M4A/OGG/WAV/FLAC。
 
 `max-total-size-mb: 0` は無制限です。Clipboard mode は `insert` または `send` です。
+
+`filename-mode: original` でも、クリップボードアップロードは `clipboardData.files` から取得できる長いファイル名を優先します。Windows/Chromium が別のクリップボード項目で `202608~1.JPG` のような DOS 8.3 別名を返しても、長い名前を取得できる場合は元の長い名前を使用します。ブラウザーが 8.3 別名しか公開しない場合は、その別名を元ファイル名として保存せず `clipboard-...` 形式の名前へ置き換えます。
 
 ## 20. Media preview
 
@@ -672,7 +791,7 @@ emoji:
 ```
 
 ```text
-plugins/BlueMapWebChat/emojis/default/wave.png
+<KWC data dir>/emojis/default/wave.png
 :default/wave:
 :emoji:default/wave:
 ```
@@ -687,14 +806,14 @@ emoji:
     enabled: false
 ```
 
-BMChat 変換を使う場合は `preserve`, `label`, `link` mode を選択します。
+KWC 変換を使う場合は `preserve`, `label`, `link` mode を選択します。
 
-## 22. ImageEmojis-Bero 1.9.0
+## 22. ImageEmojis-Bero 1.9.x
 
 推奨設定:
 
 ```yaml
-emojisFolder: "/BlueMapWebChat/emojis"
+emojisFolder: "/KOKOTO-WebChat/emojis"
 templateFormat: ":<emoji>:"
 replaceInCommands: true
 ```
@@ -705,7 +824,7 @@ replaceInCommands: true
 imageemojis.use
 ```
 
-`replaceInCommands` は `/bmchat reply`, `/bmchat dm`, `/bmchat group` の token 変換に必要です。Relay server すべてで pack/file name を一致させます。
+`replaceInCommands` は `/kchat reply`, `/kchat dm`, `/kchat group` の token 変換に必要です。Relay server すべてで pack/file name を一致させます。
 
 ```text
 /emojis reload
@@ -715,6 +834,23 @@ imageemojis.use
 詳細は `IMAGEEMOJIS_BERO_1_9_0_JA.md`。
 
 ## 23. Browser notification と Web Push
+
+5.0.0 では login user の keyword/notification 種別設定を account data に保存し、browser/device 間で共有します。Windows/mobile など表示条件が異なる場合は account ごとに複数の UI profile を保存でき、window 位置・size・minimize 状態・Web Push endpoint は device-local のままです。profile 上限と JSON import/export 可否は Web Admin で管理します。同じ device に有効な KWC Web Push subscription がある場合、live page 側の OS Notification は重複表示しません。
+
+
+server-side 表示 profile は次で制御します。
+
+```yaml
+ui:
+  user-profiles:
+    enabled: true
+    max-profiles: 5
+    allow-import-export: true
+```
+
+`max-profiles` は 0-20。profile import/export は表示設定のみが対象で、session/identity/Push/device window data は含みません。
+
+
 
 ```yaml
 notifications:
@@ -727,7 +863,6 @@ notifications:
   notify-replies: true
   notify-system: true
   notify-keywords: true
-  notify-own-messages: true
   show-message-preview: true
 ```
 
@@ -745,9 +880,10 @@ VAPID key が空なら plugin が永続 key を生成します。iOS/iPadOS は 
 ## 24. PWA と PIP
 
 ```yaml
-standalone-web:
-  app-name: "Web Chat"
-  app-short-name: "Web Chat"
+frontend:
+  standalone:
+    app-name: "Web Chat"
+    app-short-name: "Web Chat"
 ui:
   picture-in-picture:
     enabled: false
@@ -757,12 +893,36 @@ Install 済み PWA の名前変更は再インストールが必要な場合が�
 
 ## 25. DiscordSRV
 
+5.0.0 の管理者向け Discord keyword alert では、検出や format policy を DiscordSRV に委譲しません。KWC が keyword、source、mention、重複除去、alert 本文を決定し、DiscordSRV の認証済み JDA connection と Channels mapping のみ再利用します。Web Admin の alert channel selector には DiscordSRV の logical channel 名だけを表示し、logical 名がない ID-only 構成だけ channel ID を fallback として使用します。Discord 由来 message は再 alert しません。
+
+管理者 alert policy 例:
+
+```yaml
+admin-alerts:
+  discord:
+    enabled: false
+    channel: ""
+    sources:
+      public-chat: true
+      relay-chat: false
+      dm: false
+      group-chat: false
+    mention: "none"
+    case-sensitive: false
+    keywords: ""
+```
+
+`channel: ""` は `discordsrv.channel` を再利用し、Web Admin では通常 DiscordSRV の logical channel 名を選択/保存します。
+
+
+
+
 ```yaml
 discordsrv:
   enabled: true
   channel: "global"
   web-to-discord: true
-  game-to-discord: false
+  game-relay-mode: "discordsrv"
   discord-to-web: true
   ignore-bot-messages: true
   suppress-game-echo: true
@@ -770,10 +930,10 @@ discordsrv:
   append-web-emoji-links: true
   append-game-emoji-links: true
   web-to-discord-format: "[{server}] [Web] {sender}: {message}"
-  game-to-discord-format: "[{server}] {sender}: {message}"
+  game-relay-format: "[{server}] {sender}: {message}"
 ```
 
-DiscordSRV が game chat を転送している場合は `game-to-discord: false` を維持します。
+DiscordSRV が game chat を転送している場合は `game-relay-mode: "discordsrv"` を維持します。
 
 複数 server が同じ channel を使う場合:
 
@@ -784,6 +944,8 @@ DiscordSRV が game chat を転送している場合は `game-to-discord: false`
 Reply preview は `discordsrv.reply-relay` で選択的に有効化できます。
 
 ## 26. Server relay
+
+`peers` は常時接続セッションではなく、このサーバーがメッセージを送信する HTTP 宛先一覧です。同じ `id` / `secret` は受信要求の認証にも使用され、双方向通信には両側で相手を登録する必要があります。
 
 ```yaml
 server-relay:
@@ -796,6 +958,7 @@ server-relay:
   max-clock-skew-seconds: 60
   dedupe-seconds: 300
   max-hops: 8
+  forward-received-public-chat: true
   sources:
     game: true
     web: true
@@ -808,15 +971,17 @@ server-relay:
   game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
   peers:
     - id: "server2"
-      url: "https://server2.example.com/bmwc/api"
+      url: "https://server2.example.com/chat/api"
       secret: ""
       enabled: true
 ```
 
+`forward-received-public-chat` は peer が受信した公開チャットを他の peer へ再転送するかを制御します。`true` は hub/chain 構成、`false` は直接 peer 間のみの公開チャットにします。サーバー間 DM と既読通知のルーティングには影響しません。
+
 実際の URL:
 
 ```text
-https://server2.example.com/bmwc/api/relay/receive
+https://server2.example.com/chat/api/relay/receive
 ```
 
 Receiver の `peers[].id` は sender の `server-id` と一致する必要があります。Peer secret は shared secret より優先されます。Offline queue はありません。
@@ -828,6 +993,8 @@ Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
 Error:
 
 - 403 `unknown_peer`
+
+同じ destination から成功応答なしで `403 unknown_peer` が 3 回返ると、KWC はその destination を 60 秒の backoff 状態にします。その 60 秒間に発生した relay message は送信せず、定期 probe も送りません。60 秒経過後に最初に発生した実際の relay message で自動的に再試行し、失敗した場合はその失敗時刻から再び 60 秒待機します。成功応答が返れば通常送信へ即時復帰し、counter もリセットされます。受信側は unknown sender の直接 request を適用前に拒否します。接続拒否や timeout などの transport failure も同じ 3 回/60 秒 backoff を使用するため、offline peer に対して転送 message ごとに警告が繰り返されません。
 - 401 `bad_signature`
 - 401 `expired_request`
 - 404 `relay_disabled`
@@ -946,8 +1113,6 @@ ui:
     enabled: true
     overscan-screens: 0.75
     min-rendered-messages: 30
-    preserve-visible-media: false
-    preserve-playing-media: true
   history-preload:
     screens: 0.7
     min-px: 200
@@ -960,82 +1125,84 @@ ui:
   resume-refresh:
     enabled: true
     min-interval-seconds: 5
-    skip-while-media-active: true
     skip-unchanged: true
 ```
+
+公開チャットの仮想スクロールはコンテンツ種類を区別せず、画像・動画・音声・リンクプレビュー・YouTube/その他 iframe を同じメッセージ範囲/高さ追跡ルールで扱います。
 
 ## 31. Command 一覧
 
 User:
 
 ```text
-/bmchat auth <code>
-/bmchat password <newPassword>
-/bmchat dm
-/bmchat dm list [pageSize]
-/bmchat dm unread [pageSize]
-/bmchat dm <player> <message>
-/bmchat dm read <player> [pageSize]
-/bmchat dm next
-/bmchat dm prev
-/bmchat dm hide <messageId>
-/bmchat reply <messageId> <message>
-/bmchat group list
-/bmchat group <room> <message>
-/bmchat group send <room> <message>
-/bmchat group read <room> [pageSize]
-/bmchat group next
-/bmchat group prev
+/kchat auth <code>
+/kchat password <newPassword>
+/kchat status
+/kchat dm
+/kchat dm list [pageSize]
+/kchat dm unread [pageSize]
+/kchat dm <player> <message>
+/kchat dm read <player> [pageSize]
+/kchat dm next
+/kchat dm prev
+/kchat dm hide <messageId>
+/kchat reply <messageId> <message>
+/kchat group list
+/kchat group <room> <message>
+/kchat group send <room> <message>
+/kchat group read <room> [pageSize]
+/kchat group next
+/kchat group prev
 ```
 
 Admin:
 
 ```text
-/bmchat reload
-/bmchat admin create <id>
-/bmchat admin password <id> <password>
-/bmchat admin role <id> <user|moderator|admin>
-/bmchat guest mute <guest|ip> <value> [minutes] [reason]
-/bmchat guest unmute <guest|ip> <value>
-/bmchat guest list
-/bmchat sessions
-/bmchat revoke <username>
+/kchat reload
+/kchat admin create <id>
+/kchat admin password <id> <password>
+/kchat admin role <id> <user|moderator|admin>
+/kchat guest mute <guest|ip> <value> [minutes] [reason]
+/kchat guest unmute <guest|ip> <value>
+/kchat guest list
+/kchat sessions
+/kchat revoke <username>
 ```
 
-Alias: `/bmc`, `/bluemapchat`, group の `/bmchat gc`。
+Alias: `/kc`。group は `/kchat gc` も使用できます。
 
 ## 32. Permission
 
 ```text
-bluemapwebchat.auth
-bluemapwebchat.webchat
-bluemapwebchat.dm
-bluemapwebchat.reply
-bluemapwebchat.group
-bluemapwebchat.admin
-bluemapwebchat.update.notify
+kwc.auth
+kwc.webchat
+kwc.dm
+kwc.reply
+kwc.group
+kwc.admin
+kwc.update.notify
 ```
 
-User permission は default true、`bluemapwebchat.admin` と `bluemapwebchat.update.notify` は OP default です。
+User permission は default true、`kwc.admin` と `kwc.update.notify` は OP default です。
 
 ## 33. Data と backup
 
 ```text
-plugins/BlueMapWebChat/config.yml
-plugins/BlueMapWebChat/history.db
-plugins/BlueMapWebChat/direct-messages.db
-plugins/BlueMapWebChat/group-messages.db
-plugins/BlueMapWebChat/web-push-subscriptions.jsonl
-plugins/BlueMapWebChat/emojis/
-plugins/BlueMapWebChat/uploads/
-plugins/BlueMapWebChat/audit/
+<KWC data dir>/config.yml
+<KWC data dir>/history.db
+<KWC data dir>/direct-messages.db
+<KWC data dir>/group-messages.db
+<KWC data dir>/web-push-subscriptions.jsonl
+<KWC data dir>/emojis/
+<KWC data dir>/uploads/
+<KWC data dir>/audit/
 ```
 
 Backup 対象は config、DB/JSONL、emoji、必要な upload、Push subscription/VAPID key です。SQLite は clean shutdown 後の copy を推奨します。
 
 ## 34. Reload と restart
 
-`/bmchat reload`:
+`/kchat reload`:
 
 - 多くの config 変更
 - HTTP service と relay の再生成
@@ -1047,7 +1214,7 @@ Restart 必須:
 - Java code 変更
 - load order 変更
 
-BlueMap asset だけ古い場合は `/bluemap reload`。
+`/kchat reload` は `bluemap reload light` を自動要求します。asset がまだ古い場合または自動実行に失敗した場合は `/bluemap reload light` を手動実行してください。
 
 ## 35. Troubleshooting
 
@@ -1064,7 +1231,7 @@ BlueMap button がない:
 - auto-install/auto-patch
 - BlueMap path
 - log
-- `/bluemap reload`
+- `/kchat reload` は通常 `bluemap reload light` を自動実行します。必要な場合のみ `/bluemap reload light` を手動実行してください。
 - browser cache
 
 Login 失敗:
@@ -1112,7 +1279,7 @@ Discord prefix 重複:
 
 - 全 server の build を統一
 - 他 plugin の repost
-- DiscordSRV 転送時は game-to-discord false
+- DiscordSRV 転送時は game-relay-mode discordsrv
 
 Web Push:
 
@@ -1125,8 +1292,9 @@ Web Push:
 ## 36. 関連文書
 
 - `CONFIGURATION_JA.md`
+- `UPGRADE_5_0_0_JA.md`: 4.7.0→5.0.0 core split / reload safety
+- `UPGRADE_4_7_0_JA.md`: 4.6.3→4.7.0 feature upgrade
 - `SERVER_RELAY_JA.md`
-- `UPGRADE_4_6_4_JA.md`: 4.6.3→4.7.0 upgrade
 - `UPGRADE_4_6_3_JA.md`: 4.6.2→4.6.3 upgrade
 - `UPGRADE_4_6_2_JA.md`: 4.6.1→4.6.2 upgrade
 - `UPGRADE_4_6_1_JA.md`: 4.6.0→4.6.1 upgrade
@@ -1144,3 +1312,8 @@ Web Push:
 
 `group-chat.admin-audit.enabled: true` を設定し、exact Minecraft name または UUID を `private-chat-super-admins` に登録する必要があります。両方の条件が必須です。対象管理者は room member でなくても管理者 room metadata list から body を read-only で開けます。audit view は room 参加、read/unread state 更新、message send/upload/hide、membership 変更を行いません。各 page read は `admin.group-audit-read` として記録され、message body は audit log にコピーされません。
 
+
+
+## SimpleNicks-Bero 連携
+
+Bukkit/Paper 系では `player-display.mode: "display-name"` で [SimpleNicks-Bero](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) の Bukkit display name を表示できます。詳細は `SIMPLENICKS_BERO_JA.md`。一般運用は [upstream SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks) を参照してください。

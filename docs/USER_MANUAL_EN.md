@@ -1,10 +1,13 @@
-# BlueMapWebChat 4.7.0 Complete User and Operations Manual
+# KOKOTO WebChat 5.0.0 Complete User and Operations Manual
 
-This manual describes all BlueMapWebChat 4.7.0 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION_EN.md`. For relay protocol details, see `SERVER_RELAY_EN.md`. For HTTPS deployment, also see `CADDY_HTTPS_EN.md` and `NGINX_HTTPS_EN.md`.
+> **5.0.0 operations:** Web Admin **Filter** manages shared public/group/optional-DM block/mask/replace rules and no-send testing; **Settings** exposes live-safe guest/CAPTCHA, session, moderation, upload, and filter values. `/kchat filter` and `/kchat settings` provide game-side controls. Session lifetime changes recalculate existing affected sessions from their creation time without resurrecting already-expired sessions. `upload.filename-mode: original` preserves safe Unicode original names for new uploads with collision suffixes.
+
+
+This manual describes all KOKOTO WebChat 5.0.0 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION_EN.md`. For relay protocol details, see `SERVER_RELAY_EN.md`. For HTTPS deployment, also see `CADDY_HTTPS_EN.md` and `NGINX_HTTPS_EN.md`.
 
 ## 1. Overview
 
-BlueMapWebChat connects Minecraft chat on Bukkit/Paper/Spigot-compatible servers to a browser-based chat interface.
+KOKOTO WebChat connects Minecraft server chat to a browser-based chat interface. Version 5.0.0 provides Bukkit/Paper/Spigot plus exact-target Fabric 1.18.2–26.2, NeoForge 1.20.2–26.2, and Forge 1.18.2–26.2 builds.
 
 Supported deployment and feature areas:
 
@@ -16,137 +19,201 @@ Supported deployment and feature areas:
 - DiscordSRV integration
 - Public-chat relay between multiple Minecraft servers
 
-The default HTTP port is `8899`, the default API prefix is `/api`, and the default standalone path is `/chat`.
+The default HTTP port is `8899`; the internal API prefix is `/api`. With the default reverse proxy prefix `/chat`, the public API is `/chat/api` and the public standalone path is `/chat`.
 
 ## 2. Requirements and Recommended Environment
 
 Required:
 
-- A Bukkit/Paper/Spigot-compatible Minecraft server in the conservative supported range **1.18 through 26.2**
-- **Java 17 or newer as required by the selected Minecraft server version**; BlueMapWebChat itself is compiled for Java 17
-- Permission to install plugin JAR files
+- One supported server platform: Bukkit/Paper/Spigot **1.18–26.2**, Fabric exact targets **1.18.2–26.2**, NeoForge exact targets **1.20.2–26.2**, or a documented Forge exact target **1.18.2–26.2**
+- A Java runtime supported by that Minecraft/server target. The Bukkit artifact is compiled for Java 17. Fabric/NeoForge/Forge exact-target helpers select JDK 17, 21, or 25 according to the Minecraft target; 26.x targets use Java 25.
+- Permission to install the platform JAR in `plugins/` (Bukkit family) or `mods/` (Fabric/NeoForge/Forge)
 
-BlueMapWebChat 4.7.0 declares `api-version: '1.18'` and compiles against `spigot-api:1.18.2-R0.1-SNAPSHOT`. Minecraft 1.17 and older are not claimed by this release.
+KOKOTO WebChat 5.0.0 declares `api-version: '1.18'` and compiles against `spigot-api:1.18.2-R0.1-SNAPSHOT`. Minecraft 1.17 and older are not claimed by this release.
 
 Optional integrations:
 
 - BlueMap for an embedded map chat panel
 - DiscordSRV for Discord integration
-- ImageEmojis-Bero 1.9.0 for in-game rendering of BMChat emoji tokens
+- ImageEmojis-Bero 1.9.x for in-game rendering of KWC emoji tokens
 - Caddy or Nginx for a public HTTPS deployment
 
-For public servers, do not expose port `8899` directly to the Internet. Bind BlueMapWebChat to `127.0.0.1:8899` and publish it through an HTTPS reverse proxy.
+For public servers, do not expose port `8899` directly to the Internet. Bind KOKOTO WebChat to `127.0.0.1:8899` and publish it through an HTTPS reverse proxy.
 
 ## 3. Installation and First Enable
 
-1. Put the built JAR in the server `plugins/` directory.
+1. Put the matching JAR in `plugins/` for Bukkit/Paper/Spigot, or in `mods/` for Fabric/NeoForge/Forge.
 2. Start the server once.
-3. Confirm that `plugins/BlueMapWebChat/config.yml` was created.
+3. Confirm `<KWC data dir>/config.yml` was created. `<KWC data dir>` is `plugins/KOKOTO-WebChat` on Bukkit-family servers and `config/KOKOTO-WebChat` on Fabric/NeoForge/Forge.
 4. A newly generated configuration uses `enabled: false`.
 5. Review URLs, storage, retention, authentication, and upload limits.
 6. Enable the features you need and set `enabled: true`.
-7. Restart the server or run `/bmchat reload`.
+7. Restart the server or run `/kchat reload`.
 
 Safe initial state:
 
 ```yaml
-config-version: "4.7.0"
+config-version: "5.0.0"
 enabled: false
 ```
 
-While disabled, the web service, chat forwarding, and cleanup tasks do not start. Administrators can still use `/bmchat reload`.
+While disabled, the web service, chat forwarding, and cleanup tasks do not start. Administrators can still use `/kchat reload`.
 
 ## 4. Configuration Upgrade and Migration Fragment
 
-BlueMapWebChat never overwrites existing setting values during an update. On startup/reload, known top-level config blocks are reordered to the bundled 4.7.0 layout while each block's current text, values, and custom comments are preserved; unknown top-level blocks remain last in their original order.
+KOKOTO WebChat preserves existing configured values by rebuilding an active-migration config from the current bundled `config.yml` and overlaying those values. Old comments/order/whitespace/indentation are discarded; current bundled comments and layout are authoritative.
 
-When `config-version` is missing or differs from the running plugin version, the plugin creates:
+The complete current reference is always written as:
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.7.0.yml
+<KWC data dir>/config-reference-5.0.0.yml
 ```
 
-The plugin also writes `plugins/BlueMapWebChat/config-reference-4.7.0.yml`, an exact full copy of the current bundled default config including comments. Use this file as the authoritative comparison source for older or unversioned configurations; the migration fragment remains the concise list of changes to review. At the bottom of the migration file, a comment-only textual diff shows only differing lines. Each side prints the file name, then `Line` or `Lines` on its own line, followed by the differing text. Each differing source line is prefixed directly with `#`, preserving its original YAML indentation; reference-only blocks also show their insertion position in the current config.
+It is an exact administrator-readable copy of the bundled `config.yml`, including comments and canonical double-quoted string scalars. It is not the migration template. `/kchat reload` validates YAML before any live service is stopped; invalid YAML leaves the previous running configuration active.
+
+When `config-version` is missing or differs from the running plugin version, KWC performs one migration pass on the real `config.yml`:
+
+- The current bundled `config.yml` is copied as a fresh template.
+- Existing configured values are overlaid onto that template; removed settings are not copied back.
+- Old comments, ordering, whitespace, indentation, and duplicate textual copies are not carried forward.
+- If the old version marker is not `*_auto_migration`, the original `config.yml` is backed up before a real version upgrade.
+- Existing defaults that changed in the new version are **not** silently replaced; they stay review items.
+- The real file is marked `config-version: "5.0.0_auto_migration"`.
+
+KWC then writes:
+
+```text
+<KWC data dir>/config-migration-5.0.0.yml
+```
+
+This is a **review report**, not a copy/paste file for missing settings. It records the automatic insertion count, changed defaults that still need an operator decision, the exact final confirmation marker, and a comment-only current-vs-reference text diff. Because missing settings and their bundled comments are already inserted into the real config, they no longer appear as a large reference-only block at the top of the diff.
 
 Decision rules:
 
 | Physical `config.yml` state | Behavior |
 |---|---|
-| `config-version` is missing | Create the migration file with the target version marker even when there are zero other differences |
-| `config-version` differs from the plugin version | Create or refresh the migration file with missing/changed settings and the target version marker |
-| `config-version` matches the plugin version | Treat the configuration as reviewed, skip migration comparison/report creation, remove stale migration guidance, and still keep the full reference current |
+| `config-version` missing or older/different | Perform the migration, write `5.0.0_auto_migration`, and generate/update the migration report |
+| `config-version: "5.0.0_auto_migration"` | Automatic migration enabled; rebuild from the latest same-version bundled `config.yml`, overlay current values, and refresh the migration report/diff |
+| `config-version: "5.0.0"` | Automatic migration disabled for the current version; skip same-version migration/backfill and remove stale same-version migration guidance |
 
-The file contains copy-ready YAML for:
-
-- New settings missing from the installed configuration
-- Defaults that changed while the installed value still matches the old default
-- The target `config-version` review marker
-
-Even when no other settings differ, the file is created with `config-version` so configuration version management remains explicit.
-
-Counts and old/new value explanations are comments beginning with `#`. The live `config.yml` is not changed.
-
-Upgrade procedure:
-
-1. Open the migration fragment.
-2. Merge the required blocks into the matching locations in `config.yml`.
-3. Adjust server-specific and custom values.
-4. After review, set:
+The marker controls migration behavior rather than review status:
 
 ```yaml
-config-version: "4.7.0"
+# Keep same-version automatic migration enabled, even after you have reviewed the config
+config-version: "5.0.0_auto_migration"
+
+# Disable same-version automatic migration
+config-version: "5.0.0"
 ```
 
-When the version matches, future comparisons are skipped.
+A later real plugin-version upgrade enters the new version's `_auto_migration` state again.
 
 ## 5. Choose a Deployment Mode
 
 ### 5.1 BlueMap Addon
 
 ```yaml
-web-addon:
-  auto-install: true
-  auto-patch-webapp-conf: true
+adapters:
+  bluemap:
+    auto-install: true
+    auto-patch-webapp-conf: true
 
-standalone-web:
-  enabled: false
+frontend:
+  standalone:
+    enabled: false
 ```
 
-The plugin installs web assets under the BlueMap web directory and updates `plugins/BlueMap/webapp.conf`. If BlueMap does not pick up the new assets, run:
+On Bukkit, KWC installs web assets under the BlueMap web directory and updates `plugins/BlueMap/webapp.conf`. On Fabric/NeoForge, and on Forge 26.1.2/26.2 with BlueMap 5.21+, KWC uses BlueMapAPI 2.8.0 to get the configured web root and register its scripts/styles; no `webapp.conf` patch is used. `/kchat reload` requests `bluemap reload light` automatically when BlueMap integration is active, and BlueMap's next API `onEnable` callback re-registers KWC with the new settings.
 
-```text
-/bluemap reload
-```
+### 5.2 Pl3xMap embedded mode
 
-### 5.2 Standalone Only
+On Bukkit/Paper-family or Fabric servers with Pl3xMap installed:
 
 ```yaml
-web-addon:
-  auto-install: false
-  auto-patch-webapp-conf: false
+adapters:
+  pl3xmap:
+    enabled: true
+    api-base-url: ""
+```
 
-standalone-web:
-  enabled: true
-  path: "/chat"
+KWC reads `settings.web-directory.path` from Pl3xMap's current `config.yml` (with `settings.yml` accepted only as a legacy/fork fallback), installs only its own `kokoto-web-chat` assets, and maintains a marked KWC block in Pl3xMap `index.html`. `/kchat reload` re-checks the web files if Pl3xMap regenerates them. Current Pl3xMap 26.2 releases target Bukkit/Paper-family and Fabric/Quilt, not NeoForge. For direct HTTP, the normal empty `api-base-url` uses KWC `:8899/api`; if NAT changes the public KWC port, specify the actual public API URL.
+
+
+### 5.3 LiveAtlas embedded mode
+
+LiveAtlas is a static frontend that can display Dynmap, squaremap, Pl3xMap, Overviewer, or multiple servers. On Bukkit, Fabric, or NeoForge:
+
+```yaml
+adapters:
+  liveatlas:
+    enabled: true
+    api-base-url: ""
+    web-root: ""
+```
+
+With an empty `web-root`, KWC accepts only detected `index.html` files that contain LiveAtlas markers such as `window.liveAtlasConfig`. If Caddy/nginx serves LiveAtlas from a separate directory, set `web-root` to the server-visible shared/mounted directory. KWC owns only `kokoto-web-chat/` and its marked index block. After replacing LiveAtlas files, run `/kchat reload`. Do not point both the LiveAtlas adapter and a backend-specific adapter at the same physical web root.
+
+### 5.4 uNmINeD static web export
+
+uNmINeD exports a self-contained static web map rather than running inside the Minecraft server. Export the map first, then point KWC at that directory:
+
+```yaml
+adapters:
+  unmined:
+    enabled: true
+    api-base-url: ""
+    web-root: "/srv/www/unmined"
+```
+
+Current uNmINeD exports use `index.html`; older exports may use `unmined.index.html`. KWC checks for uNmINeD markers before patching either file, installs only its own `kokoto-web-chat/` directory and marked block, and leaves map tiles/library files untouched. Because a later uNmINeD export can replace the HTML or KWC-owned directory, run `/kchat reload` after re-exporting. If the map is on another host, the export directory must be shared/mounted so the Minecraft server can modify it.
+
+### 5.5 Minecraft Overviewer static web map
+
+Minecraft Overviewer renders a static Leaflet-based web map into its configured `outputdir`. Render the map first, then point KWC at that directory:
+
+```yaml
+adapters:
+  overviewer:
+    enabled: true
+    api-base-url: ""
+    web-root: "/srv/www/overviewer"
+```
+
+KWC requires Overviewer-specific generated markers/assets before patching `index.html`, writes only its own `kokoto-web-chat/` directory and marked block, and leaves Overviewer tiles/configuration/Leaflet assets untouched. A later Overviewer render or `--update-web-assets` may recreate the HTML, so run `/kchat reload` afterward. If Overviewer is rendered on another host, the output directory must be shared/mounted so the Minecraft server can modify it. Overviewer's `customwebassets` option can be used independently when you maintain a persistent custom template.
+
+### 5.6 Standalone Only
+
+```yaml
+adapters:
+  bluemap:
+    auto-install: false
+    auto-patch-webapp-conf: false
+
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
 ```
 
 Direct HTTP example:
 
 ```text
-http://server.example.com:8899/chat
+http://server.example.com:8899/
 ```
 
-### 5.3 Embedded and Standalone Together
+### 5.7 Embedded and Standalone Together
 
 The embedded panel and standalone page share the same accounts, history, notifications, and server-side settings.
 
 ```yaml
-web-addon:
-  auto-install: true
-  auto-patch-webapp-conf: true
+adapters:
+  bluemap:
+    auto-install: true
+    auto-patch-webapp-conf: true
 
-standalone-web:
-  enabled: true
+frontend:
+  standalone:
+    enabled: true
 ```
 
 ## 6. HTTP, HTTPS, and Public URLs
@@ -162,8 +229,9 @@ http:
   path-prefix: "/api"
   cors-origin: "*"
 
-web-addon:
-  api-base-url: ""
+adapters:
+  bluemap:
+    api-base-url: ""
 ```
 
 ### 6.2 Same-Domain HTTPS Reverse Proxy
@@ -173,28 +241,67 @@ http:
   host: "127.0.0.1"
   port: 8899
   path-prefix: "/api"
+  public-prefix: "/chat"
   cors-origin: "https://map.example.com"
   trusted-proxies:
     - "127.0.0.1"
     - "::1"
 
-web-addon:
-  api-base-url: "/bmwc/api"
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
+    api-base-url: ""
 
-standalone-web:
-  enabled: true
-  api-base-url: ""
+adapters:
+  bluemap:
+    enabled: true
+    api-base-url: ""
 ```
 
 Public paths:
 
 ```text
 https://map.example.com/          BlueMap
-https://map.example.com/bmwc/api  BlueMapWebChat API
-https://map.example.com/bmwc/chat Standalone chat
+https://map.example.com/chat/api  KOKOTO WebChat API
+https://map.example.com/chat Standalone chat
 ```
 
-Normally leave `standalone-web.api-base-url`, `upload.public-base-url`, and `emoji.public-base-url` empty. They then follow the active public API base automatically.
+Normally leave `frontend.standalone.api-base-url`, `upload.public-base-url`, and `emoji.public-base-url` empty. They then follow the active public API base automatically.
+
+#### Alternative: standalone at `/`, BlueMap at `/chat/`
+
+This is the inverse of the default layout. Keep the internal standalone route at `/`, set `http.public-prefix: ""`, proxy `/chat/` to BlueMap with that prefix stripped, and send every other path to KWC.
+
+```yaml
+http:
+  host: "127.0.0.1"
+  port: 8899
+  path-prefix: "/api"
+  public-prefix: ""
+
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
+    api-base-url: ""
+
+adapters:
+  bluemap:
+    enabled: true
+    api-base-url: ""
+```
+
+Public paths become:
+
+```text
+https://map.example.com/       KWC standalone
+https://map.example.com/api    KWC API
+https://map.example.com/chat/  BlueMap
+```
+
+Do not change `frontend.standalone.path` to `/chat`; the external placement is controlled by the reverse proxy and `http.public-prefix`.
+
 
 ### 6.3 Trusted Proxy Handling
 
@@ -224,7 +331,7 @@ Main interface areas include:
 - Notification settings
 - Moderation and administration panels
 
-Browser-specific preferences are stored in localStorage. Theme, fonts, and notification filters can differ between browsers even for the same account. The panel can be moved and resized, and its size can be remembered. A browser-local notification inbox keeps recent notification-worthy events.
+Since 5.0.0, signed-in users can save visual preferences as multiple KWC account profiles, while guests keep browser-local presets. Window position/size, minimized state, the selected profile ID, and Web Push registration remain in localStorage/device storage. Signed-in notification types and keyword alerts are account-level rather than browser-specific. The browser-local notification inbox keeps recent notification-worthy events.
 
 Default UI settings:
 
@@ -298,7 +405,7 @@ Normal text and URL-oriented messages can use different limits. `0` means unlimi
 
 ### 8.5 Message Tokens
 
-BlueMapWebChat 4.7.0 can replace administrator-configured `:alias:` tokens before messages are stored or relayed. The built-in alias names are English-only defaults, but aliases can be replaced or extended in any language.
+KOKOTO WebChat 5.0.0 can replace administrator-configured `:alias:` tokens before messages are stored or relayed. The built-in alias names are English-only defaults, but aliases can be replaced or extended in any language.
 
 Default controls:
 
@@ -308,7 +415,9 @@ Default controls:
 
 Unknown tokens are left unchanged, so ImageEmojis/custom emoji tokens continue to work. Backslash escape forms such as `:\n:` are not supported. Printable custom replacements can also be configured, for example `:separator:` → `────────────`.
 
-For Minecraft output, ordinary CR/LF characters still follow the existing one-line flattening behavior. Only line breaks produced by configured `newline` / `blank-line` aliases are carried through that sanitizer and emitted as explicit Minecraft chat lines at final delivery, so `:enter:` works without changing the treatment of arbitrary pasted newlines. For server-relayed game output, the receiving BlueMapWebChat server must also have the same 4.7.0 token-line delivery support; an older receiver flattens the normal relayed LF.
+For Minecraft output, ordinary CR/LF characters still follow the existing one-line flattening behavior. Only line breaks produced by configured `newline` / `blank-line` aliases are carried through that sanitizer and emitted as explicit Minecraft chat lines at final delivery, so `:enter:` works without changing the treatment of arbitrary pasted newlines. For server-relayed game output, the receiving KOKOTO WebChat server must also have the same 4.7.0 token-line delivery support; an older receiver flattens the normal relayed LF.
+
+YAML list settings accept both inline (`aliases: [bullet, arrow]`) and block (`aliases:` followed by `- bullet`) forms. Use normal ASCII spaces for indentation; tabs and full-width spaces are invalid. A malformed edit is rejected by `/kchat reload` before live services are stopped, so the previous running configuration and UI language remain active.
 
 ```yaml
 message-tokens:
@@ -372,13 +481,13 @@ Search filters include message text, sender, date/time range, source, and whethe
 Generate a link code in the web UI, then run in-game:
 
 ```text
-/bmchat auth <code>
+/kchat auth <code>
 ```
 
 Permission:
 
 ```text
-bluemapwebchat.auth
+kwc.auth
 ```
 
 Related settings:
@@ -397,7 +506,8 @@ auth:
 Set a web password in-game:
 
 ```text
-/bmchat password <newPassword>
+/kchat password <newPassword>
+/kchat status
 ```
 
 ```yaml
@@ -422,7 +532,7 @@ Permission-based automatic administrator role:
 ```yaml
 auth:
   auto-admin-from-permission: true
-  admin-permission: "bluemapwebchat.admin"
+  admin-permission: "kwc.admin"
 ```
 
 ### 10.4 Local Administrator Accounts
@@ -437,16 +547,16 @@ admin:
 Commands:
 
 ```text
-/bmchat admin create <id>
-/bmchat admin password <id> <password>
-/bmchat admin role <id> <user|moderator|admin>
+/kchat admin create <id>
+/kchat admin password <id> <password>
+/kchat admin role <id> <user|moderator|admin>
 ```
 
 ### 10.5 Session Management
 
 ```text
-/bmchat sessions
-/bmchat revoke <username>
+/kchat sessions
+/kchat revoke <username>
 ```
 
 `revoke` removes active sessions and notifies connected browser clients that authentication expired.
@@ -500,11 +610,11 @@ captcha:
 Guest/IP moderation commands:
 
 ```text
-/bmchat guest mute guest <name> [minutes] [reason]
-/bmchat guest mute ip <address> [minutes] [reason]
-/bmchat guest unmute guest <name>
-/bmchat guest unmute ip <address>
-/bmchat guest list
+/kchat guest mute guest <name> [minutes] [reason]
+/kchat guest mute ip <address> [minutes] [reason]
+/kchat guest unmute guest <name>
+/kchat guest unmute ip <address>
+/kchat guest list
 ```
 
 ## 13. Player Names, Hover Text, and Click Actions
@@ -540,8 +650,8 @@ Placeholders:
 Name click actions:
 
 - Local game player: `/w <realName> `
-- Web sender: `/bmchat dm <realName> `
-- Remote-server game sender: `/bmchat dm <realName>@<server-id> `
+- Web sender: `/kchat dm <realName> `
+- Remote-server game sender: `/kchat dm <realName>@<server-id> `
 
 ## 14. Public Message Replies
 
@@ -560,22 +670,22 @@ reply:
     text: "↪ [Reply] "
 ```
 
-Clicking a non-URL part of a BMChat-rendered Minecraft message suggests:
+Clicking a non-URL part of a KWC-rendered Minecraft message suggests:
 
 ```text
-/bmchat reply <messageId> 
+/kchat reply <messageId> 
 ```
 
 Send a reply with:
 
 ```text
-/bmchat reply <messageId> <message>
+/kchat reply <messageId> <message>
 ```
 
 Permission:
 
 ```text
-bluemapwebchat.reply
+kwc.reply
 ```
 
 `local-game-chat: true` replaces local game chat display with an equivalent clickable component. Disable it if another chat-format plugin must own final rendering. Web-to-game and relay replies continue to work when it is disabled.
@@ -607,33 +717,33 @@ Recipients must be known by UUID. In addition to local join and linked-account r
 Game commands:
 
 ```text
-/bmchat dm
-/bmchat dm list [pageSize]
-/bmchat dm unread [pageSize]
-/bmchat dm list next
-/bmchat dm list prev
-/bmchat dm <player> <message>
-/bmchat dm read <player> [pageSize]
-/bmchat dm next
-/bmchat dm prev
-/bmchat dm hide <messageId>
+/kchat dm
+/kchat dm list [pageSize]
+/kchat dm unread [pageSize]
+/kchat dm list next
+/kchat dm list prev
+/kchat dm <player> <message>
+/kchat dm read <player> [pageSize]
+/kchat dm next
+/kchat dm prev
+/kchat dm hide <messageId>
 ```
 
 Permission:
 
 ```text
-bluemapwebchat.dm
+kwc.dm
 ```
 
 ### 15.1 Capture Minecraft Whispers
 
-When `capture-game-whispers: true`, the following commands are copied into the same BMChat DM thread:
+When `capture-game-whispers: true`, the following commands are copied into the same KWC DM thread:
 
 ```text
 /w /msg /tell /whisper /m /pm /message /t
 ```
 
-BlueMapWebChat does not replace a normal same-server Minecraft whisper. It records a copy for both sender and recipient. For a remote target, use `name@server-id`; the same aliases are rewritten to `/bmchat dm name@server-id <message>` and sent through the signed cross-server DM relay. An unqualified `/bmchat dm <name>` resolves only to a player on the current server. `/r` and `/reply` are not intercepted because they contain no target and remain owned by the server's existing whisper plugin.
+KOKOTO WebChat does not replace a normal same-server Minecraft whisper. It records a copy for both sender and recipient. For a remote target, use `name@server-id`; the same aliases are rewritten to `/kchat dm name@server-id <message>` and sent through the signed cross-server DM relay. An unqualified `/kchat dm <name>` resolves only to a player on the current server. `/r` and `/reply` are not intercepted because they contain no target and remain owned by the server's existing whisper plugin.
 
 ### 15.2 Delivery and read status
 
@@ -664,26 +774,26 @@ Every group message shows its recipient read state. The number is the count of c
 Game commands:
 
 ```text
-/bmchat group
-/bmchat group list
-/bmchat group rooms
-/bmchat group <room|id> <message>
-/bmchat group send <room|id> <message>
-/bmchat group read <room|id> [pageSize]
-/bmchat group next
-/bmchat group prev
+/kchat group
+/kchat group list
+/kchat group rooms
+/kchat group <room|id> <message>
+/kchat group send <room|id> <message>
+/kchat group read <room|id> [pageSize]
+/kchat group next
+/kchat group prev
 ```
 
 Alias:
 
 ```text
-/bmchat gc ...
+/kchat gc ...
 ```
 
 Permission:
 
 ```text
-bluemapwebchat.group
+kwc.group
 ```
 
 ## 17. System and Event Announcements
@@ -759,6 +869,8 @@ Clipboard modes:
 - `insert`: insert the uploaded URL into the composer
 - `send`: send immediately after upload
 
+With `filename-mode: original`, clipboard uploads prefer the long filename reported by `clipboardData.files`. On Windows/Chromium, if an alternate clipboard entry reports a DOS 8.3 alias such as `202608~1.JPG`, KWC prefers the long name. If the browser exposes only the 8.3 alias, KWC uses a generated `clipboard-...` filename rather than storing the misleading alias as the original name.
+
 See `UPLOAD_SECURITY_EN.md` for security guidance.
 
 ## 20. Media and Link Previews
@@ -831,8 +943,8 @@ emoji:
 File layout:
 
 ```text
-plugins/BlueMapWebChat/emojis/default/wave.png
-plugins/BlueMapWebChat/emojis/reaction/happy.gif
+<KWC data dir>/emojis/default/wave.png
+<KWC data dir>/emojis/reaction/happy.gif
 ```
 
 Tokens:
@@ -859,7 +971,7 @@ emoji:
 
 This preserves tokens for ImageEmojis-Bero or another game-side renderer.
 
-BMChat conversion mode:
+KWC conversion mode:
 
 ```yaml
 emoji:
@@ -876,12 +988,12 @@ Modes:
 - `label`: output only a configured label
 - `link`: output a label plus a short image URL
 
-## 22. ImageEmojis-Bero 1.9.0 Integration
+## 22. ImageEmojis-Bero 1.9.x Integration
 
 Recommended ImageEmojis-Bero settings:
 
 ```yaml
-emojisFolder: "/BlueMapWebChat/emojis"
+emojisFolder: "/KOKOTO-WebChat/emojis"
 templateFormat: ":<emoji>:"
 replaceInCommands: true
 ```
@@ -892,9 +1004,9 @@ Player permission:
 imageemojis.use
 ```
 
-`replaceInCommands: true` is required for token conversion inside `/bmchat reply`, `/bmchat dm`, and `/bmchat group`.
+`replaceInCommands: true` is required for token conversion inside `/kchat reply`, `/kchat dm`, and `/kchat group`.
 
-In a relay deployment, every server must have matching pack and file names. BlueMapWebChat preserves canonical tokens in web history and relay payloads, then uses the receiving server's runtime token-to-glyph map for Minecraft output.
+In a relay deployment, every server must have matching pack and file names. KOKOTO WebChat preserves canonical tokens in web history and relay payloads, then uses the receiving server's runtime token-to-glyph map for Minecraft output.
 
 Recommended refresh order after emoji changes:
 
@@ -907,6 +1019,22 @@ Reconnect if the resource pack must be refreshed. See `IMAGEEMOJIS_BERO_1_9_0_EN
 
 ## 23. Browser Notifications and Web Push
 
+Since 5.0.0, logged-in users' keyword and notification-type choices are stored as account preferences and reused across browsers/devices. Visual settings can be kept in multiple per-account UI profiles for Windows/mobile/etc.; window geometry, minimized state and Web Push endpoints remain device-local. Web Admin controls the maximum profile count and whether JSON import/export is allowed. When the current device already has an active KWC Web Push subscription, the live page suppresses its duplicate OS Notification while keeping the in-app notification entry.
+
+
+Server-side visual profiles are controlled by:
+
+```yaml
+ui:
+  user-profiles:
+    enabled: true
+    max-profiles: 5
+    allow-import-export: true
+```
+
+`max-profiles` accepts 0-20. Profile import/export is for visual settings only; session/identity/Push/device-window data is never included.
+
+
 ```yaml
 notifications:
   enabled: true
@@ -918,11 +1046,10 @@ notifications:
   notify-replies: true
   notify-system: true
   notify-keywords: true
-  notify-own-messages: true
   show-message-preview: true
 ```
 
-Users can further restrict allowed notification types per browser. A server-side `false` cannot be overridden by the user. The browser-local notification inbox keeps recent events, and notification clicks can navigate to a public message, reply, DM thread, or group room when a target is available.
+Users can further restrict allowed notification types in Chat settings. For signed-in users these choices are account-level; guests keep browser-local choices. A server-side `false` cannot be overridden by the user. The browser-local notification inbox keeps recent events, and notification clicks can navigate to a public message, reply, DM thread, or group room when a target is available.
 
 Web Push:
 
@@ -947,9 +1074,10 @@ Platform notes:
 Standalone app naming:
 
 ```yaml
-standalone-web:
-  app-name: "Web Chat"
-  app-short-name: "Web Chat"
+frontend:
+  standalone:
+    app-name: "Web Chat"
+    app-short-name: "Web Chat"
 ```
 
 A previously installed Home Screen app may need to be reinstalled after a name change.
@@ -966,12 +1094,36 @@ Browser and operating-system support is required. External window controls are o
 
 ## 25. DiscordSRV Integration
 
+The 5.0.0 administrator Discord keyword alert does not delegate matching or formatting policy to DiscordSRV. KWC owns keyword matching, source selection, mentions, deduplication and alert content, and reuses only DiscordSRV's authenticated JDA connection and Channels mapping. Web Admin shows DiscordSRV logical channel names in the alert-channel selector; a raw channel ID is used only for an ID-only fallback. Discord-origin messages are never fed back into the administrator alert matcher.
+
+Administrator alert policy example:
+
+```yaml
+admin-alerts:
+  discord:
+    enabled: false
+    channel: ""
+    sources:
+      public-chat: true
+      relay-chat: false
+      dm: false
+      group-chat: false
+    mention: "none"
+    case-sensitive: false
+    keywords: ""
+```
+
+`channel: ""` reuses `discordsrv.channel`; Web Admin normally stores/selects the logical DiscordSRV channel name.
+
+
+
+
 ```yaml
 discordsrv:
   enabled: true
   channel: "global"
   web-to-discord: true
-  game-to-discord: false
+  game-relay-mode: "discordsrv"
   discord-to-web: true
   ignore-bot-messages: true
   suppress-game-echo: true
@@ -983,12 +1135,12 @@ discordsrv:
   append-game-emoji-links: true
   max-emoji-links-per-message: 4
   web-to-discord-format: "[{server}] [Web] {sender}: {message}"
-  game-to-discord-format: "[{server}] {sender}: {message}"
+  game-relay-format: "[{server}] {sender}: {message}"
   discord-to-web-sender-format: "Discord:{sender}"
   discord-to-web-message-format: "{message}"
 ```
 
-If DiscordSRV already relays normal Minecraft chat, keep BMChat `game-to-discord: false` to avoid duplicate posts.
+If DiscordSRV already relays normal Minecraft chat, keep KWC `game-relay-mode: "discordsrv"` to avoid duplicate posts.
 
 When multiple servers share one Discord channel:
 
@@ -1009,6 +1161,8 @@ discordsrv:
 
 ## 26. Multi-Server Public Chat Relay
 
+`peers` is not a persistent connection/session list. It defines the HTTP destinations this server sends relay messages to; the same `id`/`secret` entries are used for incoming authentication. Configure both sides for two-way relay.
+
 Every server needs a unique `server-id`.
 
 ```yaml
@@ -1022,6 +1176,7 @@ server-relay:
   max-clock-skew-seconds: 60
   dedupe-seconds: 300
   max-hops: 8
+  forward-received-public-chat: true
   sources:
     game: true
     web: true
@@ -1034,15 +1189,17 @@ server-relay:
   game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
   peers:
     - id: "server2"
-      url: "https://server2.example.com/bmwc/api"
+      url: "https://server2.example.com/chat/api"
       secret: ""
       enabled: true
 ```
 
+`forward-received-public-chat` controls public-chat fan-out after a peer receives a message. `true` supports hub/chain topologies; `false` restricts public chat to direct peer links. Cross-server DMs and read receipts keep their existing routing behavior.
+
 Actual request URL:
 
 ```text
-https://server2.example.com/bmwc/api/relay/receive
+https://server2.example.com/chat/api/relay/receive
 ```
 
 Rules:
@@ -1067,6 +1224,8 @@ Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
 Errors:
 
 - `403 unknown_peer`: sender ID is not an active peer on the receiver
+
+After 3 `403 unknown_peer` responses without an intervening success from the same destination, KWC places that destination in a 60-second backoff. Relay messages for that destination are skipped during the interval and no periodic probe is sent. The first actual relay message after 60 seconds retries automatically; another failure starts a new 60-second interval from that failure, while a successful response immediately restores normal delivery. The receiver rejects an unknown sender before applying the direct request. Connection-refused, timeout, and similar transport failures use the same 3-strike/60-second backoff so an offline peer does not produce a warning for every forwarded message.
 - `401 bad_signature`: secret/signature mismatch
 - `401 expired_request`: server clock skew
 - `404 relay_disabled`: relay disabled or reverse proxy points to the wrong path/instance
@@ -1153,7 +1312,7 @@ audit:
   directory: "audit"
 ```
 
-Administrative actions are appended to dated files under `plugins/BlueMapWebChat/audit` by default. Audit records are not displayed in the web UI.
+Administrative actions are appended to dated files under `<KWC data dir>/audit` by default. Audit records are not displayed in the web UI.
 
 ## 29. Web Fonts and Visual Configuration
 
@@ -1201,14 +1360,12 @@ ui:
     enabled: true
     overscan-screens: 0.75
     min-rendered-messages: 30
-    preserve-visible-media: false
-    preserve-playing-media: true
   history-preload:
     screens: 0.7
     min-px: 200
 ```
 
-Virtual scrolling reduces browser rendering cost for long histories. Preserving more media increases memory use.
+Virtual scrolling reduces browser rendering cost for long histories. Only the current message range and a small visible guard are kept in the DOM; child content types do not receive separate retention windows.
 
 Resume refresh:
 
@@ -1217,90 +1374,89 @@ ui:
   resume-refresh:
     enabled: true
     min-interval-seconds: 5
-    skip-while-media-active: true
     skip-unchanged: true
 ```
 
-This refreshes missed messages after returning to a mobile or backgrounded page without unnecessarily interrupting active media.
+This refreshes missed messages after returning to a mobile or backgrounded page. Public-chat virtualization is content-type agnostic: images, video, audio, link previews, YouTube, and other iframes all use the same message-range and height-tracking rules.
 
 ## 31. Complete Command Reference
 
 User commands:
 
 ```text
-/bmchat auth <code>
-/bmchat password <newPassword>
-/bmchat dm
-/bmchat dm list [pageSize]
-/bmchat dm unread [pageSize]
-/bmchat dm <player> <message>
-/bmchat dm read <player> [pageSize]
-/bmchat dm next
-/bmchat dm prev
-/bmchat dm hide <messageId>
-/bmchat reply <messageId> <message>
-/bmchat group list
-/bmchat group <room> <message>
-/bmchat group send <room> <message>
-/bmchat group read <room> [pageSize]
-/bmchat group next
-/bmchat group prev
+/kchat auth <code>
+/kchat password <newPassword>
+/kchat status
+/kchat dm
+/kchat dm list [pageSize]
+/kchat dm unread [pageSize]
+/kchat dm <player> <message>
+/kchat dm read <player> [pageSize]
+/kchat dm next
+/kchat dm prev
+/kchat dm hide <messageId>
+/kchat reply <messageId> <message>
+/kchat group list
+/kchat group <room> <message>
+/kchat group send <room> <message>
+/kchat group read <room> [pageSize]
+/kchat group next
+/kchat group prev
 ```
 
 Administrator commands:
 
 ```text
-/bmchat reload
-/bmchat admin create <id>
-/bmchat admin password <id> <password>
-/bmchat admin role <id> <user|moderator|admin>
-/bmchat guest mute <guest|ip> <value> [minutes] [reason]
-/bmchat guest unmute <guest|ip> <value>
-/bmchat guest list
-/bmchat sessions
-/bmchat revoke <username>
+/kchat reload
+/kchat admin create <id>
+/kchat admin password <id> <password>
+/kchat admin role <id> <user|moderator|admin>
+/kchat guest mute <guest|ip> <value> [minutes] [reason]
+/kchat guest unmute <guest|ip> <value>
+/kchat guest list
+/kchat sessions
+/kchat revoke <username>
 ```
 
-Root aliases:
+Root alias:
 
 ```text
-/bmc
-/bluemapchat
+/kc
 ```
 
 Group alias:
 
 ```text
-/bmchat gc
+/kchat gc
 ```
 
 ## 32. Permission Reference
 
 ```text
-bluemapwebchat.auth      Link a web account
-bluemapwebchat.webchat   Use authenticated web chat
-bluemapwebchat.dm        Send and read direct messages
-bluemapwebchat.reply     Reply to public messages from Minecraft
-bluemapwebchat.group     Use group chat
-bluemapwebchat.admin     Administer the plugin
-bluemapwebchat.update.notify  Receive update notices (OP by default)
+kwc.auth      Link a web account
+kwc.webchat   Use authenticated web chat
+kwc.dm        Send and read direct messages
+kwc.reply     Reply to public messages from Minecraft
+kwc.group     Use group chat
+kwc.admin     Administer the plugin
+kwc.update.notify  Receive update notices (OP by default)
 ```
 
-User permissions are allowed by default. `bluemapwebchat.admin` and `bluemapwebchat.update.notify` default to OP.
+User permissions are allowed by default. `kwc.admin` and `kwc.update.notify` default to OP.
 
 ## 33. Data Files and Backup
 
 Common files:
 
 ```text
-plugins/BlueMapWebChat/config.yml
-plugins/BlueMapWebChat/history.db
-plugins/BlueMapWebChat/direct-messages.db
-plugins/BlueMapWebChat/group-messages.db
-plugins/BlueMapWebChat/web-push-subscriptions.jsonl
-plugins/BlueMapWebChat/emojis/
-plugins/BlueMapWebChat/uploads/
-plugins/BlueMapWebChat/audit/
+<KWC data dir>/config.yml
+<KWC data dir>/history.db
+<KWC data dir>/direct-messages.db
+<KWC data dir>/group-messages.db
+<KWC data dir>/web-push-subscriptions.jsonl
+<KWC data dir>/emojis/
+<KWC data dir>/uploads/
+<KWC data dir>/audit/
 ```
 
 Names can differ when customized.
@@ -1317,7 +1473,7 @@ Copy SQLite databases after a clean server shutdown whenever possible.
 
 ## 34. Reload Versus Restart
 
-Usually reloadable with `/bmchat reload`:
+Usually reloadable with `/kchat reload`:
 
 - Most configuration changes
 - HTTP service and relay reinitialization
@@ -1330,7 +1486,7 @@ Requires a server restart:
 - Plugin load-order changes
 - Some port-lock or web-resource conditions
 
-If only BlueMap web assets appear stale, also run `/bluemap reload`.
+`/kchat reload` automatically requests `bluemap reload light`; if BlueMap assets still appear stale or the command dispatch failed, run `/bluemap reload light` manually.
 
 ## 35. Troubleshooting Quick Reference
 
@@ -1340,15 +1496,15 @@ If only BlueMap web assets appear stale, also run `/bluemap reload`.
 - Check `http.host` and `http.port`
 - Check for a port conflict
 - Confirm reverse-proxy upstream points to `127.0.0.1:8899`
-- Enable `standalone-web.enabled` when a standalone page is required
+- Enable `frontend.standalone.enabled` when a standalone page is required
 
 ### No BlueMap Chat Button
 
-- Enable `web-addon.auto-install`
-- Enable `web-addon.auto-patch-webapp-conf`
+- Enable `adapters.bluemap.auto-install`
+- Enable `adapters.bluemap.auto-patch-webapp-conf`
 - Check BlueMap paths
 - Read installation/patch log messages
-- Run `/bluemap reload`
+- `/kchat reload` normally triggers `bluemap reload light`; run `/bluemap reload light` manually only if needed
 - Refresh browser cache
 
 ### Login Fails
@@ -1381,7 +1537,7 @@ If only BlueMap web assets appear stale, also run `/bluemap reload`.
 
 ### Emoji Token Is Shown as Text
 
-- Confirm the BMChat emoji file exists
+- Confirm the KWC emoji file exists
 - Check ImageEmojis-Bero shared folder and permission
 - Enable `replaceInCommands`
 - Run `/emojis reload` and `/emojis update`
@@ -1403,7 +1559,7 @@ If only BlueMap web assets appear stale, also run `/bluemap reload`.
 
 - Confirm every server runs the same fixed build
 - Check for another plugin reposting relay messages
-- Keep `game-to-discord: false` when DiscordSRV already forwards game chat
+- Keep `game-relay-mode: "discordsrv"` when DiscordSRV already forwards game chat
 
 ### Web Push Does Not Work
 
@@ -1417,7 +1573,8 @@ If only BlueMap web assets appear stale, also run `/bluemap reload`.
 
 - `CONFIGURATION_EN.md`: detailed setting reference
 - `SERVER_RELAY_EN.md`: relay topology, authentication, and errors
-- `UPGRADE_4_6_4_EN.md`: 4.6.3→4.7.0 upgrade
+- `UPGRADE_5_0_0_EN.md`: 4.7.0 to 5.0.0 core-split/reload-safety upgrade
+- `UPGRADE_4_7_0_EN.md`: 4.6.3 to 4.7.0 feature upgrade
 - `UPGRADE_4_6_3_EN.md`: 4.6.2 to 4.6.3 upgrade
 - `UPGRADE_4_6_2_EN.md`: 4.6.1 to 4.6.2 upgrade
 - `UPGRADE_4_6_1_EN.md`: 4.6.0 to 4.6.1 upgrade
@@ -1435,3 +1592,8 @@ If only BlueMap web assets appear stale, also run `/bluemap reload`.
 
 Set `group-chat.admin-audit.enabled: true` and list the exact Minecraft name or UUID in `private-chat-super-admins`. Both gates are required. A qualifying administrator may open group-chat bodies from the administrator room metadata list even when they are not a room member. The audit view is read-only: it does not join the room, mark messages read, change unread counts, send/upload/hide messages, or change membership. Every page read records `admin.group-audit-read`; message bodies are not copied into the audit log.
 
+
+
+## SimpleNicks-Bero integration
+
+On Bukkit/Paper-family servers, use `player-display.mode: "display-name"` to show the nickname rendered by [SimpleNicks-Bero](https://github.com/KOKOTO-DEV/SimpleNicks-Bero). The linked username/UUID remains KWC's real account identity. See `SIMPLENICKS_BERO_EN.md`; use [upstream SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks) for normal plugin installation and operation.

@@ -1,0 +1,28 @@
+# KOKOTO WebChat starter blocked-word list (Korean)
+# UTF-8, one term per line. This intentionally favors strong profanity over broad insults
+# to reduce false positives. Review/edit this list for your community before enabling filtering.
+씨발
+시발
+씨팔
+시팔
+씹새끼
+씹새
+개새끼
+개새
+개쉐끼
+병신
+븅신
+지랄
+좆
+좆같
+좆까
+존나
+졸라
+염병
+개같네
+개같은
+썅
+쌍년
+쌍놈
+니미
+느금마

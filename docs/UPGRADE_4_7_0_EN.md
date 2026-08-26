@@ -1,4 +1,4 @@
-# BlueMapWebChat 4.7.0 upgrade
+# KOKOTO WebChat 4.7.0 upgrade
 
 4.7.0 expands the conservative Bukkit/Spigot compatibility baseline to Minecraft 1.18, adds administrator custom-emoji multi-file upload, and adds configurable colon-delimited message tokens.
 
@@ -13,7 +13,7 @@
 
 ## Custom emoji multi-upload
 
-Emoji upload now follows the same picker flow as normal chat file upload. The visible Upload button opens a hidden multi-file input. As soon as the picker returns a selection, BlueMapWebChat copies the selected files, clears the native input, and immediately starts sequential uploads. There is no second Upload confirmation step and no file-picker focus/visibility workaround. Progress and active-transfer cancel remain available. The existing server endpoint still performs per-file validation, storage accounting, unique-name allocation, audit logging, and PNG-sidecar generation.
+Emoji upload now follows the same picker flow as normal chat file upload. The visible Upload button opens a hidden multi-file input. As soon as the picker returns a selection, KOKOTO WebChat copies the selected files, clears the native input, and immediately starts sequential uploads. There is no second Upload confirmation step and no file-picker focus/visibility workaround. Progress and active-transfer cancel remain available. The existing server endpoint still performs per-file validation, storage accounting, unique-name allocation, audit logging, and PNG-sidecar generation.
 
 ## Message tokens
 
@@ -33,4 +33,4 @@ A reviewed 4.6.3 configuration therefore receives the new `message-tokens` secti
 
 ### Game line-break behavior
 
-Configured `newline` / `blank-line` tokens are preserved through Minecraft single-line sanitization and emitted as explicit Minecraft chat lines at final delivery. Ordinary CR/LF input is still flattened exactly as before. For server-relayed chat/DM output, the receiving BlueMapWebChat server must also run the 4.7.0 token-line delivery support; an older receiver flattens the normal relayed LF before it reaches the client.
+Configured `newline` / `blank-line` tokens are preserved through Minecraft single-line sanitization and emitted as explicit Minecraft chat lines at final delivery. Ordinary CR/LF input is still flattened exactly as before. For server-relayed chat/DM output, the receiving KOKOTO WebChat server must also run the 4.7.0 token-line delivery support; an older receiver flattens the normal relayed LF before it reaches the client.

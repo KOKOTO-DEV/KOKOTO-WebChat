@@ -4,7 +4,7 @@ This document summarizes settings to review for public deployments or HTTPS reve
 
 ## Recommended public deployment
 
-For public servers, keep the BlueMapWebChat HTTP server behind Caddy/Nginx instead of exposing it directly.
+For public servers, keep the KOKOTO WebChat HTTP server behind Caddy/Nginx instead of exposing it directly.
 
 ```yaml
 http:
@@ -25,7 +25,7 @@ For direct HTTP use, keep `trusted-proxies: []`. In that mode, client-supplied `
 When `http.log-client-ip-resolution: true` is enabled, the plugin writes lines like this to the server console and Minecraft server log:
 
 ```text
-[BlueMapWebChat] Client IP resolved: socket=127.0.0.1, trustedProxy=true, xForwardedFor=203.0.113.10, result=203.0.113.10, path=/api/config
+[KOKOTO WebChat] Client IP resolved: socket=127.0.0.1, trustedProxy=true, xForwardedFor=203.0.113.10, result=203.0.113.10, path=/api/config
 ```
 
 Where to check:

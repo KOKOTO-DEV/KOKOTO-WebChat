@@ -4,7 +4,7 @@
 
 ## 推荐的公开部署方式
 
-公开服务器建议不要直接暴露 BlueMapWebChat 的 HTTP 服务，而是放在 Caddy/Nginx 后面。
+公开服务器建议不要直接暴露 KOKOTO WebChat 的 HTTP 服务，而是放在 Caddy/Nginx 后面。
 
 ```yaml
 http:
@@ -25,7 +25,7 @@ http:
 启用 `http.log-client-ip-resolution: true` 后，插件会在服务器控制台和 Minecraft 服务器日志中输出类似内容：
 
 ```text
-[BlueMapWebChat] Client IP resolved: socket=127.0.0.1, trustedProxy=true, xForwardedFor=203.0.113.10, result=203.0.113.10, path=/api/config
+[KOKOTO WebChat] Client IP resolved: socket=127.0.0.1, trustedProxy=true, xForwardedFor=203.0.113.10, result=203.0.113.10, path=/api/config
 ```
 
 查看位置：

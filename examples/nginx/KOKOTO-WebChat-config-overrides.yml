@@ -1,0 +1,33 @@
+# Minimal KOKOTO WebChat overrides when publishing through nginx at https://map.example.com/chat.
+# Merge these values into plugins/KOKOTO-WebChat/config.yml.
+
+http:
+  host: "127.0.0.1"
+  port: 8899
+  path-prefix: "/api"
+  public-prefix: "/chat"
+  cors-origin: "https://map.example.com"
+
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
+    api-base-url: ""
+
+adapters:
+  bluemap:
+    enabled: true
+    # Empty = use http.public-prefix + http.path-prefix on HTTPS.
+    api-base-url: ""
+
+upload:
+  # Recommended: empty; uploads follow the active public API base + /uploads.
+  public-base-url: ""
+
+emoji:
+  # Recommended: empty; emoji files follow the active public API base + /emojis.
+  public-base-url: ""
+
+ui:
+  # Keep media preview max-height enabled for scroll stability.
+  image-preview-max-height: 720

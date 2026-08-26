@@ -1,0 +1,24 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>dev.kokoto</groupId>
+        <artifactId>kokoto-webchat-parent</artifactId>
+        <version>5.0.0</version>
+    </parent>
+
+    <artifactId>kwc-core</artifactId>
+    <packaging>jar</packaging>
+    <name>KOKOTO WebChat Core</name>
+    <description>Platform-neutral chat/session/security, persistence, relay, complete HTTP/SSE endpoint orchestration, game-platform contracts, and Web Push services.</description>
+    <dependencies>
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.53.2.0</version>
+        </dependency>
+    </dependencies>
+
+</project>

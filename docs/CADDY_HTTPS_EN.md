@@ -1,6 +1,6 @@
-# BlueMapWebChat Caddy HTTPS setup guide
+# KOKOTO WebChat Caddy HTTPS setup guide
 
-This guide keeps BlueMap and BlueMapWebChat running as local HTTP services, then exposes them through Caddy over HTTPS.
+This guide keeps BlueMap and KOKOTO WebChat running as local HTTP services, then exposes them through Caddy over HTTPS.
 
 ## Recommended layout
 
@@ -9,20 +9,40 @@ User browser
   ↓ HTTPS
 Caddy :443
   ├─ /           -> BlueMap web server, usually 127.0.0.1:8100
-  └─ /bmwc/*     -> BlueMapWebChat API and standalone page, usually 127.0.0.1:8899
-      /bmwc/api  -> internal /api
-      /bmwc/chat -> internal /chat
+  └─ /chat/*      -> KOKOTO WebChat API and standalone page, usually 127.0.0.1:8899
+      /chat/api  -> internal /api
+      /chat      -> internal /
 ```
 
 The browser should use one public origin:
 
 ```text
 https://map.example.com/
-https://map.example.com/bmwc/api/config
-https://map.example.com/bmwc/chat
+https://map.example.com/chat/api/config
+https://map.example.com/chat
 ```
 
 The internal services can stay on their original HTTP ports.
+
+## HTTPS path changes when migrating from BMWC to KWC
+
+The standard BlueMapWebChat HTTPS layout usually proxied public `/bmwc/api` to internal `:8899/api` and public `/bmwc/chat` to the internal standalone `/chat`. KOKOTO WebChat 5.0.0 does not keep that layout. During migration, standard BMWC public-path values are normalized to KWC's new automatic values.
+
+```text
+BMWC
+  BlueMap:     https://map.example.com/
+  Standalone:  https://map.example.com/bmwc/chat
+  API:         https://map.example.com/bmwc/api
+
+KWC 5.0.0
+  BlueMap:     https://map.example.com/
+  Standalone:  https://map.example.com/chat
+  API:         https://map.example.com/chat/api
+```
+
+For standard BMWC values, migration uses automatic KWC values such as `adapters.bluemap.api-base-url: ""` and `frontend.standalone.api-base-url: ""`, with `frontend.standalone.path: "/"` and `http.public-prefix: "/chat"`. Standard `/bmwc/api/uploads` and `/bmwc/api/emojis` values are normalized to their empty automatic values as well. User-defined custom external URLs are not rewritten arbitrarily.
+
+**Converting the plugin config does not rewrite an existing Caddy/nginx configuration.** Remove or replace the old BMWC `/bmwc/api` and `/bmwc/chat` proxy rules and use the `/chat` prefix-stripping layout in this guide. With Caddy, `/chat` and `/chat/*` are sent to `:8899` after stripping the `/chat` prefix.
 
 ## 1. Install Caddy
 
@@ -63,7 +83,9 @@ Copy `examples/caddy/Caddyfile` and change the domain.
 map.example.com {
   encode zstd gzip
 
-  handle_path /bmwc/* {
+  @chat path /chat /chat/*
+  handle @chat {
+    uri strip_prefix /chat
     reverse_proxy 127.0.0.1:8899
   }
 
@@ -73,7 +95,58 @@ map.example.com {
 }
 ```
 
-`handle_path /bmwc/*` strips `/bmwc`, so `/bmwc/api/config` is forwarded to the plugin as `/api/config`, and `/bmwc/chat` is forwarded as `/chat`.
+`uri strip_prefix /chat` removes the public prefix, so `/chat/api/config` reaches the plugin as `/api/config`, and `/chat` reaches it as `/`.
+
+### Alternative layout: KWC at `/`, BlueMap at `/chat/`
+
+If the standalone KWC page should own the site root and BlueMap should live under `/chat/`, use:
+
+```caddyfile
+map.example.com {
+  encode zstd gzip
+
+  redir /chat /chat/ 308
+
+  handle_path /chat/* {
+    reverse_proxy 127.0.0.1:8100
+  }
+
+  handle {
+    reverse_proxy 127.0.0.1:8899
+  }
+}
+```
+
+Set `http.public-prefix: ""`, keep `frontend.standalone.path: "/"`, and normally leave all adapter/frontend `api-base-url` values empty. The resulting URLs are KWC `/`, KWC API `/api`, and BlueMap `/chat/`.
+
+
+### BlueMap + squaremap + standalone on one domain
+
+If all three frontends are enabled, assign `/` to one map and give the other map a prefix. For example, with squaremap on `127.0.0.1:8080`, BlueMap on `127.0.0.1:8100`, and KWC on `127.0.0.1:8899`:
+
+```caddyfile
+map.example.com {
+  encode zstd gzip
+
+  @chat path /chat /chat/*
+  handle @chat {
+    uri strip_prefix /chat
+    reverse_proxy 127.0.0.1:8899
+  }
+
+  @bluemap path /bluemap /bluemap/*
+  handle @bluemap {
+    uri strip_prefix /bluemap
+    reverse_proxy 127.0.0.1:8100
+  }
+
+  handle {
+    reverse_proxy 127.0.0.1:8080
+  }
+}
+```
+
+This publishes squaremap at `/`, BlueMap at `/bluemap/`, standalone KWC at `/chat`, and the KWC API at `/chat/api`. To make BlueMap the root site instead, swap the root map and prefixed map handlers.
 
 Apply it:
 
@@ -83,7 +156,7 @@ sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-## 3. BlueMapWebChat config.yml
+## 3. KOKOTO WebChat config.yml
 
 Use this minimal HTTPS reverse-proxy override:
 
@@ -92,24 +165,26 @@ http:
   host: "127.0.0.1"
   port: 8899
   path-prefix: "/api"
+  public-prefix: "/chat"
   cors-origin: "https://map.example.com"
 
-web-addon:
-  api-base-url: "/bmwc/api"
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
+    api-base-url: ""
 
-
-standalone-web:
-  enabled: true
-  path: "/chat"
-  # Optional. Same value as web-addon.api-base-url is valid.
-  api-base-url: "/bmwc/api"
+adapters:
+  bluemap:
+    enabled: true
+    api-base-url: ""
 
 upload:
-  # Recommended: keep empty. If needed, "/bmwc/api" or "/bmwc/api/uploads" also works.
+  # Recommended: keep empty. If needed, "/chat/api" or "/chat/api/uploads" also works.
   public-base-url: ""
 
 emoji:
-  # Recommended: keep empty. If needed, "/bmwc/api" or "/bmwc/api/emojis" also works.
+  # Recommended: keep empty. If needed, "/chat/api" or "/chat/api/emojis" also works.
   public-base-url: ""
 
 ui:
@@ -122,7 +197,7 @@ Keep media preview max-height enabled for scroll stability. Recommended: `640-72
 
 ## 4. BlueMap
 
-BlueMap may keep using its existing web port, commonly `8100`. For public deployments, expose only Caddy's `80/tcp` and `443/tcp` ports to the internet and keep BlueMap and BlueMapWebChat internal.
+BlueMap may keep using its existing web port, commonly `8100`. For public deployments, expose only Caddy's `80/tcp` and `443/tcp` ports to the internet and keep BlueMap and KOKOTO WebChat internal.
 
 ## 5. Firewall recommendation
 
@@ -139,23 +214,23 @@ Internally, Caddy connects to `127.0.0.1:8100` and `127.0.0.1:8899`.
 2. Allow `80/tcp` and `443/tcp` in the firewall.
 3. Install Caddy.
 4. Copy and reload the Caddyfile.
-5. Set `web-addon.api-base-url` to `/bmwc/api`.
-6. For `https://map.example.com/bmwc/chat`, `standalone-web.api-base-url` may be left empty or set to the same `/bmwc/api` value as `web-addon.api-base-url`.
-7. Leave `upload.public-base-url` and `emoji.public-base-url` empty unless you intentionally serve them from a separate public path. Legacy explicit values such as `/bmwc/api/uploads` and `/bmwc/api/emojis` are also accepted.
-8. Run `/bmchat reload` or restart the server so the web addon files are regenerated.
-9. Run `/bluemap reload` if BlueMap does not reload web assets automatically.
-10. Open `https://map.example.com/` or `https://map.example.com/bmwc/chat` in the browser.
+5. Keep adapter/standalone `api-base-url` empty unless you intentionally use a separate public API URL.
+6. Open standalone at `https://map.example.com/chat`; the empty standalone API override resolves to `/chat/api` from `http.public-prefix + http.path-prefix`.
+7. Leave `upload.public-base-url` and `emoji.public-base-url` empty unless you intentionally serve them from a separate public path. Use explicit upload/emoji URLs only when those resources are intentionally published elsewhere.
+8. Run `/kchat reload` or restart the server so the web addon files are regenerated.
+9. `/kchat reload` requests `bluemap reload light` automatically after refreshing the BlueMap adapter. If that dispatch fails, run `/bluemap reload light` manually.
+10. Open `https://map.example.com/` or `https://map.example.com/chat` in the browser.
 
 ## 7. HTTP page + HTTPS API warning
 
 Serving the BlueMap page over HTTP while only the chat API uses HTTPS is technically possible, but it is not a complete security boundary. If the page or `chat.js` is delivered over HTTP, a network attacker could modify the script before it talks to the HTTPS API.
 
-For public servers, serve both BlueMap and BlueMapWebChat under the same HTTPS origin.
+For public servers, serve both BlueMap and KOKOTO WebChat under the same HTTPS origin.
 
 ## nginx alternative
 
-If you use nginx instead of Caddy, see `docs/NGINX_HTTPS_EN.md` and `examples/nginx/bluemapwebchat.conf`.
+If you use nginx instead of Caddy, see `docs/NGINX_HTTPS_EN.md` and `examples/nginx/kokoto-webchat.conf`.
 
 ### URL setting resolution
 
-`web-addon.api-base-url` is the primary HTTPS public API path. Leave `standalone-web.api-base-url`, `upload.public-base-url`, and `emoji.public-base-url` empty unless you need a compatibility override. Empty standalone follows `web-addon.api-base-url`; empty upload/emoji append `/uploads` and `/emojis`. Absolute browser paths such as `/bmwc/api` are used as-is. Relative values without a leading `/` are resolved against `http.cors-origin` when it is a real origin. Full `https://...` URLs are used as-is.
+`http.public-prefix + http.path-prefix` defines the canonical HTTPS public API path (`/chat/api` by default). Adapter and standalone `api-base-url` values are optional independent overrides and normally stay empty. Empty upload/emoji settings follow the canonical public API and append `/uploads` and `/emojis`. Absolute browser paths, relative values, and full `https://...` URLs are only needed for intentional overrides.

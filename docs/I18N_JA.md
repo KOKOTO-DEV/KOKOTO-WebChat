@@ -1,4 +1,4 @@
-# BlueMapWebChat 多言語ガイド
+# KOKOTO WebChat 多言語ガイド
 
 ## 内蔵言語
 
@@ -7,7 +7,7 @@
 - `ja-JP.yml` - 日本語
 - `zh-CN.yml` - 簡体字中国語
 
-初回起動時に `plugins/BlueMapWebChat/lang/` へコピーされます。更新時には不足している内蔵キーが自動で追加されます。既に変更した値は保持されるため、古い文言が残る場合はコピー済みの lang ファイルを編集するか、削除して再生成してください。
+初回起動時に `plugins/KOKOTO-WebChat/lang/` へコピーされます。更新時には不足している内蔵キーが自動で追加されます。既に変更した値は保持されるため、古い文言が残る場合はコピー済みの lang ファイルを編集するか、削除して再生成してください。
 
 ## UI 言語
 
@@ -44,8 +44,8 @@ en-US, ko-KR, ja-JP, zh-CN
 
 ## 新しい言語を追加する
 
-1. `plugins/BlueMapWebChat/lang/en-US.yml` をコピーします。
+1. `plugins/KOKOTO-WebChat/lang/en-US.yml` をコピーします。
 2. 例: `fr-FR.yml` のように名前を変更します。
 3. `web:` 以下の文字列を翻訳します。
 4. `ui.language` を `.yml` を除いた新しいファイル名に設定します。
-5. `/bmchat reload` を実行し、ページを再読み込みします。
+5. `/kchat reload` を実行し、ページを再読み込みします。

@@ -1,5 +1,44 @@
 # Changelog
 
+## 5.0.0
+
+5.0.0 is a major release that expands the former BlueMap-focused project into 'KOKOTO WebChat', a multi-platform and multi-map Minecraft web chat system.
+
+### Platform and map expansion
+
+- Renamed the project to 'KOKOTO WebChat (KWC)'. `/kchat` and `/kc` are the canonical commands, `/chat` is the default public web path, first-run migration from BlueMapWebChat 4.x is supported without modifying the original BMWC data, and update checks support the BMWC → KWC distribution transition.
+- Added server builds for 'Bukkit/Paper/Spigot', 'Fabric (16 exact targets)', 'NeoForge (12 exact targets)', and 'Forge (16 exact targets)', covering supported Minecraft versions up to 26.2.
+- Expanded frontend integration beyond BlueMap with 'squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD, Minecraft Overviewer', and a 'standalone WebChat' mode.
+- Improved multi-server operation for public relay, cross-server DM/group chat, remote-user handling, delivery/read status, relay failure backoff, and mixed KWC/BMWC transition deployments.
+
+### Chat, moderation and user features
+
+- Added a shared 'Unicode-aware content filter' for game and web chat with Block, Mask and Replace actions, bulk UTF-8 word lists, custom rules, anti-evasion matching, matched-word reporting, and Web Admin editing/testing. Hangul matching now avoids false positives such as `시발` matching `신발`, while jamo shorthand such as `ㅅㅂ` remains supported.
+- Added 'account-synced chat preferences and multiple visual profiles', including validated JSON import/export, improved settings synchronization, and removal of stray native file-picker controls. Device-specific window state and Web Push endpoints remain local to each device.
+- Expanded notifications with account-level keyword preferences, duplicate-notification suppression, desktop Notification/Web Push separation, mobile Web Push retry handling, and 'administrator Discord keyword alerts' through DiscordSRV.
+- Improved guest operation with Unicode guest names, stronger impersonation protection, corrected CAPTCHA/session behavior, and cleaner login/logout transitions.
+- Added `upload.filename-mode: original` with safe 'Unicode filename preservation', collision handling, and Windows clipboard filename fixes, while retaining randomized filenames as the default alternative.
+- Improved registered-emoji handling across game, web, relay and Discord paths, and added deployment-focused integration guides for 'ImageEmojis-Bero' and 'SimpleNicks-Bero'.
+
+### Reliability, security and UI
+
+- Reworked long-history 'virtual scrolling' so message order remains deterministic with images, GIFs, video, audio, YouTube/iframe embeds and link previews; mid-history focus/reconnect no longer replaces the viewed message slice.
+- Added SQLite history integrity/recovery checks and hardened authenticated APIs, SSE stream authentication, administrator IP restrictions, Web Push endpoints, Discord/iframe boundaries, and request limits.
+
+### Configuration and upgrade behavior
+
+- Reworked configuration migration around the bundled 5.0.0 `config.yml`: existing operator values are preserved while current settings, comments and layout are rebuilt consistently. `5.0.0_auto_migration` keeps same-version reconciliation enabled; exact `5.0.0` disables it.
+- Unified configuration/reference behavior and bundled language coverage across supported platforms. The four bundled web languages remain aligned, while administrator-customized translations are preserved when unchanged bundled strings are refreshed.
+
+### Compatibility
+
+- Bukkit/Paper/Spigot: Minecraft '1.18–26.2'
+- Fabric: '16 exact targets', Minecraft '1.18.2–26.2'
+- NeoForge: '12 exact targets', Minecraft '1.20.2–26.2'
+- Forge: '16 exact targets', Minecraft '1.18.2–26.2'
+- Target Java is selected by Minecraft generation: Java '17 / 21 / 25' as applicable.
+
+
 ## 4.7.0
 
 - Added administrator custom-emoji multi-file upload using the same browser picker flow as the existing normal chat file upload. The upload control now opens a hidden `multiple` file input; when the picker closes, BlueMapWebChat immediately copies the selected `FileList`, clears the native input, and begins sequential upload without a separate selection/confirmation stage. Upload progress and active-transfer cancel behavior remain available, while per-file extension/size checks, total-storage accounting, unique-name handling, audit logging, and PNG-sidecar generation continue through the existing server endpoint.
@@ -88,7 +127,7 @@ The existing `direct-message.admin-audit.enabled` switch remains independent and
 
 ### Cross-server DM compatibility
 
-All servers that exchange cross-server DMs should run **BlueMapWebChat 4.6.2 or later** to use end-to-end delivery confirmation, retry, and remote read-status acknowledgement.
+All servers that exchange cross-server DMs should run 'BlueMapWebChat 4.6.2 or later' to use end-to-end delivery confirmation, retry, and remote read-status acknowledgement.
 
 ### Configuration
 
@@ -107,7 +146,7 @@ config-version: "4.6.2"
 
 ### Important cross-server DM compatibility requirement
 
-All servers that exchange cross-server DMs must run the same corrected **4.6.1 build**. Matching the displayed version number alone is not sufficient because earlier 4.6.1 builds do not include the complete private DM relay and exact target handoff changes. Replace the plugin on every connected server and restart all of them; otherwise the sender may create a session while the destination server does not receive or store it.
+All servers that exchange cross-server DMs must run the same corrected '4.6.1 build'. Matching the displayed version number alone is not sufficient because earlier 4.6.1 builds do not include the complete private DM relay and exact target handoff changes. Replace the plugin on every connected server and restart all of them; otherwise the sender may create a session while the destination server does not receive or store it.
 
 ### Configuration added in 4.6.1
 

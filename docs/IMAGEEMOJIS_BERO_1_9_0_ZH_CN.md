@@ -1,77 +1,69 @@
-# ImageEmojis-Bero 1.9.0 兼容性
+# ImageEmojis-Bero 集成 (1.9.x)
 
-BlueMapWebChat 4.7.0 提供了对 [ImageEmojis-Bero 1.9.0](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) 的可选兼容路径。该集成使用 reflection，不增加硬依赖；未安装 ImageEmojis-Bero 时 BlueMapWebChat 仍可启动。
+KOKOTO WebChat 5.0.0 可选集成 [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)。服务器端 runtime glyph 集成面向 **Bukkit/Paper 系列**，当前按 1.9.x Bero 系列（包括 1.9.2）验证。该兼容层基于 reflection，不构成硬依赖。
 
-## 支持行为
+基础安装、命令、权限、资源包生成和常规运维请参考 [上游 ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)。本文只说明与 KWC 配合时需要注意的配置。
 
-- Web、游戏回复、DM 和服务器中继会在 BMChat 历史及 relay payload 中保留规范表情 token。
-- 在构建可点击 Minecraft component 前，BMChat 会读取接收服务器的 ImageEmojis-Bero runtime repository，并将已知 token 转换为该服务器当前资源包的 glyph。
-- 发送者点击、`/bmchat reply`、URL 点击和 ImageEmojis glyph 可以同时存在于同一聊天行。
-- 支持 `:pack/name:` 与旧式 `:emoji:pack/name:`。正常的 `templateFormat: ":<emoji>:"` 会因为表情名包含 pack path 而生成 `:pack/name:`。
-- runtime repository 无法解析的已知 token 会使用 plain Bukkit broadcast fallback，让 ImageEmojis-Bero 的 `BroadcastMessageEvent` listener 继续处理；该 fallback 行无法携带 BMChat 的 click/hover metadata。
-
-## 推荐共用表情目录
-
-让 Web UI 与 Minecraft 资源包使用同一份素材：
+## 推荐配置
 
 ```yaml
 # plugins/ImageEmojis-Bero/config.yml
-emojisFolder: "/BlueMapWebChat/emojis"
-templateFormat: ":<emoji>:"
+serverIp: yourdomain
+webServerPort: 5000
+emojisFolder: /KOKOTO-WebChat/emojis
+enforcementPolicy: REQUIRED
 replaceInCommands: true
+templateFormat: ':<emoji>:'
 ```
 
-实际目录：
+`replaceInAnvils`、`replaceOnSigns`、`replaceInCommandBlocks`、`replaceInBooks`、`suggestionMode`、`mergeWithServerResourcePack`、`extendedUnicodeRange` 等属于 ImageEmojis-Bero 自身运维选项，并非 KWC 必需项。
+
+## 共用表情目录
+
+`emojisFolder: /KOKOTO-WebChat/emojis` 对应：
 
 ```text
-plugins/BlueMapWebChat/emojis/<pack>/<name>.png
+plugins/KOKOTO-WebChat/emojis/<pack>/<name>.png
 ```
 
-ImageEmojis-Bero 读取一层 pack 文件夹和 PNG 文件。BlueMapWebChat 可保留 Web 使用的 GIF/JPG/JPEG/WEBP 原文件，并在同一目录生成游戏插件使用的 PNG sidecar。
+这样 KWC Web 表情与 ImageEmojis-Bero 生成的 Minecraft 资源包可以共用相同 pack/name 结构。
 
-## BlueMapWebChat 推荐设置
+## 资源包 HTTP 端口
 
-```yaml
-emoji:
-  game-link:
-    enabled: false
-    default-pack: ""
-    aliases: {}
+`serverIp` 与 `webServerPort` 属于 **ImageEmojis-Bero 的资源包 HTTP 服务**，不是 KWC Web 服务。若配置 `serverIp: yourdomain`、`webServerPort: 5000`，Minecraft 客户端必须能够通过 TCP 访问 `yourdomain:5000`。根据环境可能需要操作系统防火墙放行、路由器/NAT 端口转发及正确 DNS。公开 KWC `/chat` 并不会自动公开 ImageEmojis 的资源包端口。
 
-reply:
-  game-click:
-    enabled: true
-    local-game-chat: true
-```
+## KWC 行为
 
-`emoji.game-link.enabled: false` 会保留规范 token，而不是在 Minecraft 中追加 BMChat 图片链接。只有需要将 `:wave:` 之类的 flat token 映射到 `default/wave` 时才使用 `default-pack` 或 `aliases`。
+- Web/history/relay 中保留 canonical token，而不是其他服务器的 private-use glyph。
+- Bukkit/Paper 系列可在发送交互式游戏消息前读取 ImageEmojis-Bero runtime repository 并解析当前服务器 glyph。
+- 支持 `:pack/name:` 与 `:emoji:pack/name:`。
+- sender/reply/URL 点击与 emoji glyph 可共存于同一消息。
+- runtime lookup 不可用时不会 hard failure，可退回 token/plain broadcast 处理。
 
-## 权限与命令转换
+这不表示 Fabric/NeoForge/Forge KWC 服务器构建支持 Bukkit ImageEmojis plugin API；client picker 是独立的客户端功能。
 
-玩家需要 `imageemojis.use` 权限。若要在 `/bmchat reply`、`/bmchat dm`、`/w`、`/msg` 等命令中输入表情 token，请保持 `replaceInCommands: true`。BMChat 会在 Web/历史/relay 中保留原 token，并在发送服务器的即时游戏输出中使用 ImageEmojis-Bero 已处理的命令正文。
+## 权限与命令
 
-## 重新加载顺序
+通常需要 `imageemojis.use`。若在 `/msg`、`/tell`、`/kchat reply`、`/kchat dm` 等命令中使用 token，请保持 `replaceInCommands: true`。
 
-1. 执行 `/emojis reload` 重新生成资源包。
-2. 在线玩家执行 `/emojis update`，或重新连接。
-3. BMChat runtime token→glyph 缓存约在 5 秒内刷新。仅修改表情文件时通常不需要 `/bmchat reload`。
+## 更新顺序
 
-## 多服务器中继
+1. `/emojis reload`
+2. 客户端执行 `/emojis update` 或重新连接
+3. 等待 KWC 的短期 runtime cache 刷新
 
-BMChat 传输规范 token，而不是其他服务器的 private-use glyph。所有需要显示表情的接收服务器都必须安装 ImageEmojis-Bero 1.9.0，并具有相同 pack/name 的 PNG。每台服务器会使用自己的 runtime mapping 解析 glyph。
+## 多服务器
 
-## DiscordSRV
-
-ImageEmojis-Bero 的 Discord 表情转换与 BMChat 的 `append-web-emoji-links` / `append-game-emoji-links` 可能产生重叠。请只启用需要的显示方式，避免重复预览。多个服务器共用一个 Discord 频道时，只有原始服务器会增强 DiscordSRV 消息；relay peer 不会重新发送或再次添加服务器名/表情链接。
+Relay 只传输 token，不同步 PNG 或资源包。需要显示该表情的每台接收服务器都必须具有相同 pack/name 资源。
 
 ## 故障排除
 
-- Minecraft 中仍显示 token：确认相同 PNG、执行 `/emojis reload`、检查 `imageemojis.use`，并等待短暂缓存刷新。
-- Web 能显示但游戏不能：确认玩家接受并更新了 ImageEmojis-Bero 资源包。
-- 游戏能显示但 Web 仍为 token：确认 `plugins/BlueMapWebChat/emojis` 下存在相同 pack/name。
-- `/bmchat reply` / `/bmchat dm` 不转换：保持 `replaceInCommands: true`。
-- 远程服务器表情不显示：在所有接收服务器同步相同 PNG 与 pack/name；聊天中继不会复制资源包文件。
+- Web 正常但游戏显示 token：检查 PNG、权限、资源包是否接受、reload/update
+- 游戏正常但 Web 显示 token：检查 `plugins/KOKOTO-WebChat/emojis` 下对应 pack/name
+- 资源包下载失败：从客户端检查 `serverIp:webServerPort` TCP 可达性
+- 命令中不转换：检查 `replaceInCommands: true`
 
-## 兼容边界
+## 项目链接
 
-4.6.0 依赖 ImageEmojis-Bero 1.9.0 的 `getEmojiRepository().getEmojis()` runtime repository，以及表情模型的 `getName()`、`getTemplate()`、`getAsUtf8Symbol()`。未来版本若改变这些 runtime API，BMChat 不会因此 hard failure，但在兼容代码更新前可能退回 token/plain-broadcast 处理。
+- KWC 验证的 fork: [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)
+- 上游 / 一般安装运维: [ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)

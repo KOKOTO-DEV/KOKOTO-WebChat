@@ -1,4 +1,4 @@
-# BlueMapWebChat internationalization guide
+# KOKOTO WebChat internationalization guide
 
 ## Built-in languages
 
@@ -7,7 +7,7 @@
 * `ja-JP.yml` - Japanese
 * `zh-CN.yml` - Simplified Chinese
 
-Language files are copied to `plugins/BlueMapWebChat/lang/` on first run. During later updates, missing built-in keys are merged automatically. Existing customized values are kept, so old text may remain until you edit the copied lang file or delete it and let the plugin regenerate it.
+Language files are copied to `plugins/KOKOTO-WebChat/lang/` on first run. During later updates, missing built-in keys are merged automatically. Existing customized values are kept, so old text may remain until you edit the copied lang file or delete it and let the plugin regenerate it.
 
 ## UI language settings
 
@@ -61,9 +61,9 @@ Collapsed pinned messages use the same configured chat font and message font siz
 
 ## Add a new language
 
-1. Copy `plugins/BlueMapWebChat/lang/en-US.yml`.
+1. Copy `plugins/KOKOTO-WebChat/lang/en-US.yml`.
 2. Rename it, for example `fr-FR.yml`.
 3. Translate strings under `web:`.
 4. Set `ui.language` to the new file name without `.yml`.
-5. Run `/bmchat reload` and refresh the page.
+5. Run `/kchat reload` and refresh the page.
 

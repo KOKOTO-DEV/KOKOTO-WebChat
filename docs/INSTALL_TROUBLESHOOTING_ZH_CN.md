@@ -1,4 +1,4 @@
-# BlueMapWebChat 安装与故障排查
+# KOKOTO WebChat 安装与故障排查
 
 ## 要求
 
@@ -17,17 +17,17 @@ mvn clean package
 输出:
 
 ```text
-target/BlueMapWebChat-4.7.0.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.0.0-Bukkit-1.18-26.2.jar
 ```
 
 ## 安装或升级
 
 1. 停止 Minecraft 服务器。
-2. 用新 jar 替换 `plugins/` 中旧的 BlueMapWebChat jar。
+2. 用新 jar 替换 `plugins/` 中旧的 KOKOTO WebChat jar。
 3. 启动服务器。
-4. 检查 `plugins/BlueMapWebChat/config.yml`。
-5. 如果修改了重要路径，执行 `/bmchat reload` 或重启。
-6. 如果 BlueMap 没有自动应用 Webapp 变更，执行 `/bluemap reload`。
+4. 检查 `plugins/KOKOTO-WebChat/config.yml`。
+5. 如果修改了重要路径，执行 `/kchat reload` 或重启。
+6. `/kchat reload` 会在 BlueMap webapp 变更后自动请求 `bluemap reload light`。自动执行失败时请手动运行 `/bluemap reload light`。
 7. 在浏览器中强制刷新。
 
 ## 验证 Web 插件注册
@@ -39,20 +39,20 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 条目应包含当前版本 query。
 
 ```text
-addons/bluemap-web-chat/config.js?v=4.7.0-<cache-token>
-addons/bluemap-web-chat/chat.js?v=4.7.0-<cache-token>
-addons/bluemap-web-chat/chat.css?v=4.7.0-<cache-token>
+addons/kokoto-web-chat/config.js?v=5.0.0-<cache-token>
+addons/kokoto-web-chat/chat.js?v=5.0.0-<cache-token>
+addons/kokoto-web-chat/chat.css?v=5.0.0-<cache-token>
 ```
 
 同时确认实际 Web 文件已更新。
 
 ```bash
-find /opt/minecraft/server -path "*addons/bluemap-web-chat/chat.js" -printf "%p  %TY-%Tm-%Td %TH:%TM\n"
+find /opt/minecraft/server -path "*addons/kokoto-web-chat/chat.js" -printf "%p  %TY-%Tm-%Td %TH:%TM\n"
 ```
 
 ## BlueMap webroot 不匹配
 
-如果 `/api/config` 正常但聊天面板不显示，BlueMap 可能正在提供另一个 webroot。请确认 `web-addon.bluemap-web-root`, `web-addon.bluemap-webapp-conf`, `web-addon.addon-path` 与实际路径一致。
+如果 `/api/config` 正常但聊天面板不显示，BlueMap 可能正在提供另一个 webroot。请确认 `adapters.bluemap.bluemap-web-root`, `adapters.bluemap.bluemap-webapp-conf`, `adapters.bluemap.addon-path` 与实际路径一致。
 
 ## 浏览器缓存
 
@@ -66,8 +66,8 @@ find /opt/minecraft/server -path "*addons/bluemap-web-chat/chat.js" -printf "%p 
 
 ## BlueMap 仍加载旧 addon 版本时
 
-更新后如果 BlueMap 仍然加载旧的 BlueMapWebChat addon 版本，请再执行一次 `/bmchat reload` 或重启服务器，然后在浏览器中强制刷新。
+更新后如果 BlueMap 仍然加载旧的 KOKOTO WebChat addon 版本，请再执行一次 `/kchat reload` 或重启服务器，然后在浏览器中强制刷新。
 
 ## HTTPS 反向代理
 
-公网服务器建议使用 Caddy 或 nginx 提供 HTTPS。Caddy 请参阅 `docs/CADDY_HTTPS_ZH_CN.md` 与 `examples/caddy/Caddyfile`，nginx 请参阅 `docs/NGINX_HTTPS_ZH_CN.md` 与 `examples/nginx/bluemapwebchat.conf`。
+公网服务器建议使用 Caddy 或 nginx 提供 HTTPS。Caddy 请参阅 `docs/CADDY_HTTPS_ZH_CN.md` 与 `examples/caddy/Caddyfile`，nginx 请参阅 `docs/NGINX_HTTPS_ZH_CN.md` 与 `examples/nginx/kchat.conf`。

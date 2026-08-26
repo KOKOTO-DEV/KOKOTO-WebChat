@@ -1,0 +1,21 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+[[mods]]
+modId="kokoto_webchat"
+version="5.0.0"
+displayName="KOKOTO WebChat"
+authors="KOKOTO"
+description='''Server-side KOKOTO WebChat platform module for NeoForge.'''
+[[dependencies.kokoto_webchat]]
+modId="neoforge"
+mandatory=true
+versionRange="[${neo_version},)"
+ordering="NONE"
+side="SERVER"
+[[dependencies.kokoto_webchat]]
+modId="minecraft"
+mandatory=true
+versionRange="[${minecraft_version}]"
+ordering="NONE"
+side="SERVER"

@@ -1,0 +1,2 @@
+pluginManagement { repositories { maven { url='https://maven.neoforged.net/releases' }; gradlePluginPortal(); mavenCentral() } }
+rootProject.name='kwc-neoforge-1-21-4'

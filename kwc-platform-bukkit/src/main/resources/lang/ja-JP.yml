@@ -1,0 +1,913 @@
+web:
+  title:
+    full: KOKOTO WebChat
+    minimized: チャット
+  status:
+    connecting: 接続中...
+    guest: ゲスト
+    reconnecting: 再接続中...
+    loggedIn: ログイン済み
+  button:
+    emoji: 絵文字
+    admin: 管理
+    login: ログイン
+    upload: 添付
+    resizeEmojiPanel: ドラッグして絵文字選択欄のサイズを変更
+    resizeLock: リサイズをロック
+    resizeUnlock: リサイズのロック解除
+    resize: サイズ変更
+    send: 送信
+    reset: リセット
+    close: 閉じる
+    start: 開始
+    save: 保存
+    edit: 編集
+    test: テスト
+    skip: スキップ
+    logout: ログアウト
+    setPassword: パスワード設定
+    clearHistory: Web履歴を消去
+    mute: ミュート
+    unmute: 解除
+    revoke: 解除
+    delete: 削除
+    accept: 承諾
+    decline: 拒否
+    cancel: キャンセル
+    reply: 返信
+    pin: 固定
+    moderationActionsEnable: 固定 / 削除を有効化
+    moderationActionsDisable: 固定 / 削除を無効化
+    unpin: 解除
+    moveUp: 上へ移動
+    move: 移動
+    moveSelected: 選択項目を移動
+    moveDown: 下へ移動
+    commands: コマンド
+    search: 検索
+    groupChats: グループチャット
+    directMessages: メッセージ
+    pip: PIP
+    run: 実行
+    jumpLatest: 最新メッセージへ
+    createPack: フォルダー作成
+    uploadEmoji: アップロード
+    deselectAll: 選択解除
+    selectAll: すべて選択
+    deleteSelected: 選択を削除
+    deletePack: フォルダー削除
+    change: 変更
+    rename: 変更
+    renamePack: フォルダー名変更
+    hide: '非表示'
+  placeholder:
+    guestName: ゲスト名
+    captchaAnswer: 答え
+    message: メッセージ
+    username: ユーザー名
+    password: パスワード
+    newPassword: 新しいパスワード
+    muteTarget: ゲスト名またはIP
+    minutes: 分
+    reason: 理由
+    emojiPack: 新しいパック/フォルダー名
+  reply:
+    composing: '{sender}へ返信'
+    jump: 返信元メッセージへ移動
+    notFound: 参照先のメッセージが見つかりません。
+  message:
+    deleted: '[削除済み]'
+  emoji:
+    empty: 設定された絵文字がありません。
+    emptyPack: 絵文字なし
+  alert:
+    emojiTooMany: 絵文字は1メッセージにつき{max}個まで使用できます。
+    rateLimited: 送信が速すぎます。しばらく待ってください。
+    sendFailed: '送信失敗: {error}'
+    serverUnavailable: チャットサーバーに接続できません。
+    uploadNotAllowed: ファイルアップロードは許可されていません。
+    uploadTooMany: 一度に選択できるファイルは{max}個までです。
+    uploadExtensionDenied: '許可されていないファイル形式です: {name}'
+    uploadTooLarge: 'ファイルが大きすぎます: {name}'
+    emojiBatchUploadFailed: '{total} 件中 {uploaded} 件をアップロードしました。失敗: {failed}'
+    uploadFailed: 'アップロード失敗: {error}'
+    confirmDelete: このメッセージを非表示にしますか？
+    deleteFailed: '削除失敗: {error}'
+    confirmClearHistory: Webチャット履歴を消去しますか？
+    adminActionFailed: '管理操作に失敗しました: {error}'
+    failed: '失敗: {error}'
+    loginFailed: 'ログイン失敗: {error}'
+    codeFailed: 'コード発行に失敗しました: {error}'
+    saveFailed: '保存失敗: {error}'
+    pinFailed: '固定に失敗しました: {error}'
+    unpinFailed: '固定解除に失敗しました: {error}'
+    movePinFailed: '順序変更に失敗しました: {error}'
+    emojiPackNameRequired: フォルダー名を入力してください。
+    emojiFileRequired: 絵文字ファイルを選択してください。
+    confirmDeleteEmoji: この絵文字を削除しますか？
+    emojiMoveSelectRequired: 移動する絵文字を選択してください。
+    emojiMoveTargetRequired: 移動先フォルダーを選択してください。
+    emojiMoveTargetSame: 別のフォルダーを選択してください。
+    confirmMoveEmoji: この絵文字を {pack} フォルダーへ移動しますか？
+    confirmMoveSelectedEmoji: 選択した絵文字 {count} 個を {pack} フォルダーへ移動しますか？
+    moveFailed: "移動に失敗しました: {error}"
+    emojiSelectRequired: 削除する絵文字を選択してください。
+    confirmDeleteSelectedEmoji: 選択した絵文字 {count} 個を削除しますか？
+    confirmDeleteEmojiPack: フォルダー {pack} と中の絵文字をすべて削除しますか？
+    emojiRenameNameRequired: 新しい名前を入力してください。
+    confirmRenameEmoji: この絵文字の名前を {name} に変更しますか？古い名前を使った絵文字トークンは一致しなくなります。
+    confirmRenameEmojiPack: フォルダー {pack} を {name} に変更しますか？このフォルダー内の絵文字トークンが変わります。
+    dmLoadFailed: "メッセージの読み込みに失敗しました: {error}"
+    dmAuditLoadFailed: "DM監査内容を読み込めませんでした: {error}"
+    dmSendFailed: "メッセージの送信に失敗しました: {error}"
+    dmRetryFailed: 'メッセージの再送に失敗しました: {error}'
+    dmHideFailed: "メッセージの非表示に失敗しました: {error}"
+    groupLoadFailed: 'グループチャットの読み込みに失敗しました: {error}'
+    groupAuditLoadFailed: "グループチャット監査内容を読み込めませんでした: {error}"
+    groupJoinFailed: 'グループチャットへの参加に失敗しました: {error}'
+    groupSendFailed: 'グループメッセージの送信に失敗しました: {error}'
+    groupCreateFailed: 'グループチャットの作成に失敗しました: {error}'
+    groupInviteFailed: 'プレイヤーを招待できませんでした: {error}'
+    groupLeaveFailed: 'グループチャットから退出できませんでした: {error}'
+    groupHideFailed: 'メッセージを非表示にできませんでした: {error}'
+    groupActionFailed: 'グループ操作に失敗しました: {error}'
+    groupSettingsFailed: 'グループ設定を保存できませんでした: {error}'
+    renameFailed: '名前変更に失敗しました: {error}'
+  admin:
+    title: KOKOTO WebChat 管理
+    summary: 概要
+    mutes: ミュート
+    sessions: セッション
+    loading: 読み込み中...
+    failed: '失敗: {error}'
+    revokeConfirm: '{username} の全セッションを解除しますか？'
+    online: オンライン
+    privateMetaOnly: '非公開メッセージのメタデータのみ'
+    privateContentAccess: '管理者DM監査（本文閲覧可）'
+    openDmAudit: 'このDMセッションを読み取り専用の監査ビューで開きます。'
+    dmAuditView: 'DM監査（読み取り専用）'
+    dmAuditReadOnly: '管理者監査ビューは読み取り専用で、すべての閲覧が監査ログに記録されます。'
+    groupMetaOnly: 'グループルームのメタデータ'
+    groupAuditTitle: '管理者グループチャット監査'
+    openGroupAudit: 'このグループチャットを読み取り専用の監査ビューで開きます。'
+    groupAuditReadOnly: '管理者監査ビューは読み取り専用で、すべての閲覧が監査ログに記録されます。'
+    noContentAccess: 'この画面ではメッセージ本文を表示できません。'
+    lockDmThreadHint: 'このDMセッションをロックして新しいメッセージ送信を防ぎます。'
+    unlockDmThreadHint: 'このDMセッションのロックを解除して、再びメッセージを送信できるようにします。'
+    excludeDmRetentionHint: 'このDMセッションを自動削除の対象から除外します。'
+    includeDmRetentionHint: 'このDMセッションを再び自動削除の対象に含めます。'
+    deleteDmThreadHint: 'このDMセッションのメタデータ、メッセージ、アップロードを削除します。'
+    lockGroupRoomHint: 'このグループチャットをロックして新しいメッセージ送信を防ぎます。'
+    unlockGroupRoomHint: 'このグループチャットのロックを解除して、再びメッセージを送信できるようにします。'
+    excludeGroupRetentionHint: 'このグループチャットを自動削除の対象から除外します。'
+    includeGroupRetentionHint: 'このグループチャットを再び自動削除の対象に含めます。'
+    deleteGroupRoomHint: 'このグループチャットのメタデータ、メッセージ、アップロードを削除します。'
+    messages: 'メッセージ'
+    storage: '使用量'
+    archived: 'アーカイブ済み'
+    accounts: アカウント
+    onlinePlayers: オンラインプレイヤー
+    none: なし
+    muteGuestIp: ゲスト/IPをミュート
+    typeGuest: ゲスト
+    typeIp: IP
+    currentMutes: 現在のミュート
+    expires: 期限
+    never: なし
+    emojis: 絵文字
+    emojiTitle: カスタム絵文字
+    emojiMoveTarget: 移動先フォルダー
+    emojiNoOtherFolder: 他のフォルダーがありません
+    emojiCurrent: 現在の絵文字
+    emojiLimits: 1ファイル {file} KB / 合計 {total} MB
+    emojiFileLimit: 1ファイル最大 {file} までアップロード可能
+    emojiStorageUsage: 絵文字容量 {current} / {total}
+    emojiStorageCurrent: 絵文字容量 {current}
+    emojiStorageLimit: 絵文字の最大容量 {total}
+    unlimited: 無制限
+    emojiFolderSelect: 選択中のフォルダー
+    emojiPackCount: '{count} 個の絵文字'
+    emojiBatchResult: '{total} 件中 {uploaded} 件をアップロードしました'
+    emojiNoFileSelected: ファイルが選択されていません
+    passwordSet: 'パスワード'
+    "yes": 'はい'
+    "no": 'いいえ'
+    lastLogin: '最終ログイン'
+    retentionRemaining: '自動削除: {time}'
+    retentionUnlimited: '自動削除: 期限なし'
+    retentionUnknown: '自動削除: 不明'
+    retentionExpired: '自動削除: まもなく削除'
+    retentionMinutes: '残り{value}分'
+    retentionHours: '残り{value}時間'
+    retentionDays: '残り{value}日'
+    deleteThread: '削除'
+    deleteRoom: '削除'
+    confirmDeleteDmThread: 'このDMセッションとすべてのメタデータ/メッセージ/アップロードファイルを削除しますか？元に戻せません。'
+    confirmDeleteGroupRoom: 'このグループチャットセッションとすべてのメタデータ/メッセージ/アップロードファイルを削除しますか？元に戻せません。'
+    lock: 'ロック'
+    unlock: 'ロック解除'
+    locked: 'ロック中'
+    excludeRetention: '除外'
+    includeRetention: '含める'
+    retentionExempt: '自動削除から除外'
+    dmCleanupPreview: 'DM クリーンアップのプレビュー'
+    groupCleanupPreview: 'グループのクリーンアッププレビュー'
+    cleanupRetentionDays: '保持期間 {days} 日'
+    cleanupNoRetention: '期限なし'
+    cleanupPreviewBody: '古いメッセージ {expired} 件、空のセッション {empty} 件、ロック {locked} 件、除外 {exempt} 件'
+    filter: 'フィルター'
+    settings: 設定
+    discordAlertNoChannels: '利用可能な DiscordSRV チャンネルがありません'
+    setting:
+      guest-enabled: 'ゲストアクセス'
+      guest-allow-custom-name: 'ゲスト名の変更'
+      guest-cooldown-seconds: 'ゲスト送信間隔（秒）'
+      guest-max-messages-per-minute: 'ゲストの毎分メッセージ数'
+      captcha-mode: 'CAPTCHA 方式'
+      captcha-require-on-each-message: '毎メッセージ CAPTCHA'
+      captcha-pass-valid-minutes: 'CAPTCHA 有効時間（分）'
+      auth-password-login: 'パスワードログイン'
+      auth-remember-session-days: '一般セッション期間（日）'
+      admin-admin-session-expire-hours: '管理者セッション期間（時間）'
+      moderation-enabled: 'モデレーション'
+      upload-enabled: 'アップロード'
+      upload-allow-guest-upload: 'ゲストのアップロード'
+      upload-allow-user-upload: '一般ユーザーのアップロード'
+      upload-allow-moderator-upload: 'モデレーターのアップロード'
+      upload-allow-admin-upload: '管理者のアップロード'
+      upload-cooldown-seconds: 'アップロード間隔（秒）'
+      upload-max-uploads-per-minute: '毎分アップロード数'
+      upload-max-file-size-mb: '最大ファイルサイズ（MB）'
+      upload-max-total-size-mb: '合計アップロード上限（MB）'
+      upload-max-files-per-message: '1 メッセージのファイル数'
+      upload-retention-days: 'アップロード保持日数'
+      upload-filename-mode: 'アップロードファイル名'
+      ui-user-profiles-enabled: 'ユーザーチャット設定プロファイル'
+      ui-user-profiles-max-profiles: 'ユーザーごとの最大プロファイル数'
+      ui-user-profiles-allow-import-export: 'プロファイルのインポート/エクスポートを許可'
+      admin-alerts-discord-enabled: 'Discord 管理者キーワード通知'
+      admin-alerts-discord-channel: 'Discord 通知チャンネル'
+      admin-alerts-discord-sources-public-chat: '公開チャットを検知'
+      admin-alerts-discord-sources-relay-chat: 'リレー公開チャットを検知'
+      admin-alerts-discord-sources-dm: 'DM を検知'
+      admin-alerts-discord-sources-group-chat: 'グループチャットを検知'
+      admin-alerts-discord-mention: 'Discord メンション'
+      admin-alerts-discord-case-sensitive: 'キーワードの大文字小文字を区別'
+      admin-alerts-discord-keywords: '管理者通知キーワード'
+      content-filter-enabled: 'フィルター有効'
+      content-filter-scopes-public: '公開チャット'
+      content-filter-scopes-group: 'グループチャット'
+      content-filter-scopes-dm: 'DM'
+      content-filter-block-show-matched-word: '一致語を表示'
+      content-filter-mask-text: 'マスク文字'
+      content-filter-anti-evasion-unicode-normalization: 'Unicode 正規化'
+      content-filter-anti-evasion-compact-match: 'コンパクト一致'
+      content-filter-anti-evasion-interleave-match: '挿入検出'
+      content-filter-anti-evasion-interleave-max-gap: '最大挿入間隔'
+      content-filter-anti-evasion-interleave-unlimited-gap: '無制限間隔検出'
+      content-filter-anti-evasion-collapse-repeats: '繰り返し文字を圧縮'
+      content-filter-anti-evasion-repeat-limit: '繰り返し上限'
+    settingsGroupGuestCaptcha: 'ゲスト / CAPTCHA'
+    settingsGroupAuthSessions: '認証 / セッション'
+    settingsGroupProfiles: 'ユーザープロファイル'
+    settingsGroupUploads: 'アップロード'
+    settingsGroupDiscordAlerts: 'Discord 管理者通知'
+    filterGroupGeneral: '基本 / 適用範囲'
+    filterGroupBehavior: 'ブロック / フィルタリング'
+    filterGroupAntiEvasion: '回避検出'
+    settingsHint: この設定はすぐに適用され、config.yml に保存されます。セッション期間の変更時は、現在有効なセッションも作成時刻を基準に再計算されます。
+    settingsSaved: '保存しました。サーバー値を再読込しました。セッション更新: {updated}、期限切れ: {expired}'
+    settingsNoChanges: '変更された設定はありません。'
+    settingsSaving: '保存中...'
+    settingsVerifyFailed: '保存結果を config.yml で確認できませんでした。'
+    settingsVerifyMismatch: '{setting} の保存確認に失敗しました。'
+    optionCaptchaOff: '無効'
+    optionCaptchaMath: '計算問題'
+    optionFilenameRandom: 'ランダム名'
+    optionFilenameOriginal: '元のファイル名'
+    optionMentionNone: 'なし'
+    filterHint: '登録済みの KWC 絵文字トークンはブロック/フィルタリングにかからないよう保護されます。未登録の :fake: トークンは通常のテキストとして扱われます。'
+    filterGuideTitle: 'カスタムルールの使用例'
+    filterGuideChoose: '単純なブロック/フィルター語が多い場合は TXT リストを使い、動作の変更、置換候補、単語別置換が必要な場合はカスタムルールを使います。'
+    filterGuideBlockTitle: '1. メッセージ全体をブロック'
+    filterGuideBlockExample: '動作: ブロック\n対象語:\n広告文句\n詐欺リンク'
+    filterGuideMaskTitle: '2. 一致部分だけをマスク'
+    filterGuideMaskExample: '動作: マスク\n対象語:\nword1\nword2\n結果: 一致部分 → content-filter.mask.text'
+    filterGuideReplaceTitle: '3. 共通候補から置換'
+    filterGuideReplaceExample: '動作: 置換\n対象語:\nword1\nword2\n置換候補:\nやわらかい表現\n別の表現\nモード: 先頭またはランダム'
+    filterGuideMappingTitle: '4. 単語ごとに別の値へ置換'
+    filterGuideMappingExample: '単語別置換:\nword1 => 置換 A\nword2 => 置換 B'
+    filterGuideMappingNote: '単語別置換の左側は「対象語」に書かなくても自動的に検査対象になります。単語別置換は共通の置換候補より優先されます。'
+    filterGuideEvasionTitle: '5. 回避検出の例'
+    filterGuideEvasionText: 'compact は ''word 1'' や ''word-1'' のように区切り文字を入れた回避を検出します。interleave は interleave-max-gap の範囲で ''woXrd'' のような文字/数字の挿入を検出します。''ㅅㅂ'' のようなハングル字母だけのルールは字母略語として扱われ、同じ初声を持つすべての完成形単語を意味しません。'
+    filterGuideTest: '保存後は下のテストを使ってください。メッセージを送信せずに TXT リストとカスタムルールの両方を検査でき、ライブフィルターが無効でも実行できます。'
+    filterRules: 'カスタムルール'
+    filterWordLists: 'フィルター単語リスト'
+    filterWordListsSummary: '{files}ファイル · 有効単語 {words}件'
+    filterWordListsHint: 'filter-lists/ の UTF-8 .txt ファイルを使用します。1行に1語を入力し、リストごとにブロックまたはフィルタリングを選択します。空行と # で始まる行は無視します。'
+    filterWordListsEmpty: 'フィルター単語リストが登録されていません。'
+    filterListNew: '新規リスト'
+    filterListImport: 'TXTを読み込む'
+    filterListName: 'ファイル名'
+    filterListWords: 'フィルター単語'
+    filterListWordsHint: '1行に1語。# で始まる行はコメントです。'
+    filterListWordCount: '{count}語'
+    filterListBlockOnly: '各リストはブロックまたはフィルタリングを選択でき、同じ一致範囲ではカスタムルールが優先されます。'
+    filterListDisable: '無効化'
+    filterListEnable: '有効化'
+    filterListDeleteConfirm: '{name} を削除しますか？'
+    filterRuleEditor: ルール編集
+    filterWords: '対象語'
+    filterReplacements: '置換候補'
+    filterMappings: '語別置換'
+    filterTest: テスト
+    filterTesting: 'テスト中...'
+    filterTestText: テストする文章
+    enabled: 有効
+    filterRuleId: 'ルール ID'
+    filterAction: '動作'
+    filterReplacementMode: '置換方式'
+    filterReplacementModeHint: '単語別置換が設定されている場合は、その値が優先されます。'
+    filterWordsHint: '1 行に 1 語'
+    filterReplacementsHint: 'replace で使用。1 行に 1 件'
+    filterMappingsHint: '単語 => 置換語'
+    filterNewRule: '新規'
+    filterScopePublic: '公開'
+    filterScopeGroup: 'グループ'
+    filterScopeDm: 'DM'
+    filterRulesCount: '{count}件'
+    filterRulesEmpty: 'config.yml にカスタムフィルタールールが登録されていません。'
+    filterDisabled: '無効'
+    filterActionBlock: 'ブロック'
+    filterActionMask: 'マスク'
+    filterListActionMask: 'フィルタリング'
+    filterActionReplace: '置換'
+    filterModeFirst: '最初の置換語を使用'
+    filterModeRandom: '置換語からランダム選択'
+    filterClearEditor: 'クリア'
+    filterTestHint: '送信せずにフィルター単語リストとカスタムルールをテストします。実際のフィルターが無効でもテストできます。'
+    filterTestBlocked: 'ブロック'
+    filterTestChanged: '変更あり'
+    filterTestNoMatch: '一致なし'
+    filterTestRule: 'ルール'
+    filterTestWord: '単語'
+    filterTestMatch: '検出'
+    filterTestRuleCount: '読み込み済みルール: {count}件'
+    filterTestListWordCount: 'リスト単語: {count}'
+    filterTestInput: 'テスト入力'
+  prompt:
+    createEmojiPack: 新しいフォルダー名
+    renameEmoji: 新しい絵文字名
+    renameEmojiPack: 新しいフォルダー名
+  login:
+    title: KOKOTO WebChat ログイン
+    tabLogin: ログイン
+    tabLink: 連携
+    description: 連携済みアカウントでログインします。
+  search:
+    title: メッセージ検索
+    placeholder: メッセージ本文または送信者を検索
+    searching: 検索中...
+    noResults: 一致するメッセージがありません。
+    resultCount: '{count} 件の結果'
+    failed: 検索に失敗しました。
+    options: オプション
+    from: 開始
+    to: 終了
+    sender: 送信者
+    senderPlaceholder: 任意の送信者
+    source: ソース
+    sourceAll: すべて
+    sourceGame: ゲーム
+    sourceWeb: Web
+    sourceDiscord: Discord
+    sourceSystem: システム/イベント
+    includeSystem: システム/イベントメッセージを含める
+    enterQueryOrFilter: 検索語を入力するか、少なくとも1つのオプションを選択してください。
+  link:
+    description: ゲーム内で次のコマンドを入力してください。
+    commandHint: /kchat auth <code>
+    statusReady: 開始を押してコードを発行してください。
+    statusWaiting: ゲーム内で /kchat auth {code} の入力待ち...
+    statusLinked: 連携完了。
+    statusExpired: コードの有効期限が切れました。
+  password:
+    title: パスワード設定
+    description: 次回からゲームに参加せずWebログインでチャットできます。
+  account:
+    role: 権限
+    local: 'ローカル'
+    linked: '連携済み'
+  pip:
+    unsupported: このブラウザーは Document Picture-in-Picture に対応していません。デスクトップ版 Chrome または Edge でお試しください。
+    openFailed: 'Picture-in-Picture ウィンドウを開けませんでした: {error}'
+  preferences:
+    title: チャット設定
+    theme: テーマ
+    themeDefault: デフォルト
+    themeSystem: システム
+    themeDark: ダーク
+    themeLight: ライト
+    themeHighContrast: ハイコントラスト
+    languageAndTheme: 言語とテーマ
+    windowSettings: ウィンドウ設定
+    fontSettings: フォント設定
+    themeResetNote: テーマを変更すると、表示関連のチャット設定はそのテーマの既定値にリセットされます。
+    fontSize: 文字サイズ
+    fontFamily: フォント
+    fontCustom: 直接入力
+    fontCustomPlaceholder: インストール済みフォント名またはCSS font-family
+    fontApply: 適用
+    fontTest: 確認
+    fontHelp: font-family 名は OS のフォント設定で確認できます。
+    fontExample: '例: Malgun Gothic, Noto Sans KR, D2Coding。'
+    fontDetected: 'このブラウザーで検出されました: {name}'
+    fontNotDetected: 検出できませんでした。font-family 名、またはこの端末にフォントがインストールされているか確認してください。
+    fontGeneric: 'CSS 汎用フォントファミリー: {name}'
+    fontUnknown: このブラウザーではフォントを確認できません。
+    textColor: 文字色
+    uiTextColor: UI文字色
+    textShadow: テキストシャドウ
+    textShadowNone: なし
+    textShadowAuto: 自動
+    textShadowDark: 暗い影
+    textShadowLight: 明るい影
+    textShadowCustom: カスタム
+    textShadowCustomValue: カスタムシャドウ
+    textShadowCustomColor: 影の色
+    textShadowCustomX: 横方向
+    textShadowCustomY: 縦方向
+    textShadowCustomBlur: ぼかし
+    textShadowCustomOpacity: 不透明度
+    textShadowCustomPreview: 影のプレビュー
+    textShadowCustomPlaceholder: 0 1px 2px rgba(0, 0, 0, 0.85)
+    inputBackgroundColor: 入力欄の背景色
+    notifications: '通知'
+    notificationsPage: 'ブラウザーシステム通知'
+    notificationsPageHelp: 'ブラウザー通知は対応しているブラウザーでのみ利用できます。'
+    notificationsEnable: '通知を有効化'
+    notificationsDisable: '通知を無効化'
+    notificationsTest: '通知をテスト'
+    notificationsPermissionDenied: 'このブラウザーで通知権限がブロックされています。'
+    notificationsUnsupported: 'このブラウザーは通知をサポートしていません。'
+    webPush: 'モバイル/バックグラウンドプッシュ'
+    webPushHelp: 'モバイルプッシュを有効にし、通知権限を許可する必要があります。'
+    webPushEnable: '通知を有効化'
+    webPushDisable: '通知を無効化'
+    webPushUnsupported: 'このブラウザーまたはサーバー設定ではWeb Pushを利用できません。'
+    webPushServerDisabled: 'サーバー設定で通知が無効です。config.yml の notifications.enabled を有効にしてください。'
+    webPushInsecure: 'モバイルプッシュには HTTPS または localhost が必要です。'
+    webPushNoServiceWorker: 'このブラウザーは Service Worker に対応していません。'
+    webPushNoPushManager: 'このブラウザーは Push API に対応していません。'
+    webPushStandaloneRequired: iOS/iPadOS では、このチャットページをホーム画面に追加し、Web アプリとして開くとモバイル/バックグラウンドプッシュを利用できます。
+    webPushEnabledStatus: 'この端末でモバイル/バックグラウンドプッシュが有効です。'
+    webPushDisabledStatus: 'このブラウザーで無効です。'
+    notifyTypes: '通知の種類'
+    notifyTypesHelp: 'ログインユーザーの通知種類はアカウント共通で、ブラウザ通知と Web Push の両方に適用されます。'
+    notifyNormalChat: '通常チャット'
+    notifyDm: 'DM'
+    notifyGroupChat: 'グループチャット'
+    notifyReplies: '返信'
+    notifyMentions: 'メンション'
+    notifySystem: 'サーバー'
+    notifySystemAll: 'すべて'
+    notifySystemJoinLeave: '参加/退出のみ'
+    notifySystemOff: 'オフ'
+    notifyKeywords: 'キーワード通知'
+    notifyKeywordsList: 'キーワード通知ワード'
+    notifyKeywordsHelp: 'カンマまたは改行で区切ります。ログインユーザーはこの KWC サーバー内の複数ブラウザでキーワードが同期され、ゲストはこのブラウザにのみ保存されます。'
+    notifyKeywordsApply: 'キーワードを適用'
+    notifyKeywordsSaved: 'キーワード通知を保存しました。'
+    notifyKeywordsNeedsApply: 'キーワード一覧が変更されました。プッシュフィルターを更新するにはキーワードを適用してください。'
+    notifyDisabledByServer: 'サーバー設定で無効化されています。'
+    keywordNotificationTitle: 'キーワード: {keyword}'
+    notifyPreview: 'メッセージプレビュー'
+    notificationsServerDisabled: 'サーバー設定で通知が無効です。'
+    notificationsEnabledStatus: 'ブラウザー通知が有効です。'
+    notificationsAllowedDisabledStatus: 'ブラウザー権限は許可されていますが、チャット設定では無効です。'
+    notificationsNotRequestedStatus: '通知を有効にしてブラウザー通知権限を許可してください。'
+    webPushTest: '通知をテスト'
+    webPushTestSent: 'テストプッシュを送信しました。この端末の通知を確認してください。'
+    webPushHowToTest: 'モバイル/バックグラウンド Push は同じ通知スイッチと通知種類オプションを使用します。対応ブラウザーでは通知を有効化すると自動的に購読を更新します。'
+    webPushFailedHttp: 'Web Push に失敗しました: HTTP {status}'
+    webPushInvalidVapid: 'Web Push に失敗しました: VAPID キーが正しくありません。'
+    webPushServiceUnavailable: 'Web Push に失敗しました: ブラウザーのプッシュサービスを利用できません。しばらくしてから再試行するか、通知テストで今すぐ再試行してください。'
+    webPushTimeout: 'Web Push に失敗しました: リクエストがタイムアウトしました。'
+    webPushInvalidDocument: 'Web Push に失敗しました: addon iframe 文書では Service Worker を直接登録できません。BlueMap 親ページで登録するよう更新された chat.js を再読み込みしてください。'
+    webPushParentUnavailable: 'Web Push に失敗しました: addon 親ページの登録ブリッジを利用できません。'
+    webPushFailedWithMessage: 'Web Push に失敗しました: {message}'
+    webPushFailed: 'Web Push に失敗しました。'
+    advancedSettings: '詳細設定'
+    backgroundColor: 背景色
+    presets: 保存済みチャット設定
+    presetSave: 保存
+    presetLoad: 読み込み
+    presetDelete: 削除
+    presetExport: 'エクスポート'
+    presetNew: '新しいプロファイル'
+    presetImport: 'インポート'
+    presetServerHelp: 'ログインユーザーは複数のチャット設定プロファイルを KWC アカウントに保存し、別の端末でも読み込めます。'
+    presetLocalHelp: 'ゲストのプロファイルはこのブラウザにのみ保存されます。'
+    presetImportFailed: 'インポートに失敗しました。'
+    presetExportFailed: 'エクスポートに失敗しました。'
+    presetName: '設定名'
+    presetNamePrompt: 設定名
+    presetEmpty: 保存済み設定はありません。
+    presetSaved: 保存しました。
+    presetLoaded: 読み込みました。
+    presetDeleted: 削除しました。
+    presetSaveFailed: '保存に失敗しました。ブラウザーの保存領域がブロックされている可能性があります。'
+    presetSelectRequired: 先に保存済み設定を選択してください。
+    presetConfirmDelete: 保存済み設定 {name} を削除しますか？
+    language: 言語
+    languageDefault: デフォルト
+    fontDefault: デフォルト
+    fontSystem: システム
+    note: 'この設定ウィンドウはタイトルをドラッグして移動できます。'
+    noteDrag: この設定ウィンドウはタイトルをドラッグして移動できます。
+  opacity:
+    title: 透明度
+  role:
+    admin:
+      short: 管理
+    moderator:
+      short: MOD
+    user:
+      short: USER
+    guest:
+      short: ゲスト
+  upload:
+    ready: 準備完了
+    preparing: アップロード準備中...
+    progress: 'アップロード中 {current}/{total}: {name}'
+    canceling: キャンセル中...
+    canceled: アップロードをキャンセルしました。
+    complete: アップロード完了。
+    dropTitle: ファイルをドロップしてアップロード
+    dropSubtitle: チャットパネル内で離すとアップロードします。
+    dropDenied: ファイルアップロードは許可されていません。
+    dropBusy: すでにアップロード中です。
+  media:
+    videoUnavailable: 動画プレビューを利用できません
+    audioUnavailable: 音声プレビューを利用できません
+    imageUnavailable: 画像プレビューを利用できません
+    youtube: YouTube
+    youtubeTitle: YouTube 動画
+    youtubeShorts: YouTube Shorts
+    youtubeShortsTitle: YouTube Shorts
+    loadTikTok: ▶ TikTok
+    loadXPost: ▶ X 投稿
+    openTikTok: TikTokで開く
+    tiktok: TikTok
+    loadVideo: ▶ 動画
+    loadAudio: ▶ 音声
+  error:
+    unknown: 不明なエラー
+    content_blocked: '禁止された内容が含まれているため、メッセージを送信できません。'
+    content_blockedWord: '禁止語「{word}」が含まれているため、メッセージを送信できません。'
+    network: ネットワークエラー
+    invalid_response: サーバー応答が不正です
+    method_not_allowed: 許可されていないリクエスト方式です
+    empty_message: メッセージが空です
+    thread_locked: このDMセッションは管理者によりロックされています
+    room_locked: このグループチャットは管理者によりロックされています
+    permission_denied: 権限がありません
+    guest_disabled: ゲストチャットは無効です
+    captcha_failed: 認証に失敗しました
+    blocked_name: このゲスト名はブロックされています
+    guest_muted: ゲストチャットはミュートされています
+    guest_mutedWithReason: 'ゲストチャットはミュートされています: {reason}'
+    rate_limited: リクエストが多すぎます。しばらくお待ちください。
+    upload_disabled: ファイルアップロードは無効です
+    multipart_required: アップロードリクエストが不正です
+    file_too_large: ファイルが大きすぎます
+    total_size_exceeded: 絵文字の合計容量制限を超えました
+    total_size_exceededWithUsage: 絵文字の合計容量制限を超えました。現在 {current}、選択ファイル {file}、最大 {max}。
+    upload_storage_quota_exceeded: アップロード保存容量の上限を超えました。古いアップロードを削除するか upload.max-total-size-mb を増やしてください。
+    file_missing: アップロードされたファイルがありません
+    upload_permission_denied: ファイルをアップロードする権限がありません
+    extension_not_allowed: 許可されていないファイル形式です
+    invalid_path: ファイルパスが不正です
+    not_found: 見つかりません
+    invalid_file: ファイルが不正です
+    invalid_url: URLが不正です
+    not_available: 利用できません
+    auth_disabled: アカウント連携は無効です
+    password_login_disabled: パスワードログインは無効です
+    login_locked: ログイン失敗回数が多すぎます。しばらくしてから再試行してください。
+    invalid_login: ユーザー名またはパスワードが違います
+    admin_ip_not_allowed: このIPからの管理者ログインは許可されていません
+    not_logged_in: ログインしていません
+    password_too_short: パスワードは6文字以上にしてください
+    admin_panel_disabled: Web管理パネルは無効です
+    empty_value: 値が空です
+    pinned_disabled: 固定メッセージは無効です
+    message_not_found: メッセージが見つかりません
+    pin_limit_reached: 固定メッセージの上限に達しました
+    commands_disabled: Webコマンドは無効です
+    command_not_found: コマンドが見つかりません
+    invalid_command: 無効なコマンドです
+    command_failed: コマンド実行に失敗しました
+    command_too_long: コマンドが長すぎます
+    dmLoadFailed: 'メッセージを読み込めませんでした: {error}'
+    dmHideFailed: 'メッセージを非表示にできませんでした: {error}'
+    dmSendFailed: 'メッセージを送信できませんでした: {error}'
+    dm_disabled: ダイレクトメッセージは無効です
+    dm_audit_disabled: DM本文監査機能は無効です
+    web_send_disabled: Web からの DM 送信は無効です
+    player_not_found: プレイヤーが見つかりません
+    remote_server_unavailable: 対象サーバーに接続できません
+    self_message: 自分自身には送信できません
+  dm:
+    title: メッセージ
+    noThreads: メッセージスレッドはありません。
+    selectThread: スレッドを選択してください
+    emptyThread: まだメッセージはありません。
+    searchPlayer: プレイヤー検索
+    newMessage: 新規メッセージ
+    openForPlayer: '{player}とのDMを開く'
+    selectPlayerFirst: 先にプレイヤーを選択してください。
+    showThreads: 会話一覧を表示
+    hideThreads: 会話一覧を隠す
+    showThreadsShort: 表示
+    hideThreadsShort: 折りたたむ
+    confirmHideMessage: このメッセージを自分の表示から隠しますか？
+    hideMessage: 自分だけこのメッセージを非表示
+    threadList: 会話一覧
+    showConversationList: 一覧を表示
+    showCurrentConversation: 会話のみ
+    retentionLimited: '保持期間: {days}日'
+    retentionUnlimited: '保持期間: 期限なし'
+    backToList: 会話一覧に戻る
+  delivery:
+    pending: '送信中'
+    failed: '失敗'
+    retry: '再試行'
+  receipt:
+    read: '受信者既読'
+    readAll: '全受信者既読'
+    unread: '未読'
+    unreadCount: '未読受信者: {count}人'
+  group:
+    title: 'グループチャット'
+    noRooms: 'グループチャットはありません。'
+    backToList: 'グループチャット一覧に戻る'
+    selectRoom: 'ルームを選択'
+    emptyRoom: 'まだメッセージはありません。'
+    newRoom: '新しいルーム'
+    untitled: '無題のルーム'
+    public: '公開'
+    private: '非公開'
+    roomName: 'ルーム名'
+    visibility: '公開設定'
+    passwordProtected: 'パスワード'
+    passwordOptionalLabel: 'パスワード（任意）'
+    passwordSettingsLabel: 'パスワード（空欄で解除）'
+    membersShort: '人'
+    join: '参加'
+    invite: '招待'
+    invites: '招待'
+    settings: '設定'
+    leave: '退出'
+    namePrompt: 'ルーム名'
+    visibilityChoice: 'この部屋を公開ルームにしますか？\nOK = 公開、キャンセル = 非公開'
+    visibilityPrompt: '公開設定: public または private'
+    passwordPrompt: 'ルームのパスワード'
+    passwordOptionalPrompt: 'パスワード（なしなら空欄）'
+    passwordSettingsPrompt: 'パスワード: 空欄で削除、キャンセルで維持'
+    searchPlayer: '招待するプレイヤーを検索'
+    invitePrompt: 'プレイヤー名またはUUID'
+    inviteSentTo: '{player} に招待を送信しました。'
+    inviteSent: '招待を送信しました。'
+    confirmInvite: '{player} をこのグループチャットに招待しますか？'
+    confirmLeave: 'このグループチャットから退出しますか？'
+    confirmHideMessage: 'このメッセージを自分の表示から隠しますか？'
+    manage: '管理'
+    manageNote: 'ルーム管理者はキック、ブロック、オーナー移譲ができます。メッセージ本文は表示されません。'
+    memberListNote: 'メンバーは参加者リストを表示できます。管理操作はルーム管理者にのみ表示されます。'
+    memberOnlineCount: '{online}/{total} オンライン'
+    online: 'オンライン'
+    offline: 'オフライン'
+    kick: 'キック'
+    ban: 'ブロック'
+    transferOwner: 'オーナー移譲'
+    noMembers: 'メンバーがいません。'
+    confirmKick: '{player} をこのルームからキックしますか？'
+    confirmBan: '{player} をこのルームからブロックしますか？'
+    confirmTransferOwner: 'ルームのオーナーを {player} に移譲しますか？'
+    confirmHideRoom: 'このルームを自分のグループチャット一覧から非表示にしますか？'
+    retentionLimited: '保存期間: {days}日'
+    retentionUnlimited: '保存期間: 無期限'
+
+    members: 'メンバー'
+    banned: 'ブロック済み'
+    unban: 'ブロック解除'
+    bannedUsers: 'ブロック中のユーザー'
+    noBans: 'ブロック中のユーザーはいません。'
+    confirmUnban: '{player} のこの部屋でのブロックを解除しますか？'
+    hiddenRooms: '非表示のルーム'
+    showRoom: '再表示'
+    hiddenRoomHint: '自分の一覧から非表示'
+  announcement:
+    minecraft-join: 🟢 {player} がサーバーに参加しました。
+    minecraft-quit: 🔴 {player} がサーバーから退出しました。
+    first-join: ✨ {player} が初めてサーバーに参加しました。
+    death: ☠ {message}
+    advancement: 🏆 {player} が進捗 [{advancement}] を達成しました。
+    server-start: 🟢 サーバーが起動しました。
+    server-stop: 🔴 サーバーを停止しています。
+    world-change: 🌍 {player} が {to_world} に移動しました。
+    gamemode-change: 🎮 {player} のゲームモードが {to_gamemode} に変更されました。
+    level-change: ⭐ {player} のレベルが {old_level} から {new_level} に変わりました。
+    bed-enter: 💤 {player} がベッドに入りました。
+    web-login: 🌐 {name} がWebチャットにログインしました。
+    web-logout: 🌐 {name} がWebチャットからログアウトしました。
+  notifications:
+    inbox: '通知一覧'
+    empty: '未確認の通知はありません。'
+    clear: '通知を消去'
+    replyTitle: '{sender} からの返信'
+
+  notification:
+    reply: '返信'
+    keyword: 'キーワード'
+    dm: 'DM'
+    groupChat: 'グループチャット'
+    testBody: 'テストプッシュを送信しました。'
+
+  sender:
+    unknown: 不明
+    server: サーバー
+    discord: Discord
+    originalId: '元のID: {name}'
+    displayName: '表示名: {name}'
+    command: コマンド
+    system: サーバー
+  source:
+    game: ゲーム
+    web: Web
+    guest: ゲスト
+    discord: Discord
+    system: サーバー
+    server: サーバー
+    event: サーバー
+  command:
+    onlyPlayers: このコマンドはプレイヤーのみ使用できます。
+    noPermission: 権限がありません。
+    passwordSet: Web チャットのパスワードを設定しました。
+    disabledByConfig: KOKOTO WebChat は config.yml で無効化されています。
+    configReloaded: KOKOTO WebChat の設定を再読み込みしました。
+    configReloadFailed: 'KOKOTO WebChat の設定再読み込みに失敗しました: {error}'
+    guestNoMutes: ゲスト/IP のミュートはありません。
+    guestMutesTitle: 'KOKOTO WebChat ミュート一覧:'
+    guestMuteEntry: '- {type}:{value} 理由={reason} 期限={expires}'
+    guestMuteAdded: 'ミュートを追加しました: {type}:{value} ({minutes}分)'
+    guestMuteRemoved: ミュートを解除しました。
+    guestMuteNotFound: ミュートが見つかりません。
+    guestUnknownSubcommand: 不明な guest サブコマンドです。
+    sessionsTitle: 'KOKOTO WebChat セッション: {count}'
+    sessionEntry: '- {username} {role} ip={ip}'
+    revokeDone: '{username} のセッションを {count} 件取り消しました。'
+    adminLocalDisabled: ローカル管理者アカウントの作成は無効です。
+    adminCreated: 'ローカル管理者アカウントを作成しました: {username}'
+    adminSetPasswordHint: 'パスワード設定: /kchat admin password {username} <password>'
+    adminAccountNotFound: アカウントが見つかりません。
+    adminPasswordSetFor: 'パスワードを設定しました: {username}'
+    adminRoleInvalid: ロールは user, moderator, admin のいずれかにしてください。
+    adminRoleChanged: '{username} のロールを {role} に変更しました。'
+    adminUnknownSubcommand: 不明な admin サブコマンドです。
+    helpAuth: Web アカウントを連携
+    helpPassword: Web ログインパスワードを設定
+    helpStatus: 実行状態を表示
+    helpReload: 設定を再読み込み
+    helpAdmin: 管理者アカウントとロールを管理
+    helpGuest: ゲスト/IP ミュートを管理
+    helpSessions: Web セッション一覧を表示
+    helpRevoke: Web セッションを取り消し
+    helpFilter: フィルタールールを管理
+    helpSettings: ライブ設定を表示・変更
+    filterStatus: 'フィルター: {state} / public={public} group={group} dm={dm} / rules={rules}'
+    filterListTitle: 'フィルタールール: {count}'
+    filterRuleNotFound: 'フィルタールールが見つかりません: {id}'
+    filterRuleRemoved: 'フィルタールールを削除しました: {id}'
+    filterRuleAdded: 'フィルタールールを追加しました: {id}'
+    filterWordRequired: 対象語を入力してください。
+    filterTestResult: 'blocked={blocked} changed={changed} rule={rule} mode={mode} -> {message}'
+    contentFilterBlocked: '禁止された内容が含まれているため、メッセージを送信できません。'
+    contentFilterBlockedWord: '禁止語 {word} が含まれているため、メッセージを送信できません。'
+    settingsShowHint: '/kchat settings show <key> または /kchat settings set <key> <value> を使用してください。'
+    settingsUnsupported: '未対応の設定です: {key}'
+    settingsFailed: '設定変更に失敗しました: {error}'
+    settingsUpdated: '{key}={value} を更新しました。セッション更新={updated}、期限切れ={expired}。'
+    helpDm: ダイレクトメッセージを送信
+    helpDmList: DM スレッド一覧を表示
+    helpDmHide: DM を自分の表示から隠す
+    helpDmRead: 1:1 メッセージスレッドを読む
+    helpReply: 公開 KWC メッセージに返信
+    replyClickHint: "クリックして返信 (#{id})"
+    helpGroup: 'グループチャットメッセージを送信'
+    helpGroupList: '参加中のグループチャット一覧を表示'
+    helpGroupRead: 'グループチャットを読む'
+    groupDisabled: 'グループチャットは無効です。'
+    groupDirectInputRequired: 'グループチャットメッセージはプレイヤーが直接入力する必要があります。'
+    groupRoomNotFound: 'グループチャットルームが見つからないか、メンバーではありません。'
+    groupEmpty: 'メッセージが空です。'
+    groupFailed: 'グループチャットに失敗しました: {error}'
+    groupSentEcho: 'グループ {room} へ送信: {message}'
+    groupTitle: 'グループチャット: {count}'
+    groupNoRooms: '参加中のグループチャットはありません。'
+    groupReadTitle: 'グループチャット {room}:'
+    groupNoMessages: 'このグループチャットにはメッセージがありません。'
+    groupReadHint: '送信: /kchat group {room} <message>'
+    groupReadNoCursor: '先にグループチャットを開いてください: /kchat group read <room>'
+    groupReadNavHint: '新しいメッセージは /kchat group prev、古いメッセージは /kchat group next で移動します。'
+    groupReadFirstPage: 'すでに最新のグループチャットページです。'
+    groupReadLastPage: 'すでに最古のグループチャットページです。'
+    groupIncoming: 'グループ {room} の {player}: {message}'
+    dmDisabled: ダイレクトメッセージは無効です。
+    dmTitle: 'ダイレクトメッセージ: 未読 {count} 件'
+    dmTitlePage: 'ダイレクトメッセージ: 未読 {count} 件 ({page}/{pages}ページ)'
+    dmNoThreads: DM スレッドはありません。
+    dmGameSendDisabled: ゲーム内からの DM 送信は無効です。
+    dmDirectInputRequired: "DMはプレイヤーが直接入力したコマンドでのみ送信できます。"
+    dmPlayerNotFound: プレイヤーが見つかりません。少なくとも一度参加している必要があります。
+    dmRemoteServerUnavailable: 対象サーバーに接続できません。
+    replyDisabled: ゲーム内返信機能は無効です。
+    replyDirectInputRequired: 返信はプレイヤーが直接入力したコマンドでのみ送信できます。
+    replyEmpty: 返信メッセージが空です。
+    replyTargetNotFound: 返信先のメッセージが見つかりません。
+    dmEmpty: メッセージが空です。
+    dmFailed: 'DM 送信失敗: {error}'
+    dmDeliveryFailed: 'DM の配信に失敗しました。Web チャットから再試行できます。'
+    dmSent: '{player} に送信しました: {message}'
+    dmSentEcho: '送信: {player} {message}'
+    dmIncoming: '{player} からの DM: {message}'
+    dmReadTitle: '{player} とのメッセージ:'
+    dmReadTitlePage: '{player} とのメッセージ ({page}/{pages} ページ):'
+    dmReadPageHint: '次のページ: /kchat dm read {player} {page} {pageSize}'
+    dmReadNavHint: '新しいメッセージは /kchat dm prev、古いメッセージは /kchat dm next で移動します。'
+    dmListNavHint: '新しい会話一覧は /kchat dm list prev、古い会話一覧は /kchat dm list next で移動します。'
+    dmListFirstPage: 'すでに最新の会話一覧ページです。'
+    dmListLastPage: 'すでに最も古い会話一覧ページです。'
+    dmReadNoCursor: '先にスレッドを開いてください: /kchat dm read <player>'
+    dmReadFirstPage: 'すでに最新ページです。'
+    dmReadLastPage: 'すでに最古ページです。'
+    dmNoMessages: このスレッドにメッセージはありません。
+    dmMe: 自分
+    dmHideHint: '自分の表示から隠す: /kchat dm hide <messageId>'
+    dmInvalidMessageId: メッセージ ID が正しくありません。
+    dmHideFailed: "メッセージの非表示に失敗しました。"
+    dmHidden: 自分の表示からメッセージを隠しました。
+    never: なし
+    authInvalid: 無効な認証リクエストです。
+    authCodeExpired: 認証コードが存在しないか期限切れです。
+    authComplete: Web チャットアカウントの連携が完了しました。ブラウザに戻ってください。
+    dmUnreadNotice: 未読のダイレクトメッセージが {count} 件あります。Webチャットのメッセージボックスを開くか、/kchat dm list を使用してください。
+  pinned:
+    count: 固定メッセージ {count}件
+    compact: '{count}'
+    single: '{title}'
+    multiple: '{title} 他{rest}件'
+    more: '他{rest}件'
+    title: 固定メッセージ
+    empty: 固定メッセージはありません。
+    untitled: 固定メッセージ
+    pinnedBy: '{user} が固定'
+  commands:
+    title: サーバーコマンド
+    description: 事前に許可されたサーバーコマンドをWeb UIから実行します。
+    descriptionAll: Web UIから任意のサーバーコンソールコマンドを実行します。
+    directPlaceholder: / なしでコマンドを入力
+    runDirect: コマンド実行
+    search: プリセットコマンド検索
+    noMatches: 一致するコマンドがありません。
+    notAvailable: コマンドパネルは利用できません。
+    confirm: コマンドを実行しますか？ /{command}
+    submitted: 'コマンドを送信しました: {label}'
+    failed: 'コマンド実行失敗: {error}'
+    tooLong: コマンドが長すぎます。最大 {max} 文字です。
+    maxLengthHint: 最大 {max} 文字
+  update:
+    available: '新しい version {latest} があります。現在: {current}'
+    openDownload: ダウンロードページを開く
+    modrinth: Modrinth
+    curseforge: CurseForge
+  system:
+    command-executed: '{executor} が Web コマンドを実行しました: {label}'
+    command-executed-by: '{executor} が Web コマンドを実行しました: {label}'
+    note: サーバーイベントや Web コマンド結果などのシステムメッセージは、i18n キーがある場合 Web UI で翻訳されます。config.yml のカスタム announcement 文はフォールバックとして使用されます。
+  history:
+    end: これ以上表示するメッセージはありません。
+    loading: '履歴を読み込み中。
+
+      少しお待ちください。'
+    failed: '読み込み失敗。
+
+      しばらくして再試行してください。'
+    timeout: '応答が遅れています。
+
+      しばらくして再試行してください。'
+    offline: '接続が切れています。
+
+      ネットワークを確認してください。'
+

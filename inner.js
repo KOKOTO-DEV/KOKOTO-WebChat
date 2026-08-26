@@ -1,43 +1,65 @@
 (() => {
-  const BMWC_INNER_IFRAME_MARKER_296 = true;
-  const cfg = window.BlueMapWebChatConfig || {};
-  function bmwcDefaultApiBase() {
-    const path = String(location.pathname || "").replace(/\/+$/, "");
-    const marker = "/bmwc";
-    if (path === marker || path.indexOf(marker + "/") === 0) {
-      return location.origin + marker + "/api";
-    }
+  const KWC_INNER_IFRAME_MARKER_296 = true;
+  const cfg = window.KokotoWebChatConfig || window.BlueMapWebChatConfig || {};
+  function migrateLegacyBrowserState() {
+    try {
+      const legacyKeys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("bmwc.")) legacyKeys.push(key);
+      }
+      for (const legacyKey of legacyKeys) {
+        const currentKey = "kwc." + legacyKey.substring("bmwc.".length);
+        if (localStorage.getItem(currentKey) == null) {
+          const value = localStorage.getItem(legacyKey);
+          if (value != null) localStorage.setItem(currentKey, value);
+        }
+        localStorage.removeItem(legacyKey);
+      }
+    } catch (_) {}
+  }
+  migrateLegacyBrowserState();
+  try { localStorage.removeItem("kwc.notify.ownMessages"); } catch (_) {}
+  function kwcDefaultApiBase() {
     return location.origin + "/api";
   }
 
-  function bmwcNormalizeApiBase(value) {
+  function kwcNormalizeApiBase(value) {
     let v = String(value || "").trim();
-    if (!v) v = bmwcDefaultApiBase();
+    if (!v) v = kwcDefaultApiBase();
     v = v.replace(/\/+$/, "");
-    // Be forgiving when a legacy resource URL is accidentally placed in an API
-    // base option. The API base must point at /api or /bmwc/api; uploads/emojis
-    // are appended separately.
+    // Normalize resource URLs accidentally placed in the API-base option.
+    // Upload and emoji suffixes are appended separately.
     v = v.replace(/\/(?:uploads|emojis)$/i, "");
     return v;
   }
-  const apiBase = bmwcNormalizeApiBase(cfg.apiBase || cfg.apiBaseUrl || "");
+  const apiBase = kwcNormalizeApiBase(cfg.apiBase || cfg.apiBaseUrl || "");
   const runtimeMode = {
     pip: cfg.pip === true,
     standalone: cfg.standalone === true
   };
+  // Capture the exact inner application source while this inline script is executing.
+  // Standalone Document PiP can then bootstrap a second same-origin chat document
+  // directly from the user click without depending on the BlueMap parent bridge.
+  const KWC_INNER_SELF_SOURCE = (() => {
+    try { return document.currentScript && document.currentScript.textContent ? document.currentScript.textContent : ""; } catch (_) { return ""; }
+  })();
+  let standalonePipWindow = null;
+  let standalonePipRelay = null;
+  let standalonePipRelayId = String(cfg.pipStreamChannel || "");
+  let standalonePipRestoreMinimized = false;
 
   const state = {
     config: null,
-    token: localStorage.getItem("bmwc.token") || "",
-    username: localStorage.getItem("bmwc.username") || "",
-    role: localStorage.getItem("bmwc.role") || "",
-    loginRequiredUntilLogin: localStorage.getItem("bmwc.loginRequiredUntilLogin") === "1",
-    guestName: localStorage.getItem("bmwc.guestName") || "",
+    token: localStorage.getItem("kwc.token") || "",
+    username: localStorage.getItem("kwc.username") || "",
+    role: localStorage.getItem("kwc.role") || "",
+    guestName: localStorage.getItem("kwc.guestName") || "",
     captcha: null,
-    captchaPass: localStorage.getItem("bmwc.captchaPass") || "",
+    captchaPass: localStorage.getItem("kwc.captchaPass") || "",
     isPip: runtimeMode.pip,
     isStandalone: runtimeMode.standalone,
-    minimized: runtimeMode.pip ? false : localStorage.getItem("bmwc.minimized") === "1",
+    minimized: (runtimeMode.pip || runtimeMode.standalone) ? false : localStorage.getItem("kwc.minimized") === "1",
     eventSource: null,
     streamGeneration: 0,
     streamReconnectTimer: null,
@@ -46,9 +68,11 @@
     streamReconnectReason: "",
     streamReconnectInFlight: false,
     streamLastOpenAt: 0,
+    streamLastEventAt: 0,
+    streamHealthTimer: null,
     serverVersion: "",
     lang: {},
-    selectedLanguage: localStorage.getItem("bmwc.language") || "",
+    selectedLanguage: localStorage.getItem("kwc.language") || "",
     availableLanguages: [],
     historyLoading: false,
     historyHasMore: true,
@@ -59,7 +83,7 @@
     frameMinimizedHeight: 71,
     frameNormalWidth: 372,
     frameNormalHeight: 462,
-    resizeLocked: localStorage.getItem("bmwc.resizeLocked") === "1",
+    resizeLocked: localStorage.getItem("kwc.resizeLocked") === "1",
     resizeStart: null,
     themeSyncTimer: null,
     loginModalOpen: false,
@@ -100,7 +124,7 @@
     dmAuditThread: null,
     dmSearchTimer: null,
     dmSearchPanelOpen: false,
-    dmConversationFocus: localStorage.getItem("bmwc.dmConversationFocus") === "1",
+    dmConversationFocus: localStorage.getItem("kwc.dmConversationFocus") === "1",
     dmEmojiPanelOpen: false,
     dmEdgeToastVisible: false,
     dmEdgeToastVisibleUntil: 0,
@@ -156,7 +180,7 @@
     groupScrollbarDragLastX: null,
     groupScrollbarDragLastY: null,
 
-    activeComposeInputId: "bmwc-message",
+    activeComposeInputId: "kwc-message",
 
     emojiEnabled: false,
     emojiShowButton: true,
@@ -170,9 +194,9 @@
     emojiByAlias: new Map(),
     emojiPanelOpen: false,
     emojiLoading: false,
-    emojiPanelHeightPx: Math.max(56, Math.min(420, Number(localStorage.getItem("bmwc.emojiPanelHeightPx") || 180) || 180)),
+    emojiPanelHeightPx: Math.max(56, Math.min(420, Number(localStorage.getItem("kwc.emojiPanelHeightPx") || 180) || 180)),
     emojiPanelResizeStart: null,
-    adminEmojiSelectedPack: localStorage.getItem("bmwc.adminEmojiPack") || "default",
+    adminEmojiSelectedPack: localStorage.getItem("kwc.adminEmojiPack") || "default",
     commandMaxLength: 0,
     nextLocalMessageId: 1,
     sendInFlight: false,
@@ -184,6 +208,7 @@
     virtualRenderScheduled: false,
     virtualPendingRenderOptions: null,
     virtualResizeObserver: null,
+    virtualMessageResizeObserver: null,
     resumeRefreshInFlight: false,
     lastResumeRefreshAt: 0,
     autoFollowLatest: true,
@@ -223,7 +248,6 @@
     replyJumpStabilizeTimer: null,
     explicitLatestFollowUntil: 0,
     explicitLatestFollowReason: "",
-    pendingMediaRender: false,
     scrollInteractionUntil: 0,
     scrollIdleTimer: null,
     scrollbarDragActive: false,
@@ -246,24 +270,13 @@
     uploadXhr: null,
     uploadCancelRequested: false,
     uploadActive: false,
-    autoFollowMediaLayoutUntil: 0,
-    mediaKeepAliveUntil: new Map(),
-    mediaLayoutQuietUntil: 0,
-    mediaLayoutQuietTimer: null,
-    mediaCullingRelaxUntil: 0,
-    lastMediaLayoutChangeAt: 0,
-    mediaLayoutQuietStartedAt: 0,
-    mediaCullingRelaxStartedAt: 0,
-    mediaLayoutEventCache: new Map(),
-    mediaLayoutBatchTimer: null,
-    mediaLayoutBatchOptions: null,
     historyViewportFillTimer: null,
     historyViewportFillAttempts: 0,
     viewportMaintenanceTimer: null,
     viewportMaintenanceDueAt: 0,
     dragUploadDepth: 0,
-    senderIdentityMode: localStorage.getItem("bmwc.senderIdentityMode") === "real" ? "real" : "display",
-    timeDisplayMode: localStorage.getItem("bmwc.timeDisplayMode") === "full" ? "full" : "short",
+    senderIdentityMode: localStorage.getItem("kwc.senderIdentityMode") === "real" ? "real" : "display",
+    timeDisplayMode: localStorage.getItem("kwc.timeDisplayMode") === "full" ? "full" : "short",
 
     browserNotificationsEnabled: true,
     browserNotificationsOnlyWhenHidden: true,
@@ -274,7 +287,6 @@
     browserNotificationsNotifyReplies: true,
     browserNotificationsNotifySystem: true,
     browserNotificationsNotifyKeywords: true,
-    browserNotificationsNotifyOwnMessages: true,
     browserNotificationsShowMessagePreview: true,
     webPushEnabled: false,
     webPushAvailable: false,
@@ -293,10 +305,19 @@
     webPushNotifyReplies: true,
     webPushNotifySystem: true,
     webPushNotifyKeywords: true,
-    webPushNotifyOwnMessages: true,
     webPushShowMessagePreview: true,
     webPushRegistering: false,
     webPushLastError: "",
+    webPushSubscriptionActive: false,
+    webPushAutoRetryAfter: 0,
+    webPushAutoFailure: "",
+    accountNotificationSyncTimer: null,
+    applyingAccountNotificationPreferences: false,
+    userProfilesEnabled: false,
+    userProfilesMaxProfiles: 5,
+    userProfilesAllowImportExport: true,
+    accountProfiles: [],
+    accountProfilesLoading: false,
     notificationInboxUnread: 0
   };
 
@@ -391,16 +412,16 @@
   }
 
   function formatReplyComposeLabelHtml(sender) {
-    const marker = "__BMWC_REPLY_SENDER__";
+    const marker = "__KWC_REPLY_SENDER__";
     const template = fmt("reply.composing", "Replying to {sender}", {sender: marker});
     const parts = String(template || "").split(marker);
     if (parts.length < 2) return esc(fmt("reply.composing", "Replying to {sender}", {sender: plainLegacyText(sender)}));
     return parts.map(esc).join(minecraftLegacyTextHtml(sender, true));
   }
 
-  function minecraftLegacyTextHtml(value, renderColors = true) {
+  function minecraftLegacyTextHtml(value, renderColors = true, allowLinks = true) {
     const text = normalizeMinecraftLegacySource(value);
-    if (!renderColors) return esc(stripMinecraftColorCodes(text));
+    if (!renderColors) return allowLinks ? linkifyText(stripMinecraftColorCodes(text)) : esc(stripMinecraftColorCodes(text));
 
     let out = "";
     let buf = "";
@@ -420,8 +441,8 @@
     const flush = () => {
       if (!buf) return;
       const attr = styleAttr();
-      const html = renderCustomEmojiTokens(buf);
-      out += attr ? `<span class="bmwc-mc-legacy" style="${esc(attr)}">${html}</span>` : html;
+      const html = renderCustomEmojiTokens(buf, allowLinks);
+      out += attr ? `<span class="kwc-mc-legacy" style="${esc(attr)}">${html}</span>` : html;
       buf = "";
     };
     const resetFormatting = () => {
@@ -538,6 +559,11 @@
     return found;
   }
 
+  function displayLinkText(value) {
+    const text = String(value ?? "");
+    try { return decodeURI(text); } catch (_) { return text; }
+  }
+
   function linkifyText(value) {
     const text = String(value ?? "");
     if (state.config && state.config.linkifyUrls === false) return esc(text);
@@ -557,7 +583,7 @@
       out += esc(text.slice(last, match.index));
       const href = safeExternalUrl(url);
       if (href) {
-        out += `<a class="bmwc-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>`;
+        out += `<a class="kwc-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(displayLinkText(url))}</a>`;
       } else {
         out += esc(raw);
       }
@@ -655,18 +681,18 @@
         const basePath = apiBasePath();
         const valuePath = new URL(value, location.href).pathname.replace(/\/+$/, "");
         // If the server already returned the same public path, keep it as-is.
-        // This is important for explicit settings such as /bmwc/api/emojis.
+        // This is important for explicit settings such as /chat/api/emojis.
         if (basePath && (valuePath === basePath || valuePath.startsWith(basePath + "/"))) {
           return new URL(value, location.href).href;
         }
         // Also keep explicitly configured prefixed API resource paths such as
-        // /bmwc/api/uploads even if the runtime API base is currently /api.
+        // /chat/api/uploads even if the runtime API base is currently /api.
         // Only plain internal /api/... paths are candidates for rewriting.
         if (/^\/.+\/api\/(?:emojis|uploads|external-media|fonts)(?:\/|$)/i.test(valuePath)) {
           return new URL(value, location.href).href;
         }
         // If the server returned an internal path such as /api/emojis while the
-        // browser uses /bmwc/api, keep only the resource suffix and attach it to
+        // browser uses /chat/api, keep only the resource suffix and attach it to
         // the runtime API base.
         const suffix = firstApiResourceSuffix(value);
         if (suffix) return new URL(base + suffix, location.href).href;
@@ -680,7 +706,7 @@
 
   function safePreviewUrl(raw) {
     // Preview URLs may be external http(s) URLs or same-origin relative API
-    // URLs generated by BlueMapWebChat, such as /bmwc/api/uploads/... .
+    // URLs generated by KOKOTO WebChat, such as /chat/api/uploads/... .
     // Normalize internal /api/... resource paths to the runtime API base so
     // explicit reverse-proxy settings keep working.
     const value = String(raw || "").trim();
@@ -700,10 +726,10 @@
   }
 
   function installMessageActionDelegation(root) {
-    if (!root || root.__bmwcActionDelegationInstalled) return;
-    root.__bmwcActionDelegationInstalled = true;
+    if (!root || root.__kwcActionDelegationInstalled) return;
+    root.__kwcActionDelegationInstalled = true;
 
-    const selector = "[data-delete], [data-pin], [data-unpin], [data-pin-move], [data-open-pins], a.bmwc-link, a.bmwc-image-link";
+    const selector = "[data-delete], [data-pin], [data-unpin], [data-pin-move], [data-open-pins], a.kwc-link, a.kwc-image-link";
     let pointerDownAction = null;
     let touchDownAction = null;
     let lastPointerAction = {key: "", time: 0};
@@ -727,7 +753,7 @@
       if (movePinId) return "move-pin:" + movePinId + ":" + (target.getAttribute("data-direction") || "");
       if (target.hasAttribute("data-open-pins")) return "open-pins";
       const href = target.getAttribute("href") || "";
-      if (href && target.matches("a.bmwc-link, a.bmwc-image-link")) return "link:" + href;
+      if (href && target.matches("a.kwc-link, a.kwc-image-link")) return "link:" + href;
       return "";
     };
 
@@ -797,7 +823,7 @@
       }
 
       const href = target.getAttribute("href") || "";
-      if (href && target.matches("a.bmwc-link, a.bmwc-image-link") && /^https?:\/\//i.test(href)) {
+      if (href && target.matches("a.kwc-link, a.kwc-image-link") && /^https?:\/\//i.test(href)) {
         releasePointerActionScrollState();
         event.preventDefault();
         event.stopPropagation();
@@ -1133,8 +1159,8 @@
   function xThemeValue() {
     const v = String(state.config && state.config.xEmbedTheme || "auto").toLowerCase();
     if (v === "dark" || v === "light") return v;
-    const root = document.getElementById("bmwc-root");
-    return root && root.classList.contains("bmwc-theme-light") ? "light" : "dark";
+    const root = document.getElementById("kwc-root");
+    return root && root.classList.contains("kwc-theme-light") ? "light" : "dark";
   }
 
   let xWidgetsLoading = false;
@@ -1170,30 +1196,30 @@
       const player = tiktokPlayerUrl(id);
       if (!href || !player) return "";
       if (socialClickToLoadEnabled() && !state.mediaOpen.has(key)) {
-        return `<div class="bmwc-social-card bmwc-tiktok-card" data-social-kind="tiktok" data-social-src="${esc(href)}" data-tiktok-id="${esc(id)}" data-preview-key="${esc(key)}" style="${socialVerticalLoadCardStyle()}">
-          <button type="button" class="bmwc-media-load bmwc-button">${esc(t("media.loadTikTok", "▶ TikTok"))}</button>
+        return `<div class="kwc-social-card kwc-tiktok-card" data-social-kind="tiktok" data-social-src="${esc(href)}" data-tiktok-id="${esc(id)}" data-preview-key="${esc(key)}" style="${socialVerticalLoadCardStyle()}">
+          <button type="button" class="kwc-media-load kwc-button">${esc(t("media.loadTikTok", "▶ TikTok"))}</button>
         </div>`;
       }
-      return `<div class="bmwc-social-embed bmwc-tiktok-embed" data-preview-key="${esc(key)}" style="${tiktokPlayerShellStyle()}">
-        <iframe class="bmwc-social-frame" src="${esc(player)}" title="TikTok" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="encrypted-media; fullscreen; picture-in-picture; web-share" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;color-scheme:dark;"></iframe>
+      return `<div class="kwc-social-embed kwc-tiktok-embed" data-preview-key="${esc(key)}" style="${tiktokPlayerShellStyle()}">
+        <iframe class="kwc-social-frame" src="${esc(player)}" title="TikTok" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="encrypted-media; fullscreen; picture-in-picture; web-share" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;color-scheme:dark;"></iframe>
       </div>
-      <div class="bmwc-social-open" style="width:min(100%,325px);max-width:100%;margin:4px auto 0;font-size:11px;opacity:.78;text-align:right;">
-        <a class="bmwc-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(t("media.openTikTok", "Open on TikTok"))}</a>
+      <div class="kwc-social-open" style="width:min(100%,325px);max-width:100%;margin:4px auto 0;font-size:11px;opacity:.78;text-align:right;">
+        <a class="kwc-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(t("media.openTikTok", "Open on TikTok"))}</a>
       </div>`;
     }
     if (item.type === "x") {
       const href = safeExternalUrl(item.href);
       if (!href) return "";
       if (socialClickToLoadEnabled() && !state.mediaOpen.has(key)) {
-        return `<div class="bmwc-social-card bmwc-x-card" data-social-kind="x" data-social-src="${esc(href)}" data-preview-key="${esc(key)}" style="${maxHeightCss}">
-          <button type="button" class="bmwc-media-load bmwc-button">${esc(t("media.loadXPost", "▶ X post"))}</button>
+        return `<div class="kwc-social-card kwc-x-card" data-social-kind="x" data-social-src="${esc(href)}" data-preview-key="${esc(key)}" style="${maxHeightCss}">
+          <button type="button" class="kwc-media-load kwc-button">${esc(t("media.loadXPost", "▶ X post"))}</button>
         </div>`;
       }
       const theme = xThemeValue();
       const dnt = state.config && state.config.xEmbedDnt !== false ? "true" : "false";
       const hideMedia = state.config && state.config.xEmbedHideMedia === true ? ' data-cards="hidden"' : "";
       const hideThread = state.config && state.config.xEmbedHideThread !== false ? ' data-conversation="none"' : "";
-      return `<div class="bmwc-social-embed bmwc-x-embed" data-preview-key="${esc(key)}" style="margin-top:6px;${maxHeightCss}">
+      return `<div class="kwc-social-embed kwc-x-embed" data-preview-key="${esc(key)}" style="margin-top:6px;${maxHeightCss}">
         <blockquote class="twitter-tweet" data-theme="${esc(theme)}" data-dnt="${esc(dnt)}"${hideMedia}${hideThread}><a href="${esc(href)}"></a></blockquote>
       </div>`;
     }
@@ -1210,16 +1236,13 @@
     return scope.startsWith("private:") ? scope + ":" + base : base;
   }
 
-  window.__bmwcPreviewFailed = function(key) {
+  window.__kwcPreviewFailed = function(key) {
     if (key) state.failedMediaPreviews.add(String(key));
   };
 
-  window.__bmwcPreviewLoaded = function(media) {
-    // Media load events must not schedule a virtual re-render. In virtual-scroll
-    // mode a re-render recreates the same image/video node, which fires load
-    // again and can create a scroll-height jitter loop. Just re-measure the
-    // containing message and refresh spacer estimates in-place.
-    noteMediaLayoutLoaded(media);
+  window.__kwcPreviewLoaded = function() {
+    // Layout is tracked at the message container level by ResizeObserver.
+    // Individual media elements do not own virtual-scroll behavior.
   };
 
   function mediaErrorText(kind) {
@@ -1231,9 +1254,9 @@
   function setMediaError(wrap, kind) {
     if (!wrap) return;
     wrap.textContent = "";
-    wrap.classList.add("bmwc-media-failed");
+    wrap.classList.add("kwc-media-failed");
     const span = document.createElement("span");
-    span.className = kind === "image" ? "bmwc-media-error bmwc-image-error" : "bmwc-media-error";
+    span.className = kind === "image" ? "kwc-media-error kwc-image-error" : "kwc-media-error";
     span.textContent = mediaErrorText(kind);
     wrap.appendChild(span);
   }
@@ -1242,7 +1265,7 @@
     const safeSrc = safePreviewUrl(src);
     if (!safeSrc) return null;
     const media = document.createElement(kind === "audio" ? "audio" : "video");
-    media.className = kind === "audio" ? "bmwc-audio-preview" : "bmwc-video-preview";
+    media.className = kind === "audio" ? "kwc-audio-preview" : "kwc-video-preview";
     media.src = safeSrc;
     media.controls = true;
     if (kind === "audio") {
@@ -1264,37 +1287,37 @@
 
   function hydratePreviewMedia(root) {
     if (!root) return;
-    root.querySelectorAll(".bmwc-image-preview").forEach(img => {
-      if (img.dataset.bmwcPreviewHydrated === "1") return;
-      img.dataset.bmwcPreviewHydrated = "1";
+    root.querySelectorAll(".kwc-image-preview").forEach(img => {
+      if (img.dataset.kwcPreviewHydrated === "1") return;
+      img.dataset.kwcPreviewHydrated = "1";
       const src = safePreviewUrl(img.getAttribute("src"));
       if (!src) {
-        setMediaError(img.closest(".bmwc-image-link"), "image");
+        setMediaError(img.closest(".kwc-image-link"), "image");
         return;
       }
       img.src = src;
-      img.addEventListener("load", () => window.__bmwcPreviewLoaded && window.__bmwcPreviewLoaded(img), {once: true});
+      img.addEventListener("load", () => window.__kwcPreviewLoaded && window.__kwcPreviewLoaded(img), {once: true});
       img.addEventListener("error", () => {
-        window.__bmwcPreviewFailed && window.__bmwcPreviewFailed(img.dataset.previewKey);
-        setMediaError(img.closest(".bmwc-image-link"), "image");
-        window.__bmwcPreviewLoaded && window.__bmwcPreviewLoaded(img);
+        window.__kwcPreviewFailed && window.__kwcPreviewFailed(img.dataset.previewKey);
+        setMediaError(img.closest(".kwc-image-link"), "image");
+        window.__kwcPreviewLoaded && window.__kwcPreviewLoaded(img);
       }, {once: true});
     });
 
-    root.querySelectorAll(".bmwc-video-preview, .bmwc-audio-preview").forEach(media => {
-      if (media.dataset.bmwcPreviewHydrated === "1") return;
-      media.dataset.bmwcPreviewHydrated = "1";
+    root.querySelectorAll(".kwc-video-preview, .kwc-audio-preview").forEach(media => {
+      if (media.dataset.kwcPreviewHydrated === "1") return;
+      media.dataset.kwcPreviewHydrated = "1";
       const kind = media.tagName === "AUDIO" ? "audio" : "video";
       const src = safePreviewUrl(media.getAttribute("src"));
-      const wrap = media.closest(kind === "audio" ? ".bmwc-audio-wrap" : ".bmwc-video-wrap");
+      const wrap = media.closest(kind === "audio" ? ".kwc-audio-wrap" : ".kwc-video-wrap");
       if (!src) {
         setMediaError(wrap, kind);
         return;
       }
       media.src = src;
-      media.addEventListener("loadedmetadata", () => window.__bmwcPreviewLoaded && window.__bmwcPreviewLoaded(media), {once: true});
+      media.addEventListener("loadedmetadata", () => window.__kwcPreviewLoaded && window.__kwcPreviewLoaded(media), {once: true});
       media.addEventListener("error", () => {
-        window.__bmwcPreviewFailed && window.__bmwcPreviewFailed(media.dataset.previewKey);
+        window.__kwcPreviewFailed && window.__kwcPreviewFailed(media.dataset.previewKey);
         setMediaError(wrap, kind);
       }, {once: true});
     });
@@ -1368,7 +1391,7 @@
       }
     }
     if (!items.length) return "";
-    return `<div class="bmwc-image-previews">` + items.map(item => {
+    return `<div class="kwc-image-previews">` + items.map(item => {
       if (item.type === "youtube") {
         const id = item.youtubeId;
         const thumb = youtubeThumbUrl(id);
@@ -1381,13 +1404,13 @@
         const rememberedOpen = state.config.youtubeRememberExpanded !== false && state.youtubeExpanded.has(key);
         const currentlyOpen = state.youtubeOpen.has(key);
         if (state.config.youtubeClickToLoad === false || rememberedOpen || currentlyOpen) {
-          return `<div class="bmwc-youtube-wrap${isShorts ? " bmwc-youtube-shorts-wrap" : ""}" data-youtube-key="${esc(key)}" style="${shellStyle}">
-            <iframe class="bmwc-youtube-frame" style="position:absolute;inset:0;width:100%;height:100%;border:0;" src="${esc(embed)}" title="${esc(isShorts ? t("media.youtubeShortsTitle", "YouTube Shorts") : t("media.youtubeTitle", "YouTube video"))}" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+          return `<div class="kwc-youtube-wrap${isShorts ? " kwc-youtube-shorts-wrap" : ""}" data-youtube-key="${esc(key)}" style="${shellStyle}">
+            <iframe class="kwc-youtube-frame" style="position:absolute;inset:0;width:100%;height:100%;border:0;" src="${esc(embed)}" title="${esc(isShorts ? t("media.youtubeShortsTitle", "YouTube Shorts") : t("media.youtubeTitle", "YouTube video"))}" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
           </div>`;
         }
-        return `<button type="button" class="bmwc-youtube-card${isShorts ? " bmwc-youtube-shorts-card" : ""}" data-youtube-embed="${esc(embed)}" data-youtube-key="${esc(key)}" data-youtube-shorts="${isShorts ? "1" : "0"}" style="${shellStyle}border:0;background-size:cover;background-position:center;cursor:pointer;color:#fff;background-image:url('${esc(thumb)}')">
-          <span class="bmwc-youtube-play" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:34px;text-shadow:0 2px 8px rgba(0,0,0,.85);">▶</span>
-          <span class="bmwc-youtube-label" style="position:absolute;left:8px;bottom:8px;font-size:12px;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,.85);">${esc(isShorts ? t("media.youtubeShorts", "YouTube Shorts") : t("media.youtube", "YouTube"))}</span>
+        return `<button type="button" class="kwc-youtube-card${isShorts ? " kwc-youtube-shorts-card" : ""}" data-youtube-embed="${esc(embed)}" data-youtube-key="${esc(key)}" data-youtube-shorts="${isShorts ? "1" : "0"}" style="${shellStyle}border:0;background-size:cover;background-position:center;cursor:pointer;color:#fff;background-image:url('${esc(thumb)}')">
+          <span class="kwc-youtube-play" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:34px;text-shadow:0 2px 8px rgba(0,0,0,.85);">▶</span>
+          <span class="kwc-youtube-label" style="position:absolute;left:8px;bottom:8px;font-size:12px;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,.85);">${esc(isShorts ? t("media.youtubeShorts", "YouTube Shorts") : t("media.youtube", "YouTube"))}</span>
         </button>`;
       }
       if (item.type === "tiktok" || item.type === "x") {
@@ -1399,12 +1422,12 @@
         const openHref = safeExternalUrl(item.linkHref || item.href) || src;
         if (!src) return "";
         if (mediaClickToLoadEnabled() && !state.mediaOpen.has(key)) {
-          return `<div class="bmwc-media-card bmwc-video-card" data-media-kind="video" data-media-src="${esc(src)}" data-media-open="${esc(openHref)}" data-preview-key="${esc(key)}" style="${maxHeightStyle}">
-            <button type="button" class="bmwc-media-load bmwc-button">${esc(t("media.loadVideo", "▶ Video"))}</button>
+          return `<div class="kwc-media-card kwc-video-card" data-media-kind="video" data-media-src="${esc(src)}" data-media-open="${esc(openHref)}" data-preview-key="${esc(key)}" style="${maxHeightStyle}">
+            <button type="button" class="kwc-media-load kwc-button">${esc(t("media.loadVideo", "▶ Video"))}</button>
           </div>`;
         }
-        return `<div class="bmwc-video-wrap" data-preview-key="${esc(key)}">
-          <video class="bmwc-video-preview" src="${esc(src)}" controls playsinline webkit-playsinline preload="metadata" style="${maxHeightStyle}" data-preview-key="${esc(key)}"></video>
+        return `<div class="kwc-video-wrap" data-preview-key="${esc(key)}">
+          <video class="kwc-video-preview" src="${esc(src)}" controls playsinline webkit-playsinline preload="metadata" style="${maxHeightStyle}" data-preview-key="${esc(key)}"></video>
         </div>`;
       }
       if (item.type === "audio") {
@@ -1413,19 +1436,19 @@
         const openHref = safeExternalUrl(item.linkHref || item.href) || src;
         if (!src) return "";
         if (mediaClickToLoadEnabled() && !state.mediaOpen.has(key)) {
-          return `<div class="bmwc-media-card bmwc-audio-card" data-media-kind="audio" data-media-src="${esc(src)}" data-media-open="${esc(openHref)}" data-preview-key="${esc(key)}">
-            <button type="button" class="bmwc-media-load bmwc-button">${esc(t("media.loadAudio", "▶ Audio"))}</button>
+          return `<div class="kwc-media-card kwc-audio-card" data-media-kind="audio" data-media-src="${esc(src)}" data-media-open="${esc(openHref)}" data-preview-key="${esc(key)}">
+            <button type="button" class="kwc-media-load kwc-button">${esc(t("media.loadAudio", "▶ Audio"))}</button>
           </div>`;
         }
-        return `<div class="bmwc-audio-wrap" data-preview-key="${esc(key)}">
-          <audio class="bmwc-audio-preview" src="${esc(src)}" controls preload="none" data-preview-key="${esc(key)}"></audio>
+        return `<div class="kwc-audio-wrap" data-preview-key="${esc(key)}">
+          <audio class="kwc-audio-preview" src="${esc(src)}" controls preload="none" data-preview-key="${esc(key)}"></audio>
         </div>`;
       }
       const src = safePreviewUrl(item.href);
       const linkHref = safeExternalUrl(item.linkHref || item.href) || src;
       if (!src || !linkHref) return "";
-      return `<a class="bmwc-image-link" href="${esc(linkHref)}" target="_blank" rel="noopener noreferrer">
-        <img class="bmwc-image-preview" src="${esc(src)}" loading="lazy" referrerpolicy="no-referrer" style="${maxHeightStyle}" alt="image preview" data-preview-key="${esc(item.previewKey || previewKey("image", src))}">
+      return `<a class="kwc-image-link" href="${esc(linkHref)}" target="_blank" rel="noopener noreferrer">
+        <img class="kwc-image-preview" src="${esc(src)}" loading="eager" decoding="async" referrerpolicy="no-referrer" style="${maxHeightStyle}" alt="image preview" data-preview-key="${esc(item.previewKey || previewKey("image", src))}">
       </a>`;
     }).join("") + `</div>`;
   }
@@ -1435,9 +1458,16 @@
   function api(path, opts = {}) {
     const timeoutMs = Number(opts.timeoutMs || 0);
     const fetchOpts = Object.assign({}, opts);
+    if (!("cache" in fetchOpts)) fetchOpts.cache = "no-store";
     delete fetchOpts.timeoutMs;
+    const returnHttpErrorResponse = fetchOpts.returnHttpErrorResponse === true;
+    delete fetchOpts.returnHttpErrorResponse;
     const isFormData = typeof FormData !== "undefined" && fetchOpts.body instanceof FormData;
-    fetchOpts.headers = Object.assign(isFormData ? {} : {"Content-Type": "application/json"}, fetchOpts.headers || {});
+    const isUrlEncoded = typeof URLSearchParams !== "undefined" && fetchOpts.body instanceof URLSearchParams;
+    fetchOpts.headers = Object.assign((isFormData || isUrlEncoded) ? {} : {"Content-Type": "application/json"}, fetchOpts.headers || {});
+    if (state.token && !fetchOpts.headers.Authorization && !fetchOpts.headers.authorization) {
+      fetchOpts.headers.Authorization = "Bearer " + state.token;
+    }
 
     let timeoutId = null;
     let controller = null;
@@ -1451,9 +1481,15 @@
 
     return fetch(apiBase + path, fetchOpts).then(async r => {
       if (!r.ok) {
+        let response = null;
+        try { response = await r.clone().json(); } catch (_) {}
+        if (returnHttpErrorResponse && response && typeof response === "object") {
+          if (response.ok === undefined) response.ok = false;
+          return response;
+        }
         const err = new Error("HTTP " + r.status);
         err.status = r.status;
-        try { err.response = await r.clone().json(); } catch (_) {}
+        err.response = response;
         throw err;
       }
       return r.json();
@@ -1462,7 +1498,7 @@
         handleAuthExpired("api");
       }
       if (controller && err && err.name === "AbortError") {
-        err.bmwcTimeout = true;
+        err.kwcTimeout = true;
       }
       throw err;
     }).finally(() => {
@@ -1511,6 +1547,11 @@
 
   function responseError(res, fallbackCode = "unknown") {
     const code = res && res.error ? String(res.error) : fallbackCode;
+    if (code === "content_blocked") {
+      const word = String(res && res.matchedWord || "").trim();
+      if (word) return fmt("error.content_blockedWord", "Message cannot be sent because it contains a blocked word: {word}", {word});
+      return t("error.content_blocked", "This message cannot be sent because it contains blocked content.");
+    }
     if (code === "guest_muted" && res && res.reason) {
       return fmt("error.guest_mutedWithReason", "Guest chat is muted: {reason}", {reason: res.reason});
     }
@@ -1648,10 +1689,14 @@
   function customEmojiImgHtml(item) {
     if (!item || !item.url) return "";
     const size = emojiRenderSizePx();
-    const label = item.label || item.name || item.id || "emoji";
     const title = customEmojiTooltipText(item);
-    return `<img class="bmwc-custom-emoji" src="${esc(item.url)}" alt="${esc(":" + label + ":")}" title="${esc(title)}" aria-label="${esc(title)}" data-emoji-title="${esc(title)}" loading="lazy" draggable="false" style="width:${size}px;height:${size}px;">`;
+    // Do not use :token: as img alt text. Browsers visibly paint alt text while
+    // an image is still being fetched/decoded, which is exactly the token -> icon
+    // delay seen with registered emojis. The fixed box + aria-label preserves
+    // layout/accessibility without leaking the transport token onto the screen.
+    return `<img class="kwc-custom-emoji" src="${esc(item.url)}" alt="" role="img" title="${esc(title)}" aria-label="${esc(title)}" data-emoji-title="${esc(title)}" loading="eager" decoding="async" draggable="false" width="${size}" height="${size}" style="width:${size}px;height:${size}px;">`;
   }
+
 
   function emojiPickerSizePx() {
     return Math.max(24, Math.min(1024, Number(state.emojiPickerSizePx || (state.config && state.config.emojiPickerSizePx) || 44)));
@@ -1674,19 +1719,19 @@
   }
 
   function emojiPanelMinHeightPx(panel = null) {
-    panel = panel || document.getElementById("bmwc-emoji-panel");
+    panel = panel || document.getElementById("kwc-emoji-panel");
     const fallbackItemHeight = emojiPanelFallbackItemHeightPx();
     const fallbackTabsHeight = Array.isArray(state.emojiPacks) && state.emojiPacks.length > 1 ? 30 : 0;
     const fallback = 16 + fallbackTabsHeight + fallbackItemHeight;
-    if (!panel || panel.classList.contains("bmwc-hidden")) return Math.max(56, Math.ceil(fallback));
+    if (!panel || panel.classList.contains("kwc-hidden")) return Math.max(56, Math.ceil(fallback));
 
     const panelStyle = getComputedStyle(panel);
     const padTop = parseFloat(panelStyle.paddingTop || "0") || 0;
     const padBottom = parseFloat(panelStyle.paddingBottom || "0") || 0;
     const borderTop = parseFloat(panelStyle.borderTopWidth || "0") || 0;
     const borderBottom = parseFloat(panelStyle.borderBottomWidth || "0") || 0;
-    const tabs = panel.querySelector(".bmwc-emoji-tabs");
-    const item = panel.querySelector(".bmwc-emoji-item");
+    const tabs = panel.querySelector(".kwc-emoji-tabs");
+    const item = panel.querySelector(".kwc-emoji-item");
 
     let tabsHeight = 0;
     if (tabs) {
@@ -1704,7 +1749,7 @@
   }
 
   function emojiPanelMaxHeightPx() {
-    const root = document.getElementById("bmwc-root");
+    const root = document.getElementById("kwc-root");
     const panelHeight = root ? Number(root.clientHeight || 0) : 0;
     // Keep enough room for header, messages, input row, and panel padding.
     // On small windows this prevents the emoji picker from swallowing the chat list.
@@ -1714,14 +1759,14 @@
   }
 
   function emojiScrollElement(panel = null) {
-    panel = panel || document.getElementById("bmwc-emoji-panel");
-    return panel ? (panel.querySelector(".bmwc-emoji-scroll") || panel) : null;
+    panel = panel || document.getElementById("kwc-emoji-panel");
+    return panel ? (panel.querySelector(".kwc-emoji-scroll") || panel) : null;
   }
 
   function emojiGridRowStepPx(panel = null) {
-    panel = panel || document.getElementById("bmwc-emoji-panel");
-    const item = panel ? panel.querySelector(".bmwc-emoji-item") : null;
-    const grid = panel ? panel.querySelector(".bmwc-emoji-grid") : null;
+    panel = panel || document.getElementById("kwc-emoji-panel");
+    const item = panel ? panel.querySelector(".kwc-emoji-item") : null;
+    const grid = panel ? panel.querySelector(".kwc-emoji-grid") : null;
     const itemHeight = item ? Number(item.getBoundingClientRect().height || item.offsetHeight || 0) : 0;
     const gridStyle = grid ? getComputedStyle(grid) : null;
     const rowGap = gridStyle ? parseFloat(gridStyle.rowGap || gridStyle.gap || "0") || 0 : 0;
@@ -1730,13 +1775,13 @@
   }
 
   function snapEmojiPanelHeightPx(px, panel = null) {
-    panel = panel || document.getElementById("bmwc-emoji-panel");
+    panel = panel || document.getElementById("kwc-emoji-panel");
     const min = emojiPanelMinHeightPx(panel);
     const max = emojiPanelMaxHeightPx();
     let height = Math.max(min, Math.min(max, Math.round(Number(px) || 180)));
     const scroll = emojiScrollElement(panel);
-    const grid = panel ? panel.querySelector(".bmwc-emoji-grid") : null;
-    if (!grid || !scroll || panel.classList.contains("bmwc-hidden")) return height;
+    const grid = panel ? panel.querySelector(".kwc-emoji-grid") : null;
+    if (!grid || !scroll || panel.classList.contains("kwc-hidden")) return height;
     const panelStyle = getComputedStyle(panel);
     const padTop = parseFloat(panelStyle.paddingTop || "0") || 0;
     const padBottom = parseFloat(panelStyle.paddingBottom || "0") || 0;
@@ -1757,10 +1802,10 @@
   }
 
   function snapEmojiPanelScrollTop(panel = null) {
-    panel = panel || document.getElementById("bmwc-emoji-panel");
-    if (!panel || panel.classList.contains("bmwc-hidden")) return;
+    panel = panel || document.getElementById("kwc-emoji-panel");
+    if (!panel || panel.classList.contains("kwc-hidden")) return;
     const scroll = emojiScrollElement(panel);
-    const grid = panel.querySelector(".bmwc-emoji-grid");
+    const grid = panel.querySelector(".kwc-emoji-grid");
     if (!grid || !scroll) return;
     const row = emojiGridRowStepPx(panel);
     if (!Number.isFinite(row) || row <= 0) return;
@@ -1771,18 +1816,18 @@
   }
 
   function setEmojiPanelHeight(px, persist = true, options = {}) {
-    const panel = document.getElementById("bmwc-emoji-panel");
+    const panel = document.getElementById("kwc-emoji-panel");
     const height = options && options.snap === false
       ? clampEmojiPanelHeightPx(px, panel)
       : snapEmojiPanelHeightPx(px, panel);
     state.emojiPanelHeightPx = height;
-    const root = document.getElementById("bmwc-root");
+    const root = document.getElementById("kwc-root");
     if (root) {
-      root.style.setProperty("--bmwc-emoji-panel-height", height + "px");
-      root.style.setProperty("--bmwc-emoji-panel-min-height", emojiPanelMinHeightPx(panel) + "px");
+      root.style.setProperty("--kwc-emoji-panel-height", height + "px");
+      root.style.setProperty("--kwc-emoji-panel-min-height", emojiPanelMinHeightPx(panel) + "px");
     }
     if (persist) {
-      try { localStorage.setItem("bmwc.emojiPanelHeightPx", String(height)); } catch (_) {}
+      try { localStorage.setItem("kwc.emojiPanelHeightPx", String(height)); } catch (_) {}
     }
     if (panel) {
       const minHeight = emojiPanelMinHeightPx(panel);
@@ -1803,17 +1848,17 @@
   }
 
   function updateEmojiResizeHandleVisibility() {
-    const handle = document.getElementById("bmwc-emoji-resize");
+    const handle = document.getElementById("kwc-emoji-resize");
     if (!handle) return;
     const visible = !!(state.emojiPanelOpen && canUseCustomEmoji() && !state.minimized && !guestChatHidden());
-    handle.classList.toggle("bmwc-hidden", !visible);
+    handle.classList.toggle("kwc-hidden", !visible);
   }
 
   function installEmojiPanelResize(root) {
-    const handle = document.getElementById("bmwc-emoji-resize");
-    const panel = document.getElementById("bmwc-emoji-panel");
-    if (!handle || !panel || handle.dataset.bmwcInstalled === "1") return;
-    handle.dataset.bmwcInstalled = "1";
+    const handle = document.getElementById("kwc-emoji-resize");
+    const panel = document.getElementById("kwc-emoji-panel");
+    if (!handle || !panel || handle.dataset.kwcInstalled === "1") return;
+    handle.dataset.kwcInstalled = "1";
     setEmojiPanelHeight(emojiPanelHeightPx(), false);
 
     const pointY = event => {
@@ -1833,7 +1878,7 @@
         height: Number(panel.getBoundingClientRect().height || emojiPanelHeightPx()),
         currentHeight: Number(panel.getBoundingClientRect().height || emojiPanelHeightPx())
       };
-      document.body.classList.add("bmwc-emoji-resizing");
+      document.body.classList.add("kwc-emoji-resizing");
       try { handle.setPointerCapture && event.pointerId != null && handle.setPointerCapture(event.pointerId); } catch (_) {}
     };
 
@@ -1853,7 +1898,7 @@
       event.stopPropagation();
       setEmojiPanelHeight(start.currentHeight || emojiPanelHeightPx(), true, {snap: false, snapScroll: true});
       state.emojiPanelResizeStart = null;
-      document.body.classList.remove("bmwc-emoji-resizing");
+      document.body.classList.remove("kwc-emoji-resizing");
     };
 
     handle.addEventListener("pointerdown", begin, {passive: false});
@@ -1867,15 +1912,15 @@
   }
 
   function emojiPanelRowScrollTargets(panel = null) {
-    panel = panel || document.getElementById("bmwc-emoji-panel");
+    panel = panel || document.getElementById("kwc-emoji-panel");
     const scroll = emojiScrollElement(panel);
-    const grid = panel ? panel.querySelector(".bmwc-emoji-grid") : null;
+    const grid = panel ? panel.querySelector(".kwc-emoji-grid") : null;
     if (!panel || !scroll || !grid) return [];
 
     const scrollRect = scroll.getBoundingClientRect();
     const rawRows = [];
     const seen = [];
-    grid.querySelectorAll(".bmwc-emoji-item").forEach(item => {
+    grid.querySelectorAll(".kwc-emoji-item").forEach(item => {
       const rect = item.getBoundingClientRect();
       const absoluteTop = Math.max(0, Math.round((rect.top - scrollRect.top) + Number(scroll.scrollTop || 0)));
       if (!seen.some(v => Math.abs(v - absoluteTop) <= 2)) {
@@ -1918,15 +1963,15 @@
   }
 
   function installEmojiPanelWheelStep(panel) {
-    panel = panel || document.getElementById("bmwc-emoji-panel");
+    panel = panel || document.getElementById("kwc-emoji-panel");
     const scroll = emojiScrollElement(panel);
-    if (!panel || !scroll || scroll.dataset.bmwcWheelStepInstalled === "1") return;
-    scroll.dataset.bmwcWheelStepInstalled = "1";
+    if (!panel || !scroll || scroll.dataset.kwcWheelStepInstalled === "1") return;
+    scroll.dataset.kwcWheelStepInstalled = "1";
     scroll.addEventListener("wheel", event => {
-      const isDmPanel = panel && panel.id === "bmwc-dm-emoji-panel";
-      const isGroupPanel = panel && panel.id === "bmwc-group-emoji-panel";
+      const isDmPanel = panel && panel.id === "kwc-dm-emoji-panel";
+      const isGroupPanel = panel && panel.id === "kwc-group-emoji-panel";
       const open = isDmPanel ? state.dmEmojiPanelOpen : (isGroupPanel ? state.groupEmojiPanelOpen : state.emojiPanelOpen);
-      if (!open || panel.classList.contains("bmwc-hidden")) return;
+      if (!open || panel.classList.contains("kwc-hidden")) return;
       if (event.ctrlKey || event.metaKey || event.shiftKey) return;
       const deltaY = Number(event.deltaY || 0);
       if (Math.abs(deltaY) < 1) return;
@@ -1939,44 +1984,44 @@
   }
 
   function applyEmojiPickerSize() {
-    const root = document.getElementById("bmwc-root");
+    const root = document.getElementById("kwc-root");
     if (!root) return;
-    root.style.setProperty("--bmwc-emoji-render-size", emojiRenderSizePx() + "px");
-    root.style.setProperty("--bmwc-emoji-picker-size", emojiPickerSizePx() + "px");
-    root.style.setProperty("--bmwc-emoji-panel-height", emojiPanelHeightPx() + "px");
-    root.style.setProperty("--bmwc-emoji-panel-min-height", emojiPanelMinHeightPx() + "px");
+    root.style.setProperty("--kwc-emoji-render-size", emojiRenderSizePx() + "px");
+    root.style.setProperty("--kwc-emoji-picker-size", emojiPickerSizePx() + "px");
+    root.style.setProperty("--kwc-emoji-panel-height", emojiPanelHeightPx() + "px");
+    root.style.setProperty("--kwc-emoji-panel-min-height", emojiPanelMinHeightPx() + "px");
     syncDirectMessageModalSettings();
   }
 
   function syncDirectMessageModalSettings() {
-    const wrap = document.querySelector(".bmwc-dm-modal-backdrop:not(.bmwc-group-modal-backdrop)");
+    const wrap = document.querySelector(".kwc-dm-modal-backdrop:not(.kwc-group-modal-backdrop)");
     if (wrap) {
       try { applyDetachedModalTheme(wrap); } catch (_) {}
-      wrap.style.setProperty("--bmwc-emoji-render-size", emojiRenderSizePx() + "px");
-      wrap.style.setProperty("--bmwc-emoji-picker-size", emojiPickerSizePx() + "px");
-      wrap.style.setProperty("--bmwc-emoji-panel-height", emojiPanelHeightPx() + "px");
-      const panel = document.getElementById("bmwc-dm-emoji-panel");
+      wrap.style.setProperty("--kwc-emoji-render-size", emojiRenderSizePx() + "px");
+      wrap.style.setProperty("--kwc-emoji-picker-size", emojiPickerSizePx() + "px");
+      wrap.style.setProperty("--kwc-emoji-panel-height", emojiPanelHeightPx() + "px");
+      const panel = document.getElementById("kwc-dm-emoji-panel");
       const minHeight = emojiPanelMinHeightPx(panel);
-      wrap.style.setProperty("--bmwc-emoji-panel-min-height", minHeight + "px");
+      wrap.style.setProperty("--kwc-emoji-panel-min-height", minHeight + "px");
     }
     syncGroupChatModalSettings();
   }
 
   function syncGroupChatModalSettings() {
-    const wrap = document.querySelector(".bmwc-group-modal-backdrop");
+    const wrap = document.querySelector(".kwc-group-modal-backdrop");
     if (!wrap) return;
     try { applyDetachedModalTheme(wrap); } catch (_) {}
-    wrap.style.setProperty("--bmwc-emoji-render-size", emojiRenderSizePx() + "px");
-    wrap.style.setProperty("--bmwc-emoji-picker-size", emojiPickerSizePx() + "px");
-    wrap.style.setProperty("--bmwc-emoji-panel-height", emojiPanelHeightPx() + "px");
-    const panel = document.getElementById("bmwc-group-emoji-panel");
+    wrap.style.setProperty("--kwc-emoji-render-size", emojiRenderSizePx() + "px");
+    wrap.style.setProperty("--kwc-emoji-picker-size", emojiPickerSizePx() + "px");
+    wrap.style.setProperty("--kwc-emoji-panel-height", emojiPanelHeightPx() + "px");
+    const panel = document.getElementById("kwc-group-emoji-panel");
     const minHeight = emojiPanelMinHeightPx(panel);
-    wrap.style.setProperty("--bmwc-emoji-panel-min-height", minHeight + "px");
+    wrap.style.setProperty("--kwc-emoji-panel-min-height", minHeight + "px");
   }
 
   function setElementVisible(el, visible) {
     if (!el) return;
-    el.classList.toggle("bmwc-hidden", !visible);
+    el.classList.toggle("kwc-hidden", !visible);
     el.hidden = !visible;
     el.style.display = visible ? "" : "none";
   }
@@ -1985,13 +2030,13 @@
     if (!state.dmModalOpen) return;
     syncDirectMessageModalSettings();
     const auditMode = state.dmAuditMode === true;
-    const compose = document.querySelector(".bmwc-dm-compose");
-    const newButton = document.getElementById("bmwc-dm-new");
+    const compose = document.querySelector(".kwc-dm-compose");
+    const newButton = document.getElementById("kwc-dm-new");
     setElementVisible(compose, !auditMode);
     setElementVisible(newButton, !auditMode);
     if (auditMode) closeDirectMessageEmojiPanel();
     const emojiVisible = !auditMode && canUseCustomEmoji();
-    const emojiBtn = document.getElementById("bmwc-dm-emoji");
+    const emojiBtn = document.getElementById("kwc-dm-emoji");
     setElementVisible(emojiBtn, emojiVisible);
     if (emojiBtn) emojiBtn.title = t("button.emoji", "Emoji");
     if (!emojiVisible) {
@@ -2002,8 +2047,8 @@
     updateDirectMessageEmojiResizeHandleVisibility();
 
     const uploadVisible = !auditMode && canUpload();
-    const uploadBtn = document.getElementById("bmwc-dm-upload");
-    const fileInput = document.getElementById("bmwc-dm-file");
+    const uploadBtn = document.getElementById("kwc-dm-upload");
+    const fileInput = document.getElementById("kwc-dm-file");
     setElementVisible(uploadBtn, uploadVisible);
     if (uploadBtn) uploadBtn.title = t("button.upload", "Attach");
     if (fileInput) {
@@ -2011,7 +2056,7 @@
       fileInput.accept = uploadAcceptList();
     }
 
-    const input = document.getElementById("bmwc-dm-input");
+    const input = document.getElementById("kwc-dm-input");
     if (input) {
       input.disabled = auditMode;
       if (state.directMessageMaxMessageLength > 0) input.maxLength = state.directMessageMaxMessageLength;
@@ -2023,8 +2068,8 @@
     if (!state.groupModalOpen) return;
     syncGroupChatModalSettings();
     const auditMode = state.groupAuditMode === true;
-    const compose = document.querySelector(".bmwc-group-modal .bmwc-dm-compose");
-    const createButton = document.getElementById("bmwc-group-create");
+    const compose = document.querySelector(".kwc-group-modal .kwc-dm-compose");
+    const createButton = document.getElementById("kwc-group-create");
     setElementVisible(compose, !auditMode);
     setElementVisible(createButton, !auditMode);
     if (auditMode) {
@@ -2032,7 +2077,7 @@
       closeGroupPlayerSearch();
     }
     const emojiVisible = !auditMode && canUseCustomEmoji();
-    const emojiBtn = document.getElementById("bmwc-group-emoji");
+    const emojiBtn = document.getElementById("kwc-group-emoji");
     setElementVisible(emojiBtn, emojiVisible);
     if (emojiBtn) emojiBtn.title = t("button.emoji", "Emoji");
     if (!emojiVisible) {
@@ -2043,8 +2088,8 @@
     updateGroupChatEmojiResizeHandleVisibility();
 
     const uploadVisible = !auditMode && canUpload();
-    const uploadBtn = document.getElementById("bmwc-group-upload");
-    const fileInput = document.getElementById("bmwc-group-file");
+    const uploadBtn = document.getElementById("kwc-group-upload");
+    const fileInput = document.getElementById("kwc-group-file");
     setElementVisible(uploadBtn, uploadVisible);
     if (uploadBtn) uploadBtn.title = t("button.upload", "Attach");
     if (fileInput) {
@@ -2052,7 +2097,7 @@
       fileInput.accept = uploadAcceptList();
     }
 
-    const input = document.getElementById("bmwc-group-input");
+    const input = document.getElementById("kwc-group-input");
     if (input) {
       if (state.groupChatMaxMessageLength > 0) input.maxLength = state.groupChatMaxMessageLength;
       else input.removeAttribute("maxlength");
@@ -2060,20 +2105,21 @@
     }
   }
 
-  function renderCustomEmojiTokens(text) {
+  function renderCustomEmojiTokens(text, allowLinks = true) {
     text = String(text ?? "");
-    if (!state.emojiEnabled || !state.emojiById || state.emojiById.size === 0) return linkifyText(text);
+    const renderText = value => allowLinks ? linkifyText(value) : esc(value);
+    if (!state.emojiEnabled || !state.emojiById || state.emojiById.size === 0) return renderText(text);
     const re = customEmojiTokenRegex();
     let out = "";
     let last = 0;
     let match;
     while ((match = re.exec(text)) !== null) {
-      out += linkifyText(text.slice(last, match.index));
+      out += renderText(text.slice(last, match.index));
       const item = customEmojiByToken(match[1]);
       out += item ? customEmojiImgHtml(item) : esc(match[0]);
       last = match.index + match[0].length;
     }
-    out += linkifyText(text.slice(last));
+    out += renderText(text.slice(last));
     return out;
   }
 
@@ -2103,12 +2149,12 @@
   }
 
   function renderReplyCompose() {
-    const wrap = document.getElementById("bmwc-reply-compose");
+    const wrap = document.getElementById("kwc-reply-compose");
     if (!wrap) return;
     const target = state.replyTarget;
-    wrap.classList.toggle("bmwc-hidden", !target || !target.id);
-    const label = document.getElementById("bmwc-reply-compose-label");
-    const preview = document.getElementById("bmwc-reply-compose-preview");
+    wrap.classList.toggle("kwc-hidden", !target || !target.id);
+    const label = document.getElementById("kwc-reply-compose-label");
+    const preview = document.getElementById("kwc-reply-compose-preview");
     if (label) label.innerHTML = target && target.id ? formatReplyComposeLabelHtml(target.sender || "") : "";
     if (preview) preview.innerHTML = target && target.id ? replyPreviewHtml(target.preview || "") : "";
   }
@@ -2118,7 +2164,7 @@
     if (!target) return;
     state.replyTarget = target;
     renderReplyCompose();
-    const input = document.getElementById("bmwc-message");
+    const input = document.getElementById("kwc-message");
     if (input) input.focus();
   }
 
@@ -2131,7 +2177,7 @@
     // Reply previews are stored as a plain short copy of the original text.
     // Use the dedicated legacy text renderer so raw §a/&a/&#RRGGBB tags do not
     // leak into the compact reply reference UI.
-    return minecraftLegacyTextHtml(String(value || ""), true);
+    return minecraftLegacyTextHtml(String(value || ""), true, false);
   }
 
   function replyReferenceHtml(msg) {
@@ -2141,18 +2187,18 @@
     const plainSender = plainLegacyText(sender).trim() || t("sender.unknown", "Unknown");
     const plainPreview = plainLegacyText(preview).trim();
     const title = plainPreview ? fmt("reply.jump", "Jump to replied message") + ": " + plainSender + " - " + plainPreview : t("reply.jump", "Jump to replied message");
-    return `<button type="button" class="bmwc-reply-ref" data-reply-jump="${esc(msg.replyToId)}" title="${esc(title)}">
-      <span class="bmwc-reply-ref-sender">${minecraftLegacyTextHtml(sender, true)}</span>
-      <span class="bmwc-reply-ref-preview">${replyPreviewHtml(preview)}</span>
+    return `<button type="button" class="kwc-reply-ref" data-reply-jump="${esc(msg.replyToId)}" title="${esc(title)}">
+      <span class="kwc-reply-ref-sender">${minecraftLegacyTextHtml(sender, true)}</span>
+      <span class="kwc-reply-ref-preview">${replyPreviewHtml(preview)}</span>
     </button>`;
   }
 
   function highlightMessageElement(el) {
     if (!el) return;
-    el.classList.remove("bmwc-reply-highlight");
+    el.classList.remove("kwc-reply-highlight");
     void el.offsetWidth;
-    el.classList.add("bmwc-reply-highlight");
-    setTimeout(() => { try { el.classList.remove("bmwc-reply-highlight"); } catch (_) {} }, 2600);
+    el.classList.add("kwc-reply-highlight");
+    setTimeout(() => { try { el.classList.remove("kwc-reply-highlight"); } catch (_) {} }, 2600);
   }
 
   function cancelReplyJumpDeferredWork(reason = "reply-jump") {
@@ -2289,10 +2335,6 @@
       suppressBottomStick: true,
       ignoreVisibleRangeProtection: true,
       focusIndex: idx,
-      allowDuringMedia: true,
-      allowDuringVisibleMedia: true,
-      allowDuringMediaLayout: true,
-      deferDuringMediaLayout: false,
       deferDuringScroll: false
     });
     return true;
@@ -2314,7 +2356,7 @@
     id = String(id || "");
     if (!id) return;
     clearTimeout(state.replyJumpStabilizeTimer);
-    const selector = `.bmwc-msg[data-id="${cssEscape(id)}"]`;
+    const selector = `.kwc-msg[data-id="${cssEscape(id)}"]`;
     const lockMs = Math.max(450, Number(options.lockMs || 1100));
     const delays = Array.isArray(options.delays) ? options.delays : [0, 60, 160, 360, 720];
     const startedAt = Number(options.startedAt || state.replyJumpStartedAt || Date.now());
@@ -2322,7 +2364,7 @@
 
     const run = () => {
       if (state.replyJumpGeneration !== generation) return;
-      const box = document.getElementById("bmwc-messages");
+      const box = document.getElementById("kwc-messages");
       if (!box) return;
       if (pos > 0 && replyJumpLooksUserMoved(box, startedAt)) {
         cancelReplyJumpForUserScroll("reply-jump-user-moved");
@@ -2381,9 +2423,9 @@
   function scrollToMessageId(id, options = {}) {
     id = String(id || "");
     if (!id) return false;
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     if (!box) return false;
-    const selector = `.bmwc-msg[data-id="${cssEscape(id)}"]`;
+    const selector = `.kwc-msg[data-id="${cssEscape(id)}"]`;
     const lockMs = Math.max(1000, Number(options.lockMs || 1800));
     state.replyJumpTargetId = id;
 
@@ -2403,7 +2445,7 @@
 
     const finish = () => {
       if (state.replyJumpGeneration !== generation) return;
-      const currentBox = document.getElementById("bmwc-messages");
+      const currentBox = document.getElementById("kwc-messages");
       const later = currentBox ? currentBox.querySelector(selector) : null;
       if (later) centerMessageElementInBox(currentBox, later, {reason: "reply-jump-virtual", suppressRenderMs: lockMs, suppressUpdateMs: lockMs});
       else renderReplyJumpFocusedRange(id, generation, {reason: "reply-jump-virtual-retry"});
@@ -2505,7 +2547,7 @@
   }
 
   function senderIdentitySelector() {
-    return ".bmwc-sender[data-real-sender], .bmwc-dm-identity[data-real-sender], [data-bmwc-identity-toggle][data-real-sender]";
+    return ".kwc-sender[data-real-sender], .kwc-dm-identity[data-real-sender], [data-kwc-identity-toggle][data-real-sender]";
   }
 
   function applySenderIdentityMode() {
@@ -2514,7 +2556,7 @@
 
   function toggleSenderIdentityMode() {
     state.senderIdentityMode = state.senderIdentityMode === "real" ? "display" : "real";
-    localStorage.setItem("bmwc.senderIdentityMode", state.senderIdentityMode);
+    localStorage.setItem("kwc.senderIdentityMode", state.senderIdentityMode);
     applySenderIdentityMode();
   }
 
@@ -2602,7 +2644,7 @@
     let hash = 0;
     for (let i = 0; i < key.length; i++) hash = ((hash * 31) + key.charCodeAt(i)) >>> 0;
     const hue = palette[hash % palette.length];
-    return `<span class="bmwc-server-badge" data-server-id="${esc(server.id)}" style="--bmwc-server-hue:${hue}" title="${esc(server.title)}">${esc(server.label)}</span><span class="bmwc-meta-sep" aria-hidden="true">·</span>`;
+    return `<span class="kwc-server-badge" data-server-id="${esc(server.id)}" style="--kwc-server-hue:${hue}" title="${esc(server.title)}">${esc(server.label)}</span><span class="kwc-meta-sep" aria-hidden="true">·</span>`;
   }
 
   function publicMessageDirectMessageTarget(msg) {
@@ -2640,7 +2682,7 @@
   }
 
   function publicMessageDirectMessageTargetFromElement(button, messageElement, fallbackMsg) {
-    const root = messageElement || (button && button.closest ? button.closest(".bmwc-msg") : null);
+    const root = messageElement || (button && button.closest ? button.closest(".kwc-msg") : null);
     const fromMessage = publicMessageDirectMessageTarget(fallbackMsg);
     const read = (buttonKey, rootKey, fallback) => {
       const buttonValue = button && button.dataset ? String(button.dataset[buttonKey] || "").trim() : "";
@@ -2671,12 +2713,12 @@
   }
 
   function messageOriginSourceHtml(msg) {
-    const content = `${serverBadgeHtml(msg)}<span class="bmwc-source-label">${esc(displaySource(msg))}</span>`;
+    const content = `${serverBadgeHtml(msg)}<span class="kwc-source-label">${esc(displaySource(msg))}</span>`;
     const target = publicMessageDirectMessageTarget(msg);
     if (!target || !state.directMessageEnabled) return content;
     const player = directMessagePlainLabel(target.label) || target.uuid;
     const title = fmt("dm.openForPlayer", "Open direct message with {player}", {player});
-    return `<button type="button" class="bmwc-message-dm-target" ${directMessageTargetDataAttributes(target)} title="${esc(title)}" aria-label="${esc(title)}">${content}</button>`;
+    return `<button type="button" class="kwc-message-dm-target" ${directMessageTargetDataAttributes(target)} title="${esc(title)}" aria-label="${esc(title)}">${content}</button>`;
   }
 
   async function openDirectMessageForTarget(target) {
@@ -2731,7 +2773,7 @@
       updateDirectMessageViewMode();
     }
 
-    const input = document.getElementById("bmwc-dm-input");
+    const input = document.getElementById("kwc-dm-input");
     if (input) {
       setActiveComposeInput(input);
       input.focus();
@@ -2745,14 +2787,14 @@
 
   async function loadLang() {
     try {
-      const lang = String(state.selectedLanguage || localStorage.getItem("bmwc.language") || "").trim();
+      const lang = String(state.selectedLanguage || localStorage.getItem("kwc.language") || "").trim();
       const data = await api("/lang" + (lang ? "?lang=" + encodeURIComponent(lang) : ""));
       if (data && data.ok && data.strings) {
         state.lang = data.strings;
         state.availableLanguages = Array.isArray(data.available) ? data.available.map(String) : state.availableLanguages;
       }
     } catch (e) {
-      console.warn("BlueMapWebChat lang failed", e);
+      console.warn("KOKOTO WebChat lang failed", e);
     }
   }
 
@@ -2768,11 +2810,11 @@
   }
 
   function savedUserLanguage() {
-    return String(localStorage.getItem("bmwc.language") || "");
+    return String(localStorage.getItem("kwc.language") || "");
   }
 
   function selectedLocale() {
-    const lang = String(state.selectedLanguage || localStorage.getItem("bmwc.language") || (state.config && state.config.language) || navigator.language || "en-US").trim();
+    const lang = String(state.selectedLanguage || localStorage.getItem("kwc.language") || (state.config && state.config.language) || navigator.language || "en-US").trim();
     return lang || "en-US";
   }
 
@@ -2831,27 +2873,30 @@
   }
 
   function applyTimeDisplayMode() {
-    document.querySelectorAll(".bmwc-time[data-time]").forEach(updateTimeElement);
+    document.querySelectorAll(".kwc-time[data-time]").forEach(updateTimeElement);
   }
 
   function toggleTimeDisplayMode() {
     state.timeDisplayMode = state.timeDisplayMode === "full" ? "short" : "full";
-    localStorage.setItem("bmwc.timeDisplayMode", state.timeDisplayMode);
+    localStorage.setItem("kwc.timeDisplayMode", state.timeDisplayMode);
     applyTimeDisplayMode();
   }
 
   function installTimeDisplayDelegation() {
-    if (document.__bmwcTimeDisplayDelegationInstalled) return;
-    document.__bmwcTimeDisplayDelegationInstalled = true;
+    if (document.__kwcTimeDisplayDelegationInstalled) return;
+    document.__kwcTimeDisplayDelegationInstalled = true;
 
     const timeTarget = event => {
       const target = event.target && event.target.closest
-        ? event.target.closest(".bmwc-time[data-time]")
+        ? event.target.closest(".kwc-time[data-time]")
         : null;
       if (!target) return null;
-      const root = document.getElementById("bmwc-root");
-      const dmModal = document.querySelector(".bmwc-dm-modal-backdrop");
-      return (!root || root.contains(target) || (dmModal && dmModal.contains(target))) ? target : null;
+      const root = document.getElementById("kwc-root");
+      const dmModal = document.querySelector(".kwc-dm-modal-backdrop");
+      const pinnedModal = document.querySelector(".kwc-pinned-backdrop");
+      return (!root || root.contains(target)
+        || (dmModal && dmModal.contains(target))
+        || (pinnedModal && pinnedModal.contains(target))) ? target : null;
     };
 
     document.addEventListener("click", event => {
@@ -2875,41 +2920,51 @@
   function installTimeToggle(root) {
     if (!root) return;
     installTimeDisplayDelegation();
-    root.querySelectorAll(".bmwc-time[data-time]").forEach(updateTimeElement);
+    root.querySelectorAll(".kwc-time[data-time]").forEach(updateTimeElement);
   }
 
   async function setUserLanguage(value) {
     const lang = String(value || "").trim();
     state.selectedLanguage = lang;
-    if (lang) localStorage.setItem("bmwc.language", lang);
-    else localStorage.removeItem("bmwc.language");
+    if (lang) localStorage.setItem("kwc.language", lang);
+    else localStorage.removeItem("kwc.language");
     await loadLang();
     refreshStaticLabels();
     refreshRenderedMessagesForLocale();
     if (state.prefsModalOpen) {
       openUserPreferencesModal(true);
     }
-    scheduleVirtualRender({preserveScroll: true, stickToBottom: false, allowDuringMedia: true, deferDuringScroll: false, deferDuringMediaLayout: false});
+    scheduleVirtualRender({preserveScroll: true, stickToBottom: false, deferDuringScroll: false});
   }
 
   async function resetUserLanguage() {
     state.selectedLanguage = "";
-    localStorage.removeItem("bmwc.language");
+    localStorage.removeItem("kwc.language");
     await loadLang();
     refreshStaticLabels();
     refreshRenderedMessagesForLocale();
     if (state.prefsModalOpen) {
       openUserPreferencesModal(true);
     }
-    scheduleVirtualRender({preserveScroll: true, stickToBottom: false, allowDuringMedia: true, deferDuringScroll: false, deferDuringMediaLayout: false});
+    scheduleVirtualRender({preserveScroll: true, stickToBottom: false, deferDuringScroll: false});
   }
 
 
 
   function postFrame(type, payload = {}) {
     try {
-      window.parent.postMessage(Object.assign({source: "BlueMapWebChat", type}, payload), "*");
+      window.parent.postMessage(Object.assign({source: "KWC", type}, payload), "*");
     } catch (_) {}
+  }
+
+  function trustedParentMessageEvent(event) {
+    try {
+      if (!event) return false;
+      const expected = (window.parent && window.parent !== window) ? window.parent : window;
+      return event.source === expected;
+    } catch (_) {
+      return false;
+    }
   }
 
   function clampNumber(value, min, max, fallback) {
@@ -2944,8 +2999,8 @@
     let height = Number(c.uiDefaultHeight) || 462;
 
     if (c.uiRememberWindowSize !== false) {
-      const savedW = Number(localStorage.getItem("bmwc.windowWidth"));
-      const savedH = Number(localStorage.getItem("bmwc.windowHeight"));
+      const savedW = Number(localStorage.getItem("kwc.windowWidth"));
+      const savedH = Number(localStorage.getItem("kwc.windowHeight"));
       const saved = sanitizeSavedWindowSize(savedW, savedH);
       if (saved) {
         width = saved.width;
@@ -2960,22 +3015,22 @@
   function saveWindowSize() {
     const c = state.config || {};
     if (c.uiRememberWindowSize === false) return;
-    localStorage.setItem("bmwc.windowWidth", String(state.frameNormalWidth));
-    localStorage.setItem("bmwc.windowHeight", String(state.frameNormalHeight));
+    localStorage.setItem("kwc.windowWidth", String(state.frameNormalWidth));
+    localStorage.setItem("kwc.windowHeight", String(state.frameNormalHeight));
   }
 
 
   function updateResizeLockButton() {
-    const btn = document.getElementById("bmwc-resize-lock");
-    const root = document.getElementById("bmwc-root");
+    const btn = document.getElementById("kwc-resize-lock");
+    const root = document.getElementById("kwc-root");
     const canResize = !!(state.config && state.config.uiResizable);
     const visible = canResize && !state.minimized && !guestChatHidden();
     if (root) {
-      root.classList.toggle("bmwc-resizable", canResize && !state.resizeLocked);
-      root.classList.toggle("bmwc-resize-locked", !!state.resizeLocked);
+      root.classList.toggle("kwc-resizable", canResize && !state.resizeLocked);
+      root.classList.toggle("kwc-resize-locked", !!state.resizeLocked);
     }
     if (!btn) return;
-    btn.classList.toggle("bmwc-hidden", !visible);
+    btn.classList.toggle("kwc-hidden", !visible);
     btn.setAttribute("aria-pressed", state.resizeLocked ? "true" : "false");
     btn.textContent = state.resizeLocked ? "🔒" : "⇲";
     btn.title = state.resizeLocked ? t("button.resizeUnlock", "Unlock resize") : t("button.resizeLock", "Lock resize");
@@ -2984,7 +3039,7 @@
 
   function toggleResizeLocked() {
     state.resizeLocked = !state.resizeLocked;
-    localStorage.setItem("bmwc.resizeLocked", state.resizeLocked ? "1" : "0");
+    localStorage.setItem("kwc.resizeLocked", state.resizeLocked ? "1" : "0");
     if (state.resizeStart) state.resizeStart = null;
     updateResizeLockButton();
     updateFrameSize();
@@ -2992,12 +3047,12 @@
 
   function updateFrameSize() {
     if (state.isPip) {
-      const title = document.querySelector(".bmwc-title");
-      if (title) title.textContent = t("title.full", "BlueMap Chat");
+      const title = document.querySelector(".kwc-title");
+      if (title) title.textContent = t("title.full", "KOKOTO WebChat");
       return;
     }
-    const title = document.querySelector(".bmwc-title");
-    if (title) title.textContent = state.minimized ? t("title.minimized", "Chat") : t("title.full", "BlueMap Chat");
+    const title = document.querySelector(".kwc-title");
+    if (title) title.textContent = state.minimized ? t("title.minimized", "Chat") : t("title.full", "KOKOTO WebChat");
     const loginOnly = guestChatHidden() && !state.minimized;
     postFrame("resize", {
       minimized: state.minimized,
@@ -3014,8 +3069,8 @@
 
 
   function installMapPointerRelayBridge() {
-    if (window.__bmwcMapPointerRelayBridgeInstalled) return;
-    window.__bmwcMapPointerRelayBridgeInstalled = true;
+    if (window.__kwcMapPointerRelayBridgeInstalled) return;
+    window.__kwcMapPointerRelayBridgeInstalled = true;
 
     const relay = (eventName, event) => {
       try {
@@ -3054,10 +3109,18 @@
     document.addEventListener("mouseup", event => relay("mouseup", event), {capture: true, passive: true});
   }
 
+  async function refreshParentUserPreferences(profileStatus = "") {
+    if (serverUserProfilesActive()) await loadAccountProfiles();
+    const payload = buildUserPreferencesPayload();
+    if (profileStatus) payload.profileStatus = String(profileStatus);
+    postFrame("openUserPreferences", payload);
+  }
+
   function installParentResizeBridge() {
     window.addEventListener("message", event => {
+      if (!trustedParentMessageEvent(event)) return;
       const data = event.data || {};
-      if (!data || data.source !== "BlueMapWebChatParent") return;
+      if (!data || data.source !== "KWCParent") return;
       if (data.type === "parentResized") {
         const b = resizeBounds();
         state.frameNormalWidth = clampNumber(data.width, b.minW, b.maxW, state.frameNormalWidth);
@@ -3076,8 +3139,8 @@
             else if (canUseWebPush()) await enableWebPush();
           } else if (action === "testPage") {
             setNotificationsEnabledLocal(true);
-            if (canUseWebPush()) await enableWebPush();
-            showBrowserNotification(configuredNotificationTitle(), t("preferences.notificationsTest", "Test notification"), {tag: "bmwc-test", force: true});
+            if (notificationUsesMobilePushUi() && canUseWebPush()) await testWebPush();
+            else showBrowserNotification(configuredNotificationTitle(), t("preferences.notificationsTest", "Test notification"), {tag: "kwc-test", force: true});
           } else if (action === "setNotificationOptions") {
             const opts = data.options && typeof data.options === "object" ? data.options : {};
             const hasSystemMode = Object.prototype.hasOwnProperty.call(opts, "systemMode");
@@ -3127,6 +3190,52 @@
             notificationKeywords: notificationKeywordsText()
           });
         })();
+      } else if (data.type === "userProfileSave") {
+        (async () => {
+          try {
+            const profile = await saveAccountProfile(data.id || "", data.name || "");
+            await refreshParentUserPreferences((t("preferences.presetSaved", "Saved.")) + " " + String(profile.name || ""));
+          } catch (e) {
+            await refreshParentUserPreferences((t("preferences.presetSaveFailed", "Save failed.")) + " " + String(e && e.message || ""));
+          }
+        })();
+      } else if (data.type === "userProfileLoad") {
+        const id = String(data.id || "");
+        const profile = (state.accountProfiles || []).find(item => String(item && item.id || "") === id);
+        if (profile) {
+          applyAccountProfile(profile);
+          refreshParentUserPreferences((t("preferences.presetLoaded", "Loaded.")) + " " + String(profile.name || "")).catch(() => {});
+        }
+      } else if (data.type === "userProfileDelete") {
+        (async () => {
+          try {
+            const id = String(data.id || "");
+            const profile = (state.accountProfiles || []).find(item => String(item && item.id || "") === id);
+            const name = profile && profile.name || "";
+            await deleteAccountProfile(id);
+            await refreshParentUserPreferences((t("preferences.presetDeleted", "Deleted.")) + (name ? " " + name : ""));
+          } catch (e) {
+            await refreshParentUserPreferences((t("preferences.presetSaveFailed", "Save failed.")) + " " + String(e && e.message || ""));
+          }
+        })();
+      } else if (data.type === "userProfileExport") {
+        (async () => {
+          try {
+            const exported = await fetchAccountProfileExport(data.id || "");
+            postFrame("userProfileExportData", {json: exported.json, name: exported.name});
+          } catch (e) {
+            postFrame("userProfileStatus", {message: (t("preferences.presetExportFailed", "Export failed.")) + " " + String(e && e.message || "")});
+          }
+        })();
+      } else if (data.type === "userProfileImport") {
+        (async () => {
+          try {
+            const profile = await importAccountProfileJson(data.profileJson || "");
+            await refreshParentUserPreferences((t("preferences.presetSaved", "Saved.")) + " " + String(profile.name || ""));
+          } catch (e) {
+            await refreshParentUserPreferences((t("preferences.presetImportFailed", "Import failed.")) + " " + String(e && e.message || ""));
+          }
+        })();
       } else if (data.type === "userPreferencesSet") {
         const persist = data.final !== false;
         if (data.key === "opacity") setUserOpacity(data.value, persist);
@@ -3145,7 +3254,7 @@
         applyFontSizeConfig();
         applyThemeConfig();
         refreshRenderedMessagesForLocale();
-        scheduleVirtualRender({preserveScroll: true, stickToBottom: false, allowDuringMedia: true, deferDuringScroll: false, deferDuringMediaLayout: false});
+        scheduleVirtualRender({preserveScroll: true, stickToBottom: false, deferDuringScroll: false});
       } else if (data.type === "userPreferencesReset") {
         resetUserOpacity();
         resetUserFontSize();
@@ -3195,7 +3304,7 @@
 
   function installDrag(root) {
     if (state.isPip) return;
-    const header = root.querySelector(".bmwc-header");
+    const header = root.querySelector(".kwc-header");
     if (!header) return;
 
     let active = false;
@@ -3281,30 +3390,34 @@
   function ensureGuestNameForConfig(force = false) {
     const prefix = (state.config && state.config.guestNamePrefix) || "Guest-";
     const customDisabled = state.config && state.config.guestAllowCustomName === false;
-    const stored = String(state.guestName || localStorage.getItem("bmwc.guestName") || "").trim();
+    const stored = String(state.guestName || localStorage.getItem("kwc.guestName") || "").trim();
     const mustRegenerate = force || !stored || (customDisabled && !generatedGuestNameMatches(stored, prefix));
     if (mustRegenerate) {
       state.guestName = randomGuestName(prefix);
-      localStorage.setItem("bmwc.guestName", state.guestName);
+      localStorage.setItem("kwc.guestName", state.guestName);
       return state.guestName;
     }
-    state.guestName = stored;
-    localStorage.setItem("bmwc.guestName", state.guestName);
+    state.guestName = customDisabled ? stored : limitGuestNameCodePoints(stored);
+    localStorage.setItem("kwc.guestName", state.guestName);
     return state.guestName;
+  }
+
+  function limitGuestNameCodePoints(value) {
+    return Array.from(String(value || "")).slice(0, 16).join("");
   }
 
   function currentGuestNameForSubmit() {
     if (state.config && state.config.guestAllowCustomName === false) {
       return ensureGuestNameForConfig();
     }
-    const guestInput = document.getElementById("bmwc-guest-name");
-    state.guestName = (guestInput && guestInput.value.trim()) || state.guestName || ensureGuestNameForConfig();
-    localStorage.setItem("bmwc.guestName", state.guestName);
+    const guestInput = document.getElementById("kwc-guest-name");
+    state.guestName = limitGuestNameCodePoints((guestInput && guestInput.value.trim()) || state.guestName || ensureGuestNameForConfig());
+    localStorage.setItem("kwc.guestName", state.guestName);
     return state.guestName;
   }
 
   function installResize(root) {
-    const handle = root.querySelector("#bmwc-resize-handle");
+    const handle = root.querySelector("#kwc-resize-handle");
     if (!handle) return;
 
     const pointFromEvent = event => {
@@ -3396,7 +3509,7 @@
       const observer = new MutationObserver(mutations => {
         for (const m of mutations || []) {
           const nodes = [...Array.from(m.addedNodes || []), ...Array.from(m.removedNodes || [])];
-          if (nodes.some(n => n && n.nodeType === 1 && n.classList && (n.classList.contains("bmwc-modal-backdrop") || n.classList.contains("bmwc-modal-wrap")))) {
+          if (nodes.some(n => n && n.nodeType === 1 && n.classList && (n.classList.contains("kwc-modal-backdrop") || n.classList.contains("kwc-modal-wrap")))) {
             scheduleScrollAffordanceRefresh("modal-change");
             break;
           }
@@ -3407,99 +3520,417 @@
     } catch (_) {}
   }
 
+  function standalonePipRelaySupported() {
+    return typeof BroadcastChannel !== "undefined";
+  }
+
+  function closeStandalonePipRelay() {
+    if (!standalonePipRelay) return;
+    try { standalonePipRelay.close(); } catch (_) {}
+    standalonePipRelay = null;
+  }
+
+  function handleMirroredStreamEvent(type, rawData) {
+    const eventType = String(type || "");
+    try {
+      if (eventType === "ready") {
+        state.streamLastOpenAt = Date.now();
+        const status = document.getElementById("kwc-status");
+        if (status && !state.token) status.textContent = t("status.guest", "guest");
+        updateLoginState();
+        return;
+      }
+      if (eventType === "reconnecting") {
+        markStreamStatusReconnecting();
+        return;
+      }
+      if (eventType === "chat") {
+        if (guestChatHidden()) return;
+        const msg = JSON.parse(rawData || "{}");
+        if (state.historyHasAfter) {
+          refreshScrollAffordances(document.getElementById("kwc-messages"));
+          return;
+        }
+        addMessage(msg);
+        return;
+      }
+      if (eventType === "delete") {
+        markMessageDeleted(JSON.parse(rawData || "{}").id);
+        return;
+      }
+      if (eventType === "dm") {
+        const data = JSON.parse(rawData || "{}");
+        if (!state.directMessageEnabled || !state.token) return;
+        loadDirectMessageThreads(true).then(() => {
+          if (state.dmModalOpen && state.dmActiveThreadId && (!data.threadId || data.threadId === state.dmActiveThreadId)) {
+            loadDirectMessageMessages(state.dmActiveThreadId);
+          }
+        });
+        return;
+      }
+      if (eventType === "group") {
+        const data = JSON.parse(rawData || "{}");
+        if (!state.groupChatEnabled || !state.token) return;
+        loadGroupChatRooms(true).then(() => {
+          if (state.groupModalOpen && state.groupActiveRoomId && (!data.roomId || data.roomId === state.groupActiveRoomId)) {
+            loadGroupChatMessages(state.groupActiveRoomId);
+          }
+        });
+        return;
+      }
+      if (eventType === "pins") {
+        const data = JSON.parse(rawData || "{}");
+        if (data && Array.isArray(data.pins)) {
+          state.pins = canViewPinnedMessages() ? data.pins : [];
+          renderPinnedBar();
+          if (state.messages && state.messages.length) scheduleVirtualRender({preserveScroll: true});
+        }
+        return;
+      }
+      if (eventType === "auth") {
+        const data = JSON.parse(rawData || "{}");
+        handleAuthExpired(data.reason || "expired", {reconnect: false});
+        return;
+      }
+      if (eventType === "clear") {
+        state.messages = [];
+        state.nextLocalMessageId = 1;
+        renderVirtualMessages({stickToBottom: true});
+        state.historyHasMore = false;
+        state.historyHasAfter = false;
+        state.historyOldestId = "";
+        state.historyNewestId = "";
+      }
+    } catch (_) {}
+  }
+
+  function installStandalonePipRelaySubscriber() {
+    if (!state.isPip || !standalonePipRelayId || !standalonePipRelaySupported()) return false;
+    closeStandalonePipRelay();
+    try {
+      standalonePipRelay = new BroadcastChannel(standalonePipRelayId);
+      standalonePipRelay.onmessage = event => {
+        const data = event && event.data || {};
+        if (!data || data.source !== "KWCStandalonePip") return;
+        if (data.kind === "stream") handleMirroredStreamEvent(data.type, data.data || "");
+      };
+      standalonePipRelay.postMessage({source: "KWCStandalonePip", kind: "hello"});
+      return true;
+    } catch (_) {
+      closeStandalonePipRelay();
+      return false;
+    }
+  }
+
+  function ensureStandalonePipRelayPublisher() {
+    if (!state.isStandalone || state.isPip || !standalonePipRelaySupported()) return "";
+    if (standalonePipRelay && standalonePipRelayId) return standalonePipRelayId;
+    closeStandalonePipRelay();
+    standalonePipRelayId = "kwc-pip-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+    try {
+      standalonePipRelay = new BroadcastChannel(standalonePipRelayId);
+      standalonePipRelay.onmessage = event => {
+        const data = event && event.data || {};
+        if (!data || data.source !== "KWCStandalonePip" || data.kind !== "hello") return;
+        standalonePipRelay.postMessage({source: "KWCStandalonePip", kind: "stream", type: "ready", data: ""});
+      };
+      return standalonePipRelayId;
+    } catch (_) {
+      closeStandalonePipRelay();
+      standalonePipRelayId = "";
+      return "";
+    }
+  }
+
+  function publishStandalonePipStream(type, rawData = "") {
+    if (!state.isStandalone || state.isPip || !standalonePipRelay) return;
+    try {
+      standalonePipRelay.postMessage({
+        source: "KWCStandalonePip",
+        kind: "stream",
+        type: String(type || ""),
+        data: String(rawData == null ? "" : rawData)
+      });
+    } catch (_) {}
+  }
+
+  async function toggleStandalonePictureInPicture(labels = {}) {
+    const pipLabel = (key, fallback, values = {}) => {
+      let value = String(labels && labels[key] || fallback || key);
+      Object.keys(values || {}).forEach(k => { value = value.replace("{" + k + "}", String(values[k] ?? "")); });
+      return value;
+    };
+
+    if (standalonePipWindow && !standalonePipWindow.closed) {
+      standalonePipWindow.close();
+      return;
+    }
+
+    const api = window.documentPictureInPicture;
+    if (!api || typeof api.requestWindow !== "function") {
+      state.lastPipResultAt = Date.now();
+      const message = pipLabel("unsupported", "Document Picture-in-Picture is not supported by this browser. Try desktop Chrome or Edge.");
+      try { alert(message); } catch (_) {}
+      return;
+    }
+
+    try {
+      const root = document.getElementById("kwc-root");
+      const rect = root ? root.getBoundingClientRect() : null;
+      const width = Math.max(300, Math.min(640, rect && rect.width ? rect.width : 372));
+      const height = Math.max(260, Math.min(720, rect && rect.height ? rect.height : 462));
+      const pipWindow = await api.requestWindow({width, height, disallowReturnToOpener: true});
+      standalonePipWindow = pipWindow;
+      state.lastPipResultAt = Date.now();
+
+      const doc = pipWindow.document;
+      doc.open();
+      doc.write("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='referrer' content='strict-origin-when-cross-origin'></head><body></body></html>");
+      doc.close();
+
+      // Standalone owns its complete UI in this document, so copy the already
+      // active inline styles rather than asking the BlueMap parent bootstrap to
+      // recreate them.
+      document.querySelectorAll("style").forEach(sourceStyle => {
+        const style = doc.createElement("style");
+        style.textContent = sourceStyle.textContent || "";
+        doc.head.appendChild(style);
+      });
+      const pipStyle = doc.createElement("style");
+      pipStyle.textContent = "html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;}#kwc-root{right:0!important;bottom:0!important;width:100%!important;max-width:100%!important;height:100%!important;max-height:100%!important;}#kwc-pip,#kwc-min{display:none!important;}.kwc-header{cursor:default!important;}";
+      doc.head.appendChild(pipStyle);
+
+      const relayId = ensureStandalonePipRelayPublisher();
+      if (!relayId) throw new Error("standalone_pip_relay_unavailable");
+
+      pipWindow.KokotoWebChatConfig = Object.assign({}, cfg, {
+        apiBase: apiBase,
+        apiBaseUrl: apiBase,
+        pip: true,
+        standalone: false,
+        pipStreamChannel: relayId,
+        parentPageUrl: window.location.href
+      });
+      const script = doc.createElement("script");
+      script.textContent = KWC_INNER_SELF_SOURCE;
+      doc.body.appendChild(script);
+
+      // Keep the original standalone chat instance alive. Only its UI is folded
+      // while the PiP view is open; SSE, session state and Web Push remain owned
+      // by the original page.
+      standalonePipRestoreMinimized = state.minimized;
+      if (!state.minimized) toggleMin({persist: false});
+
+      pipWindow.addEventListener("pagehide", () => {
+        standalonePipWindow = null;
+        if (!standalonePipRestoreMinimized && state.minimized) toggleMin({persist: false});
+        standalonePipRestoreMinimized = false;
+        closeStandalonePipRelay();
+        standalonePipRelayId = "";
+      }, {once: true});
+    } catch (err) {
+      standalonePipWindow = null;
+      closeStandalonePipRelay();
+      standalonePipRelayId = "";
+      if (!standalonePipRestoreMinimized && state.minimized) toggleMin({persist: false});
+      standalonePipRestoreMinimized = false;
+      state.lastPipResultAt = Date.now();
+      const detail = err && err.message ? ((err.name ? err.name + ": " : "") + err.message) : String(err || "unknown error");
+      const message = pipLabel("openFailed", "Failed to open Picture-in-Picture window: {error}", {error: detail});
+      try { alert(message); } catch (_) {}
+    }
+  }
+
+  let responsiveHeaderResizeObserver = null;
+  let responsiveHeaderMutationObserver = null;
+  let responsiveHeaderSyncFrame = 0;
+
+  function headerElementVisible(el) {
+    if (!el) return false;
+    const style = getComputedStyle(el);
+    return style.display !== "none" && style.visibility !== "hidden";
+  }
+
+  function headerOuterWidth(el) {
+    if (!headerElementVisible(el)) return 0;
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    const width = Math.max(Number(rect.width || 0), Number(el.scrollWidth || 0));
+    return width + (parseFloat(style.marginLeft) || 0) + (parseFloat(style.marginRight) || 0);
+  }
+
+  function headerActionGroupNaturalWidth(group) {
+    if (!group || !headerElementVisible(group)) return 0;
+    const visible = Array.from(group.children).filter(headerElementVisible);
+    if (!visible.length) return 0;
+    const style = getComputedStyle(group);
+    const gap = parseFloat(style.columnGap || style.gap) || 0;
+    return visible.reduce((sum, child) => sum + headerOuterWidth(child), 0) + gap * Math.max(0, visible.length - 1);
+  }
+
+  function syncResponsiveHeaderLayout() {
+    responsiveHeaderSyncFrame = 0;
+    const root = document.getElementById("kwc-root");
+    const header = root && root.querySelector(".kwc-header");
+    if (!root || !header) return;
+    if (root.classList.contains("kwc-minimized")) {
+      root.classList.remove("kwc-header-wrapped");
+      return;
+    }
+
+    const status = header.querySelector(".kwc-header-identity .kwc-status");
+    const secondary = header.querySelector(".kwc-actions-secondary");
+    const primary = header.querySelector(".kwc-actions-primary");
+    const headerStyle = getComputedStyle(header);
+    const contentWidth = Math.max(0,
+      Number(header.clientWidth || 0)
+      - (parseFloat(headerStyle.paddingLeft) || 0)
+      - (parseFloat(headerStyle.paddingRight) || 0));
+    // Measure against the normal one-row gap, not the current computed gap.
+    // Wrapped mode uses a smaller vertical gap, and reading that value here
+    // would make the layout oscillate near the threshold.
+    const headerGap = 8;
+
+    // The title deliberately does not participate in the required width. It may
+    // ellipsize all the way down before we use a second row. The status element
+    // is different: for administrators it is the actual Admin button, so it must
+    // remain fully visible and clickable.
+    const protectedIdentityWidth = headerOuterWidth(status);
+    const secondaryWidth = headerActionGroupNaturalWidth(secondary);
+    const primaryWidth = headerActionGroupNaturalWidth(primary);
+    const requiredOneRowWidth = protectedIdentityWidth + secondaryWidth + primaryWidth + headerGap * 2;
+
+    // A small tolerance avoids oscillation at fractional-pixel boundaries.
+    root.classList.toggle("kwc-header-wrapped", contentWidth + 1 < requiredOneRowWidth);
+  }
+
+  function scheduleResponsiveHeaderLayout() {
+    if (responsiveHeaderSyncFrame) return;
+    responsiveHeaderSyncFrame = requestAnimationFrame(syncResponsiveHeaderLayout);
+  }
+
+  function installResponsiveHeaderLayout() {
+    const root = document.getElementById("kwc-root");
+    const header = root && root.querySelector(".kwc-header");
+    if (!root || !header) return;
+    if (responsiveHeaderResizeObserver) responsiveHeaderResizeObserver.disconnect();
+    if (responsiveHeaderMutationObserver) responsiveHeaderMutationObserver.disconnect();
+    if (window.ResizeObserver) {
+      responsiveHeaderResizeObserver = new ResizeObserver(scheduleResponsiveHeaderLayout);
+      responsiveHeaderResizeObserver.observe(header);
+    } else {
+      window.addEventListener("resize", scheduleResponsiveHeaderLayout, {passive: true});
+    }
+    if (window.MutationObserver) {
+      responsiveHeaderMutationObserver = new MutationObserver(scheduleResponsiveHeaderLayout);
+      responsiveHeaderMutationObserver.observe(header, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "style", "hidden"],
+        childList: true,
+        characterData: true
+      });
+    }
+    scheduleResponsiveHeaderLayout();
+  }
+
   function makeRoot() {
-    if (document.getElementById("bmwc-root")) return;
+    if (document.getElementById("kwc-root")) return;
     ensureGuestNameForConfig();
 
     const root = document.createElement("div");
-    root.id = "bmwc-root";
-    root.style.setProperty("--bmwc-emoji-render-size", emojiRenderSizePx() + "px");
-    root.style.setProperty("--bmwc-emoji-picker-size", emojiPickerSizePx() + "px");
-    root.style.setProperty("--bmwc-emoji-panel-min-height", emojiPanelMinHeightPx() + "px");
+    root.id = "kwc-root";
+    root.style.setProperty("--kwc-emoji-render-size", emojiRenderSizePx() + "px");
+    root.style.setProperty("--kwc-emoji-picker-size", emojiPickerSizePx() + "px");
+    root.style.setProperty("--kwc-emoji-panel-min-height", emojiPanelMinHeightPx() + "px");
     if (state.isPip) {
-      document.documentElement.classList.add("bmwc-pip-mode");
-      document.body.classList.add("bmwc-pip-mode");
-      root.classList.add("bmwc-pip-mode");
+      document.documentElement.classList.add("kwc-pip-mode");
+      document.body.classList.add("kwc-pip-mode");
+      root.classList.add("kwc-pip-mode");
     }
     if (state.isStandalone) {
-      document.documentElement.classList.add("bmwc-standalone-mode");
-      document.body.classList.add("bmwc-standalone-mode");
-      root.classList.add("bmwc-standalone-mode");
+      document.documentElement.classList.add("kwc-standalone-mode");
+      document.body.classList.add("kwc-standalone-mode");
+      root.classList.add("kwc-standalone-mode");
     }
     root.innerHTML = `
-      <div class="bmwc-panel">
-        <div class="bmwc-header">
-          <div>
-            <span class="bmwc-title">${t("title.full", "BlueMap Chat")}</span>
-            <span class="bmwc-status" id="bmwc-status">${t("status.connecting", "connecting...")}</span>
+      <div class="kwc-panel">
+        <div class="kwc-header">
+          <div class="kwc-header-primary">
+            <div class="kwc-header-identity">
+              <span class="kwc-title">${t("title.full", "KOKOTO WebChat")}</span>
+              <span class="kwc-status" id="kwc-status">${t("status.connecting", "connecting...")}</span>
+            </div>
+            <div class="kwc-actions kwc-actions-primary">
+              ${state.config && state.config.uiPictureInPictureEnabled === true && !state.isPip ? `<button class="kwc-button kwc-pip" id="kwc-pip" title="${t("button.pip", "PIP")}">▣</button>` : ""}
+              ${(!state.isStandalone && !state.isPip) ? `<button class="kwc-button" id="kwc-min">_</button>` : ""}
+            </div>
           </div>
-          <div class="bmwc-actions">
-            ${state.directMessageEnabled ? `<button class="bmwc-button bmwc-dm-button bmwc-hidden" id="bmwc-dm" title="${t("button.directMessages", "Messages")}">✉<span class="bmwc-dm-badge bmwc-hidden" id="bmwc-dm-badge">0</span></button>` : ""}
-            ${state.groupChatEnabled ? `<button class="bmwc-button bmwc-group-button bmwc-hidden" id="bmwc-group" title="${t("group.title", "Group chats")}">👥<span class="bmwc-dm-badge bmwc-hidden" id="bmwc-group-badge">0</span></button>` : ""}
-            <button class="bmwc-button bmwc-notification-button" id="bmwc-notifications" title="${t("notifications.inbox", "Notification inbox")}">🔔<span class="bmwc-dm-badge bmwc-hidden" id="bmwc-notification-badge">0</span></button>
-            <button class="bmwc-button" id="bmwc-login">${t("button.login", "Login")}</button>
-            ${state.config && state.config.uiPictureInPictureEnabled === true && !state.isPip ? `<button class="bmwc-button bmwc-pip" id="bmwc-pip" title="${t("button.pip", "PIP")}">▣</button>` : ""}
-            <button class="bmwc-button" id="bmwc-min">_</button>
+          <div class="kwc-actions kwc-actions-secondary">
+            ${state.directMessageEnabled ? `<button class="kwc-button kwc-dm-button kwc-hidden" id="kwc-dm" title="${t("button.directMessages", "Messages")}">✉<span class="kwc-dm-badge kwc-hidden" id="kwc-dm-badge">0</span></button>` : ""}
+            ${state.groupChatEnabled ? `<button class="kwc-button kwc-group-button kwc-hidden" id="kwc-group" title="${t("group.title", "Group chats")}">👥<span class="kwc-dm-badge kwc-hidden" id="kwc-group-badge">0</span></button>` : ""}
+            <button class="kwc-button kwc-notification-button" id="kwc-notifications" title="${t("notifications.inbox", "Notification inbox")}">🔔<span class="kwc-dm-badge kwc-hidden" id="kwc-notification-badge">0</span></button>
+            <button class="kwc-button" id="kwc-login">${t("button.login", "Login")}</button>
           </div>
         </div>
-        <div class="bmwc-pinned-bar bmwc-hidden" id="bmwc-pinned-bar">
-          <button class="bmwc-pinned-open" id="bmwc-pinned-open" type="button" data-open-pins="1">
-            <span class="bmwc-pinned-icon">📌</span>
-            <span id="bmwc-pinned-label">${t("pinned.count", "Pinned messages: {count}").replace("{count}", "0")}</span>
+        <div class="kwc-pinned-bar kwc-hidden" id="kwc-pinned-bar">
+          <button class="kwc-pinned-open" id="kwc-pinned-open" type="button" data-open-pins="1">
+            <span class="kwc-pinned-icon">📌</span>
+            <span id="kwc-pinned-label">${t("pinned.count", "Pinned messages: {count}").replace("{count}", "0")}</span>
           </button>
         </div>
-        <div class="bmwc-messages" id="bmwc-messages">
-          <div class="bmwc-virtual-spacer bmwc-virtual-top-spacer"></div>
-          <div class="bmwc-history-end bmwc-hidden" id="bmwc-history-end">${t("history.end", "No more messages to display.")}</div>
-          <div class="bmwc-virtual-spacer bmwc-virtual-bottom-spacer"></div>
+        <div class="kwc-messages" id="kwc-messages">
+          <div class="kwc-virtual-spacer kwc-virtual-top-spacer"></div>
+          <div class="kwc-history-end kwc-hidden" id="kwc-history-end">${t("history.end", "No more messages to display.")}</div>
+          <div class="kwc-virtual-spacer kwc-virtual-bottom-spacer"></div>
         </div>
-        <button class="bmwc-jump-latest bmwc-hidden" id="bmwc-jump-latest" type="button" title="${t("button.jumpLatest", "Jump to latest")}">
-          <span class="bmwc-jump-latest-icon">↓</span>
-          <span id="bmwc-jump-latest-label">${t("button.jumpLatest", "Jump to latest")}</span>
+        <button class="kwc-jump-latest kwc-hidden" id="kwc-jump-latest" type="button" title="${t("button.jumpLatest", "Jump to latest")}">
+          <span class="kwc-jump-latest-icon">↓</span>
+          <span id="kwc-jump-latest-label">${t("button.jumpLatest", "Jump to latest")}</span>
         </button>
-        <button class="bmwc-button bmwc-search-button bmwc-search-float bmwc-hidden" id="bmwc-search-open" type="button" title="${t("button.search", "Search")}" aria-label="${t("button.search", "Search")}">⌕</button>
-        <button class="bmwc-button bmwc-resize-lock-button bmwc-resize-lock-float bmwc-hidden" id="bmwc-resize-lock" type="button" title="${t("button.resizeLock", "Lock resize")}" aria-label="${t("button.resizeLock", "Lock resize")}" aria-pressed="false">⇲</button>
-        <div class="bmwc-emoji-resize-handle bmwc-hidden" id="bmwc-emoji-resize" title="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}" aria-label="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}"></div>
-        <div class="bmwc-form">
-          <div class="bmwc-row" id="bmwc-guest-row">
-            <input class="bmwc-input" id="bmwc-guest-name" maxlength="16" placeholder="${t("placeholder.guestName", "Guest name")}">
+        <button class="kwc-button kwc-search-button kwc-search-float kwc-hidden" id="kwc-search-open" type="button" title="${t("button.search", "Search")}" aria-label="${t("button.search", "Search")}">⌕</button>
+        <button class="kwc-button kwc-resize-lock-button kwc-resize-lock-float kwc-hidden" id="kwc-resize-lock" type="button" title="${t("button.resizeLock", "Lock resize")}" aria-label="${t("button.resizeLock", "Lock resize")}" aria-pressed="false">⇲</button>
+        <div class="kwc-emoji-resize-handle kwc-hidden" id="kwc-emoji-resize" title="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}" aria-label="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}"></div>
+        <div class="kwc-form">
+          <div class="kwc-row" id="kwc-guest-row">
+            <input class="kwc-input" id="kwc-guest-name" placeholder="${t("placeholder.guestName", "Guest name")}">
           </div>
-          <div class="bmwc-row bmwc-captcha" id="bmwc-captcha-row">
-            <span id="bmwc-captcha-q"></span>
-            <input class="bmwc-input" id="bmwc-captcha-a" maxlength="6" placeholder="${t("placeholder.captchaAnswer", "answer")}">
+          <div class="kwc-row kwc-captcha" id="kwc-captcha-row">
+            <span id="kwc-captcha-q"></span>
+            <input class="kwc-input" id="kwc-captcha-a" maxlength="6" placeholder="${t("placeholder.captchaAnswer", "answer")}">
           </div>
-          <div class="bmwc-reply-compose bmwc-hidden" id="bmwc-reply-compose">
-            <button type="button" class="bmwc-reply-compose-main" id="bmwc-reply-compose-main" title="${t("reply.jump", "Jump to replied message")}">
-              <span class="bmwc-reply-compose-label" id="bmwc-reply-compose-label"></span>
-              <span class="bmwc-reply-compose-preview" id="bmwc-reply-compose-preview"></span>
+          <div class="kwc-reply-compose kwc-hidden" id="kwc-reply-compose">
+            <button type="button" class="kwc-reply-compose-main" id="kwc-reply-compose-main" title="${t("reply.jump", "Jump to replied message")}">
+              <span class="kwc-reply-compose-label" id="kwc-reply-compose-label"></span>
+              <span class="kwc-reply-compose-preview" id="kwc-reply-compose-preview"></span>
             </button>
-            <button type="button" class="bmwc-mini-action bmwc-reply-cancel" id="bmwc-reply-cancel" title="${t("button.cancel", "Cancel")}">×</button>
+            <button type="button" class="kwc-mini-action kwc-reply-cancel" id="kwc-reply-cancel" title="${t("button.cancel", "Cancel")}">×</button>
           </div>
-          <div class="bmwc-row">
-            <input class="bmwc-input" id="bmwc-message" maxlength="2048" placeholder="${t("placeholder.message", "message")}">
-            <button class="bmwc-button bmwc-command bmwc-hidden" id="bmwc-command" title="${t("button.commands", "Commands")}">/</button>
-            <button class="bmwc-button bmwc-emoji-button bmwc-hidden" id="bmwc-emoji" title="${t("button.emoji", "Emoji")}">☺</button>
-            <button class="bmwc-button bmwc-upload bmwc-hidden" id="bmwc-upload" title="${t("button.upload", "Attach")}">&#128206;</button>
-            <button class="bmwc-button bmwc-send" id="bmwc-send">${t("button.send", "Send")}</button>
-            <input type="file" id="bmwc-file" class="bmwc-file-input" multiple hidden style="display:none !important;">
+          <div class="kwc-row">
+            <input class="kwc-input" id="kwc-message" maxlength="2048" placeholder="${t("placeholder.message", "message")}">
+            <button class="kwc-button kwc-command kwc-hidden" id="kwc-command" title="${t("button.commands", "Commands")}">/</button>
+            <button class="kwc-button kwc-emoji-button kwc-hidden" id="kwc-emoji" title="${t("button.emoji", "Emoji")}">☺</button>
+            <button class="kwc-button kwc-upload kwc-hidden" id="kwc-upload" title="${t("button.upload", "Attach")}">&#128206;</button>
+            <button class="kwc-button kwc-send" id="kwc-send">${t("button.send", "Send")}</button>
+            <input type="file" id="kwc-file" class="kwc-file-input" multiple hidden style="display:none !important;">
           </div>
-          <div class="bmwc-command-panel bmwc-hidden" id="bmwc-command-panel"></div>
-          <div class="bmwc-emoji-panel bmwc-hidden" id="bmwc-emoji-panel" aria-live="polite"></div>
-          <div class="bmwc-upload-progress bmwc-hidden" id="bmwc-upload-progress" aria-live="polite">
-            <div class="bmwc-upload-progress-head">
-              <span id="bmwc-upload-progress-text">${t("upload.ready", "Ready")}</span>
-              <button class="bmwc-button bmwc-upload-cancel" id="bmwc-upload-cancel" type="button">${t("button.cancel", "Cancel")}</button>
+          <div class="kwc-command-panel kwc-hidden" id="kwc-command-panel"></div>
+          <div class="kwc-emoji-panel kwc-hidden" id="kwc-emoji-panel" aria-live="polite"></div>
+          <div class="kwc-upload-progress kwc-hidden" id="kwc-upload-progress" aria-live="polite">
+            <div class="kwc-upload-progress-head">
+              <span id="kwc-upload-progress-text">${t("upload.ready", "Ready")}</span>
+              <button class="kwc-button kwc-upload-cancel" id="kwc-upload-cancel" type="button">${t("button.cancel", "Cancel")}</button>
             </div>
-            <div class="bmwc-upload-progress-bar"><div id="bmwc-upload-progress-fill"></div></div>
+            <div class="kwc-upload-progress-bar"><div id="kwc-upload-progress-fill"></div></div>
           </div>
         </div>
-        <div class="bmwc-drop-overlay bmwc-hidden" id="bmwc-drop-overlay" aria-hidden="true">
-          <div class="bmwc-drop-box">
-            <div class="bmwc-drop-title" id="bmwc-drop-title">${t("upload.dropTitle", "Drop files to upload")}</div>
-            <div class="bmwc-drop-subtitle" id="bmwc-drop-subtitle">${t("upload.dropSubtitle", "Release inside the chat panel.")}</div>
+        <div class="kwc-drop-overlay kwc-hidden" id="kwc-drop-overlay" aria-hidden="true">
+          <div class="kwc-drop-box">
+            <div class="kwc-drop-title" id="kwc-drop-title">${t("upload.dropTitle", "Drop files to upload")}</div>
+            <div class="kwc-drop-subtitle" id="kwc-drop-subtitle">${t("upload.dropSubtitle", "Release inside the chat panel.")}</div>
           </div>
         </div>
-        <div class="bmwc-resize-handle" id="bmwc-resize-handle" title="${t("button.resize", "Resize")}"></div>
+        <div class="kwc-resize-handle" id="kwc-resize-handle" title="${t("button.resize", "Resize")}"></div>
       </div>
     `;
     document.body.appendChild(root);
@@ -3511,82 +3942,101 @@
     applyThemeConfig();
 
 
-    document.getElementById("bmwc-guest-name").value = state.guestName;
-    document.getElementById("bmwc-send").addEventListener("click", e => {
+    const guestNameField = document.getElementById("kwc-guest-name");
+    guestNameField.value = limitGuestNameCodePoints(state.guestName);
+    guestNameField.addEventListener("input", () => {
+      const limited = limitGuestNameCodePoints(guestNameField.value);
+      if (limited !== guestNameField.value) guestNameField.value = limited;
+    });
+    document.getElementById("kwc-send").addEventListener("click", e => {
       if (state.sendInFlight) {
         e.preventDefault();
         return;
       }
       sendMessage();
     });
-    const jumpLatest = document.getElementById("bmwc-jump-latest");
+    const jumpLatest = document.getElementById("kwc-jump-latest");
     if (jumpLatest) jumpLatest.addEventListener("click", () => {
       forceLatestChatView("jump-latest");
     });
-    const searchOpen = document.getElementById("bmwc-search-open");
+    const searchOpen = document.getElementById("kwc-search-open");
     if (searchOpen) searchOpen.addEventListener("click", event => {
       event.preventDefault();
       event.stopPropagation();
       if (!state.minimized) openSearchModal();
     });
-    const resizeLockBtn = document.getElementById("bmwc-resize-lock");
+    const resizeLockBtn = document.getElementById("kwc-resize-lock");
     if (resizeLockBtn) resizeLockBtn.addEventListener("click", event => {
       event.preventDefault();
       event.stopPropagation();
       toggleResizeLocked();
     });
-    const dmBtn = document.getElementById("bmwc-dm");
+    const dmBtn = document.getElementById("kwc-dm");
     if (dmBtn) dmBtn.addEventListener("click", () => openDirectMessageModal());
-    const groupBtn = document.getElementById("bmwc-group");
+    const groupBtn = document.getElementById("kwc-group");
     if (groupBtn) groupBtn.addEventListener("click", () => openGroupChatModal());
-    const notificationBtn = document.getElementById("bmwc-notifications");
+    const notificationBtn = document.getElementById("kwc-notifications");
     if (notificationBtn) notificationBtn.addEventListener("click", () => {
       if (!state.minimized) openNotificationInboxModal();
     });
     updateNotificationInboxButton();
-    const commandBtn = document.getElementById("bmwc-command");
+    const commandBtn = document.getElementById("kwc-command");
     if (commandBtn) commandBtn.addEventListener("click", () => openCommandModal());
-    const emojiBtn = document.getElementById("bmwc-emoji");
+    const emojiBtn = document.getElementById("kwc-emoji");
     if (emojiBtn) emojiBtn.addEventListener("click", () => toggleEmojiPanel());
     installEmojiPanelResize(root);
-    document.getElementById("bmwc-upload").addEventListener("click", () => {
-      const input = document.getElementById("bmwc-file");
+    document.getElementById("kwc-upload").addEventListener("click", () => {
+      const input = document.getElementById("kwc-file");
       if (input) input.click();
     });
-    document.getElementById("bmwc-file").addEventListener("change", uploadSelectedFiles);
+    document.getElementById("kwc-file").addEventListener("change", uploadSelectedFiles);
     installDragAndDropUpload(root);
-    const uploadCancelBtn = document.getElementById("bmwc-upload-cancel");
+    const uploadCancelBtn = document.getElementById("kwc-upload-cancel");
     if (uploadCancelBtn) uploadCancelBtn.addEventListener("click", cancelCurrentUpload);
-    document.getElementById("bmwc-message").addEventListener("paste", handlePasteUpload);
-    const replyCancel = document.getElementById("bmwc-reply-cancel");
+    document.getElementById("kwc-message").addEventListener("paste", handlePasteUpload);
+    const replyCancel = document.getElementById("kwc-reply-cancel");
     if (replyCancel) replyCancel.addEventListener("click", clearReplyTarget);
-    const replyComposeMain = document.getElementById("bmwc-reply-compose-main");
+    const replyComposeMain = document.getElementById("kwc-reply-compose-main");
     if (replyComposeMain) replyComposeMain.addEventListener("click", () => {
       if (state.replyTarget && state.replyTarget.id) jumpToReplyTarget(state.replyTarget.id);
     });
     renderReplyCompose();
-    const messageInput = document.getElementById("bmwc-message");
+    const messageInput = document.getElementById("kwc-message");
     messageInput.addEventListener("focus", () => setActiveComposeInput(messageInput));
+    messageInput.addEventListener("compositionstart", () => {
+      messageInputComposing = true;
+      if (commandPanelRenderFrame) {
+        cancelAnimationFrame(commandPanelRenderFrame);
+        commandPanelRenderFrame = 0;
+      }
+    });
+    messageInput.addEventListener("compositionend", () => {
+      messageInputComposing = false;
+      scheduleCommandPanelUpdate();
+    });
     messageInput.addEventListener("keydown", e => {
       if (e.key === "Enter") {
+        // Enter may be used to commit Korean/Japanese/Chinese IME composition.
+        // Never consume it as a chat send while composition is still active.
+        if (e.isComposing || messageInputComposing || e.keyCode === 229) return;
         e.preventDefault();
         if (e.repeat || state.sendInFlight) return;
         sendMessage();
       }
       if (e.key === "Escape") { hideCommandPanel(); hideEmojiPanel(); if (state.replyTarget) clearReplyTarget(); }
     });
-    messageInput.addEventListener("input", updateCommandPanel);
-    messageInput.addEventListener("focus", updateCommandPanel);
+    messageInput.addEventListener("input", scheduleCommandPanelUpdate);
+    messageInput.addEventListener("focus", scheduleCommandPanelUpdate);
     messageInput.addEventListener("blur", () => setTimeout(hideCommandPanel, 160));
     installHistoryPaging();
-    document.getElementById("bmwc-login").addEventListener("click", () => {
+    document.getElementById("kwc-login").addEventListener("click", () => {
       if (!state.minimized) openLoginModal();
     });
-    const legacyAdminBtn = document.getElementById("bmwc-admin");
+    const legacyAdminBtn = document.getElementById("kwc-admin");
     if (legacyAdminBtn) legacyAdminBtn.addEventListener("click", () => {
       if (!state.minimized) openAdminModal();
     });
-    const pipBtn = document.getElementById("bmwc-pip");
+    const pipBtn = document.getElementById("kwc-pip");
     if (pipBtn) pipBtn.addEventListener("click", () => {
       const c = state.config || {};
       if (c.uiPictureInPictureEnabled !== true || state.isPip) {
@@ -3595,73 +4045,83 @@
       }
       const unsupportedMessage = t("pip.unsupported", "Document Picture-in-Picture is not supported by this browser. Try desktop Chrome or Edge.");
       const openFailedMessage = t("pip.openFailed", "Failed to open Picture-in-Picture window: {error}");
-      if (window.parent === window) {
-        try { alert(unsupportedMessage); } catch (_) {}
-        return;
-      }
       state.lastPipResultAt = 0;
-      postFrame("togglePip", {
-        pipEnabled: true,
-        labels: {
-          unsupported: unsupportedMessage,
-          openFailed: openFailedMessage
-        }
-      });
-      setTimeout(() => {
-        if (!state.lastPipResultAt) {
-          try { alert(unsupportedMessage); } catch (_) {}
-        }
-      }, 1200);
+      const pipLabels = {
+        unsupported: unsupportedMessage,
+        openFailed: openFailedMessage
+      };
+      if (state.isStandalone) {
+        // Direct top-level Document PiP call. This keeps the request in the
+        // original click activation and removes the standalone dependency on
+        // the BlueMap iframe/parent message bridge. Actual API failures are
+        // reported by toggleStandalonePictureInPicture().
+        void toggleStandalonePictureInPicture(pipLabels);
+      } else if (window.parent === window) {
+        try { alert(unsupportedMessage); } catch (_) {}
+      } else {
+        postFrame("togglePip", {
+          pipEnabled: true,
+          labels: pipLabels
+        });
+        setTimeout(() => {
+          if (!state.lastPipResultAt) {
+            try { alert(unsupportedMessage); } catch (_) {}
+          }
+        }, 1200);
+      }
     });
     updatePipButton();
-    document.getElementById("bmwc-min").addEventListener("click", toggleMin);
+    const minButton = document.getElementById("kwc-min");
+    if (minButton) minButton.addEventListener("click", toggleMin);
     installDrag(root);
     installResize(root);
 
     if (!state.isPip && state.minimized) {
-      root.classList.add("bmwc-minimized");
-      document.getElementById("bmwc-messages").classList.add("bmwc-hidden");
-      document.querySelector(".bmwc-form").classList.add("bmwc-hidden");
+      root.classList.add("kwc-minimized");
+      document.getElementById("kwc-messages").classList.add("kwc-hidden");
+      document.querySelector(".kwc-form").classList.add("kwc-hidden");
     }
-    const minBtn = document.getElementById("bmwc-min");
+    const minBtn = document.getElementById("kwc-min");
     if (minBtn) minBtn.textContent = state.minimized ? "+" : "-";
-    const title = document.querySelector(".bmwc-title");
-    if (title) title.textContent = state.minimized ? t("title.minimized", "Chat") : t("title.full", "BlueMap Chat");
+    const title = document.querySelector(".kwc-title");
+    if (title) title.textContent = state.minimized ? t("title.minimized", "Chat") : t("title.full", "KOKOTO WebChat");
 
+    installResponsiveHeaderLayout();
     updateLoginState();
   }
 
   function closeAllModals() {
-    document.querySelectorAll(".bmwc-modal-backdrop, .bmwc-modal-wrap").forEach(el => el.remove());
+    document.querySelectorAll(".kwc-modal-backdrop, .kwc-modal-wrap").forEach(el => el.remove());
     state.loginModalOpen = false;
     state.prefsModalOpen = false;
   }
 
-  function toggleMin() {
+  function toggleMin(options = {}) {
     protectHistoryEndNotice("toggle-min", 7000);
     state.minimized = !state.minimized;
-    localStorage.setItem("bmwc.minimized", state.minimized ? "1" : "0");
+    if (options.persist !== false) localStorage.setItem("kwc.minimized", state.minimized ? "1" : "0");
 
     if (state.minimized) {
       closeAllModals();
     }
 
-    const root = document.getElementById("bmwc-root");
-    if (root) root.classList.toggle("bmwc-minimized", state.minimized);
-    const messages = document.getElementById("bmwc-messages");
-    if (messages) messages.classList.toggle("bmwc-hidden", state.minimized);
-    const form = document.querySelector(".bmwc-form");
-    if (form) form.classList.toggle("bmwc-hidden", state.minimized);
+    const root = document.getElementById("kwc-root");
+    if (root) root.classList.toggle("kwc-minimized", state.minimized);
+    const messages = document.getElementById("kwc-messages");
+    if (messages) messages.classList.toggle("kwc-hidden", state.minimized);
+    const form = document.querySelector(".kwc-form");
+    if (form) form.classList.toggle("kwc-hidden", state.minimized);
     updateEmojiResizeHandleVisibility();
-    const minBtn = document.getElementById("bmwc-min");
+    const minBtn = document.getElementById("kwc-min");
     if (minBtn) minBtn.textContent = state.minimized ? "+" : "-";
-    const title = document.querySelector(".bmwc-title");
-    if (title) title.textContent = state.minimized ? t("title.minimized", "Chat") : t("title.full", "BlueMap Chat");
+    const title = document.querySelector(".kwc-title");
+    if (title) title.textContent = state.minimized ? t("title.minimized", "Chat") : t("title.full", "KOKOTO WebChat");
     updateFrameSize();
     updatePipButton();
     updateDirectMessageButton();
     updateGroupChatButton();
     updateNotificationInboxButton();
+    scheduleResponsiveHeaderLayout();
     if (!state.minimized) {
       scheduleVirtualRender();
       protectHistoryEndNotice("unminimize", 8000);
@@ -3676,9 +4136,9 @@
     state.username = "";
     state.role = "";
     try {
-      localStorage.removeItem("bmwc.token");
-      localStorage.removeItem("bmwc.username");
-      localStorage.removeItem("bmwc.role");
+      localStorage.removeItem("kwc.token");
+      localStorage.removeItem("kwc.username");
+      localStorage.removeItem("kwc.role");
     } catch (_) {}
   }
 
@@ -3708,6 +4168,14 @@
     state.dmAuditThread = null;
   }
 
+  function clearPrivateChatForAuthLoss() {
+    try { document.querySelectorAll(".kwc-modal-backdrop, .kwc-modal-wrap").forEach(el => el.remove()); } catch (_) {}
+    resetPrivateChatState();
+    updateDirectMessageButton();
+    updateGroupChatButton();
+    updateNotificationInboxButton();
+  }
+
   function clearVisibleChatForLoggedOutHidden(reason = "auth-expired") {
     if (!guestChatHidden()) return;
     state.messages = [];
@@ -3720,16 +4188,11 @@
     state.historyNewestId = "";
     state.historyLoading = false;
     state.historyLoadSeq++;
-    try { document.querySelectorAll(".bmwc-modal-backdrop, .bmwc-modal-wrap").forEach(el => el.remove()); } catch (_) {}
     try { if (state.eventSource) state.eventSource.close(); } catch (_) {}
     state.eventSource = null;
     clearStreamReconnectTimer();
-    resetPrivateChatState();
     renderPinnedBar();
     renderVirtualMessages({stickToBottom: true, ignoreVisibleRangeProtection: true});
-    updateDirectMessageButton();
-    updateGroupChatButton();
-    updateNotificationInboxButton();
     updateGuestVisibility();
     updateFrameSize();
   }
@@ -3737,11 +4200,11 @@
   function handleAuthExpired(reason = "expired", options = {}) {
     const hadToken = !!state.token;
     clearLoginStorage();
-    setLoginRequiredUntilLogin(true);
+    clearPrivateChatForAuthLoss();
     updateLoginState();
     updateGuestVisibility();
     clearVisibleChatForLoggedOutHidden(reason);
-    if (!guestChatHidden() && hadToken && options.reconnect !== false) connectStream({refreshAfterOpen: true, reason: "auth-" + reason});
+    if (!state.isPip && !guestChatHidden() && hadToken && options.reconnect !== false) connectStream({refreshAfterOpen: true, reason: "auth-" + reason});
   }
 
   function isAuthExpiredApiError(err) {
@@ -3752,20 +4215,7 @@
     return (status === 401 || status === 403) && /(?:token|auth|logged|permission)/i.test(code || String(err.message || ""));
   }
 
-  function setLoginRequiredUntilLogin(required) {
-    state.loginRequiredUntilLogin = required === true;
-    try {
-      if (state.loginRequiredUntilLogin) localStorage.setItem("bmwc.loginRequiredUntilLogin", "1");
-      else localStorage.removeItem("bmwc.loginRequiredUntilLogin");
-    } catch (_) {}
-  }
-
-  function loggedOutChatHidden() {
-    return !!(state.loginRequiredUntilLogin && !state.token);
-  }
-
   function guestChatHidden() {
-    if (loggedOutChatHidden()) return true;
     return !!(
       state.config &&
       state.config.guestEnabled === false &&
@@ -3775,21 +4225,21 @@
   }
 
   function updateGuestVisibility() {
-    const root = document.getElementById("bmwc-root");
-    const box = document.getElementById("bmwc-messages");
-    const form = document.querySelector(".bmwc-form");
-    const guestRow = document.getElementById("bmwc-guest-row");
-    const captchaRow = document.getElementById("bmwc-captcha-row");
+    const root = document.getElementById("kwc-root");
+    const box = document.getElementById("kwc-messages");
+    const form = document.querySelector(".kwc-form");
+    const guestRow = document.getElementById("kwc-guest-row");
+    const captchaRow = document.getElementById("kwc-captcha-row");
     if (!root) return;
 
     const hidden = guestChatHidden();
-    root.classList.toggle("bmwc-guest-hidden", hidden);
+    root.classList.toggle("kwc-guest-hidden", hidden);
 
     if (hidden) {
-      if (box) box.classList.add("bmwc-hidden");
-      if (form) form.classList.add("bmwc-hidden");
-      if (guestRow) guestRow.classList.add("bmwc-hidden");
-      if (captchaRow) captchaRow.classList.remove("bmwc-show");
+      if (box) box.classList.add("kwc-hidden");
+      if (form) form.classList.add("kwc-hidden");
+      if (guestRow) guestRow.classList.add("kwc-hidden");
+      if (captchaRow) captchaRow.classList.remove("kwc-show");
       state.captcha = null;
       updateEmojiResizeHandleVisibility();
       updateFrameSize();
@@ -3797,8 +4247,8 @@
     }
 
     if (!state.minimized) {
-      if (box) box.classList.remove("bmwc-hidden");
-      if (form) form.classList.remove("bmwc-hidden");
+      if (box) box.classList.remove("kwc-hidden");
+      if (form) form.classList.remove("kwc-hidden");
     }
     updateEmojiResizeHandleVisibility();
   }
@@ -3813,79 +4263,79 @@
   }
 
   function refreshStaticLabels() {
-    const title = document.querySelector(".bmwc-title");
-    if (title) title.textContent = state.minimized ? t("title.minimized", "Chat") : t("title.full", "BlueMap Chat");
-    const adminStatus = document.getElementById("bmwc-status");
-    if (adminStatus && adminStatus.classList.contains("bmwc-status-admin-action")) adminStatus.title = t("button.admin", "Admin");
+    const title = document.querySelector(".kwc-title");
+    if (title) title.textContent = state.minimized ? t("title.minimized", "Chat") : t("title.full", "KOKOTO WebChat");
+    const adminStatus = document.getElementById("kwc-status");
+    if (adminStatus && adminStatus.classList.contains("kwc-status-admin-action")) adminStatus.title = t("button.admin", "Admin");
     updateResizeLockButton();
-    const sendBtn = document.getElementById("bmwc-send");
+    const sendBtn = document.getElementById("kwc-send");
     if (sendBtn) sendBtn.textContent = t("button.send", "Send");
-    const uploadBtn = document.getElementById("bmwc-upload");
+    const uploadBtn = document.getElementById("kwc-upload");
     if (uploadBtn) uploadBtn.title = t("button.upload", "Attach");
-    const emojiBtn = document.getElementById("bmwc-emoji");
+    const emojiBtn = document.getElementById("kwc-emoji");
     if (emojiBtn) emojiBtn.title = t("button.emoji", "Emoji");
-    const commandBtn = document.getElementById("bmwc-command");
+    const commandBtn = document.getElementById("kwc-command");
     if (commandBtn) commandBtn.title = t("button.commands", "Commands");
-    const jumpBtn = document.getElementById("bmwc-jump-latest");
+    const jumpBtn = document.getElementById("kwc-jump-latest");
     if (jumpBtn) jumpBtn.title = t("button.jumpLatest", "Jump to latest");
-    const jumpLabel = document.getElementById("bmwc-jump-latest-label");
+    const jumpLabel = document.getElementById("kwc-jump-latest-label");
     if (jumpLabel) jumpLabel.textContent = t("button.jumpLatest", "Jump to latest");
-    const historyEnd = ensureHistoryEndNotice(document.getElementById("bmwc-messages"));
+    const historyEnd = ensureHistoryEndNotice(document.getElementById("kwc-messages"));
     if (historyEnd) historyEnd.textContent = t("history.end", "No more messages to display.");
-    const pipBtn = document.getElementById("bmwc-pip");
+    const pipBtn = document.getElementById("kwc-pip");
     if (pipBtn) pipBtn.title = t("button.pip", "PIP");
-    const guest = document.getElementById("bmwc-guest-name");
+    const guest = document.getElementById("kwc-guest-name");
     if (guest) guest.placeholder = t("placeholder.guestName", "Guest name");
-    const captcha = document.getElementById("bmwc-captcha-a");
+    const captcha = document.getElementById("kwc-captcha-a");
     if (captcha) captcha.placeholder = t("placeholder.captchaAnswer", "answer");
-    const input = document.getElementById("bmwc-message");
+    const input = document.getElementById("kwc-message");
     if (input) input.placeholder = t("placeholder.message", "message");
-    const resize = document.getElementById("bmwc-resize-handle");
+    const resize = document.getElementById("kwc-resize-handle");
     if (resize) resize.title = t("button.resize", "Resize");
-    const dropTitle = document.getElementById("bmwc-drop-title");
+    const dropTitle = document.getElementById("kwc-drop-title");
     if (dropTitle) dropTitle.textContent = t("upload.dropTitle", "Drop files to upload");
-    const dropSubtitle = document.getElementById("bmwc-drop-subtitle");
+    const dropSubtitle = document.getElementById("kwc-drop-subtitle");
     if (dropSubtitle) dropSubtitle.textContent = t("upload.dropSubtitle", "Release inside the chat panel.");
     renderPinnedBar();
     updateLoginState();
   }
 
   function updateLoginState() {
-    const btn = document.getElementById("bmwc-login");
-    const status = document.getElementById("bmwc-status");
-    const guestRow = document.getElementById("bmwc-guest-row");
-    const dmBtn = document.getElementById("bmwc-dm");
-    const groupBtn = document.getElementById("bmwc-group");
-    const uploadBtn = document.getElementById("bmwc-upload");
-    const emojiBtn = document.getElementById("bmwc-emoji");
-    const commandBtn = document.getElementById("bmwc-command");
+    const btn = document.getElementById("kwc-login");
+    const status = document.getElementById("kwc-status");
+    const guestRow = document.getElementById("kwc-guest-row");
+    const dmBtn = document.getElementById("kwc-dm");
+    const groupBtn = document.getElementById("kwc-group");
+    const uploadBtn = document.getElementById("kwc-upload");
+    const emojiBtn = document.getElementById("kwc-emoji");
+    const commandBtn = document.getElementById("kwc-command");
     if (!btn || !status) return;
-    status.classList.remove("bmwc-status-role-ADMIN", "bmwc-status-role-MODERATOR", "bmwc-status-role-USER", "bmwc-status-role-GUEST");
+    status.classList.remove("kwc-status-role-ADMIN", "kwc-status-role-MODERATOR", "kwc-status-role-USER", "kwc-status-role-GUEST");
 
     const adminPanelAllowed = !state.config || state.config.allowWebAdminPanel !== false;
     const moderationEnabled = !state.config || state.config.moderationEnabled !== false;
     const canManageMutes = moderationEnabled && state.token && (state.role === "ADMIN" || (state.role === "MODERATOR" && (!state.config || state.config.allowModeratorGuestMute !== false)));
     const canUseAdminPanel = state.token && adminPanelAllowed && (state.role === "ADMIN" || canManageMutes);
-    if (dmBtn) dmBtn.classList.toggle("bmwc-hidden", !(state.token && state.directMessageEnabled) || state.minimized);
-    if (groupBtn) groupBtn.classList.toggle("bmwc-hidden", !(state.token && state.groupChatEnabled) || state.minimized);
+    if (dmBtn) dmBtn.classList.toggle("kwc-hidden", !(state.token && state.directMessageEnabled) || state.minimized);
+    if (groupBtn) groupBtn.classList.toggle("kwc-hidden", !(state.token && state.groupChatEnabled) || state.minimized);
     updateDirectMessageButton();
     updateGroupChatButton();
-    if (uploadBtn) uploadBtn.classList.toggle("bmwc-hidden", !canUpload());
+    if (uploadBtn) uploadBtn.classList.toggle("kwc-hidden", !canUpload());
     updateEmojiButton();
     updateDirectMessageComposeControls();
     updateCommandButton();
     updatePipButton();
     updateResizeLockButton();
 
-    btn.classList.remove("bmwc-login-user", "bmwc-user-role-ADMIN", "bmwc-user-role-MODERATOR", "bmwc-user-role-USER", "bmwc-user-role-GUEST");
+    btn.classList.remove("kwc-login-user", "kwc-user-role-ADMIN", "kwc-user-role-MODERATOR", "kwc-user-role-USER", "kwc-user-role-GUEST");
     if (state.token) {
       btn.textContent = state.username || t("status.loggedIn", "User");
       btn.title = t("preferences.title", "Chat settings");
-      btn.classList.add("bmwc-login-user", "bmwc-user-role-" + String(state.role || "USER"));
+      btn.classList.add("kwc-login-user", "kwc-user-role-" + String(state.role || "USER"));
       status.textContent = roleLabel(state.role);
       status.title = canUseAdminPanel ? t("button.admin", "Admin") : (state.role || "");
-      status.classList.add("bmwc-status-role-" + String(state.role || "USER"));
-      status.classList.toggle("bmwc-status-admin-action", !!canUseAdminPanel);
+      status.classList.add("kwc-status-role-" + String(state.role || "USER"));
+      status.classList.toggle("kwc-status-admin-action", !!canUseAdminPanel);
       if (canUseAdminPanel) {
         status.setAttribute("role", "button");
         status.setAttribute("tabindex", "0");
@@ -3897,20 +4347,21 @@
         status.onclick = null;
         status.onkeydown = null;
       }
-      if (guestRow) guestRow.classList.add("bmwc-hidden");
+      if (guestRow) guestRow.classList.add("kwc-hidden");
     } else {
       btn.title = t("button.login", "Login");
       btn.textContent = t("button.login", "Login");
       status.textContent = t("status.guest", "guest");
       status.title = "";
-      status.classList.remove("bmwc-status-admin-action");
+      status.classList.remove("kwc-status-admin-action");
       status.removeAttribute("role");
       status.removeAttribute("tabindex");
       status.onclick = null;
       status.onkeydown = null;
       const allowGuestName = !state.config || state.config.guestAllowCustomName !== false;
-      if (guestRow) guestRow.classList.toggle("bmwc-hidden", !allowGuestName || guestChatHidden());
+      if (guestRow) guestRow.classList.toggle("kwc-hidden", !allowGuestName || guestChatHidden());
     }
+    scheduleResponsiveHeaderLayout();
     if (state.messages && state.messages.length) scheduleVirtualRender();
   }
 
@@ -3942,7 +4393,7 @@
     clearTimeout(state.historyViewportFillTimer);
     state.historyViewportFillTimer = setTimeout(() => {
       state.historyViewportFillTimer = null;
-      const box = document.getElementById("bmwc-messages");
+      const box = document.getElementById("kwc-messages");
       if (!box || state.minimized || guestChatHidden()) return;
       if (!state.historyHasMore || state.historyLoading || !state.historyOldestId) return;
       if (!bottomFollowAllowed(box)) return;
@@ -3980,17 +4431,17 @@
 
 
   function updateScrollAffordanceLayout(box) {
-    if (!box) box = document.getElementById("bmwc-messages");
-    const root = document.getElementById("bmwc-root");
-    const panel = root && root.querySelector ? root.querySelector(".bmwc-panel") : null;
+    if (!box) box = document.getElementById("kwc-messages");
+    const root = document.getElementById("kwc-root");
+    const panel = root && root.querySelector ? root.querySelector(".kwc-panel") : null;
     if (!box || !root || !panel) return;
     try {
       const br = box.getBoundingClientRect();
       const pr = panel.getBoundingClientRect();
       const top = Math.max(8, Math.round(br.top - pr.top + 8));
       const bottom = Math.max(8, Math.round(pr.bottom - br.bottom + 12));
-      root.style.setProperty("--bmwc-affordance-top", top + "px");
-      root.style.setProperty("--bmwc-affordance-bottom", bottom + "px");
+      root.style.setProperty("--kwc-affordance-top", top + "px");
+      root.style.setProperty("--kwc-affordance-bottom", bottom + "px");
     } catch (_) {}
   }
 
@@ -4001,19 +4452,19 @@
   }
 
   function resetHistoryNoticeText(notice = null) {
-    setHistoryNoticeText(notice || document.getElementById("bmwc-history-end"), "history.end", "No more messages to display.");
+    setHistoryNoticeText(notice || document.getElementById("kwc-history-end"), "history.end", "No more messages to display.");
   }
 
   function ensureHistoryEndNotice(box, key = null, fallback = null, position = null) {
-    if (!box) box = document.getElementById("bmwc-messages");
-    const root = document.getElementById("bmwc-root");
-    const panel = root && root.querySelector ? root.querySelector(".bmwc-panel") : null;
+    if (!box) box = document.getElementById("kwc-messages");
+    const root = document.getElementById("kwc-root");
+    const panel = root && root.querySelector ? root.querySelector(".kwc-panel") : null;
     if (!box || !panel) return null;
-    let notice = document.getElementById("bmwc-history-end");
+    let notice = document.getElementById("kwc-history-end");
     if (!notice) {
       notice = document.createElement("div");
-      notice.className = "bmwc-history-end bmwc-history-end-top bmwc-hidden";
-      notice.id = "bmwc-history-end";
+      notice.className = "kwc-history-end kwc-history-end-top kwc-hidden";
+      notice.id = "kwc-history-end";
     }
     if (key) {
       setHistoryNoticeText(notice, key, fallback || key);
@@ -4023,11 +4474,11 @@
 
     const pos = position || state.historyEndNoticePosition || "top";
     state.historyEndNoticePosition = pos === "bottom" ? "bottom" : "top";
-    notice.classList.toggle("bmwc-history-end-bottom", state.historyEndNoticePosition === "bottom");
-    notice.classList.toggle("bmwc-history-end-top", state.historyEndNoticePosition !== "bottom");
+    notice.classList.toggle("kwc-history-end-bottom", state.historyEndNoticePosition === "bottom");
+    notice.classList.toggle("kwc-history-end-top", state.historyEndNoticePosition !== "bottom");
 
     // Keep this as a panel-level overlay, not as a child of the virtualized
-    // message list.  When the notice lived inside .bmwc-messages it competed
+    // message list.  When the notice lived inside .kwc-messages it competed
     // with top/bottom spacers and virtual re-renders, so modal/PIP transitions
     // and scrolling could repeatedly hide/reinsert it.
     if (notice.parentNode !== panel) {
@@ -4069,17 +4520,17 @@
       state.historyEndNoticePendingUserBottomUntil = 0;
       state.historyEndNoticeBottomExtraScrollCount = 0;
     }
-    const notice = document.getElementById("bmwc-history-end");
+    const notice = document.getElementById("kwc-history-end");
     if (notice) {
-      notice.classList.add("bmwc-hidden");
-      notice.classList.remove("bmwc-history-end-bottom");
-      notice.classList.add("bmwc-history-end-top");
+      notice.classList.add("kwc-hidden");
+      notice.classList.remove("kwc-history-end-bottom");
+      notice.classList.add("kwc-history-end-top");
     }
     resetHistoryNoticeText(notice);
   }
 
   function showHistoryStatusNoticeToast(box, key, fallback, durationMs = 3500) {
-    if (!box) box = document.getElementById("bmwc-messages");
+    if (!box) box = document.getElementById("kwc-messages");
     if (!box || state.minimized || guestChatHidden()) return;
     if (Number(box.scrollTop || 0) > historyPreloadThresholdPx(box)) return;
 
@@ -4090,7 +4541,7 @@
     state.historyEndNoticeTimer = null;
     state.historyEndNoticeVisible = true;
     state.historyEndNoticeVisibleUntil = now + Math.max(800, Math.min(10000, Number(durationMs) || 3500));
-    notice.classList.remove("bmwc-hidden");
+    notice.classList.remove("kwc-hidden");
 
     state.historyEndNoticeTimer = setTimeout(() => {
       if (Date.now() >= Number(state.historyEndNoticeVisibleUntil || 0)) {
@@ -4105,7 +4556,7 @@
   }
 
   function showHistoryEndNoticeToast(box, reason = "", position = "top") {
-    if (!box) box = document.getElementById("bmwc-messages");
+    if (!box) box = document.getElementById("kwc-messages");
     const pos = position === "bottom" ? "bottom" : "top";
     const notice = ensureHistoryEndNotice(box, "history.end", "No more messages to display.", pos);
     if (!notice || !box) return;
@@ -4132,7 +4583,7 @@
       state.historyEndNoticePendingUserBottomUntil = 0;
       state.historyEndNoticeBottomExtraScrollCount = 0;
     } else state.historyEndNoticePendingUserTopUntil = 0;
-    notice.classList.remove("bmwc-hidden");
+    notice.classList.remove("kwc-hidden");
 
     state.historyEndNoticeTimer = setTimeout(() => {
       if (Date.now() >= Number(state.historyEndNoticeVisibleUntil || 0)) {
@@ -4154,14 +4605,14 @@
     state.historySlowNoticeTimer = setTimeout(() => {
       state.historySlowNoticeTimer = null;
       if (!state.historyLoading || loadSeq !== state.historyLoadSeq) return;
-      const currentBox = document.getElementById("bmwc-messages") || box;
+      const currentBox = document.getElementById("kwc-messages") || box;
       showHistoryStatusNoticeToast(currentBox, "history.loading", "Loading history.\nPlease wait.", 3500);
     }, 1400);
   }
 
   function historyFailureNoticeKey(error) {
     if (typeof navigator !== "undefined" && navigator && navigator.onLine === false) return "history.offline";
-    if (error && (error.bmwcTimeout || error.name === "AbortError")) return "history.timeout";
+    if (error && (error.kwcTimeout || error.name === "AbortError")) return "history.timeout";
     return "history.failed";
   }
 
@@ -4235,7 +4686,7 @@
   }
 
   function maybeShowHistoryEndNoticeFromUserScroll(box, reason = "") {
-    if (!box) box = document.getElementById("bmwc-messages");
+    if (!box) box = document.getElementById("kwc-messages");
     if (!box) return;
 
     const now = Date.now();
@@ -4277,7 +4728,7 @@
     }
   }
   function updateHistoryEndNotice(box) {
-    if (!box) box = document.getElementById("bmwc-messages");
+    if (!box) box = document.getElementById("kwc-messages");
     const notice = ensureHistoryEndNotice(box);
     if (!notice || !box) return;
     updateScrollAffordanceLayout(box);
@@ -4293,7 +4744,7 @@
       !state.minimized &&
       !guestChatHidden();
 
-    notice.classList.toggle("bmwc-hidden", !shouldRemainVisible);
+    notice.classList.toggle("kwc-hidden", !shouldRemainVisible);
     if (!shouldRemainVisible && state.historyEndNoticeVisible) {
       state.historyEndNoticeVisible = false;
       state.historyEndNoticeVisibleUntil = 0;
@@ -4306,31 +4757,31 @@
     if (/(modal|admin|pref|setting|pip|minimize|unminimize|resize|restore|focus)/.test(reasonText)) {
       protectHistoryEndNotice(reasonText, /pip/.test(reasonText) ? 7000 : 5000);
     }
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     if (box) refreshScrollAffordances(box);
     setTimeout(() => {
-      const laterBox = document.getElementById("bmwc-messages");
+      const laterBox = document.getElementById("kwc-messages");
       if (laterBox) refreshScrollAffordances(laterBox);
     }, 60);
     setTimeout(() => {
-      const laterBox = document.getElementById("bmwc-messages");
+      const laterBox = document.getElementById("kwc-messages");
       if (laterBox) refreshScrollAffordances(laterBox);
     }, 220);
   }
 
   function updateJumpLatestButton(box) {
-    const button = document.getElementById("bmwc-jump-latest");
+    const button = document.getElementById("kwc-jump-latest");
     if (!button || !box) return;
     updateScrollAffordanceLayout(box);
-    const root = document.getElementById("bmwc-root");
+    const root = document.getElementById("kwc-root");
     const atBottom = isAutoFollowBottom(box);
     const hasUnloadedNewer = !!state.historyHasAfter;
     const show = !!root && !state.minimized && !guestChatHidden() && state.messages.length > 0 && (!atBottom || hasUnloadedNewer);
-    button.classList.toggle("bmwc-hidden", !show);
+    button.classList.toggle("kwc-hidden", !show);
   }
 
   function refreshScrollAffordances(box) {
-    if (!box) box = document.getElementById("bmwc-messages");
+    if (!box) box = document.getElementById("kwc-messages");
     if (!box) return;
     applyMediaViewportConfig();
     updateHistoryEndNotice(box);
@@ -4408,28 +4859,22 @@
   function cancelExplicitLatestFollowForUserScroll(reason = "user-scroll") {
     const now = Date.now();
     const hadLatestFollow = now < Number(state.explicitLatestFollowUntil || 0)
-      || now < Number(state.forceLatestJumpUntil || 0)
-      || now < Number(state.autoFollowMediaLayoutUntil || 0);
+      || now < Number(state.forceLatestJumpUntil || 0);
     if (!hadLatestFollow) return;
 
-    // Upload/send/latest actions temporarily request latest-follow so the newly
-    // inserted media is visible. As soon as the user starts a real scroll, that
-    // request must be cancelled; otherwise late image load/layout events can keep
-    // restoring the viewport to the uploaded media/latest position.
+    // Upload/send/latest actions temporarily request latest-follow so the new
+    // message is visible. As soon as the user starts a real scroll, cancel that
+    // request so later layout changes cannot pull the viewport back to latest.
     state.explicitLatestFollowUntil = 0;
     state.explicitLatestFollowReason = "";
     state.forceLatestJumpUntil = 0;
-    state.autoFollowMediaLayoutUntil = 0;
     state.autoFollowLatest = false;
     state.preventBottomStickUntil = Math.max(Number(state.preventBottomStickUntil || 0), now + 420);
     state.pendingScrollRenderOptions = mergeRenderOptions(state.pendingScrollRenderOptions, {
       preserveScroll: true,
       stickToBottom: false,
       suppressBottomStick: true,
-      forcePreservePosition: true,
-      allowDuringMedia: true,
-      allowDuringVisibleMedia: true,
-      deferDuringMediaLayout: false
+      forcePreservePosition: true
     });
   }
 
@@ -4468,7 +4913,7 @@
   }
 
   function requestNewerHistoryFromBottomInput(reason = "bottom-input") {
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     if (!box || state.minimized || guestChatHidden()) return;
     const atBottomEdge = isAtHistoryBottomRequestZone(box);
     if (atBottomEdge) markHistoryBottomEdgeIntent(reason);
@@ -4490,7 +4935,7 @@
   }
 
   function requestOlderHistoryFromTopInput(reason = "top-input") {
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     if (!box || state.minimized || guestChatHidden()) return;
     const atTopEdge = isAtHistoryTopRequestZone(box);
     if (atTopEdge) markHistoryTopEdgeIntent(reason);
@@ -4600,7 +5045,7 @@
       const since = Number(state.historyLoadingSince || 0);
       const maxBusy = topHistoryBusyTimeoutMs();
       if (since > 0 && now - since > maxBusy) {
-        console.warn("[BMWC] history loading busy timeout; forcing retry unlock", {
+        console.warn("[KWC] history loading busy timeout; forcing retry unlock", {
           elapsed: now - since,
           maxBusy
         });
@@ -4616,7 +5061,7 @@
       const remaining = settleUntil - now;
       const maxBusy = topHistoryBusyTimeoutMs();
       if (remaining > maxBusy) {
-        console.warn("[BMWC] older history settle timeout too large; clearing", {
+        console.warn("[KWC] older history settle timeout too large; clearing", {
           remaining,
           maxBusy
         });
@@ -4733,112 +5178,10 @@
   }
 
 
-  function allowMediaLayoutAutoFollow(ms = 2500) {
-    const now = Date.now();
-    state.autoFollowMediaLayoutUntil = Math.max(Number(state.autoFollowMediaLayoutUntil || 0), now + Math.max(250, Number(ms) || 2500));
-  }
-
-  function shouldAutoFollowAfterMediaLayout(box, heightDelta) {
-    if (!box || isScrollInteractionActive()) return false;
-    if (Date.now() > Number(state.autoFollowMediaLayoutUntil || 0)) return false;
-
-    const threshold = autoFollowBottomThresholdPx(box);
-    const remainingAfter = box.scrollHeight - box.scrollTop - box.clientHeight;
-    const remainingBefore = Number(heightDelta) > 0 ? remainingAfter - Number(heightDelta) : remainingAfter;
-    return remainingBefore <= threshold || hasExplicitLatestFollow();
-  }
-
-  function cleanupMediaKeepAlive() {
-    const now = Date.now();
-    for (const [key, until] of Array.from(state.mediaKeepAliveUntil || new Map())) {
-      if (!Number.isFinite(Number(until)) || Number(until) <= now) state.mediaKeepAliveUntil.delete(key);
-    }
-  }
-
-  function protectMediaMessageKey(key, ms = 6000) {
-    key = String(key || "");
-    if (!key) return;
-    cleanupMediaKeepAlive();
-    const now = Date.now();
-    const until = now + Math.max(500, Number(ms) || 6000);
-    state.mediaKeepAliveUntil.set(key, Math.max(Number(state.mediaKeepAliveUntil.get(key) || 0), until));
-  }
-
-  function protectMediaElement(media, messageEl, ms = 6000) {
-    const msgEl = messageEl || (media && media.closest && media.closest(".bmwc-msg"));
-    const key = msgEl && msgEl.dataset && msgEl.dataset.virtualKey;
-    if (key) protectMediaMessageKey(key, ms);
-  }
-
-  function isMediaMessageKeepAlive(key) {
-    key = String(key || "");
-    if (!key) return false;
-    cleanupMediaKeepAlive();
-    return Number(state.mediaKeepAliveUntil.get(key) || 0) > Date.now();
-  }
-
-  function markMediaLayoutQuiet(ms = 900) {
-    const now = Date.now();
-    const requested = Math.max(100, Number(ms) || 900);
-    const maxWindow = 4200;
-    if (!state.mediaLayoutQuietStartedAt || now > Number(state.mediaLayoutQuietUntil || 0) + 250) {
-      state.mediaLayoutQuietStartedAt = now;
-    }
-    const cappedUntil = Number(state.mediaLayoutQuietStartedAt || now) + maxWindow;
-    const until = Math.min(now + requested, cappedUntil);
-    state.mediaLayoutQuietUntil = Math.max(Number(state.mediaLayoutQuietUntil || 0), until);
-  }
-
-  function isMediaLayoutQuietActive() {
-    return Date.now() < Number(state.mediaLayoutQuietUntil || 0);
-  }
-
-  function extendMediaCullingRelax(ms = 2500) {
-    const now = Date.now();
-    const requested = Math.max(250, Number(ms) || 2500);
-    const maxWindow = 7000;
-    if (!state.mediaCullingRelaxStartedAt || now > Number(state.mediaCullingRelaxUntil || 0) + 250) {
-      state.mediaCullingRelaxStartedAt = now;
-    }
-    const cappedUntil = Number(state.mediaCullingRelaxStartedAt || now) + maxWindow;
-    const until = Math.min(now + requested, cappedUntil);
-    state.mediaCullingRelaxUntil = Math.max(Number(state.mediaCullingRelaxUntil || 0), until);
-    state.lastMediaLayoutChangeAt = now;
-  }
-
-  function isMediaCullingRelaxActive() {
-    return Date.now() < Number(state.mediaCullingRelaxUntil || 0);
-  }
-
-  function scheduleRenderAfterMediaQuiet(options = {}) {
-    state.virtualPendingRenderOptions = mergeRenderOptions(state.virtualPendingRenderOptions, options);
-    if (state.mediaLayoutQuietTimer) return;
-
-    const delay = Math.max(80, Math.min(900, Number(state.mediaLayoutQuietUntil || 0) - Date.now() + 40));
-    state.mediaLayoutQuietTimer = setTimeout(() => {
-      state.mediaLayoutQuietTimer = null;
-      const opts = state.virtualPendingRenderOptions || {};
-      state.virtualPendingRenderOptions = null;
-
-      const quietTimedOut = state.mediaLayoutQuietStartedAt && Date.now() - Number(state.mediaLayoutQuietStartedAt) > 4200;
-      if (!quietTimedOut && isMediaLayoutQuietActive() && !opts.stickToBottom && !opts.anchor && opts.allowDuringMediaLayout !== true) {
-        scheduleRenderAfterMediaQuiet(opts);
-        return;
-      }
-
-      if (state.virtualRenderScheduled) {
-        state.virtualPendingRenderOptions = mergeRenderOptions(state.virtualPendingRenderOptions, opts);
-        return;
-      }
-      state.virtualRenderScheduled = true;
-      requestAnimationFrame(() => {
-        const finalOpts = state.virtualPendingRenderOptions || opts || {};
-        state.virtualPendingRenderOptions = null;
-        state.virtualRenderScheduled = false;
-        renderVirtualMessages(finalOpts);
-      });
-    }, delay);
-  }
+  // Virtual scrolling is content-type agnostic. Dynamic content (images,
+  // videos, audio, social embeds, YouTube/other iframes, link previews, fonts)
+  // is handled by one message-level ResizeObserver below. No media type may
+  // extend the virtual range, park an off-range node, or pause reconciliation.
 
   function setScrollTopPreserved(box, value, options = {}) {
     if (!box) return;
@@ -4911,17 +5254,15 @@
   }
 
   async function forceLatestChatView(reason = "") {
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     const now = Date.now();
     markExplicitLatestFollow(reason || "latest", 4500);
     state.preventBottomStickUntil = 0;
     state.suppressScrollRenderUntil = now + 220;
     state.forceLatestJumpUntil = now + 900;
     state.autoFollowLatest = true;
-    allowMediaLayoutAutoFollow(4000);
     state.pendingScrollRenderOptions = null;
     state.pendingNewerHistoryLoad = false;
-    state.pendingMediaRender = false;
     state.virtualPendingRenderOptions = null;
 
     const options = {
@@ -4931,11 +5272,7 @@
       latestJump: true,
       forceLatestFollow: true,
       ignoreVisibleRangeProtection: true,
-      allowDuringMedia: true,
-      allowDuringVisibleMedia: true,
-      allowDuringMediaLayout: true,
       deferDuringScroll: false,
-      deferDuringMediaLayout: false,
       allowBottomStickDuringLock: true
     };
 
@@ -4955,19 +5292,19 @@
 
   function assignMessageKey(msg) {
     if (!msg) msg = {};
-    if (msg._bmwcKey) return msg._bmwcKey;
+    if (msg._kwcKey) return msg._kwcKey;
     if (msg.id) {
-      msg._bmwcKey = "id:" + String(msg.id);
+      msg._kwcKey = "id:" + String(msg.id);
     } else {
-      msg._bmwcKey = "local:" + (state.nextLocalMessageId++);
+      msg._kwcKey = "local:" + (state.nextLocalMessageId++);
     }
-    return msg._bmwcKey;
+    return msg._kwcKey;
   }
 
   function messageHeightAt(index) {
     const msg = state.messages[index];
     if (!msg) return state.virtualAverageMessageHeight;
-    const h = Number(msg._bmwcHeight);
+    const h = Number(msg._kwcHeight);
     return Number.isFinite(h) && h > 0 ? h : state.virtualAverageMessageHeight;
   }
 
@@ -4989,112 +5326,99 @@
     if (sp.bottom) sp.bottom.style.height = Math.max(0, Math.round(estimatedTotalHeight() - estimatedHeightUntil(state.virtualRenderEnd))) + "px";
   }
 
-  function cleanupMediaLayoutEventCache(now = Date.now()) {
-    if (!state.mediaLayoutEventCache || !(state.mediaLayoutEventCache instanceof Map)) {
-      state.mediaLayoutEventCache = new Map();
-      return;
+  function messageIndexByVirtualKey(key) {
+    if (!key) return -1;
+    for (let i = 0; i < state.messages.length; i++) {
+      const msg = state.messages[i];
+      if (msg && assignMessageKey(msg) === key) return i;
     }
-    for (const [key, time] of Array.from(state.mediaLayoutEventCache.entries())) {
-      if (!Number.isFinite(Number(time)) || now - Number(time) > 15000) state.mediaLayoutEventCache.delete(key);
+    return -1;
+  }
+
+  function rectIntersectsViewport(rect, viewport, margin = 24) {
+    if (!rect || !viewport) return false;
+    return rect.bottom >= viewport.top - margin &&
+      rect.top <= viewport.bottom + margin &&
+      rect.right >= viewport.left - margin &&
+      rect.left <= viewport.right + margin;
+  }
+
+  function syncVirtualMessageResizeObserver(box) {
+    if (!box || !window.ResizeObserver) return;
+    if (!state.virtualMessageResizeObserver) {
+      state.virtualMessageResizeObserver = new ResizeObserver(entries => {
+        if (!entries || !entries.length) return;
+        const liveBox = document.getElementById("kwc-messages");
+        if (!liveBox || liveBox !== box || state.minimized || guestChatHidden()) return;
+
+        const keepBottom = !!state.autoFollowLatest && !state.historyHasAfter && !isScrollInteractionActive();
+        const anchor = keepBottom ? null : captureScrollAnchor(liveBox);
+        const anchorIndex = anchor && anchor.key ? messageIndexByVirtualKey(anchor.key) : -1;
+        let deltaAboveAnchor = 0;
+        let changed = false;
+
+        for (const entry of entries) {
+          const el = entry && entry.target;
+          if (!el || !el.classList || !el.classList.contains("kwc-msg") || !liveBox.contains(el)) continue;
+          const key = el.dataset && el.dataset.virtualKey;
+          const index = messageIndexByVirtualKey(key);
+          if (index < 0) continue;
+          const msg = state.messages[index];
+          if (!msg) continue;
+          let marginBottom = 0;
+          try { marginBottom = parseFloat(getComputedStyle(el).marginBottom || "0") || 0; } catch (_) {}
+          let rect;
+          try { rect = el.getBoundingClientRect(); } catch (_) { rect = null; }
+          if (!rect) continue;
+          const nextHeight = Math.max(1, Math.ceil(Number(rect.height || 0) + marginBottom));
+          const oldHeight = Number(msg._kwcHeight) || 0;
+          if (!oldHeight) {
+            msg._kwcHeight = nextHeight;
+            changed = true;
+            continue;
+          }
+          const delta = nextHeight - oldHeight;
+          if (Math.abs(delta) <= 0.5) continue;
+          msg._kwcHeight = nextHeight;
+          changed = true;
+          if (!keepBottom && anchorIndex >= 0 && index < anchorIndex) deltaAboveAnchor += delta;
+        }
+
+        if (!changed) return;
+        updateVirtualSpacersFromMeasuredHeights(liveBox);
+        if (keepBottom) {
+          stickToBottomStable(liveBox);
+        } else if (Math.abs(deltaAboveAnchor) > 0.5) {
+          // overflow-anchor is intentionally disabled in CSS, so compensate only
+          // for height changes above the current visual anchor. The content type
+          // that caused the resize is irrelevant.
+          setScrollTopPreserved(liveBox, Number(liveBox.scrollTop || 0) + deltaAboveAnchor, {
+            allowAwayFromBottom: true,
+            reason: "message-resize-anchor",
+            tolerancePx: 0.15,
+            suppressRenderMs: 120,
+            suppressUpdateMs: 90
+          });
+        }
+        refreshScrollAffordances(liveBox);
+      });
     }
-  }
-
-  function mediaEventKey(media, messageKey, eventType = "layout") {
-    const tag = media && media.tagName ? String(media.tagName).toLowerCase() : "media";
-    const src = media ? String(media.currentSrc || media.src || media.getAttribute("src") || "") : "";
-    return String(messageKey || "") + "|" + tag + "|" + String(eventType || "layout") + "|" + src;
-  }
-
-  function shouldProcessMediaEvent(media, messageKey, eventType = "layout", dedupeMs = 900) {
-    const now = Date.now();
-    cleanupMediaLayoutEventCache(now);
-    const key = mediaEventKey(media, messageKey, eventType);
-    const last = Number(state.mediaLayoutEventCache.get(key) || 0);
-    if (last && now - last < Math.max(80, Number(dedupeMs) || 900)) return false;
-    state.mediaLayoutEventCache.set(key, now);
-    return true;
-  }
-
-  function scheduleBatchedMediaLayoutRender(options = {}) {
-    state.mediaLayoutBatchOptions = mergeRenderOptions(state.mediaLayoutBatchOptions, options);
-    if (state.mediaLayoutBatchTimer) return;
-    state.mediaLayoutBatchTimer = setTimeout(() => {
-      state.mediaLayoutBatchTimer = null;
-      const opts = state.mediaLayoutBatchOptions || {};
-      state.mediaLayoutBatchOptions = null;
-      scheduleVirtualRender(Object.assign({
-        preserveScroll: true,
-        allowDuringMedia: true,
-        allowDuringVisibleMedia: true,
-        allowDuringMediaLayout: true,
-        deferDuringMediaLayout: false
-      }, opts));
-    }, 180);
-  }
-
-  function noteMediaLayoutLoaded(media, messageEl, eventType = "layout") {
-    const box = document.getElementById("bmwc-messages");
-    if (!box) return;
-
-    const msgEl = messageEl || (media && media.closest && media.closest(".bmwc-msg"));
-    if (!msgEl || !box.contains(msgEl)) return;
-
-    const key = msgEl.dataset && msgEl.dataset.virtualKey;
-    if (!key) return;
-
-    const mediaSrc = media ? String(media.currentSrc || media.src || media.getAttribute("src") || "") : "";
-    const now = Date.now();
-    const dedupeMs = eventType === "iframe-load" ? 5000 : eventType === "metadata" ? 1800 : 1200;
-    if (!shouldProcessMediaEvent(media, key, eventType, dedupeMs)) return;
-    const lastNoteAt = Number(msgEl.dataset.bmwcMediaLayoutNoteAt || 0);
-    const lastNoteSrc = String(msgEl.dataset.bmwcMediaLayoutNoteSrc || "");
-    if (mediaSrc && lastNoteSrc === mediaSrc && now - lastNoteAt < 450) return;
-    msgEl.dataset.bmwcMediaLayoutNoteAt = String(now);
-    if (mediaSrc) msgEl.dataset.bmwcMediaLayoutNoteSrc = mediaSrc;
-
-    const viewportHeight = Math.max(1, Number(box.clientHeight || 1));
-    const preRect = msgEl.getBoundingClientRect();
-    const preLargeMedia = preRect.height >= viewportHeight * 0.5;
-
-    protectMediaMessageKey(key, preLargeMedia ? 12000 : 8000);
-    markMediaLayoutQuiet(preLargeMedia ? 1200 : 800);
-    extendMediaCullingRelax(preLargeMedia ? 3200 : 2200);
-
-    const msg = state.messages.find(m => m && m._bmwcKey === key);
-    if (!msg) return;
-
-    const rect = msgEl.getBoundingClientRect();
-    const h = Math.max(1, Math.ceil(rect.height + parseFloat(getComputedStyle(msgEl).marginBottom || "0")));
-    const old = Number(msg._bmwcHeight) || 0;
-    msg._bmwcHeight = h;
-
-    const delta = h - old;
-    if (Math.abs(delta) > 0.5) {
-      const largeDelta = Math.abs(delta) >= viewportHeight * 0.25 || h >= viewportHeight * 0.5;
-      if (largeDelta) {
-        protectMediaMessageKey(key, 12000);
-        markMediaLayoutQuiet(1200);
-        extendMediaCullingRelax(3200);
-      }
-      updateVirtualSpacersFromMeasuredHeights(box);
-      if (shouldAutoFollowAfterMediaLayout(box, delta)) {
-        stickToBottomStable(box);
-      }
-    }
+    state.virtualMessageResizeObserver.disconnect();
+    box.querySelectorAll(":scope > .kwc-msg").forEach(el => state.virtualMessageResizeObserver.observe(el));
   }
 
   function ensureVirtualSpacers(box) {
     if (!box) return {top: null, bottom: null};
-    let top = box.querySelector(":scope > .bmwc-virtual-top-spacer");
-    let bottom = box.querySelector(":scope > .bmwc-virtual-bottom-spacer");
+    let top = box.querySelector(":scope > .kwc-virtual-top-spacer");
+    let bottom = box.querySelector(":scope > .kwc-virtual-bottom-spacer");
     if (!top) {
       top = document.createElement("div");
-      top.className = "bmwc-virtual-spacer bmwc-virtual-top-spacer";
+      top.className = "kwc-virtual-spacer kwc-virtual-top-spacer";
       box.insertBefore(top, box.firstChild);
     }
     if (!bottom) {
       bottom = document.createElement("div");
-      bottom.className = "bmwc-virtual-spacer bmwc-virtual-bottom-spacer";
+      bottom.className = "kwc-virtual-spacer kwc-virtual-bottom-spacer";
       box.appendChild(bottom);
     }
     ensureHistoryEndNotice(box);
@@ -5103,7 +5427,7 @@
 
   function renderMessageElement(msg) {
     const el = document.createElement("div");
-    el.className = `bmwc-msg bmwc-role-${esc(msg.role)} bmwc-source-${esc(msg.source)}${msg.hidden ? " bmwc-deleted" : ""}`;
+    el.className = `kwc-msg kwc-role-${esc(msg.role)} kwc-source-${esc(msg.source)}${msg.hidden ? " kwc-deleted" : ""}`;
     const key = assignMessageKey(msg);
     el.dataset.virtualKey = key;
     el.dataset.hidden = msg.hidden ? "1" : "0";
@@ -5131,15 +5455,15 @@
     const canPin = actions.canPin;
     const canReply = actions.canReply;
     const miniActionsHtml = (canReply || canPin || canDelete)
-      ? `<span class="bmwc-mini-actions">${canReply ? `<button class="bmwc-mini-action bmwc-reply-action" data-reply="${esc(msg.id)}">${t("button.reply", "reply")}</button>` : ""}${canPin ? `<button class="bmwc-mini-action" data-pin="${esc(msg.id)}">${t("button.pin", "pin")}</button>` : ""}${canDelete ? `<button class="bmwc-mini-action" data-delete="${esc(msg.id)}">${t("button.delete", "delete")}</button>` : ""}</span>`
+      ? `<span class="kwc-mini-actions">${canReply ? `<button class="kwc-mini-action kwc-reply-action" data-reply="${esc(msg.id)}">${t("button.reply", "reply")}</button>` : ""}${canPin ? `<button class="kwc-mini-action" data-pin="${esc(msg.id)}">${t("button.pin", "pin")}</button>` : ""}${canDelete ? `<button class="kwc-mini-action" data-delete="${esc(msg.id)}">${t("button.delete", "delete")}</button>` : ""}</span>`
       : "";
-    el.classList.toggle("bmwc-has-mini-actions", !!(canReply || canPin || canDelete));
+    el.classList.toggle("kwc-has-mini-actions", !!(canReply || canPin || canDelete));
     el.innerHTML = `
-      <div class="bmwc-meta">
-        <span class="bmwc-sender${originalSender ? " bmwc-sender-has-real" : ""}"${senderAttrs}>${originalSender ? senderNameHtml(shownSender, originalSender, msg.source) : minecraftNameHtml(renderedSender, shouldRenderMinecraftNameColors() && sourceMayRenderMinecraftNameColors(msg.source))}</span><span class="bmwc-meta-sep" aria-hidden="true">·</span>${messageOriginSourceHtml(msg)}<span class="bmwc-meta-sep" aria-hidden="true">·</span><span class="bmwc-time-actions"><span class="bmwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(time)}</span>${miniActionsHtml}</span>
+      <div class="kwc-meta">
+        <span class="kwc-sender${originalSender ? " kwc-sender-has-real" : ""}"${senderAttrs}>${originalSender ? senderNameHtml(shownSender, originalSender, msg.source) : minecraftNameHtml(renderedSender, shouldRenderMinecraftNameColors() && sourceMayRenderMinecraftNameColors(msg.source))}</span><span class="kwc-meta-sep" aria-hidden="true">·</span>${messageOriginSourceHtml(msg)}<span class="kwc-meta-sep" aria-hidden="true">·</span><span class="kwc-time-actions"><span class="kwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(time)}</span>${miniActionsHtml}</span>
       </div>
       ${replyReferenceHtml(msg)}
-      <div class="bmwc-text">${messageTextHtml(msg)}</div>
+      <div class="kwc-text">${messageTextHtml(msg)}</div>
       ${safeImagePreviews(plainDisplayMessageText(msg), key)}
     `;
     installSenderIdentityToggle(el);
@@ -5166,7 +5490,7 @@
         jumpToReplyTarget(btn.dataset.replyJump || "");
       });
     });
-    el.querySelectorAll(".bmwc-youtube-card").forEach(btn => {
+    el.querySelectorAll(".kwc-youtube-card").forEach(btn => {
       btn.addEventListener("click", () => {
         const embed = btn.dataset.youtubeEmbed || "";
         if (!/^https:\/\/(www\.)?youtube(-nocookie)?\.com\/embed\//i.test(embed)) return;
@@ -5177,13 +5501,13 @@
         }
         const isShorts = btn.dataset.youtubeShorts === "1";
         const wrap = document.createElement("div");
-        wrap.className = isShorts ? "bmwc-youtube-wrap bmwc-youtube-shorts-wrap" : "bmwc-youtube-wrap";
+        wrap.className = isShorts ? "kwc-youtube-wrap kwc-youtube-shorts-wrap" : "kwc-youtube-wrap";
         if (key) wrap.setAttribute("data-youtube-key", key);
         wrap.style.cssText = youtubeShellStyle(isShorts, "");
         const safeEmbed = safeYouTubeEmbedUrl(embed);
         if (!safeEmbed) return;
         const iframe = document.createElement("iframe");
-        iframe.className = "bmwc-youtube-frame";
+        iframe.className = "kwc-youtube-frame";
         iframe.style.cssText = "position:absolute;inset:0;width:100%;height:100%;border:0;";
         iframe.src = safeEmbed;
         iframe.title = t("media.youtubeTitle", "YouTube video");
@@ -5194,8 +5518,8 @@
         btn.replaceWith(wrap);
       }, {once: true});
     });
-    el.querySelectorAll(".bmwc-social-card").forEach(card => {
-      const load = card.querySelector(".bmwc-media-load");
+    el.querySelectorAll(".kwc-social-card").forEach(card => {
+      const load = card.querySelector(".kwc-media-load");
       if (!load) return;
       load.addEventListener("click", () => {
         const kind = card.dataset.socialKind || "";
@@ -5212,8 +5536,8 @@
       }, {once: true});
     });
     hydrateSocialEmbeds(el);
-    el.querySelectorAll(".bmwc-media-card").forEach(card => {
-      const load = card.querySelector(".bmwc-media-load");
+    el.querySelectorAll(".kwc-media-card").forEach(card => {
+      const load = card.querySelector(".kwc-media-load");
       if (!load) return;
       load.addEventListener("click", () => {
         const kind = card.dataset.mediaKind || "";
@@ -5224,31 +5548,15 @@
         if (!safeSrc) return;
         if (key) state.mediaOpen.add(key);
         const wrap = document.createElement("div");
-        wrap.className = kind === "audio" ? "bmwc-audio-wrap" : "bmwc-video-wrap";
+        wrap.className = kind === "audio" ? "kwc-audio-wrap" : "kwc-video-wrap";
         if (key) wrap.setAttribute("data-preview-key", key);
         const media = createMediaElement(kind, safeSrc, key);
         if (media) wrap.appendChild(media);
         if (media) {
           media.addEventListener("error", () => {
-            window.__bmwcPreviewFailed && window.__bmwcPreviewFailed(key);
+            window.__kwcPreviewFailed && window.__kwcPreviewFailed(key);
             setMediaError(wrap, kind);
           }, {once: true});
-          media.addEventListener("loadedmetadata", () => window.__bmwcPreviewLoaded && window.__bmwcPreviewLoaded(media), {once: true});
-          media.addEventListener("loadeddata", () => {
-            const msgEl = wrap.closest(".bmwc-msg");
-            const key = msgEl && msgEl.dataset && msgEl.dataset.virtualKey;
-            if (!key || shouldProcessMediaEvent(media, key, "ready", 1200)) protectMediaElement(media, msgEl, 6000);
-          }, {once: true});
-          media.addEventListener("canplay", () => {
-            const msgEl = wrap.closest(".bmwc-msg");
-            const key = msgEl && msgEl.dataset && msgEl.dataset.virtualKey;
-            if (!key || shouldProcessMediaEvent(media, key, "canplay", 1200)) protectMediaElement(media, msgEl, 6000);
-          }, {once: true});
-          media.addEventListener("pause", () => {
-            protectMediaElement(media, wrap.closest(".bmwc-msg"), 7000);
-            setTimeout(flushDeferredMediaRender, 500);
-          });
-          media.addEventListener("ended", () => setTimeout(flushDeferredMediaRender, 500));
         }
         card.replaceWith(wrap);
         if (media && kind === "video" && typeof media.play === "function") {
@@ -5258,48 +5566,34 @@
       }, {once: true});
     });
     hydratePreviewMedia(el);
-    el.querySelectorAll("img, video, audio").forEach(media => {
-      const noteLayoutChange = event => noteMediaLayoutLoaded(media, el, event && event.type === "loadedmetadata" ? "metadata" : "load");
-      const protectOnly = event => {
-        const key = el && el.dataset && el.dataset.virtualKey;
-        if (key && !shouldProcessMediaEvent(media, key, event && event.type || "ready", 1200)) return;
-        protectMediaElement(media, el, 6000);
-      };
-      media.addEventListener("load", noteLayoutChange, {once: true});
-      media.addEventListener("loadedmetadata", noteLayoutChange, {once: true});
-      media.addEventListener("loadeddata", protectOnly, {once: true});
-      media.addEventListener("canplay", protectOnly, {once: true});
+    // Scroll/layout lifecycle is message-level, not media-level. Keep only
+    // preview failure handling here; ResizeObserver handles every height change
+    // uniformly regardless of the child element type.
+    el.querySelectorAll("img:not(.kwc-custom-emoji), video, audio").forEach(media => {
       media.addEventListener("error", () => {
-        if (media.classList.contains("bmwc-image-preview")) {
-          window.__bmwcPreviewFailed && window.__bmwcPreviewFailed(media.dataset.previewKey);
-          setMediaError(media.closest(".bmwc-image-link"), "image");
-        } else if (media.classList.contains("bmwc-video-preview") || media.classList.contains("bmwc-audio-preview")) {
+        if (media.classList.contains("kwc-image-preview")) {
+          window.__kwcPreviewFailed && window.__kwcPreviewFailed(media.dataset.previewKey);
+          setMediaError(media.closest(".kwc-image-link"), "image");
+        } else if (media.classList.contains("kwc-video-preview") || media.classList.contains("kwc-audio-preview")) {
           const kind = media.tagName === "AUDIO" ? "audio" : "video";
-          window.__bmwcPreviewFailed && window.__bmwcPreviewFailed(media.dataset.previewKey);
-          setMediaError(media.closest(kind === "audio" ? ".bmwc-audio-wrap" : ".bmwc-video-wrap"), kind);
+          window.__kwcPreviewFailed && window.__kwcPreviewFailed(media.dataset.previewKey);
+          setMediaError(media.closest(kind === "audio" ? ".kwc-audio-wrap" : ".kwc-video-wrap"), kind);
         }
-        noteLayoutChange();
       }, {once: true});
-      if (media.tagName === "VIDEO" || media.tagName === "AUDIO") {
-        media.addEventListener("pause", () => {
-          protectMediaElement(media, el, 7000);
-          setTimeout(flushDeferredMediaRender, 500);
-        });
-        media.addEventListener("ended", () => setTimeout(flushDeferredMediaRender, 500));
-      }
     });
     return el;
   }
 
   function renderAllMessages(box) {
     const {top, bottom} = ensureVirtualSpacers(box);
-    Array.from(box.querySelectorAll(":scope > .bmwc-msg")).forEach(el => el.remove());
+    Array.from(box.querySelectorAll(":scope > .kwc-msg")).forEach(el => el.remove());
     if (top) top.style.height = "0px";
     if (bottom) bottom.style.height = "0px";
     for (const msg of state.messages) {
       box.insertBefore(renderMessageElement(msg), bottom || null);
     }
     measureRenderedMessages(box);
+    syncVirtualMessageResizeObserver(box);
     syncTransientYoutubeOpen(box);
   }
 
@@ -5317,21 +5611,21 @@
 
   function syncMessageElementActions(el, msg) {
     if (!el || !msg) return;
-    const meta = el.querySelector(":scope > .bmwc-meta");
+    const meta = el.querySelector(":scope > .kwc-meta");
     if (!meta) return;
 
-    meta.querySelectorAll(":scope > .bmwc-mini-actions, :scope > .bmwc-mini-action[data-pin], :scope > .bmwc-mini-action[data-delete], :scope .bmwc-time-actions > .bmwc-mini-actions").forEach(btn => btn.remove());
+    meta.querySelectorAll(":scope > .kwc-mini-actions, :scope > .kwc-mini-action[data-pin], :scope > .kwc-mini-action[data-delete], :scope .kwc-time-actions > .kwc-mini-actions").forEach(btn => btn.remove());
 
     const actions = messageActionAvailability(msg);
     const hasActions = !!(actions.canReply || actions.canPin || actions.canDelete);
-    el.classList.toggle("bmwc-has-mini-actions", hasActions);
+    el.classList.toggle("kwc-has-mini-actions", hasActions);
     if (!hasActions) return;
 
-    let timeActions = meta.querySelector(":scope > .bmwc-time-actions");
+    let timeActions = meta.querySelector(":scope > .kwc-time-actions");
     if (!timeActions) {
-      const timeEl = meta.querySelector(":scope > .bmwc-time");
+      const timeEl = meta.querySelector(":scope > .kwc-time");
       timeActions = document.createElement("span");
-      timeActions.className = "bmwc-time-actions";
+      timeActions.className = "kwc-time-actions";
       if (timeEl) {
         meta.insertBefore(timeActions, timeEl);
         timeActions.appendChild(timeEl);
@@ -5341,11 +5635,11 @@
     }
 
     const wrap = document.createElement("span");
-    wrap.className = "bmwc-mini-actions";
+    wrap.className = "kwc-mini-actions";
 
     if (actions.canReply) {
       const reply = document.createElement("button");
-      reply.className = "bmwc-mini-action bmwc-reply-action";
+      reply.className = "kwc-mini-action kwc-reply-action";
       reply.type = "button";
       reply.setAttribute("data-reply", String(msg.id));
       reply.textContent = t("button.reply", "reply");
@@ -5359,7 +5653,7 @@
 
     if (actions.canPin) {
       const pin = document.createElement("button");
-      pin.className = "bmwc-mini-action";
+      pin.className = "kwc-mini-action";
       pin.type = "button";
       pin.setAttribute("data-pin", String(msg.id));
       pin.textContent = t("button.pin", "pin");
@@ -5367,7 +5661,7 @@
     }
     if (actions.canDelete) {
       const del = document.createElement("button");
-      del.className = "bmwc-mini-action";
+      del.className = "kwc-mini-action";
       del.type = "button";
       del.setAttribute("data-delete", String(msg.id));
       del.textContent = t("button.delete", "delete");
@@ -5384,7 +5678,7 @@
     // scroll keeps the existing DOM node alive. If the rendered text does not
     // match the hidden/deleted state, rebuild immediately instead of waiting
     // for the node to be culled and recreated by a later scroll.
-    if (msg.hidden && !el.classList.contains("bmwc-deleted")) return true;
+    if (msg.hidden && !el.classList.contains("kwc-deleted")) return true;
     return false;
   }
 
@@ -5392,48 +5686,50 @@
     if (!el || !msg || !el.parentNode) return el;
     const fresh = renderMessageElement(msg);
     el.replaceWith(fresh);
+    try { if (state.virtualMessageResizeObserver) state.virtualMessageResizeObserver.observe(fresh); } catch (_) {}
     return fresh;
   }
 
   function syncRenderedMessageStateForId(id) {
     if (!id) return;
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     if (!box) return;
     const sid = String(id);
     const msg = state.messages.find(m => m && String(m.id) === sid);
     if (!msg) return;
-    box.querySelectorAll(`:scope > .bmwc-msg[data-id="${cssEscape(sid)}"]`).forEach(el => {
+    box.querySelectorAll(`:scope > .kwc-msg[data-id="${cssEscape(sid)}"]`).forEach(el => {
       if (messageElementNeedsRebuild(el, msg)) el = rebuildRenderedMessageElement(el, msg);
       syncMessageElementActions(el, msg);
     });
   }
 
   function syncRenderedMessageActions() {
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     if (!box) return;
-    box.querySelectorAll(":scope > .bmwc-msg").forEach(el => {
+    box.querySelectorAll(":scope > .kwc-msg").forEach(el => {
       const key = el.dataset && el.dataset.virtualKey;
       const id = el.dataset && el.dataset.id;
-      const msg = state.messages.find(m => m && ((key && m._bmwcKey === key) || (id && m.id === id)));
+      const msg = state.messages.find(m => m && ((key && m._kwcKey === key) || (id && m.id === id)));
       if (msg) syncMessageElementActions(el, msg);
     });
   }
 
 
   function refreshRenderedMessagesForLocale() {
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     if (!box) return;
     const anchor = captureScrollAnchor(box);
     const wasNearBottom = isAutoFollowBottom(box);
-    box.querySelectorAll(":scope > .bmwc-msg").forEach(el => {
+    box.querySelectorAll(":scope > .kwc-msg").forEach(el => {
       const key = el.dataset && el.dataset.virtualKey;
       const id = el.dataset && el.dataset.id;
-      const msg = state.messages.find(m => m && ((key && m._bmwcKey === key) || (id && String(m.id) === String(id))));
+      const msg = state.messages.find(m => m && ((key && m._kwcKey === key) || (id && String(m.id) === String(id))));
       if (!msg) return;
       const fresh = renderMessageElement(msg);
       el.replaceWith(fresh);
     });
     applyTimeDisplayMode();
+    syncVirtualMessageResizeObserver(box);
     if (wasNearBottom) stickToBottomStable(box);
     else if (anchor) restoreScrollAnchor(box, anchor, {thresholdPx: 2.5, reason: "maintenance-anchor-restore"});
   }
@@ -5441,7 +5737,7 @@
   function syncTransientYoutubeOpen(box) {
     if (!box || !state.config || state.config.youtubeRememberExpanded !== false) return;
     const visible = new Set();
-    box.querySelectorAll(".bmwc-youtube-wrap[data-youtube-key]").forEach(el => {
+    box.querySelectorAll(".kwc-youtube-wrap[data-youtube-key]").forEach(el => {
       const key = el.getAttribute("data-youtube-key") || "";
       if (key) visible.add(key);
     });
@@ -5452,16 +5748,15 @@
 
   function measureRenderedMessages(box) {
     if (!box) return;
-    const rendered = Array.from(box.querySelectorAll(":scope > .bmwc-msg"));
+    const rendered = Array.from(box.querySelectorAll(":scope > .kwc-msg"));
     let total = 0;
     let count = 0;
     for (const el of rendered) {
-      if (el.dataset && el.dataset.activeMediaParked === "1") continue;
       const key = el.dataset.virtualKey;
-      const msg = state.messages.find(m => m && m._bmwcKey === key);
+      const msg = state.messages.find(m => m && m._kwcKey === key);
       const rect = el.getBoundingClientRect();
       const h = Math.max(1, Math.ceil(rect.height + parseFloat(getComputedStyle(el).marginBottom || "0")));
-      if (msg) msg._bmwcHeight = h;
+      if (msg) msg._kwcHeight = h;
       total += h;
       count++;
     }
@@ -5480,163 +5775,10 @@
     return Math.max(0, state.messages.length - 1);
   }
 
-  function mediaRenderPauseEnabled() {
-    const c = state.config || {};
-    return c.uiResumeRefreshSkipWhileMediaActive !== false;
-  }
-
-  function isMediaPlaybackActive() {
-    if (!mediaRenderPauseEnabled()) return false;
-    const box = document.getElementById("bmwc-messages");
-    if (!box) return false;
-
-    // YouTube runs inside a cross-origin iframe, so the browser does not expose
-    // a reliable playback state here. Treat an opened YouTube player as active
-    // when offscreen preservation is enabled; otherwise only protect it while
-    // it is visible.
-    if (box.querySelector(".bmwc-youtube-frame")) {
-      return preservePlayingMediaEnabled() ? true : isActiveMediaVisible();
-    }
-
-    for (const media of box.querySelectorAll("video, audio")) {
-      try {
-        if (!media.paused && !media.ended) return true;
-      } catch (_) {}
-    }
-    return false;
-  }
-
-  function preserveVisibleMediaEnabled() {
-    const c = state.config || {};
-    return c.uiVirtualScrollPreserveVisibleMedia !== false;
-  }
-
-  function preservePlayingMediaEnabled() {
-    const c = state.config || {};
-    return c.uiVirtualScrollPreservePlayingMedia !== false;
-  }
-
-  function hasActiveMediaElement(el, viewport = null) {
-    if (!el) return false;
-    if (el.querySelector && el.querySelector(".bmwc-youtube-frame")) return true;
-
-    // Visible media nodes, including images and GIFs, must be preserved across
-    // virtual renders. Recreating them fires load/metadata events again, changes
-    // measured message heights, and can make the browser scroll-anchor jump.
-    if (viewport && preserveVisibleMediaEnabled()) {
-      for (const media of el.querySelectorAll ? el.querySelectorAll("img, video, audio, iframe") : []) {
-        try {
-          if (media.matches && media.matches("video, audio") && media.ended) continue;
-          if (rectIntersectsViewport(media.getBoundingClientRect(), viewport, 96)) return true;
-        } catch (_) {}
-      }
-    }
-
-    for (const media of el.querySelectorAll ? el.querySelectorAll("video, audio") : []) {
-      try {
-        if (media.ended) continue;
-        if (!media.paused) return true;
-      } catch (_) {}
-    }
-    return false;
-  }
-
-  function activeMediaMessageElements(box) {
-    const map = new Map();
-    if (!box || (!preservePlayingMediaEnabled() && !preserveVisibleMediaEnabled())) return map;
-    const viewport = preserveVisibleMediaEnabled() ? box.getBoundingClientRect() : null;
-    for (const el of box.querySelectorAll(":scope > .bmwc-msg")) {
-      const key = el.dataset && el.dataset.virtualKey;
-      if (key && (isMediaMessageKeepAlive(key) || hasActiveMediaElement(el, viewport))) map.set(key, el);
-    }
-    return map;
-  }
-
-  function messageIndexByVirtualKey(key) {
-    if (!key) return -1;
-    for (let i = 0; i < state.messages.length; i++) {
-      const msg = state.messages[i];
-      if (msg && assignMessageKey(msg) === key) return i;
-    }
-    return -1;
-  }
-
-  function parkActiveMediaElement(el) {
-    if (!el || !el.dataset || el.dataset.activeMediaParked === "1") return;
-    el.dataset.activeMediaParked = "1";
-    el.style.position = "absolute";
-    el.style.left = "-100000px";
-    el.style.top = "0";
-    el.style.width = "1px";
-    el.style.height = "1px";
-    el.style.overflow = "hidden";
-    el.style.opacity = "0";
-    el.style.pointerEvents = "none";
-    el.style.margin = "0";
-  }
-
-  function unparkActiveMediaElement(el) {
-    if (!el || !el.dataset || el.dataset.activeMediaParked !== "1") return;
-    delete el.dataset.activeMediaParked;
-    el.style.removeProperty("position");
-    el.style.removeProperty("left");
-    el.style.removeProperty("top");
-    el.style.removeProperty("width");
-    el.style.removeProperty("height");
-    el.style.removeProperty("overflow");
-    el.style.removeProperty("opacity");
-    el.style.removeProperty("pointer-events");
-    el.style.removeProperty("margin");
-  }
-
-  function rectIntersectsViewport(rect, viewport, margin = 24) {
-    if (!rect || !viewport) return false;
-    return rect.bottom >= viewport.top - margin &&
-      rect.top <= viewport.bottom + margin &&
-      rect.right >= viewport.left - margin &&
-      rect.left <= viewport.right + margin;
-  }
-
-  function isActiveMediaVisible() {
-    if (!preserveVisibleMediaEnabled()) return false;
-    const box = document.getElementById("bmwc-messages");
-    if (!box) return false;
-    const viewport = box.getBoundingClientRect();
-    const candidates = box.querySelectorAll(".bmwc-youtube-frame, img, video, audio, iframe");
-    for (const media of candidates) {
-      try {
-        if (media.matches && media.matches("video, audio") && media.ended) continue;
-        if (rectIntersectsViewport(media.getBoundingClientRect(), viewport, 64)) return true;
-      } catch (_) {}
-    }
-    return false;
-  }
-
-  function deferRenderBecauseMediaActive() {
-    state.pendingMediaRender = true;
-  }
-
-  function flushDeferredMediaRender() {
-    if (!state.pendingMediaRender) return;
-
-    // Do not flush while a paused video/audio element is still visible. The
-    // element is no longer "playing", but recreating it immediately after pause
-    // reloads metadata and repeatedly shifts virtual-scroll height.
-    if (isMediaPlaybackActive() || isActiveMediaVisible()) return;
-
-    state.pendingMediaRender = false;
-    scheduleVirtualRender({
-      preserveScroll: true,
-      stickToBottom: state.autoFollowLatest && isAutoFollowBottom(document.getElementById("bmwc-messages")),
-      allowDuringMedia: true,
-      allowDuringVisibleMedia: true
-    });
-  }
-
   function captureScrollAnchor(box) {
     if (!box) return null;
     const viewport = box.getBoundingClientRect();
-    const messages = Array.from(box.querySelectorAll(":scope > .bmwc-msg"));
+    const messages = Array.from(box.querySelectorAll(":scope > .kwc-msg"));
     for (const el of messages) {
       const rect = el.getBoundingClientRect();
       if (rect.bottom >= viewport.top + 1) {
@@ -5653,7 +5795,7 @@
 
   function restoreScrollAnchor(box, anchor, options = {}) {
     if (!box || !anchor || !anchor.key) return false;
-    const el = box.querySelector(`:scope > .bmwc-msg[data-virtual-key="${CSS.escape(anchor.key)}"]`);
+    const el = box.querySelector(`:scope > .kwc-msg[data-virtual-key="${CSS.escape(anchor.key)}"]`);
     if (!el) return false;
     const viewport = box.getBoundingClientRect();
     const rect = el.getBoundingClientRect();
@@ -5690,15 +5832,12 @@
   function runViewportMaintenance(reason = "") {
     state.viewportMaintenanceTimer = null;
     state.viewportMaintenanceDueAt = 0;
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     if (!box || state.minimized || guestChatHidden()) return;
-    if (state.historyLoading || state.virtualRenderScheduled || isScrollInteractionActive() || isMediaLayoutQuietActive()) {
+    if (state.historyLoading || state.virtualRenderScheduled || isScrollInteractionActive()) {
       scheduleViewportMaintenance(reason || "busy", 1200);
       return;
     }
-
-    cleanupMediaKeepAlive();
-    try { state.mediaLayoutEventCache.clear(); } catch (_) {}
 
     // Keep this pass visually silent. Earlier versions re-rendered the current
     // virtual range and restored an anchor here, but that can still appear as a
@@ -5737,8 +5876,8 @@
     const indices = new Set();
     if (!box) return indices;
     const viewport = box.getBoundingClientRect();
-    for (const el of box.querySelectorAll(":scope > .bmwc-msg")) {
-      if (!el || !el.dataset || el.dataset.activeMediaParked === "1") continue;
+    for (const el of box.querySelectorAll(":scope > .kwc-msg")) {
+      if (!el || !el.dataset) continue;
       const key = el.dataset.virtualKey;
       if (!key) continue;
       let rect;
@@ -5747,10 +5886,9 @@
       } catch (_) {
         continue;
       }
-      // While image/video dimensions settle, the estimated-height model can be
-      // temporarily wrong. Keep messages that are actually visible or close to
-      // the viewport in the render range so a media-layout render cannot cull
-      // text that is still on screen.
+      // While any message content changes size, the estimated-height model can
+      // temporarily lag. Keep messages that are physically visible or close to
+      // the viewport in the render range until the observer updates the height.
       if (!rectIntersectsViewport(rect, viewport, margin)) continue;
       const index = messageIndexByVirtualKey(key);
       if (index >= 0) indices.add(index);
@@ -5762,8 +5900,8 @@
     const result = {count: 0, totalHeight: 0, firstKey: "", lastKey: ""};
     if (!box) return result;
     const viewport = box.getBoundingClientRect();
-    for (const el of box.querySelectorAll(":scope > .bmwc-msg")) {
-      if (!el || !el.dataset || el.dataset.activeMediaParked === "1") continue;
+    for (const el of box.querySelectorAll(":scope > .kwc-msg")) {
+      if (!el || !el.dataset) continue;
       let rect;
       try {
         rect = el.getBoundingClientRect();
@@ -5824,67 +5962,9 @@
     scheduleVirtualRender({
       preserveScroll: true,
       deferDuringScroll: false,
-      deferDuringMediaLayout: false,
-      allowDuringMedia: true,
-      allowDuringVisibleMedia: true,
-      allowDuringMediaLayout: true,
       blankRescue: true,
       anchor: state.lastGoodVirtualAnchor || null
     });
-  }
-
-  function mediaNearbyVirtualRangeInfo(box, margin = 0) {
-    const info = {
-      hasMedia: false,
-      hasLargeMedia: false,
-      minIndex: Infinity,
-      maxIndex: -1,
-      maxMediaHeight: 0
-    };
-    if (!box) return info;
-    const viewport = box.getBoundingClientRect();
-    const viewportHeight = Math.max(1, Number(box.clientHeight || viewport.height || 1));
-    for (const media of box.querySelectorAll("img, video, audio, iframe, .bmwc-youtube-frame")) {
-      let mediaRect;
-      try {
-        mediaRect = media.getBoundingClientRect();
-      } catch (_) {
-        continue;
-      }
-      const msgEl = media.closest && media.closest(".bmwc-msg");
-      if (!msgEl || !msgEl.dataset || msgEl.dataset.activeMediaParked === "1") continue;
-      let msgRect;
-      try {
-        msgRect = msgEl.getBoundingClientRect();
-      } catch (_) {
-        msgRect = mediaRect;
-      }
-
-      // A not-yet-loaded image can report 0x0. In that case the owner message
-      // rectangle is the safer proximity signal.
-      const near = rectIntersectsViewport(mediaRect, viewport, margin) ||
-        rectIntersectsViewport(msgRect, viewport, margin);
-      if (!near) continue;
-
-      const key = msgEl.dataset.virtualKey;
-      const index = messageIndexByVirtualKey(key);
-      if (index < 0) continue;
-
-      const mediaHeight = Math.max(0, Number(mediaRect.height || 0));
-      const ownerHeight = Math.max(0, Number(msgRect.height || 0));
-      const large = mediaHeight >= viewportHeight * 0.5 || ownerHeight >= viewportHeight * 0.75;
-
-      info.hasMedia = true;
-      info.hasLargeMedia = info.hasLargeMedia || large;
-      info.minIndex = Math.min(info.minIndex, index);
-      info.maxIndex = Math.max(info.maxIndex, index);
-      info.maxMediaHeight = Math.max(info.maxMediaHeight, mediaHeight, ownerHeight);
-    }
-    if (!Number.isFinite(info.minIndex)) {
-      info.minIndex = Infinity;
-      info.maxIndex = -1;
-    }
-    return info;
   }
 
   function expandVirtualRangeForVisibleMessages(start, end, protectedIndices, count, guard = 2) {
@@ -5904,61 +5984,6 @@
     };
   }
 
-  function expandVirtualRangeForMediaStability(start, end, count, mediaInfo, protectedIndices, viewport) {
-    if (!count) return {start, end};
-
-    let min = Infinity;
-    let max = -1;
-    if (protectedIndices) {
-      for (const index of protectedIndices) {
-        if (!Number.isFinite(index) || index < 0 || index >= count) continue;
-        min = Math.min(min, index);
-        max = Math.max(max, index);
-      }
-    }
-    if (mediaInfo && mediaInfo.hasMedia && Number.isFinite(mediaInfo.minIndex) && mediaInfo.maxIndex >= 0) {
-      min = Math.min(min, mediaInfo.minIndex);
-      max = Math.max(max, mediaInfo.maxIndex);
-    }
-
-    const mediaNear = !!(mediaInfo && mediaInfo.hasMedia);
-    const largeMediaNear = !!(mediaInfo && mediaInfo.hasLargeMedia);
-    const relaxing = isMediaCullingRelaxActive();
-    if (!mediaNear && !largeMediaNear && !relaxing) return {start, end};
-
-    if (!Number.isFinite(min) || max < 0) {
-      // During a short post-load relax window there may be no media element in
-      // the current DOM because it was just culled. Keep a wider window around
-      // the already calculated range instead of aggressively deleting nodes.
-      min = start;
-      max = Math.max(start, end - 1);
-    }
-
-    const avg = Math.max(24, Math.min(120, Number(state.virtualAverageMessageHeight) || 42));
-    const viewportMessages = Math.max(6, Math.ceil(Math.max(1, Number(viewport) || 1) / avg));
-
-    let before = Math.max(8, Math.ceil(viewportMessages * 0.75));
-    let after = Math.max(16, Math.ceil(viewportMessages * 1.5));
-
-    if (mediaNear) {
-      before = Math.max(before, 10, Math.ceil(viewportMessages * 1.0));
-      after = Math.max(after, 28, Math.ceil(viewportMessages * 2.2));
-    }
-    if (largeMediaNear) {
-      before = Math.max(before, 14, Math.ceil(viewportMessages * 1.5));
-      after = Math.max(after, 45, Math.ceil(viewportMessages * 3.2));
-    }
-    if (relaxing) {
-      before = Math.max(before, 12, Math.ceil(viewportMessages * 1.2));
-      after = Math.max(after, 36, Math.ceil(viewportMessages * 2.6));
-    }
-
-    return {
-      start: Math.max(0, Math.min(start, min - before)),
-      end: Math.min(count, Math.max(end, max + after + 1))
-    };
-  }
-
   function renderVirtualMessages(options = {}) {
     if (Date.now() < Number(state.forceLatestJumpUntil || 0)) {
       options = Object.assign({}, options, {
@@ -5967,26 +5992,15 @@
         preserveVisualAnchor: false,
         latestJump: true,
         ignoreVisibleRangeProtection: true,
-        allowDuringMedia: true,
-        allowDuringVisibleMedia: true,
-        allowDuringMediaLayout: true,
         deferDuringScroll: false,
-        deferDuringMediaLayout: false,
-        allowBottomStickDuringLock: true
+          allowBottomStickDuringLock: true
       });
     }
-    const mediaActive = isMediaPlaybackActive();
-    if (mediaActive && options.allowDuringMedia !== true && !preservePlayingMediaEnabled()) {
-      deferRenderBecauseMediaActive();
-      return;
-    }
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     if (!box) return;
-    if (isActiveMediaVisible() && options.allowDuringVisibleMedia !== true && !preservePlayingMediaEnabled()) {
-      deferRenderBecauseMediaActive();
-      return;
-    }
-    const keptActiveMedia = activeMediaMessageElements(box);
+    // Virtual scrolling is authoritative over message-node lifetime regardless of
+    // content type. Only the requested [start,end) range is kept in the scroller;
+    // off-range nodes are removed and recreated from message state when needed.
     const prevScrollTop = box.scrollTop;
     const bottomStickSuppressed = options.forcePreservePosition === true || options.suppressBottomStick === true || (Date.now() < Number(state.preventBottomStickUntil || 0) && options.allowBottomStickDuringLock !== true);
     const explicitLatestFollow = !bottomStickSuppressed && (
@@ -5997,13 +6011,7 @@
     );
     const actuallyNearBottom = bottomStickSuppressed ? false : (!state.historyHasAfter && isAutoFollowBottom(box));
     const explicitlyStickBottom = !!options.stickToBottom && (explicitLatestFollow || actuallyNearBottom);
-    const mediaLayoutBottomFollow =
-      !bottomStickSuppressed &&
-      (explicitLatestFollow || actuallyNearBottom) &&
-      Date.now() <= Number(state.autoFollowMediaLayoutUntil || 0) &&
-      !isScrollInteractionActive() &&
-      (Date.now() - Number(state.lastUserScrollAt || 0)) > Math.max(250, scrollInteractionIdleMs());
-    let shouldStickBottom = !bottomStickSuppressed && (explicitlyStickBottom || actuallyNearBottom || mediaLayoutBottomFollow);
+    let shouldStickBottom = !bottomStickSuppressed && (explicitlyStickBottom || actuallyNearBottom);
     const preserveBottomAfterRender = !options.anchor && shouldStickBottom;
     if (preserveBottomAfterRender) {
       state.autoFollowLatest = true;
@@ -6031,7 +6039,7 @@
     const {top, bottom} = ensureVirtualSpacers(box);
     const count = state.messages.length;
     if (count === 0) {
-      Array.from(box.querySelectorAll(":scope > .bmwc-msg")).forEach(el => el.remove());
+      Array.from(box.querySelectorAll(":scope > .kwc-msg")).forEach(el => el.remove());
       if (top) top.style.height = "0px";
       if (bottom) bottom.style.height = "0px";
       state.virtualRenderStart = 0;
@@ -6084,19 +6092,13 @@
     end = Math.max(start, Math.min(end, count));
 
     const skipVisibleRangeProtection = !!options.ignoreVisibleRangeProtection || !!options.latestJump;
-    const mediaProbeMargin = Math.max(240, Math.round(viewport * (isMediaCullingRelaxActive() ? 2.5 : 1.25)));
-    const mediaInfo = skipVisibleRangeProtection
-      ? {hasMedia: false, hasLargeMedia: false, minIndex: Infinity, maxIndex: -1, maxMediaHeight: 0}
-      : mediaNearbyVirtualRangeInfo(box, mediaProbeMargin);
-    const visibleProtectMargin = mediaInfo.hasMedia || isMediaCullingRelaxActive()
-      ? Math.max(720, Math.round(viewport * 2.5))
-      : Math.max(160, Math.min(720, Math.round(viewport * 0.75)));
+    // Keep only a small guard around messages that are physically visible. No
+    // child content gets a separate retention window: the range is driven only by
+    // scroll position and measured message heights.
+    const visibleProtectMargin = Math.max(120, Math.min(480, Math.round(viewport * 0.5)));
     const protectedVisibleIndices = skipVisibleRangeProtection ? new Set() : visibleMessageIndices(box, visibleProtectMargin);
     if (!skipVisibleRangeProtection) {
-      let expanded = expandVirtualRangeForVisibleMessages(start, end, protectedVisibleIndices, count, mediaInfo.hasMedia ? 8 : 3);
-      start = expanded.start;
-      end = expanded.end;
-      expanded = expandVirtualRangeForMediaStability(start, end, count, mediaInfo, protectedVisibleIndices, viewport);
+      const expanded = expandVirtualRangeForVisibleMessages(start, end, protectedVisibleIndices, count, 3);
       start = expanded.start;
       end = expanded.end;
     }
@@ -6111,89 +6113,97 @@
       end = Math.min(count, Math.max(end, center + Math.ceil(rescueSpan / 2)));
     }
 
-    Array.from(box.querySelectorAll(":scope > .bmwc-msg")).forEach(el => {
+    // Reconcile the virtual range deterministically. The DOM order must always be
+    // exactly state.messages[start..end). Existing nodes are left attached when
+    // they are already in the correct relative position, so an on-screen iframe
+    // is not needlessly moved/reloaded. Off-range nodes are removed unconditionally
+    // instead of being parked invisibly inside the scroller.
+    const desiredKeys = [];
+    const desiredKeySet = new Set();
+    for (let i = start; i < end; i++) {
+      const msg = state.messages[i];
+      if (!msg) continue;
+      const key = assignMessageKey(msg);
+      desiredKeys.push(key);
+      desiredKeySet.add(key);
+    }
+
+    Array.from(box.querySelectorAll(":scope > .kwc-msg")).forEach(el => {
       const key = el.dataset && el.dataset.virtualKey;
-      if (!key) {
-        el.remove();
-        return;
-      }
-      const index = messageIndexByVirtualKey(key);
-      if (index >= start && index < end) {
-        unparkActiveMediaElement(el);
-        return;
-      }
-      if (keptActiveMedia.has(key)) parkActiveMediaElement(el);
-      else el.remove();
+      if (!key || !desiredKeySet.has(key)) el.remove();
     });
+
     if (top) top.style.height = Math.max(0, Math.round(estimatedHeightUntil(start))) + "px";
     if (bottom) bottom.style.height = Math.max(0, Math.round(estimatedTotalHeight() - estimatedHeightUntil(end))) + "px";
 
-    // Keep active media nodes in-place. Moving an existing YouTube iframe/video
-    // with insertBefore() can make some browsers reload the player, which restarts
-    // playback when the message re-enters the virtual-scroll viewport. We only
-    // insert newly rendered messages around already-kept media nodes.
     const renderedByKey = new Map();
-    Array.from(box.querySelectorAll(":scope > .bmwc-msg")).forEach(el => {
+    Array.from(box.querySelectorAll(":scope > .kwc-msg")).forEach(el => {
       const key = el.dataset && el.dataset.virtualKey;
-      if (key) renderedByKey.set(key, el);
+      // A duplicate DOM key is never valid. Keep the first node and remove the
+      // duplicate immediately so anchor lookup has one unambiguous target.
+      if (!key || renderedByKey.has(key)) {
+        el.remove();
+        return;
+      }
+      renderedByKey.set(key, el);
     });
 
-    const findInsertBefore = (fromIndex) => {
-      for (let j = fromIndex + 1; j < end; j++) {
-        const nextMsg = state.messages[j];
-        if (!nextMsg) continue;
-        const nextKey = assignMessageKey(nextMsg);
-        const nextEl = renderedByKey.get(nextKey);
-        if (nextEl && nextEl.parentNode === box) return nextEl;
-      }
-      return bottom || null;
-    };
-
+    let cursor = top ? top.nextSibling : box.firstChild;
     for (let i = start; i < end; i++) {
       const msg = state.messages[i];
+      if (!msg) continue;
       const key = assignMessageKey(msg);
       let el = renderedByKey.get(key);
-      if (el) {
-        unparkActiveMediaElement(el);
-        if (messageElementNeedsRebuild(el, msg)) {
-          el = rebuildRenderedMessageElement(el, msg);
-          renderedByKey.set(key, el);
-        } else {
-          syncMessageElementActions(el, msg);
-        }
-        const before = findInsertBefore(i);
-        if (before !== el && el.nextSibling !== before) box.insertBefore(el, before);
-        continue;
+      if (el && messageElementNeedsRebuild(el, msg)) {
+        const fresh = renderMessageElement(msg);
+        el.replaceWith(fresh);
+        el = fresh;
+        renderedByKey.set(key, el);
+      } else if (el) {
+        syncMessageElementActions(el, msg);
+      } else {
+        el = renderMessageElement(msg);
+        renderedByKey.set(key, el);
       }
-      el = renderMessageElement(msg);
-      box.insertBefore(el, findInsertBefore(i));
-      renderedByKey.set(key, el);
+
+      // In the normal scrolling case cursor === el, so no DOM move occurs. Only
+      // move a node when the DOM is actually out of canonical message order.
+      if (cursor !== el) box.insertBefore(el, cursor || bottom || null);
+      cursor = el.nextSibling;
+    }
+
+    // The bottom spacer is the only valid direct child after the rendered range.
+    // Remove any stale message node left behind by a previous inconsistent render.
+    while (cursor && cursor !== bottom) {
+      const next = cursor.nextSibling;
+      if (cursor.classList && cursor.classList.contains("kwc-msg")) cursor.remove();
+      cursor = next;
     }
     state.virtualRenderStart = start;
     state.virtualRenderEnd = end;
     measureRenderedMessages(box);
+    syncVirtualMessageResizeObserver(box);
     syncTransientYoutubeOpen(box);
     if (top) top.style.height = Math.max(0, Math.round(estimatedHeightUntil(start))) + "px";
     if (bottom) bottom.style.height = Math.max(0, Math.round(estimatedTotalHeight() - estimatedHeightUntil(end))) + "px";
     applyBottomStackFiller(box, start, end, shouldStickBottom);
     if (preserveBottomAfterRender) scheduleHistoryViewportFill("bottom-render");
     if (preserveBottomAfterRender) {
-      // Bottom auto-follow wins over scroll-anchor restoration. This prevents
-      // media-layout/virtual-scroll renders from pulling the latest chat upward.
+      // Bottom auto-follow wins over scroll-anchor restoration so late layout
+      // changes cannot pull the latest chat upward.
       stickToBottomStable(box);
     } else if (options.anchor && restoreScrollAnchor(box, options.anchor, {thresholdPx: Number.isFinite(Number(options.anchorThresholdPx)) ? Number(options.anchorThresholdPx) : 0.5, reason: "explicit-anchor-restore"})) {
       // Anchor restore keeps the user's current viewport stable after prepending older history.
     } else if (visualAnchor && restoreScrollAnchor(box, visualAnchor, {thresholdPx: options.maintenanceRender ? 2.5 : 1.75, reason: options.maintenanceRender ? "maintenance-visual-anchor" : "visual-anchor-restore"})) {
-      // Normal scroll/media renders should keep the visible message in place.
-      // The scrollbar can resize, but already visible images/text should not
-      // jump after scroll idle when spacers are recalculated.
+      // Normal virtual renders should keep the visible message in place. The
+      // scrollbar can resize, but already visible content should not jump when
+      // spacers are recalculated.
     } else if (shouldStickBottom && state.autoFollowLatest) stickToBottomStable(box);
     else if (options.preserveScroll !== false) setScrollTopPreserved(box, prevScrollTop);
 
-    // A failed/late media load can shrink a message after the range has already
-    // been calculated. If the DOM still contains messages but the viewport is
-    // effectively empty, immediately re-render a wider rescue range instead of
-    // waiting for the user to scroll again.
+    // A late content resize can change estimated heights after the range was
+    // calculated. If the viewport becomes effectively empty, immediately
+    // re-render a wider rescue range instead of waiting for another scroll.
     if (!options.latestJump) maybeScheduleBlankRescueRender(box, options);
     refreshScrollAffordances(box);
   }
@@ -6201,10 +6211,6 @@
   function scheduleVirtualRender(options = {}) {
     if (options.deferDuringScroll !== false && isScrollInteractionActive() && !options.stickToBottom && !options.anchor) {
       deferRenderUntilScrollIdle(options);
-      return;
-    }
-    if (options.deferDuringMediaLayout !== false && isMediaLayoutQuietActive() && !options.stickToBottom && !options.anchor && options.allowDuringMediaLayout !== true) {
-      scheduleRenderAfterMediaQuiet(options);
       return;
     }
     state.virtualPendingRenderOptions = mergeRenderOptions(state.virtualPendingRenderOptions, options);
@@ -6219,7 +6225,7 @@
   }
 
   function addMessage(msg, options = {}) {
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     if (!box || !msg) return;
     // Auto-follow new incoming chat only when the viewport is physically near
     // the bottom or a user action explicitly requested the latest view
@@ -6230,16 +6236,15 @@
     const shouldFollowLatest = !options.prepend && (wasNearBottom || explicitLatestFollow);
     if (shouldFollowLatest) {
       state.autoFollowLatest = true;
-      if (!options.skipRender) allowMediaLayoutAutoFollow(4000);
     } else if (!options.prepend) {
       state.autoFollowLatest = false;
     }
     const key = assignMessageKey(msg);
     let idx = -1;
     if (msg.id) idx = state.messages.findIndex(m => m && m.id === msg.id);
-    if (idx < 0) idx = state.messages.findIndex(m => m && m._bmwcKey === key);
+    if (idx < 0) idx = state.messages.findIndex(m => m && m._kwcKey === key);
     if (idx >= 0) {
-      state.messages[idx] = Object.assign(state.messages[idx], msg, {_bmwcKey: state.messages[idx]._bmwcKey});
+      state.messages[idx] = Object.assign(state.messages[idx], msg, {_kwcKey: state.messages[idx]._kwcKey});
     } else if (options.prepend) {
       state.messages.unshift(msg);
     } else {
@@ -6251,13 +6256,7 @@
         preserveScroll: !shouldFollowLatest,
         deferDuringScroll: !shouldFollowLatest,
         forceLatestFollow: explicitLatestFollow,
-        allowDuringMedia: true,
-        allowDuringVisibleMedia: true,
-        // New incoming messages must not be held behind the media-layout quiet
-        // window. Active media nodes are preserved by renderVirtualMessages(),
-        // so delaying here can make SSE updates appear stuck.
-        deferDuringMediaLayout: false
-      };
+};
       if (!options.prepend && !shouldFollowLatest && isScrollInteractionActive()) deferRenderUntilScrollIdle(renderOptions);
       else renderVirtualMessages(renderOptions);
       if (!options.prepend && shouldFollowLatest) stickToBottomStable(box);
@@ -6267,7 +6266,7 @@
 
   function markMessageDeleted(id) {
     if (!id) return;
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     const wasNearBottom = box ? isAutoFollowBottom(box) : !!state.autoFollowLatest;
     const wasAtHistoryEnd = !!box && !state.historyLoading && !state.historyHasMore && state.messages.length > 0 && Number(box.scrollTop || 0) <= historyPreloadThresholdPx(box) + 6;
     if (wasAtHistoryEnd) state.forceHistoryEndNoticeUntil = Math.max(Number(state.forceHistoryEndNoticeUntil || 0), Date.now() + 1600);
@@ -6305,14 +6304,11 @@
       anchor: !wasNearBottom && !wasAtHistoryEnd ? anchor : null,
       forcePreservePosition: !wasNearBottom,
       suppressBottomStick: !wasNearBottom,
-      allowDuringMedia: true,
-      allowDuringVisibleMedia: true,
-      deferDuringMediaLayout: false,
       deferDuringScroll: false
     });
     if (!wasNearBottom) {
       state.autoFollowLatest = false;
-      const afterBox = document.getElementById("bmwc-messages");
+      const afterBox = document.getElementById("kwc-messages");
       if (afterBox && wasAtHistoryEnd) {
         state.forceHistoryEndNoticeUntil = Math.max(Number(state.forceHistoryEndNoticeUntil || 0), Date.now() + 1600);
         setScrollTopPreserved(afterBox, 0, {allowAwayFromBottom: true, reason: "delete-history-end-preserve", suppressRenderMs: 260, suppressUpdateMs: 180});
@@ -6343,12 +6339,12 @@
   }
 
   function savedUserFontSize() {
-    const v = Number(localStorage.getItem("bmwc.userFontSize"));
+    const v = Number(localStorage.getItem("kwc.userFontSize"));
     return Number.isFinite(v) && v >= 8 && v <= 36 ? v : null;
   }
 
   function savedUserFontFamily() {
-    return String(localStorage.getItem("bmwc.userFontFamily") || "");
+    return String(localStorage.getItem("kwc.userFontFamily") || "");
   }
 
   function effectiveBaseFontSize() {
@@ -6363,7 +6359,7 @@
     value = Math.max(8, Math.min(36, value));
     state.liveUserFontSize = value;
     if (persist) {
-      localStorage.setItem("bmwc.userFontSize", formatDecimalNumber(value, 2));
+      localStorage.setItem("kwc.userFontSize", formatDecimalNumber(value, 2));
     }
     applyFontSizeConfig();
     applyMediaViewportConfig();
@@ -6371,20 +6367,20 @@
 
   function resetUserFontSize() {
     state.liveUserFontSize = null;
-    localStorage.removeItem("bmwc.userFontSize");
+    localStorage.removeItem("kwc.userFontSize");
     applyFontSizeConfig();
     applyMediaViewportConfig();
   }
 
   function setUserFontFamily(value) {
     value = normalizeFontFamilyPreference(value);
-    if (value) localStorage.setItem("bmwc.userFontFamily", value);
-    else localStorage.removeItem("bmwc.userFontFamily");
+    if (value) localStorage.setItem("kwc.userFontFamily", value);
+    else localStorage.removeItem("kwc.userFontFamily");
     applyThemeConfig();
   }
 
   function resetUserFontFamily() {
-    localStorage.removeItem("bmwc.userFontFamily");
+    localStorage.removeItem("kwc.userFontFamily");
     applyThemeConfig();
   }
 
@@ -6470,7 +6466,7 @@
   }
 
   function applyWebFontsConfig() {
-    let style = document.getElementById("bmwc-web-fonts-style");
+    let style = document.getElementById("kwc-web-fonts-style");
     if (!state.config || !state.config.webFontsEnabled) {
       if (style) style.remove();
       return;
@@ -6498,7 +6494,7 @@
 
     if (!style) {
       style = document.createElement("style");
-      style.id = "bmwc-web-fonts-style";
+      style.id = "kwc-web-fonts-style";
       document.head.appendChild(style);
     }
     style.textContent = rules.join("\n");
@@ -6506,21 +6502,21 @@
 
 
   function applyMediaViewportConfig() {
-    const root = document.getElementById("bmwc-root");
+    const root = document.getElementById("kwc-root");
     if (!root) return;
     const configured = Number(state.config && state.config.imagePreviewMaxHeight);
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     const viewportHeight = Math.max(160, Number(box && box.clientHeight ? box.clientHeight : window.innerHeight || 720));
     const viewportWidth = Math.max(180, Number(box && box.clientWidth ? box.clientWidth : window.innerWidth || 480));
     const viewportCap = Math.max(160, Math.floor(viewportHeight - 72));
     const configuredPx = Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : viewportCap;
     const px = Math.max(120, Math.min(configuredPx, viewportCap));
-    root.style.setProperty("--bmwc-media-viewport-max-height", px + "px");
-    root.style.setProperty("--bmwc-media-viewport-max-width", Math.floor(viewportWidth) + "px");
+    root.style.setProperty("--kwc-media-viewport-max-height", px + "px");
+    root.style.setProperty("--kwc-media-viewport-max-width", Math.floor(viewportWidth) + "px");
   }
 
   function applyFontSizeConfig() {
-    const root = document.getElementById("bmwc-root");
+    const root = document.getElementById("kwc-root");
     if (!root || !state.config) return;
 
     const baseFontSize = Number(state.config.uiFontSize) || 13;
@@ -6529,13 +6525,13 @@
 
     // Keep the UI chrome, menus, settings, sidebars, search fields, and buttons on
     // their theme/config defaults.  The user's Chat Settings font-size slider is
-    // scoped to real chat message history only via --bmwc-chat-message-font-size.
-    root.style.setProperty("--bmwc-font-size", fontPx(state.config.uiFontSize, 13));
-    root.style.setProperty("--bmwc-message-font-size", fontPx(state.config.uiMessageFontSize, baseFontSize));
-    root.style.setProperty("--bmwc-input-font-size", fontPx(state.config.uiInputFontSize, baseFontSize));
-    root.style.setProperty("--bmwc-button-font-size", fontPx(state.config.uiButtonFontSize, 12));
-    root.style.setProperty("--bmwc-badge-font-size", fontPx(state.config.uiBadgeFontSize, 10));
-    root.style.setProperty("--bmwc-chat-message-font-size", fontPx(userSize == null ? configuredMessageSize : userSize, configuredMessageSize));
+    // scoped to real chat message history only via --kwc-chat-message-font-size.
+    root.style.setProperty("--kwc-font-size", fontPx(state.config.uiFontSize, 13));
+    root.style.setProperty("--kwc-message-font-size", fontPx(state.config.uiMessageFontSize, baseFontSize));
+    root.style.setProperty("--kwc-input-font-size", fontPx(state.config.uiInputFontSize, baseFontSize));
+    root.style.setProperty("--kwc-button-font-size", fontPx(state.config.uiButtonFontSize, 12));
+    root.style.setProperty("--kwc-badge-font-size", fontPx(state.config.uiBadgeFontSize, 10));
+    root.style.setProperty("--kwc-chat-message-font-size", fontPx(userSize == null ? configuredMessageSize : userSize, configuredMessageSize));
   }
 
   function clampOpacity(value) {
@@ -6552,31 +6548,31 @@
   }
 
   function savedUserTheme() {
-    return normalizedTheme(localStorage.getItem("bmwc.userTheme") || "");
+    return normalizedTheme(localStorage.getItem("kwc.userTheme") || "");
   }
 
   function resetVisualUserPreferencesForTheme() {
     state.liveUserOpacity = null;
-    localStorage.removeItem("bmwc.userOpacity");
-    localStorage.removeItem("bmwc.userFontSize");
-    localStorage.removeItem("bmwc.userFontFamily");
-    localStorage.removeItem("bmwc.userTextColor");
-    localStorage.removeItem("bmwc.userUiTextColor");
-    localStorage.removeItem("bmwc.userTextShadowMode");
-    localStorage.removeItem("bmwc.userTextShadowCustom");
-    localStorage.removeItem("bmwc.userBackgroundColor");
-    localStorage.removeItem("bmwc.userInputBackgroundColor");
+    localStorage.removeItem("kwc.userOpacity");
+    localStorage.removeItem("kwc.userFontSize");
+    localStorage.removeItem("kwc.userFontFamily");
+    localStorage.removeItem("kwc.userTextColor");
+    localStorage.removeItem("kwc.userUiTextColor");
+    localStorage.removeItem("kwc.userTextShadowMode");
+    localStorage.removeItem("kwc.userTextShadowCustom");
+    localStorage.removeItem("kwc.userBackgroundColor");
+    localStorage.removeItem("kwc.userInputBackgroundColor");
   }
 
   function setUserTheme(value) {
     const theme = normalizedTheme(value || "");
-    if (theme) localStorage.setItem("bmwc.userTheme", theme);
-    else localStorage.removeItem("bmwc.userTheme");
+    if (theme) localStorage.setItem("kwc.userTheme", theme);
+    else localStorage.removeItem("kwc.userTheme");
     resetVisualUserPreferencesForTheme();
     applyFontSizeConfig();
     applyThemeConfig();
     refreshRenderedMessagesForLocale();
-    scheduleVirtualRender({preserveScroll: true, stickToBottom: false, allowDuringMedia: true, deferDuringScroll: false, deferDuringMediaLayout: false});
+    scheduleVirtualRender({preserveScroll: true, stickToBottom: false, deferDuringScroll: false});
     if (state.prefsModalOpen) {
       openUserPreferencesModal(true);
     }
@@ -6640,7 +6636,7 @@
   }
 
   function savedUserOpacity() {
-    const v = Number(localStorage.getItem("bmwc.userOpacity"));
+    const v = Number(localStorage.getItem("kwc.userOpacity"));
     return Number.isFinite(v) && v >= 0.10 && v <= 1 ? v : null;
   }
 
@@ -6656,14 +6652,14 @@
     value = Math.max(0.10, Math.min(1, value));
     state.liveUserOpacity = value;
     if (persist) {
-      localStorage.setItem("bmwc.userOpacity", String(value.toFixed(2)));
+      localStorage.setItem("kwc.userOpacity", String(value.toFixed(2)));
     }
     applyThemeConfig();
   }
 
   function resetUserOpacity() {
     state.liveUserOpacity = null;
-    localStorage.removeItem("bmwc.userOpacity");
+    localStorage.removeItem("kwc.userOpacity");
     applyThemeConfig();
   }
 
@@ -6684,11 +6680,11 @@
   }
 
   function savedUserTextColor() {
-    return normalizeHexColor(localStorage.getItem("bmwc.userTextColor") || "");
+    return normalizeHexColor(localStorage.getItem("kwc.userTextColor") || "");
   }
 
   function savedUserUiTextColor() {
-    return normalizeHexColor(localStorage.getItem("bmwc.userUiTextColor") || "");
+    return normalizeHexColor(localStorage.getItem("kwc.userUiTextColor") || "");
   }
 
   function normalizeTextShadowMode(value) {
@@ -6754,89 +6750,89 @@
   }
 
   function savedUserTextShadowMode() {
-    return normalizeTextShadowMode(localStorage.getItem("bmwc.userTextShadowMode") || "");
+    return normalizeTextShadowMode(localStorage.getItem("kwc.userTextShadowMode") || "");
   }
 
   function savedUserTextShadowCustom() {
-    return sanitizeTextShadow(localStorage.getItem("bmwc.userTextShadowCustom") || "");
+    return sanitizeTextShadow(localStorage.getItem("kwc.userTextShadowCustom") || "");
   }
 
   function savedUserBackgroundColor() {
-    return normalizeHexColor(localStorage.getItem("bmwc.userBackgroundColor") || "");
+    return normalizeHexColor(localStorage.getItem("kwc.userBackgroundColor") || "");
   }
 
   function savedUserInputBackgroundColor() {
-    return normalizeHexColor(localStorage.getItem("bmwc.userInputBackgroundColor") || "");
+    return normalizeHexColor(localStorage.getItem("kwc.userInputBackgroundColor") || "");
   }
 
   function setUserTextColor(value) {
     value = normalizeHexColor(value);
-    if (value) localStorage.setItem("bmwc.userTextColor", value);
-    else localStorage.removeItem("bmwc.userTextColor");
+    if (value) localStorage.setItem("kwc.userTextColor", value);
+    else localStorage.removeItem("kwc.userTextColor");
     applyThemeConfig();
   }
 
   function setUserUiTextColor(value) {
     value = normalizeHexColor(value);
-    if (value) localStorage.setItem("bmwc.userUiTextColor", value);
-    else localStorage.removeItem("bmwc.userUiTextColor");
+    if (value) localStorage.setItem("kwc.userUiTextColor", value);
+    else localStorage.removeItem("kwc.userUiTextColor");
     applyThemeConfig();
   }
 
   function setUserTextShadowMode(value) {
     value = normalizeTextShadowMode(value);
-    localStorage.setItem("bmwc.userTextShadowMode", value);
+    localStorage.setItem("kwc.userTextShadowMode", value);
     applyThemeConfig();
   }
 
   function setUserTextShadowCustom(value) {
     value = sanitizeTextShadow(value);
-    if (value) localStorage.setItem("bmwc.userTextShadowCustom", value);
-    else localStorage.removeItem("bmwc.userTextShadowCustom");
+    if (value) localStorage.setItem("kwc.userTextShadowCustom", value);
+    else localStorage.removeItem("kwc.userTextShadowCustom");
     applyThemeConfig();
   }
 
   function setUserBackgroundColor(value) {
     value = normalizeHexColor(value);
-    if (value) localStorage.setItem("bmwc.userBackgroundColor", value);
-    else localStorage.removeItem("bmwc.userBackgroundColor");
+    if (value) localStorage.setItem("kwc.userBackgroundColor", value);
+    else localStorage.removeItem("kwc.userBackgroundColor");
     applyThemeConfig();
   }
 
   function setUserInputBackgroundColor(value) {
     value = normalizeHexColor(value);
-    if (value) localStorage.setItem("bmwc.userInputBackgroundColor", value);
-    else localStorage.removeItem("bmwc.userInputBackgroundColor");
+    if (value) localStorage.setItem("kwc.userInputBackgroundColor", value);
+    else localStorage.removeItem("kwc.userInputBackgroundColor");
     applyThemeConfig();
   }
 
   function resetUserTextColor() {
-    localStorage.removeItem("bmwc.userTextColor");
+    localStorage.removeItem("kwc.userTextColor");
     applyThemeConfig();
   }
 
   function resetUserUiTextColor() {
-    localStorage.removeItem("bmwc.userUiTextColor");
+    localStorage.removeItem("kwc.userUiTextColor");
     applyThemeConfig();
   }
 
   function resetUserTextShadowMode() {
-    localStorage.removeItem("bmwc.userTextShadowMode");
+    localStorage.removeItem("kwc.userTextShadowMode");
     applyThemeConfig();
   }
 
   function resetUserTextShadowCustom() {
-    localStorage.removeItem("bmwc.userTextShadowCustom");
+    localStorage.removeItem("kwc.userTextShadowCustom");
     applyThemeConfig();
   }
 
   function resetUserBackgroundColor() {
-    localStorage.removeItem("bmwc.userBackgroundColor");
+    localStorage.removeItem("kwc.userBackgroundColor");
     applyThemeConfig();
   }
 
   function resetUserInputBackgroundColor() {
-    localStorage.removeItem("bmwc.userInputBackgroundColor");
+    localStorage.removeItem("kwc.userInputBackgroundColor");
     applyThemeConfig();
   }
 
@@ -6931,51 +6927,51 @@
     // Remove any stale global overrides from older builds. Theme variables must keep
     // their normal dark/light/high-contrast defaults outside real chat histories.
     [
-      "--bmwc-text-color",
-      "--bmwc-ui-color",
-      "--bmwc-ui-text-color",
-      "--bmwc-button-text",
-      "--bmwc-muted-color",
-      "--bmwc-panel-bg-rgb",
-      "--bmwc-modal-bg-rgb",
-      "--bmwc-input-bg",
-      "--bmwc-text-shadow",
-      "--bmwc-ui-text-shadow"
+      "--kwc-text-color",
+      "--kwc-ui-color",
+      "--kwc-ui-text-color",
+      "--kwc-button-text",
+      "--kwc-muted-color",
+      "--kwc-panel-bg-rgb",
+      "--kwc-modal-bg-rgb",
+      "--kwc-input-bg",
+      "--kwc-text-shadow",
+      "--kwc-ui-text-shadow"
     ].forEach(name => root.style.removeProperty(name));
 
-    if (text) root.style.setProperty("--bmwc-chat-text-color", text);
-    else root.style.removeProperty("--bmwc-chat-text-color");
+    if (text) root.style.setProperty("--kwc-chat-text-color", text);
+    else root.style.removeProperty("--kwc-chat-text-color");
 
-    if (uiText) root.style.setProperty("--bmwc-chat-ui-text-color", uiText);
-    else root.style.removeProperty("--bmwc-chat-ui-text-color");
+    if (uiText) root.style.setProperty("--kwc-chat-ui-text-color", uiText);
+    else root.style.removeProperty("--kwc-chat-ui-text-color");
 
-    if (bg) root.style.setProperty("--bmwc-chat-background-color", bg);
-    else root.style.removeProperty("--bmwc-chat-background-color");
+    if (bg) root.style.setProperty("--kwc-chat-background-color", bg);
+    else root.style.removeProperty("--kwc-chat-background-color");
 
-    root.style.setProperty("--bmwc-chat-text-shadow", shadowCss || "none");
+    root.style.setProperty("--kwc-chat-text-shadow", shadowCss || "none");
 
     // Input background is scoped to real compose boxes only: normal chat, DM, group.
-    if (inputBg) root.style.setProperty("--bmwc-compose-input-bg", inputBg);
-    else root.style.removeProperty("--bmwc-compose-input-bg");
+    if (inputBg) root.style.setProperty("--kwc-compose-input-bg", inputBg);
+    else root.style.removeProperty("--kwc-compose-input-bg");
   }
 
   function applyThemeConfig() {
-    const root = document.getElementById("bmwc-root");
+    const root = document.getElementById("kwc-root");
     if (!root || !state.config) return;
 
     const theme = effectiveTheme();
-    root.classList.remove("bmwc-theme-system", "bmwc-theme-dark", "bmwc-theme-light", "bmwc-theme-high-contrast");
-    root.classList.add("bmwc-theme-" + theme);
-    root.style.setProperty("--bmwc-panel-opacity", effectiveOpacity());
+    root.classList.remove("kwc-theme-system", "kwc-theme-dark", "kwc-theme-light", "kwc-theme-high-contrast");
+    root.classList.add("kwc-theme-" + theme);
+    root.style.setProperty("--kwc-panel-opacity", effectiveOpacity());
 
     const userFamily = state.config.uiUserPreferencesControl === false ? "" : savedUserFontFamily();
     const uiFamily = String(state.config.uiFontFamily || "").trim();
     const chatFamily = String(userFamily || uiFamily || "").trim();
     // Keep the UI chrome on the configured/theme font. The user's Chat Settings
-    // font family is scoped to real chat history through --bmwc-chat-font-family.
+    // font family is scoped to real chat history through --kwc-chat-font-family.
     root.style.fontFamily = uiFamily || "";
-    if (chatFamily) root.style.setProperty("--bmwc-chat-font-family", chatFamily);
-    else root.style.removeProperty("--bmwc-chat-font-family");
+    if (chatFamily) root.style.setProperty("--kwc-chat-font-family", chatFamily);
+    else root.style.removeProperty("--kwc-chat-font-family");
     applyUserColorOverrides(root);
 
     if (state.themeSyncTimer) {
@@ -6985,7 +6981,7 @@
     if (state.config.uiSyncBlueMapTheme) {
       state.themeSyncTimer = setInterval(() => {
         const current = effectiveTheme();
-        if (!root.classList.contains("bmwc-theme-" + current)) {
+        if (!root.classList.contains("kwc-theme-" + current)) {
           applyThemeConfig();
         }
       }, 2000);
@@ -6996,6 +6992,9 @@
     try {
       const data = await api("/config");
       state.config = data;
+      state.userProfilesEnabled = data.uiUserProfilesEnabled === true;
+      state.userProfilesMaxProfiles = Math.max(0, Math.min(20, Math.floor(Number(data.uiUserProfilesMaxProfiles) || 0)));
+      state.userProfilesAllowImportExport = data.uiUserProfilesAllowImportExport !== false;
       const pageSize = Number(data.historyPageSize);
       state.historyPageSize = Number.isFinite(pageSize) && pageSize >= 0 ? Math.floor(pageSize) : 20;
       state.serverVersion = data.serverVersion || "";
@@ -7006,7 +7005,7 @@
       applyThemeConfig();
       updatePipButton();
       updateGuestVisibility();
-      const msg = document.getElementById("bmwc-message");
+      const msg = document.getElementById("kwc-message");
       if (msg) {
         const inputLimit = normalizeCommandMaxLength(data.maxMessageInputLength, 0);
         if (inputLimit > 0) msg.maxLength = inputLimit;
@@ -7036,7 +7035,6 @@
       state.browserNotificationsNotifyReplies = data.browserNotificationsNotifyReplies !== false;
       state.browserNotificationsNotifySystem = data.browserNotificationsNotifySystem !== false;
       state.browserNotificationsNotifyKeywords = data.browserNotificationsNotifyKeywords !== false;
-      state.browserNotificationsNotifyOwnMessages = data.browserNotificationsNotifyOwnMessages !== false;
       state.browserNotificationsShowMessagePreview = data.browserNotificationsShowMessagePreview !== false;
       state.webPushEnabled = data.webPushEnabled === true;
       state.webPushAvailable = data.webPushAvailable === true;
@@ -7054,7 +7052,6 @@
       state.webPushNotifyReplies = data.webPushNotifyReplies !== false;
       state.webPushNotifySystem = data.webPushNotifySystem !== false;
       state.webPushNotifyKeywords = data.webPushNotifyKeywords !== false;
-      state.webPushNotifyOwnMessages = data.webPushNotifyOwnMessages !== false;
       state.webPushShowMessagePreview = data.webPushShowMessagePreview !== false;
       state.emojiEnabled = data.emojiEnabled !== false;
       state.emojiShowButton = data.emojiShowButton !== false;
@@ -7064,32 +7061,32 @@
       updateDirectMessageComposeControls();
       state.emojiMessageTokenLimit = Math.max(0, Math.floor(Number(data.emojiMessageTokenLimit) || 0));
       state.emojiTokenFormat = normalizeEmojiTokenFormat(data.emojiTokenFormat);
-      const fileInput = document.getElementById("bmwc-file");
+      const fileInput = document.getElementById("kwc-file");
       if (fileInput) fileInput.accept = uploadAcceptList();
       updateLoginState();
       ensureGuestNameForConfig();
-      const guestNameInput = document.getElementById("bmwc-guest-name");
-      if (guestNameInput) guestNameInput.value = state.guestName;
+      const guestNameInput = document.getElementById("kwc-guest-name");
+      if (guestNameInput) guestNameInput.value = limitGuestNameCodePoints(state.guestName);
       await refreshCaptcha();
       await loadCommands();
     } catch (e) {
-      console.warn("BlueMapWebChat config failed", e);
+      console.warn("KOKOTO WebChat config failed", e);
     }
   }
 
 
   function hideCaptchaUi() {
-    const row = document.getElementById("bmwc-captcha-row");
-    const a = document.getElementById("bmwc-captcha-a");
-    const q = document.getElementById("bmwc-captcha-q");
-    if (row) row.classList.remove("bmwc-show");
+    const row = document.getElementById("kwc-captcha-row");
+    const a = document.getElementById("kwc-captcha-a");
+    const q = document.getElementById("kwc-captcha-q");
+    if (row) row.classList.remove("kwc-show");
     if (a) a.value = "";
     if (q) q.textContent = "";
     state.captcha = null;
   }
 
   async function refreshCaptcha(force = false) {
-    const row = document.getElementById("bmwc-captcha-row");
+    const row = document.getElementById("kwc-captcha-row");
     if (!row || !state.config) return;
     if (state.token || !state.config.captchaEnabled) {
       hideCaptchaUi();
@@ -7104,11 +7101,17 @@
 
     try {
       const data = await api("/captcha");
+      if (data.enabled && data.passed === true && !state.config.captchaRequireOnEachMessage) {
+        hideCaptchaUi();
+        return;
+      }
       if (data.enabled) {
         state.captcha = data;
-        row.classList.add("bmwc-show");
-        document.getElementById("bmwc-captcha-q").textContent = data.question;
-        document.getElementById("bmwc-captcha-a").value = "";
+        row.classList.add("kwc-show");
+        document.getElementById("kwc-captcha-q").textContent = data.question;
+        document.getElementById("kwc-captcha-a").value = "";
+      } else {
+        hideCaptchaUi();
       }
     } catch (e) {
       console.warn("captcha failed", e);
@@ -7158,7 +7161,7 @@
   }
 
   function installHistoryPaging() {
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     if (!box || box.dataset.pagingInstalled === "1") return;
     box.dataset.pagingInstalled = "1";
 
@@ -7167,8 +7170,8 @@
         try {
           return !!(target && target.closest && target.closest(
             "[data-delete], [data-pin], [data-unpin], [data-open-pins], " +
-            "a.bmwc-link, a.bmwc-image-link, button, input, textarea, select, " +
-            ".bmwc-media-card, .bmwc-youtube-card, .bmwc-social-card, .bmwc-social-embed"
+            "a.kwc-link, a.kwc-image-link, button, input, textarea, select, " +
+            ".kwc-media-card, .kwc-youtube-card, .kwc-social-card, .kwc-social-embed"
           ));
         } catch (_) {
           return false;
@@ -7296,7 +7299,7 @@
       });
     };
     const installNonScrollUiActionEvents = () => {
-      const root = document.getElementById("bmwc-root");
+      const root = document.getElementById("kwc-root");
       if (!root || root.dataset.nonScrollUiActionInstalled === "1") return;
       root.dataset.nonScrollUiActionInstalled = "1";
       const markIfUiControl = (ev) => {
@@ -7304,8 +7307,8 @@
         try {
           if (target && target.closest && target.closest(
             "button, input, textarea, select, a, [data-delete], [data-pin], [data-unpin], [data-pin-move], [data-open-pins], " +
-            ".bmwc-modal, .bmwc-modal-backdrop, .bmwc-login, .bmwc-admin-modal, .bmwc-preferences-modal, " +
-            ".bmwc-media-card, .bmwc-youtube-card, .bmwc-social-card, .bmwc-social-embed"
+            ".kwc-modal, .kwc-modal-backdrop, .kwc-login, .kwc-admin-modal, .kwc-preferences-modal, " +
+            ".kwc-media-card, .kwc-youtube-card, .kwc-social-card, .kwc-social-embed"
           )) markNonScrollUiAction();
         } catch (_) {}
       };
@@ -7354,26 +7357,13 @@
       // actually reached the top-history preload zone.
       if (programmaticScroll && (replyProgrammaticScroll || !shouldLoadOlder)) return;
 
-      const visibleMediaLocked = isActiveMediaVisible();
-      // During a real scroll event, the physical position is the source of truth.
-      // A stale autoFollowLatest=true must not keep dragging the viewport back
-      // to the bottom after the user starts scrolling upward.
-      if (visibleMediaLocked) {
-        // Keep the visible player DOM intact while still updating the virtual
-        // range. If the viewport is at the latest message, keep bottom-follow
-        // semantics instead of preserving an old scrollTop.
-        scheduleVirtualRender({
-          preserveScroll: !keepBottom,
-          stickToBottom: keepBottom,
-          allowDuringMedia: true,
-          allowDuringVisibleMedia: true,
-          deferDuringScroll: false,
-          deferDuringMediaLayout: false
-        });
-      } else if (isScrollInteractionActive()) {
-        deferRenderUntilScrollIdle({preserveScroll: !keepBottom, stickToBottom: keepBottom, allowDuringMedia: true, allowDuringVisibleMedia: true});
+      // During a real scroll event, physical scroll position is authoritative.
+      // All message contents use the same virtual-range policy; images, videos,
+      // audio and iframes do not get a separate retention/reconciliation path.
+      if (isScrollInteractionActive()) {
+        deferRenderUntilScrollIdle({preserveScroll: !keepBottom, stickToBottom: keepBottom});
       } else {
-        scheduleVirtualRender({preserveScroll: !keepBottom, stickToBottom: keepBottom, allowDuringMedia: true, allowDuringVisibleMedia: true});
+        scheduleVirtualRender({preserveScroll: !keepBottom, stickToBottom: keepBottom});
       }
       if (shouldLoadOlder) {
         // Reaching the top is the user's explicit request for older history,
@@ -7393,7 +7383,7 @@
     if (window.ResizeObserver && !state.virtualResizeObserver) {
       state.virtualResizeObserver = new ResizeObserver(() => {
         const keepBottom = isAutoFollowBottom(box) && !state.historyHasAfter;
-        scheduleVirtualRender({preserveScroll: !keepBottom, stickToBottom: keepBottom, allowDuringMedia: true, allowDuringVisibleMedia: true, deferDuringScroll: false});
+        scheduleVirtualRender({preserveScroll: !keepBottom, stickToBottom: keepBottom, deferDuringScroll: false});
         if (keepBottom) {
           state.historyViewportFillAttempts = 0;
           scheduleHistoryViewportFill("resize");
@@ -7412,10 +7402,10 @@
       return;
     }
     // Do not skip fetching fresh history just because a YouTube/video/audio
-    // player is open. Rendering can preserve active media nodes, but skipping
-    // the fetch leaves the chat stale after focus/visibility resume.
+    // player is open. The fetch may discover newer records, but a mid-history
+    // viewport is preserved below instead of being replaced by the latest page.
 
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     const prevHeight = box ? box.scrollHeight : 0;
     const prevTop = box ? box.scrollTop : 0;
     const wasNearBottom = box ? (isAutoFollowBottom(box) && !state.historyHasAfter) : true;
@@ -7437,6 +7427,23 @@
         const nextHasAfter = data.hasAfter != null ? !!data.hasAfter : false;
         const nextOldestId = data.oldestId || state.historyOldestId;
         const nextNewestId = data.newestId || state.historyNewestId;
+
+        // A focus/visibility/SSE-reconnect refresh must never replace the message
+        // window while the user is reading older history. Cross-origin media such
+        // as YouTube commonly causes window blur/focus transitions; replacing the
+        // array here kept the old scrollTop but swapped in the latest page, which
+        // visually looked like messages had changed order. Preserve the current
+        // contiguous window and only mark that newer history exists. Scrolling to
+        // the bottom will fetch it through the normal `after` paging path.
+        if (!older && !options.forceLatest && state.messages.length > 0 && box && !wasNearBottom) {
+          const remoteNewestId = nextNewestId || (data.messages[data.messages.length - 1] && data.messages[data.messages.length - 1].id) || "";
+          if (remoteNewestId && state.historyNewestId && String(remoteNewestId) !== String(state.historyNewestId)) {
+            state.historyHasAfter = true;
+          }
+          refreshScrollAffordances(box);
+          return;
+        }
+
         if (!older && state.messages.length > 0 && latestHistoryPageUnchanged(data.messages)) {
           state.historyHasMore = nextHasBefore;
           state.historyHasAfter = nextHasAfter;
@@ -7445,14 +7452,13 @@
           refreshScrollAffordances(box);
           if (box && (options.forceLatest || bottomFollowAllowed(box, {forceLatestFollow: !!options.forceLatest}))) {
             state.autoFollowLatest = true;
-            renderVirtualMessages({stickToBottom: true, preserveScroll: false, latestJump: !!options.forceLatest, forceLatestFollow: !!options.forceLatest, ignoreVisibleRangeProtection: !!options.forceLatest, allowDuringMedia: true, allowDuringVisibleMedia: true, deferDuringMediaLayout: false, deferDuringScroll: false, allowBottomStickDuringLock: !!options.forceLatest});
+            renderVirtualMessages({stickToBottom: true, preserveScroll: false, latestJump: !!options.forceLatest, forceLatestFollow: !!options.forceLatest, ignoreVisibleRangeProtection: !!options.forceLatest, deferDuringScroll: false, allowBottomStickDuringLock: !!options.forceLatest});
             stickToBottomStable(box);
             scheduleHistoryViewportFill("unchanged-history");
           }
           return;
         }
         if (older) {
-          const lockedVisibleMedia = isActiveMediaVisible();
           const anchor = captureScrollAnchor(box);
           const beforeCount = state.messages.length;
           [...data.messages].reverse().forEach(msg => addMessage(msg, {prepend: true, skipRender: true, suppressAutoFollow: true}));
@@ -7463,7 +7469,7 @@
           // oldest message naturally has server-side hasAfter=true, but that does
           // not mean the current loaded range is missing newer messages.
           if (options.viewportFill && box && bottomFollowAllowed(box)) {
-            renderVirtualMessages({stickToBottom: true, preserveScroll: false, forceLatestFollow: hasExplicitLatestFollow(), allowDuringMedia: true, allowDuringVisibleMedia: true, deferDuringMediaLayout: false});
+            renderVirtualMessages({stickToBottom: true, preserveScroll: false, forceLatestFollow: hasExplicitLatestFollow()});
             if (box) stickToBottomStable(box);
             scheduleHistoryViewportFill("viewport-fill");
           } else if (box && addedCount > 0) {
@@ -7476,20 +7482,11 @@
           }
           if (options.viewportFill && box && bottomFollowAllowed(box)) {
             // Already rendered above as a latest-chat view.
-          } else if (lockedVisibleMedia && box) {
-            // The user reached the top while a media player is visible. Add the
-            // older records to the in-memory history and extend the virtual
-            // spacers without destroying/recreating the currently visible
-            // player iframe/video/audio DOM.
-            state.virtualRenderStart += addedCount;
-            state.virtualRenderEnd += addedCount;
-            const sp = ensureVirtualSpacers(box);
-            if (sp.top) sp.top.style.height = Math.max(0, Math.round(estimatedHeightUntil(state.virtualRenderStart))) + "px";
-            if (sp.bottom) sp.bottom.style.height = Math.max(0, Math.round(estimatedTotalHeight() - estimatedHeightUntil(state.virtualRenderEnd))) + "px";
-            preserveOlderHistoryViewportAfterRender(box, prevTop, prevHeight, anchor, "older-history-media");
-            deferRenderBecauseMediaActive();
           } else {
-            renderVirtualMessages({stickToBottom: false, preserveScroll: false, allowDuringMedia: true, allowDuringVisibleMedia: true, deferDuringMediaLayout: false, anchor});
+            // Always reconcile the actual message sequence after prepending. A
+            // visible media node is allowed to be recreated if necessary; keeping
+            // a stale player DOM is never allowed to override chat ordering.
+            renderVirtualMessages({stickToBottom: false, preserveScroll: false, anchor});
             if (box && addedCount > 0) {
               preserveOlderHistoryViewportAfterRender(box, prevTop, prevHeight, anchor, "older-history");
             }
@@ -7504,7 +7501,7 @@
           state.historyNewestId = nextNewestId || (state.messages[state.messages.length - 1] && state.messages[state.messages.length - 1].id) || "";
           const shouldFollowLatest = !!options.forceLatest || wasNearBottom || explicitLatestFollowBeforeHistory || state.messages.length === 0;
           state.autoFollowLatest = shouldFollowLatest;
-          renderVirtualMessages({stickToBottom: shouldFollowLatest, preserveScroll: !shouldFollowLatest, latestJump: !!options.forceLatest, forceLatestFollow: !!options.forceLatest || explicitLatestFollowBeforeHistory, ignoreVisibleRangeProtection: !!options.forceLatest, allowDuringMedia: true, allowDuringVisibleMedia: true, deferDuringMediaLayout: false, deferDuringScroll: !!options.forceLatest ? false : undefined, allowBottomStickDuringLock: !!options.forceLatest});
+          renderVirtualMessages({stickToBottom: shouldFollowLatest, preserveScroll: !shouldFollowLatest, latestJump: !!options.forceLatest, forceLatestFollow: !!options.forceLatest || explicitLatestFollowBeforeHistory, ignoreVisibleRangeProtection: !!options.forceLatest, deferDuringScroll: !!options.forceLatest ? false : undefined, allowBottomStickDuringLock: !!options.forceLatest});
           if (box && !shouldFollowLatest) setScrollTopPreserved(box, prevTop, {allowAwayFromBottom: true, reason: "latest-history-preserve"});
           if (shouldFollowLatest) scheduleHistoryViewportFill("initial-history");
         }
@@ -7535,7 +7532,7 @@
         } else if (older) {
           state.olderHistorySettleUntil = 0;
         }
-        const finalBox = document.getElementById("bmwc-messages");
+        const finalBox = document.getElementById("kwc-messages");
         if (historyLoadSucceeded && older && finalBox && state.historyHasMore && (isAtHistoryTopRequestZone(finalBox) || hasHistoryTopEdgeIntent())) {
           // Some browsers do not emit another scroll/wheel event once the user is
           // already pinned to the physical top. If there is still older history
@@ -7562,7 +7559,7 @@
       return;
     }
 
-    const box = document.getElementById("bmwc-messages");
+    const box = document.getElementById("kwc-messages");
     const prevTop = box ? Number(box.scrollTop || 0) : 0;
     const anchor = captureScrollAnchor(box);
     const historyLoadSeq = ++state.historyLoadSeq;
@@ -7590,9 +7587,6 @@
             anchor,
             forcePreservePosition: true,
             suppressBottomStick: true,
-            allowDuringMedia: true,
-            allowDuringVisibleMedia: true,
-            deferDuringMediaLayout: false,
             deferDuringScroll: false
           });
           if (anchor) restoreScrollAnchor(box, anchor, {thresholdPx: 0.5, reason: "newer-history-anchor"});
@@ -7609,7 +7603,7 @@
         state.historyLoadingSince = 0;
         state.pendingNewerHistoryLoad = false;
         if (historyLoadSucceeded) scheduleViewportMaintenance("newer-history", 1600);
-        const finalBox = document.getElementById("bmwc-messages");
+        const finalBox = document.getElementById("kwc-messages");
         if (historyLoadSucceeded && finalBox && state.historyHasAfter && (isAtHistoryBottomRequestZone(finalBox) || hasHistoryBottomEdgeIntent())) {
           // If the fetched page was too short to create additional scroll room,
           // or the user is still trying to continue toward the newer edge, queue
@@ -7644,9 +7638,8 @@
       requestResumeRefreshAfterScrollIdle(reason);
       return;
     }
-    // Even while media is open, resume/focus should still reconcile the latest
-    // history. The renderer preserves active media nodes instead of rebuilding
-    // them, so skipping this refresh can leave the chat stale.
+    // Resume/focus may reconcile history, but it must not replace a middle
+    // history slice or give any child content a special scroll lifecycle.
     const now = Date.now();
     if (state.resumeRefreshInFlight) return;
     if (now - state.lastResumeRefreshAt < resumeRefreshMinIntervalMs()) return;
@@ -7656,12 +7649,12 @@
       // Browsers, especially mobile browsers, may pause or close SSE/EventSource
       // while the tab/app is in the background. Reconnect and pull one fresh
       // history page when the UI becomes active again.
-      if (!state.eventSource || state.eventSource.readyState === EventSource.CLOSED) {
+      if (!state.isPip && (!state.eventSource || state.eventSource.readyState === EventSource.CLOSED)) {
         connectStream();
       }
       await loadHistory(false, {skipIfUnchanged: true});
     } catch (e) {
-      console.warn("BlueMapWebChat resume refresh failed", reason, e);
+      console.warn("KOKOTO WebChat resume refresh failed", reason, e);
     } finally {
       state.resumeRefreshInFlight = false;
     }
@@ -7692,8 +7685,30 @@
   }
 
   function markStreamStatusReconnecting() {
-    const status = document.getElementById("bmwc-status");
+    publishStandalonePipStream("reconnecting", "");
+    const status = document.getElementById("kwc-status");
     if (status) status.textContent = t("status.reconnecting", "reconnecting...");
+  }
+
+  function markStreamActivity() {
+    state.streamLastEventAt = Date.now();
+  }
+
+  function ensureStreamHealthWatchdog() {
+    if (state.streamHealthTimer) return;
+    state.streamHealthTimer = setInterval(() => {
+      if (state.isPip || guestChatHidden()) return;
+      const es = state.eventSource;
+      if (!es) return;
+      const last = Number(state.streamLastEventAt || state.streamLastOpenAt || 0);
+      if (!last || Date.now() - last <= 65000) return;
+      // Browsers can occasionally leave a dead SSE socket reporting OPEN after a
+      // server restart. Force a fresh one-time stream ticket instead of waiting
+      // indefinitely for native EventSource recovery on the consumed ticket URL.
+      try { es.close(); } catch (_) {}
+      if (state.eventSource === es) state.eventSource = null;
+      scheduleStreamReconnect("stream-heartbeat-timeout");
+    }, 15000);
   }
 
   function scheduleStreamReconnect(reason = "stream-error") {
@@ -7729,14 +7744,14 @@
       await loadConfig();
       await loadHistory(false, {skipIfUnchanged: false});
     } catch (e) {
-      console.warn("BlueMapWebChat stream reconnect refresh failed", reason, e);
+      console.warn("KOKOTO WebChat stream reconnect refresh failed", reason, e);
       scheduleStreamReconnect("reconnect-refresh-failed");
     } finally {
       state.streamReconnectInFlight = false;
     }
   }
 
-  function connectStream(options = {}) {
+  async function connectStream(options = {}) {
     const generation = ++state.streamGeneration;
     clearStreamReconnectTimer();
 
@@ -7747,17 +7762,33 @@
     state.streamReconnectAfterOpen = !!options.refreshAfterOpen || state.streamReconnectAfterOpen;
     state.streamReconnectReason = options.reason || state.streamReconnectReason || "stream-connect";
 
-    const streamUrl = apiBase + "/stream" + (state.token ? ("?token=" + encodeURIComponent(state.token)) : "");
+    let streamUrl = apiBase + "/stream";
+    if (state.token) {
+      try {
+        const ticketRes = await api("/stream-ticket", {method: "POST", body: "{}", timeoutMs: 10000});
+        if (generation !== state.streamGeneration) return;
+        const ticket = ticketRes && String(ticketRes.ticket || "").trim();
+        if (!ticket) throw new Error("stream_ticket_missing");
+        streamUrl += "?ticket=" + encodeURIComponent(ticket);
+      } catch (_) {
+        if (generation === state.streamGeneration) scheduleStreamReconnect("stream-ticket-error");
+        return;
+      }
+    }
+    if (generation !== state.streamGeneration) return;
     const es = new EventSource(streamUrl);
     state.eventSource = es;
 
     const handleConnected = () => {
       if (generation !== state.streamGeneration || state.eventSource !== es) return;
       state.streamLastOpenAt = Date.now();
+      markStreamActivity();
+      ensureStreamHealthWatchdog();
+      publishStandalonePipStream("ready", "");
       state.streamReconnectAttempt = 0;
       clearStreamReconnectTimer();
 
-      const status = document.getElementById("bmwc-status");
+      const status = document.getElementById("kwc-status");
       if (status && !state.token) status.textContent = t("status.guest", "guest");
       updateLoginState();
 
@@ -7770,7 +7801,10 @@
 
     es.onopen = handleConnected;
     es.addEventListener("ready", handleConnected);
+    es.addEventListener("ping", () => markStreamActivity());
     es.addEventListener("chat", e => {
+      markStreamActivity();
+      publishStandalonePipStream("chat", e.data || "");
       if (guestChatHidden()) return;
       try {
         const msg = JSON.parse(e.data);
@@ -7778,7 +7812,7 @@
           // The current viewport is a reply-jump middle slice. Do not append a
           // live tail message after a gap; keep the slice contiguous and let
           // newer-history paging or the latest button fetch the missing range.
-          refreshScrollAffordances(document.getElementById("bmwc-messages"));
+          refreshScrollAffordances(document.getElementById("kwc-messages"));
           return;
         }
         addMessage(msg);
@@ -7786,9 +7820,11 @@
       } catch (_) {}
     });
     es.addEventListener("delete", e => {
+      publishStandalonePipStream("delete", e.data || "");
       try { markMessageDeleted(JSON.parse(e.data).id); } catch (_) {}
     });
     es.addEventListener("dm", e => {
+      publishStandalonePipStream("dm", e.data || "");
       try {
         const data = JSON.parse(e.data || "{}");
         if (!state.directMessageEnabled || !state.token) return;
@@ -7802,6 +7838,7 @@
       } catch (_) {}
     });
     es.addEventListener("group", e => {
+      publishStandalonePipStream("group", e.data || "");
       try {
         const data = JSON.parse(e.data || "{}");
         if (!state.groupChatEnabled || !state.token) return;
@@ -7815,6 +7852,7 @@
       } catch (_) {}
     });
     es.addEventListener("pins", e => {
+      publishStandalonePipStream("pins", e.data || "");
       try {
         const data = JSON.parse(e.data);
         if (data && Array.isArray(data.pins)) {
@@ -7825,6 +7863,7 @@
       } catch (_) {}
     });
     es.addEventListener("auth", e => {
+      publishStandalonePipStream("auth", e.data || "");
       try {
         const data = JSON.parse(e.data || "{}");
         handleAuthExpired(data.reason || "expired");
@@ -7833,6 +7872,7 @@
       }
     });
     es.addEventListener("clear", () => {
+      publishStandalonePipStream("clear", "");
       state.messages = [];
       state.nextLocalMessageId = 1;
       renderVirtualMessages({stickToBottom: true});
@@ -7843,6 +7883,12 @@
     });
     es.onerror = () => {
       if (generation !== state.streamGeneration || state.eventSource !== es) return;
+      // The authenticated stream URL contains a one-time ticket. Native
+      // EventSource retry would reuse that consumed URL while KWC also schedules
+      // its own fresh-ticket reconnect, causing duplicate/competing reconnects.
+      // Stop the browser retry first and let exactly one KWC reconnect path run.
+      try { es.close(); } catch (_) {}
+      if (state.eventSource === es) state.eventSource = null;
       scheduleStreamReconnect("stream-error");
     };
   }
@@ -7853,18 +7899,18 @@
   }
 
   function updateEmojiButton() {
-    const btn = document.getElementById("bmwc-emoji");
+    const btn = document.getElementById("kwc-emoji");
     if (!btn) return;
     const visible = canUseCustomEmoji();
-    btn.classList.toggle("bmwc-hidden", !visible);
+    btn.classList.toggle("kwc-hidden", !visible);
     btn.title = t("button.emoji", "Emoji");
     if (!visible) hideEmojiPanel();
   }
 
   function hideEmojiPanel() {
     state.emojiPanelOpen = false;
-    const panel = document.getElementById("bmwc-emoji-panel");
-    if (panel) panel.classList.add("bmwc-hidden");
+    const panel = document.getElementById("kwc-emoji-panel");
+    if (panel) panel.classList.add("kwc-hidden");
     updateEmojiResizeHandleVisibility();
   }
 
@@ -7912,8 +7958,8 @@
     const preferred = document.getElementById(state.activeComposeInputId || "");
     if (preferred && !preferred.disabled && document.body.contains(preferred)) return preferred;
     const active = document.activeElement;
-    if (active && active.id && (active.id === "bmwc-group-input" || active.id === "bmwc-dm-input" || active.id === "bmwc-message")) return active;
-    return document.getElementById("bmwc-message") || document.getElementById("bmwc-dm-input") || document.getElementById("bmwc-group-input");
+    if (active && active.id && (active.id === "kwc-group-input" || active.id === "kwc-dm-input" || active.id === "kwc-message")) return active;
+    return document.getElementById("kwc-message") || document.getElementById("kwc-dm-input") || document.getElementById("kwc-group-input");
   }
 
   function insertCustomEmoji(id) {
@@ -7953,7 +7999,7 @@
 
 
   function hideEmojiAutocomplete() {
-    const panel = document.getElementById("bmwc-emoji-autocomplete");
+    const panel = document.getElementById("kwc-emoji-autocomplete");
     if (panel) panel.remove();
     state.emojiAutocomplete = null;
   }
@@ -7962,7 +8008,7 @@
     if (!item || !item.id || !item.url) return "";
     const label = item.label || item.name || item.id;
     const size = emojiPickerSizePx();
-    return `<button type="button" class="bmwc-emoji-item" data-emoji-id="${esc(item.id)}" title="${esc(label)}"><img src="${esc(item.url)}" alt="${esc(label)}" loading="lazy" draggable="false" style="width:${size}px;height:${size}px;"><span>${esc(label)}</span></button>`;
+    return `<button type="button" class="kwc-emoji-item" data-emoji-id="${esc(item.id)}" title="${esc(label)}"><img src="${esc(item.url)}" alt="${esc(label)}" loading="lazy" draggable="false" style="width:${size}px;height:${size}px;"><span>${esc(label)}</span></button>`;
   }
 
   function installEmojiItemHandlers(panel) {
@@ -7972,7 +8018,7 @@
   }
 
   function renderEmojiPanel() {
-    const panel = document.getElementById("bmwc-emoji-panel");
+    const panel = document.getElementById("kwc-emoji-panel");
     if (!panel) return;
     if (!state.emojiPanelOpen || !canUseCustomEmoji()) {
       hideEmojiPanel();
@@ -7982,30 +8028,30 @@
     const packs = Array.isArray(state.emojiPacks) ? state.emojiPacks : [];
     const items = Array.isArray(state.emojiItems) ? state.emojiItems : [];
     if (!items.length) {
-      panel.innerHTML = `<div class="bmwc-emoji-scroll"><div class="bmwc-emoji-empty">${esc(t("emoji.empty", "No emojis configured."))}</div></div>`;
-      panel.classList.remove("bmwc-hidden");
+      panel.innerHTML = `<div class="kwc-emoji-scroll"><div class="kwc-emoji-empty">${esc(t("emoji.empty", "No emojis configured."))}</div></div>`;
+      panel.classList.remove("kwc-hidden");
       setEmojiPanelHeight(emojiPanelHeightPx(), false);
       installEmojiPanelWheelStep(panel);
       updateEmojiResizeHandleVisibility();
       return;
     }
 
-    let selectedPack = String(state.emojiSelectedPack || localStorage.getItem("bmwc.emojiPack") || "");
+    let selectedPack = String(state.emojiSelectedPack || localStorage.getItem("kwc.emojiPack") || "");
     if (!selectedPack || (packs.length && !packs.some(pack => String(pack.id || "") === selectedPack))) {
       selectedPack = packs[0] && packs[0].id ? String(packs[0].id) : "";
     }
     state.emojiSelectedPack = selectedPack;
-    try { localStorage.setItem("bmwc.emojiPack", selectedPack); } catch (_) {}
+    try { localStorage.setItem("kwc.emojiPack", selectedPack); } catch (_) {}
 
     const packTabs = packs.length > 1
-      ? `<div class="bmwc-emoji-tabs">${packs.map(pack => {
+      ? `<div class="kwc-emoji-tabs">${packs.map(pack => {
           const id = String(pack.id || "");
-          return `<button type="button" class="bmwc-emoji-tab${id === selectedPack ? " bmwc-active" : ""}" data-emoji-pack="${esc(id)}">${esc(pack.label || id)} <span>${esc(pack.count || "")}</span></button>`;
+          return `<button type="button" class="kwc-emoji-tab${id === selectedPack ? " kwc-active" : ""}" data-emoji-pack="${esc(id)}">${esc(pack.label || id)} <span>${esc(pack.count || "")}</span></button>`;
         }).join("")}</div>`
       : "";
     const shown = selectedPack ? items.filter(item => String(item.pack || "") === selectedPack) : items;
-    panel.innerHTML = packTabs + `<div class="bmwc-emoji-scroll"><div class="bmwc-emoji-grid">${shown.map(emojiButtonHtml).join("")}</div></div>`;
-    panel.classList.remove("bmwc-hidden");
+    panel.innerHTML = packTabs + `<div class="kwc-emoji-scroll"><div class="kwc-emoji-grid">${shown.map(emojiButtonHtml).join("")}</div></div>`;
+    panel.classList.remove("kwc-hidden");
     setEmojiPanelHeight(emojiPanelHeightPx(), false);
     installEmojiPanelWheelStep(panel);
 
@@ -8013,9 +8059,9 @@
       btn.addEventListener("click", () => {
         const pack = btn.dataset.emojiPack || "";
         state.emojiSelectedPack = pack;
-        try { localStorage.setItem("bmwc.emojiPack", pack); } catch (_) {}
-        panel.querySelectorAll(".bmwc-emoji-tab").forEach(tab => tab.classList.toggle("bmwc-active", tab === btn));
-        const grid = panel.querySelector(".bmwc-emoji-grid");
+        try { localStorage.setItem("kwc.emojiPack", pack); } catch (_) {}
+        panel.querySelectorAll(".kwc-emoji-tab").forEach(tab => tab.classList.toggle("kwc-active", tab === btn));
+        const grid = panel.querySelector(".kwc-emoji-grid");
         if (grid) grid.innerHTML = items.filter(item => String(item.pack || "") === pack).map(emojiButtonHtml).join("");
         const scroll = emojiScrollElement(panel);
         if (scroll) scroll.scrollTop = 0;
@@ -8050,6 +8096,10 @@
         url: apiResourceUrl(item && item.url)
       }));
       rebuildCustomEmojiLookups(state.emojiItems);
+      // Do not bulk-preload every registered emoji here. Large catalogs can flood
+      // the same HTTP origin with image requests and compete with the long-lived
+      // SSE connection. Message emoji <img> nodes already use an empty alt value,
+      // so the transport token is never painted while an image is loading.
       state.emojiRenderSizePx = Math.max(16, Math.min(1024, Number(res.renderSizePx || state.emojiRenderSizePx || 32)));
       state.emojiPickerSizePx = Math.max(24, Math.min(1024, Number(res.pickerSizePx || state.emojiPickerSizePx || 44)));
       applyEmojiPickerSize();
@@ -8063,7 +8113,7 @@
       state.emojiItems = [];
       state.emojiById = new Map();
       state.emojiByAlias = new Map();
-      console.warn("BlueMapWebChat emoji list failed", e);
+      console.warn("KOKOTO WebChat emoji list failed", e);
     } finally {
       state.emojiLoading = false;
       updateEmojiButton();
@@ -8129,14 +8179,27 @@
     return "";
   }
 
+  function looksLikeWindowsShortFileName(name) {
+    const raw = String(name || "").trim();
+    const dot = raw.lastIndexOf(".");
+    const base = dot > 0 ? raw.slice(0, dot) : raw;
+    const ext = dot > 0 ? raw.slice(dot + 1) : "";
+    return /^[^~\/]{1,6}~[0-9]+$/i.test(base) && (!ext || /^[A-Za-z0-9]{1,3}$/.test(ext));
+  }
+
   function clipboardFileName(file, index) {
     const rawName = String(file && file.name || "").trim();
-    if (rawName && rawName.includes(".")) return rawName;
+    // Windows/Chromium can expose a DOS 8.3 alias (for example
+    // 202608~1.JPG) for files pasted from Explorer. That alias is not the
+    // user's actual source filename, so never preserve it as an "original"
+    // name when no better clipboard File entry is available.
+    if (rawName && rawName.includes(".") && !looksLikeWindowsShortFileName(rawName)) return rawName;
 
     const c = state.config || {};
     const fromMime = extensionFromMime(file && file.type);
+    const rawExt = rawName.includes(".") ? rawName.slice(rawName.lastIndexOf(".") + 1).toLowerCase() : "";
     const configured = String(c.uploadClipboardImageDefaultExtension || "png").replace(/^\./, "").trim().toLowerCase();
-    const ext = fromMime || configured || "png";
+    const ext = fromMime || rawExt || configured || "png";
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     return `clipboard-${stamp}-${index + 1}.${ext}`;
   }
@@ -8146,7 +8209,7 @@
     const name = source === "clipboard" ? clipboardFileName(file, index) : (file.name || clipboardFileName(file, index));
     if (typeof File !== "undefined" && file.name !== name) {
       try {
-        return new File([file], name, {type: file.type || "application/octet-stream"});
+        return new File([file], name, {type: file.type || "application/octet-stream", lastModified: file.lastModified || Date.now()});
       } catch (_) {
         // Some older browsers do not allow File construction; fall through.
       }
@@ -8157,19 +8220,19 @@
 
   function uploadProgressScopeId() {
     const id = String(state.activeComposeInputId || "");
-    if (id === "bmwc-dm-input" && document.getElementById("bmwc-dm-upload-progress")) return "dm";
-    if (id === "bmwc-group-input" && document.getElementById("bmwc-group-upload-progress")) return "group";
+    if (id === "kwc-dm-input" && document.getElementById("kwc-dm-upload-progress")) return "dm";
+    if (id === "kwc-group-input" && document.getElementById("kwc-group-upload-progress")) return "group";
     return "main";
   }
 
   function uploadProgressElements(scope = null) {
     const name = scope || uploadProgressScopeId();
-    const prefix = name === "dm" ? "bmwc-dm-upload-progress" : (name === "group" ? "bmwc-group-upload-progress" : "bmwc-upload-progress");
+    const prefix = name === "dm" ? "kwc-dm-upload-progress" : (name === "group" ? "kwc-group-upload-progress" : "kwc-upload-progress");
     return {
       panel: document.getElementById(prefix),
-      text: document.getElementById(prefix + "-text") || document.getElementById("bmwc-upload-progress-text"),
-      fill: document.getElementById(prefix + "-fill") || document.getElementById("bmwc-upload-progress-fill"),
-      cancel: document.getElementById(prefix + "-cancel") || document.getElementById("bmwc-upload-cancel")
+      text: document.getElementById(prefix + "-text") || document.getElementById("kwc-upload-progress-text"),
+      fill: document.getElementById(prefix + "-fill") || document.getElementById("kwc-upload-progress-fill"),
+      cancel: document.getElementById(prefix + "-cancel") || document.getElementById("kwc-upload-cancel")
     };
   }
 
@@ -8178,7 +8241,7 @@
     ["main", "dm", "group"].forEach(scope => {
       if (scope === keep) return;
       const el = uploadProgressElements(scope);
-      if (el.panel) el.panel.classList.add("bmwc-hidden");
+      if (el.panel) el.panel.classList.add("kwc-hidden");
     });
   }
 
@@ -8186,16 +8249,16 @@
     const scope = uploadProgressScopeId();
     hideInactiveUploadProgressPanels(scope);
     const panel = uploadProgressElements(scope).panel;
-    if (panel) panel.classList.toggle("bmwc-hidden", !visible);
+    if (panel) panel.classList.toggle("kwc-hidden", !visible);
   }
 
   function setUploadControlsBusy(busy) {
-    const uploadBtn = document.getElementById("bmwc-upload");
-    const fileInput = document.getElementById("bmwc-file");
-    const dmUploadBtn = document.getElementById("bmwc-dm-upload");
-    const dmFileInput = document.getElementById("bmwc-dm-file");
-    const groupUploadBtn = document.getElementById("bmwc-group-upload");
-    const groupFileInput = document.getElementById("bmwc-group-file");
+    const uploadBtn = document.getElementById("kwc-upload");
+    const fileInput = document.getElementById("kwc-file");
+    const dmUploadBtn = document.getElementById("kwc-dm-upload");
+    const dmFileInput = document.getElementById("kwc-dm-file");
+    const groupUploadBtn = document.getElementById("kwc-group-upload");
+    const groupFileInput = document.getElementById("kwc-group-file");
     if (uploadBtn) uploadBtn.disabled = !!busy;
     if (fileInput) fileInput.disabled = !!busy;
     if (dmUploadBtn) dmUploadBtn.disabled = !!busy;
@@ -8209,7 +8272,7 @@
     hideInactiveUploadProgressPanels(scope);
     const {panel, text, fill, cancel} = uploadProgressElements(scope);
 
-    if (panel) panel.classList.toggle("bmwc-hidden", !active);
+    if (panel) panel.classList.toggle("kwc-hidden", !active);
     if (text) text.textContent = label || "";
     if (fill) {
       const p = Math.max(0, Math.min(100, Number(percent) || 0));
@@ -8276,6 +8339,7 @@
       };
 
       xhr.open("POST", apiBase + "/upload", true);
+      if (state.token) xhr.setRequestHeader("Authorization", "Bearer " + state.token);
       xhr.send(form);
     });
   }
@@ -8284,20 +8348,33 @@
     const dt = event.clipboardData;
     if (!dt) return [];
 
-    const files = [];
+    // On Windows Chromium, DataTransferItem#getAsFile() may expose the DOS
+    // 8.3 alias while DataTransfer.files exposes the long filename. Prefer the
+    // FileList and use item files only as a fallback/repair source.
+    const listFiles = dt.files && dt.files.length ? Array.from(dt.files).filter(Boolean) : [];
+    const itemFiles = [];
     if (dt.items && dt.items.length) {
       for (const item of Array.from(dt.items)) {
-        if (item.kind === "file") {
-          const file = item.getAsFile();
-          if (file) files.push(file);
-        }
+        if (item.kind !== "file") continue;
+        const file = item.getAsFile();
+        if (file) itemFiles.push(file);
       }
     }
 
-    if (!files.length && dt.files && dt.files.length) {
-      files.push(...Array.from(dt.files));
-    }
+    if (!listFiles.length) return itemFiles;
+    if (!itemFiles.length) return listFiles;
 
+    const count = Math.max(listFiles.length, itemFiles.length);
+    const files = [];
+    for (let i = 0; i < count; i++) {
+      const listFile = listFiles[i] || null;
+      const itemFile = itemFiles[i] || null;
+      if (!listFile) { if (itemFile) files.push(itemFile); continue; }
+      if (!itemFile) { files.push(listFile); continue; }
+      const listShort = looksLikeWindowsShortFileName(listFile.name);
+      const itemShort = looksLikeWindowsShortFileName(itemFile.name);
+      files.push(listShort && !itemShort ? itemFile : listFile);
+    }
     return files;
   }
 
@@ -8331,11 +8408,11 @@
   }
 
   function setDropOverlayVisible(visible, messageKey = "") {
-    const overlay = document.getElementById("bmwc-drop-overlay");
+    const overlay = document.getElementById("kwc-drop-overlay");
     if (!overlay) return;
 
-    const title = document.getElementById("bmwc-drop-title");
-    const subtitle = document.getElementById("bmwc-drop-subtitle");
+    const title = document.getElementById("kwc-drop-title");
+    const subtitle = document.getElementById("kwc-drop-subtitle");
 
     if (messageKey === "busy") {
       if (title) title.textContent = t("upload.dropBusy", "Upload is already in progress.");
@@ -8348,7 +8425,7 @@
       if (subtitle) subtitle.textContent = t("upload.dropSubtitle", "Release inside the chat panel.");
     }
 
-    overlay.classList.toggle("bmwc-hidden", !visible);
+    overlay.classList.toggle("kwc-hidden", !visible);
     overlay.setAttribute("aria-hidden", visible ? "false" : "true");
   }
 
@@ -8358,7 +8435,7 @@
   }
 
   function installDragAndDropUpload(root) {
-    const panel = root && root.querySelector ? root.querySelector(".bmwc-panel") : null;
+    const panel = root && root.querySelector ? root.querySelector(".kwc-panel") : null;
     if (!panel || panel.dataset.dropUploadInstalled === "1") return;
     panel.dataset.dropUploadInstalled = "1";
 
@@ -8433,13 +8510,13 @@
   }
 
   function uploadProgressHtml(prefix) {
-    const id = String(prefix || "bmwc-upload-progress");
-    return `<div class="bmwc-upload-progress bmwc-hidden" id="${id}" aria-live="polite">
-      <div class="bmwc-upload-progress-head">
+    const id = String(prefix || "kwc-upload-progress");
+    return `<div class="kwc-upload-progress kwc-hidden" id="${id}" aria-live="polite">
+      <div class="kwc-upload-progress-head">
         <span id="${id}-text">${esc(t("upload.ready", "Ready"))}</span>
-        <button class="bmwc-button bmwc-upload-cancel" id="${id}-cancel" type="button">${esc(t("button.cancel", "Cancel"))}</button>
+        <button class="kwc-button kwc-upload-cancel" id="${id}-cancel" type="button">${esc(t("button.cancel", "Cancel"))}</button>
       </div>
-      <div class="bmwc-upload-progress-bar"><div id="${id}-fill"></div></div>
+      <div class="kwc-upload-progress-bar"><div id="${id}-fill"></div></div>
     </div>`;
   }
 
@@ -8491,7 +8568,7 @@
 
     state.uploadCancelRequested = false;
     state.uploadActive = true;
-    const uploadIntoModal = state.activeComposeInputId === "bmwc-dm-input" || state.activeComposeInputId === "bmwc-group-input";
+    const uploadIntoModal = state.activeComposeInputId === "kwc-dm-input" || state.activeComposeInputId === "kwc-group-input";
     if (!uploadIntoModal) markExplicitLatestFollow("upload", 8000);
     setUploadControlsBusy(true);
     updateUploadProgress(t("upload.preparing", "Preparing upload..."), 0, true);
@@ -8504,7 +8581,7 @@
         form.append("file", file, file.name);
 
         if (state.token) {
-          form.append("token", state.token);
+          // Authentication is sent with the Authorization header.
         } else {
           form.append("guestName", currentGuestNameForSubmit());
         }
@@ -8548,8 +8625,8 @@
     }
 
     if (uploaded.length) {
-      const dmTargetActive = state.activeComposeInputId === "bmwc-dm-input" && !!document.getElementById("bmwc-dm-input");
-      const groupTargetActive = state.activeComposeInputId === "bmwc-group-input" && !!document.getElementById("bmwc-group-input");
+      const dmTargetActive = state.activeComposeInputId === "kwc-dm-input" && !!document.getElementById("kwc-dm-input");
+      const groupTargetActive = state.activeComposeInputId === "kwc-group-input" && !!document.getElementById("kwc-group-input");
       const modalTargetActive = dmTargetActive || groupTargetActive;
       if (!modalTargetActive) forceLatestChatView("upload");
       const text = normalizeInsertedMediaLinks(uploaded.join(" "));
@@ -8572,7 +8649,7 @@
 
 
   function updatePipButton() {
-    const btn = document.getElementById("bmwc-pip");
+    const btn = document.getElementById("kwc-pip");
     const c = state.config || {};
     const enabled = c.uiPictureInPictureEnabled === true && !state.isPip;
     if (!enabled) {
@@ -8581,7 +8658,7 @@
     }
     if (!btn) return;
     const visible = !state.minimized;
-    btn.classList.toggle("bmwc-hidden", !visible);
+    btn.classList.toggle("kwc-hidden", !visible);
     btn.hidden = !visible;
     btn.setAttribute("aria-hidden", visible ? "false" : "true");
     btn.style.display = visible ? "" : "none";
@@ -8594,10 +8671,10 @@
   }
 
   function updateCommandButton() {
-    const btn = document.getElementById("bmwc-command");
+    const btn = document.getElementById("kwc-command");
     if (!btn) return;
     const visible = canRunWebCommands() && state.commandsShowButton !== false && !state.minimized;
-    btn.classList.toggle("bmwc-hidden", !visible);
+    btn.classList.toggle("kwc-hidden", !visible);
     btn.title = t("button.commands", "Commands");
     if (!visible) hideCommandPanel();
   }
@@ -8619,7 +8696,7 @@
     }
 
     try {
-      const res = await api("/commands?token=" + encodeURIComponent(state.token));
+      const res = await api("/commands");
       state.commandsEnabled = !!res.enabled;
       state.commandsCanRun = !!res.canRun;
       state.commandsAllowAll = !!res.allowAll;
@@ -8654,39 +8731,52 @@
 
   function commandMaxLengthHintHtml() {
     return hasCommandMaxLength()
-      ? `<small class="bmwc-command-limit">${esc(fmt("commands.maxLengthHint", "Maximum: {max} characters", {max: state.commandMaxLength}))}</small>`
+      ? `<small class="kwc-command-limit">${esc(fmt("commands.maxLengthHint", "Maximum: {max} characters", {max: state.commandMaxLength}))}</small>`
       : "";
   }
 
   function hideCommandPanel() {
-    const panel = document.getElementById("bmwc-command-panel");
-    if (panel) panel.classList.add("bmwc-hidden");
+    const panel = document.getElementById("kwc-command-panel");
+    if (panel && !panel.classList.contains("kwc-hidden")) panel.classList.add("kwc-hidden");
+  }
+
+  let commandPanelRenderFrame = 0;
+  let messageInputComposing = false;
+
+  function scheduleCommandPanelUpdate() {
+    if (messageInputComposing || commandPanelRenderFrame) return;
+    commandPanelRenderFrame = requestAnimationFrame(() => {
+      commandPanelRenderFrame = 0;
+      if (!messageInputComposing) updateCommandPanel();
+    });
   }
 
   function updateCommandPanel() {
-    const panel = document.getElementById("bmwc-command-panel");
-    const input = document.getElementById("bmwc-message");
+    const panel = document.getElementById("kwc-command-panel");
+    const input = document.getElementById("kwc-message");
     if (!panel || !input) return;
     const value = String(input.value || "").trim();
     if (!canRunWebCommands() || state.commandsRunFromChatInput !== true || state.commandsShowSlashPanel === false || !value.startsWith("/")) {
-      panel.classList.add("bmwc-hidden");
-      panel.innerHTML = "";
+      // Normal chat typing is the hot path. Do not rewrite hidden command-panel
+      // DOM for every keystroke; that forces unnecessary style/compositor work
+      // and can make the input caret/text visibly trail behind on map views.
+      hideCommandPanel();
       return;
     }
 
     const query = value.slice(1).trim();
     if (state.commandsAllowAll) {
       if (!query) {
-        panel.classList.add("bmwc-hidden");
+        panel.classList.add("kwc-hidden");
         panel.innerHTML = "";
         return;
       }
       const tooLong = hasCommandMaxLength() && query.length > state.commandMaxLength;
       panel.innerHTML = tooLong ?
-        `<div class="bmwc-command-empty">${esc(fmt("commands.tooLong", "Command is too long. Maximum: {max} characters.", {max: state.commandMaxLength}))}</div>` :
-        `<button type="button" class="bmwc-command-inline-item bmwc-command-direct" data-run-direct-command="${esc(query)}">
-          <span class="bmwc-command-label">${esc(t("commands.runDirect", "Run command"))}</span>
-          <span class="bmwc-command-preview">/${esc(query)}</span>
+        `<div class="kwc-command-empty">${esc(fmt("commands.tooLong", "Command is too long. Maximum: {max} characters.", {max: state.commandMaxLength}))}</div>` :
+        `<button type="button" class="kwc-command-inline-item kwc-command-direct" data-run-direct-command="${esc(query)}">
+          <span class="kwc-command-label">${esc(t("commands.runDirect", "Run command"))}</span>
+          <span class="kwc-command-preview">/${esc(query)}</span>
         </button>`;
       panel.querySelectorAll("[data-run-direct-command]").forEach(btn => {
         btn.onclick = async e => {
@@ -8697,21 +8787,21 @@
           input.value = "";
         };
       });
-      panel.classList.remove("bmwc-hidden");
+      panel.classList.remove("kwc-hidden");
       return;
     }
 
     const items = (Array.isArray(state.commands) ? state.commands : []).filter(p => commandMatches(p, query)).slice(0, 8);
     if (!items.length) {
-      panel.innerHTML = `<div class="bmwc-command-empty">${esc(t("commands.noMatches", "No matching commands."))}</div>`;
-      panel.classList.remove("bmwc-hidden");
+      panel.innerHTML = `<div class="kwc-command-empty">${esc(t("commands.noMatches", "No matching commands."))}</div>`;
+      panel.classList.remove("kwc-hidden");
       return;
     }
 
     panel.innerHTML = items.map(p => `
-      <button type="button" class="bmwc-command-inline-item" data-run-command="${esc(p.id)}">
-        <span class="bmwc-command-label">${esc(p.label || p.id)}</span>
-        <span class="bmwc-command-preview">/${esc(p.command || "")}</span>
+      <button type="button" class="kwc-command-inline-item" data-run-command="${esc(p.id)}">
+        <span class="kwc-command-label">${esc(p.label || p.id)}</span>
+        <span class="kwc-command-preview">/${esc(p.command || "")}</span>
       </button>
     `).join("");
     panel.querySelectorAll("[data-run-command]").forEach(btn => {
@@ -8732,7 +8822,7 @@
         input.value = "";
       };
     });
-    panel.classList.remove("bmwc-hidden");
+    panel.classList.remove("kwc-hidden");
   }
 
   function openCommandModal() {
@@ -8741,26 +8831,26 @@
       return;
     }
 
-    const old = document.getElementById("bmwc-command-modal");
+    const old = document.getElementById("kwc-command-modal");
     if (old) old.remove();
     const wrap = document.createElement("div");
-    wrap.className = "bmwc-modal-backdrop bmwc-user-prefs-backdrop";
-    wrap.id = "bmwc-command-modal";
+    wrap.className = "kwc-modal-backdrop kwc-user-prefs-backdrop";
+    wrap.id = "kwc-command-modal";
     applyDetachedModalTheme(wrap);
     wrap.innerHTML = `
-      <div class="bmwc-modal bmwc-command-modal">
-        <div class="bmwc-modal-head">
+      <div class="kwc-modal kwc-command-modal">
+        <div class="kwc-modal-head">
           <h3>${t("commands.title", "Server commands")}</h3>
-          <button class="bmwc-button" id="bmwc-command-close">${t("button.close", "Close")}</button>
+          <button class="kwc-button" id="kwc-command-close">${t("button.close", "Close")}</button>
         </div>
         <p>${state.commandsAllowAll ? t("commands.descriptionAll", "Run any server console command from the web UI.") : t("commands.description", "Run a pre-approved server command from the web UI.")}</p>
-        ${state.commandsAllowAll ? `<div class="bmwc-command-direct-box"><input class="bmwc-input" id="bmwc-command-direct"${commandMaxLengthAttr()} placeholder="${t("commands.directPlaceholder", "Command without /")}"><button class="bmwc-button" id="bmwc-command-direct-run">${t("button.run", "Run")}</button></div>${commandMaxLengthHintHtml()}` : `<input class="bmwc-input" id="bmwc-command-search" placeholder="${t("commands.search", "Search preset commands")}"><div class="bmwc-command-list" id="bmwc-command-list"></div>`}
+        ${state.commandsAllowAll ? `<div class="kwc-command-direct-box"><input class="kwc-input" id="kwc-command-direct"${commandMaxLengthAttr()} placeholder="${t("commands.directPlaceholder", "Command without /")}"><button class="kwc-button" id="kwc-command-direct-run">${t("button.run", "Run")}</button></div>${commandMaxLengthHintHtml()}` : `<input class="kwc-input" id="kwc-command-search" placeholder="${t("commands.search", "Search preset commands")}"><div class="kwc-command-list" id="kwc-command-list"></div>`}
       </div>
     `;
     document.body.appendChild(wrap);
-    const search = wrap.querySelector("#bmwc-command-search");
-    const directInput = wrap.querySelector("#bmwc-command-direct");
-    const directRun = wrap.querySelector("#bmwc-command-direct-run");
+    const search = wrap.querySelector("#kwc-command-search");
+    const directInput = wrap.querySelector("#kwc-command-direct");
+    const directRun = wrap.querySelector("#kwc-command-direct-run");
     if (directRun && directInput) {
       const submitDirect = async () => {
         const ok = await runDirectCommand(String(directInput.value || ""));
@@ -8770,7 +8860,7 @@
       directInput.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) submitDirect(); });
     }
     const render = () => renderCommandList(wrap, String(search ? search.value : ""));
-    wrap.querySelector("#bmwc-command-close").onclick = () => wrap.remove();
+    wrap.querySelector("#kwc-command-close").onclick = () => wrap.remove();
     wrap.addEventListener("click", e => { if (e.target === wrap) wrap.remove(); });
     if (search) {
       search.addEventListener("input", render);
@@ -8782,22 +8872,22 @@
   }
 
   function renderCommandList(wrap, query) {
-    const list = wrap.querySelector("#bmwc-command-list");
+    const list = wrap.querySelector("#kwc-command-list");
     if (!list) return;
     const q = String(query || "").trim();
     const items = (Array.isArray(state.commands) ? state.commands : []).filter(p => commandMatches(p, q));
     if (!items.length) {
-      list.innerHTML = `<div class="bmwc-command-empty">${esc(t("commands.noMatches", "No matching commands."))}</div>`;
+      list.innerHTML = `<div class="kwc-command-empty">${esc(t("commands.noMatches", "No matching commands."))}</div>`;
       return;
     }
     list.innerHTML = items.map(p => `
-      <div class="bmwc-command-item">
-        <div class="bmwc-command-main">
+      <div class="kwc-command-item">
+        <div class="kwc-command-main">
           <strong>${esc(p.label || p.id)}</strong>
           ${p.description ? `<small>${esc(p.description)}</small>` : ""}
           <code>/${esc(p.command || "")}</code>
         </div>
-        <button class="bmwc-button" data-run-command="${esc(p.id)}">${t("button.run", "Run")}</button>
+        <button class="kwc-button" data-run-command="${esc(p.id)}">${t("button.run", "Run")}</button>
       </div>
     `).join("");
     list.querySelectorAll("[data-run-command]").forEach(btn => {
@@ -8820,7 +8910,7 @@
     const needConfirm = state.commandsRequireConfirm !== false;
     if (needConfirm && !confirmPlain(fmt("commands.confirm", "Run command: /{command}?", {command}))) return false;
     try {
-      const res = await api("/commands/run", {method: "POST", body: JSON.stringify({token: state.token, command})});
+      const res = await api("/commands/run", {method: "POST", body: JSON.stringify({command})});
       if (!res.ok) {
         alertResponse("commands.failed", "Command failed: {error}", res);
         return false;
@@ -8839,7 +8929,7 @@
     const needConfirm = state.commandsRequireConfirm !== false || preset.confirm !== false;
     if (needConfirm && !confirmPlain(fmt("commands.confirm", "Run command: /{command}?", {command: preset.command || preset.label || id}))) return false;
     try {
-      const res = await api("/commands/run", {method: "POST", body: JSON.stringify({token: state.token, id})});
+      const res = await api("/commands/run", {method: "POST", body: JSON.stringify({id})});
       if (!res.ok) {
         alertResponse("commands.failed", "Command failed: {error}", res);
         return false;
@@ -8853,14 +8943,14 @@
   }
 
   function setSendControlsBusy(busy) {
-    const sendBtn = document.getElementById("bmwc-send");
-    const input = document.getElementById("bmwc-message");
+    const sendBtn = document.getElementById("kwc-send");
+    const input = document.getElementById("kwc-message");
     if (sendBtn) {
       sendBtn.disabled = !!busy;
-      sendBtn.classList.toggle("bmwc-busy", !!busy);
+      sendBtn.classList.toggle("kwc-busy", !!busy);
     }
     if (input) {
-      input.dataset.bmwcSending = busy ? "1" : "0";
+      input.dataset.kwcSending = busy ? "1" : "0";
     }
   }
 
@@ -8897,21 +8987,25 @@
       }
       if (state.captcha) {
         payload.captchaId = state.captcha.id;
-        const captchaInput = document.getElementById("bmwc-captcha-a");
+        const captchaInput = document.getElementById("kwc-captcha-a");
         payload.captchaAnswer = captchaInput ? captchaInput.value.trim() : "";
       }
     }
 
+    // Clear the compose UI before starting network work. The server can publish
+    // the message over SSE before the POST response returns (for example while
+    // Web Push/notification work is still finishing). Waiting for the response
+    // made the sent text visibly remain in the input for hundreds of ms.
+    if (inputToClear) inputToClear.value = "";
+    clearReplyTarget();
+
     try {
       markExplicitLatestFollow(options.forceLatest ? "send-forced" : "send", 4500);
-      const res = await api("/send", {method: "POST", body: JSON.stringify(payload)});
+      const res = await api("/send", {method: "POST", body: JSON.stringify(payload), returnHttpErrorResponse: true});
       if (!res.ok) {
         if (res.captchaPass) {
           state.captchaPass = res.captchaPass;
-          localStorage.setItem("bmwc.captchaPass", state.captchaPass);
-        } else if (res.error === "rate_limited" && state.config && state.config.captchaEnabled && !state.config.captchaRequireOnEachMessage) {
-          state.captchaPass = state.captchaPass || "frontend-ok";
-          localStorage.setItem("bmwc.captchaPass", state.captchaPass);
+          localStorage.setItem("kwc.captchaPass", state.captchaPass);
         }
 
         if (state.captchaPass && state.config && state.config.captchaEnabled && !state.config.captchaRequireOnEachMessage) {
@@ -8920,7 +9014,7 @@
 
         if (res.error === "captcha_failed") {
           state.captchaPass = "";
-          localStorage.removeItem("bmwc.captchaPass");
+          localStorage.removeItem("kwc.captchaPass");
           await refreshCaptcha(true);
         } else {
           await refreshCaptcha();
@@ -8937,15 +9031,8 @@
       }
       if (res.captchaPass) {
         state.captchaPass = res.captchaPass;
-        localStorage.setItem("bmwc.captchaPass", state.captchaPass);
-      } else if (!state.token && state.config && state.config.captchaEnabled && !state.config.captchaRequireOnEachMessage && state.captcha) {
-        // Frontend fallback: hide captcha after a successful solve.
-        // A real server-side pass is still preferred and used when available.
-        state.captchaPass = "frontend-ok";
-        localStorage.setItem("bmwc.captchaPass", state.captchaPass);
+        localStorage.setItem("kwc.captchaPass", state.captchaPass);
       }
-      if (inputToClear) inputToClear.value = "";
-      clearReplyTarget();
       forceLatestChatView(options.forceLatest ? "send-forced" : "send");
       setTimeout(() => {
         if (state.autoFollowLatest) loadHistory(false, {skipIfUnchanged: true});
@@ -8966,7 +9053,7 @@
   }
 
   async function sendMessage() {
-    const input = document.getElementById("bmwc-message");
+    const input = document.getElementById("kwc-message");
     const text = input ? input.value.trim() : "";
     if (!text) return;
     if (state.sendInFlight) return;
@@ -8976,8 +9063,10 @@
       state.sendInFlightText = text;
       setSendControlsBusy(true);
       try {
-        const ok = await runDirectCommand(text);
-        if (ok && input) input.value = "";
+        // Match normal chat sends: once execution is attempted the compose box
+        // is cleared immediately and is not restored on failure.
+        if (input) input.value = "";
+        await runDirectCommand(text);
       } finally {
         state.sendInFlight = false;
         state.sendInFlightSince = 0;
@@ -9024,7 +9113,7 @@
   }
 
   function refreshOpenPinnedModal() {
-    const list = document.getElementById("bmwc-pinned-list");
+    const list = document.getElementById("kwc-pinned-list");
     if (!list) return;
     list.innerHTML = "";
     if (!state.pins.length) {
@@ -9036,7 +9125,7 @@
 
   function setModerationActionsVisible(visible) {
     state.moderationActionsVisible = !!visible;
-    document.querySelectorAll("#bmwc-toggle-moderation-actions").forEach(updateModerationActionsToggleButton);
+    document.querySelectorAll("#kwc-toggle-moderation-actions").forEach(updateModerationActionsToggleButton);
     refreshOpenPinnedModal();
     // Existing virtual-scroll message nodes are normally reused instead of being
     // rebuilt. Update the admin mini-actions in-place so pin/delete buttons do
@@ -9052,7 +9141,7 @@
     // summaries do not leak raw values such as &7/§7/&#RRGGBB.
     const text = plainLegacyText(displayMessageText(pin)).replace(/\s+/g, " ").trim();
     if (!text) return t("pinned.untitled", "Pinned message");
-    return text.length > 64 ? text.slice(0, 64) + "…" : text;
+    return text;
   }
 
   function pinnedTooltip(pin) {
@@ -9067,22 +9156,22 @@
   }
 
   function renderPinnedBar() {
-    const root = document.getElementById("bmwc-root");
-    const bar = document.getElementById("bmwc-pinned-bar");
-    const opener = document.getElementById("bmwc-pinned-open");
-    const label = document.getElementById("bmwc-pinned-label");
-    const search = document.getElementById("bmwc-search-open");
-    const resizeLock = document.getElementById("bmwc-resize-lock");
+    const root = document.getElementById("kwc-root");
+    const bar = document.getElementById("kwc-pinned-bar");
+    const opener = document.getElementById("kwc-pinned-open");
+    const label = document.getElementById("kwc-pinned-label");
+    const search = document.getElementById("kwc-search-open");
+    const resizeLock = document.getElementById("kwc-resize-lock");
     if (!bar || !label) return;
     const count = Array.isArray(state.pins) ? state.pins.length : 0;
     const pinsVisible = canViewPinnedMessages() && state.pinsEnabled !== false && count > 0 && !state.minimized;
     const searchVisible = searchEnabled() && !state.minimized && !guestChatHidden();
     const resizeLockVisible = !!(state.config && state.config.uiResizable) && !state.minimized && !guestChatHidden();
-    bar.classList.toggle("bmwc-hidden", !pinsVisible);
-    if (root) root.classList.toggle("bmwc-has-pinned-bar", !!pinsVisible);
-    if (opener) opener.classList.toggle("bmwc-hidden", !pinsVisible);
-    if (search) search.classList.toggle("bmwc-hidden", !searchVisible);
-    if (resizeLock) resizeLock.classList.toggle("bmwc-hidden", !resizeLockVisible);
+    bar.classList.toggle("kwc-hidden", !pinsVisible);
+    if (root) root.classList.toggle("kwc-has-pinned-bar", !!pinsVisible);
+    if (opener) opener.classList.toggle("kwc-hidden", !pinsVisible);
+    if (search) search.classList.toggle("kwc-hidden", !searchVisible);
+    if (resizeLock) resizeLock.classList.toggle("kwc-hidden", !resizeLockVisible);
     updateResizeLockButton();
     if (!pinsVisible) {
       if (label) {
@@ -9104,7 +9193,16 @@
       label.textContent = fmt("pinned.single", "{title}", {title: pinnedTitle(state.pins[0])});
       label.title = pinnedTooltip(state.pins[0]);
     } else {
-      label.textContent = fmt("pinned.multiple", "{title} and {rest} more", {title: pinnedTitle(state.pins[0]), rest: count - 1});
+      // Keep the remaining-count suffix visible even when the first pinned title
+      // is wider than the bar. Only the title span is allowed to ellipsize.
+      label.textContent = "";
+      const titlePart = document.createElement("span");
+      titlePart.className = "kwc-pinned-summary-title";
+      titlePart.textContent = pinnedTitle(state.pins[0]);
+      const restPart = document.createElement("span");
+      restPart.className = "kwc-pinned-summary-rest";
+      restPart.textContent = fmt("pinned.more", "and {rest} more", {rest: count - 1});
+      label.append(titlePart, restPart);
       label.title = fmt("pinned.multiple", "{title} and {rest} more", {title: pinnedTooltip(state.pins[0]), rest: count - 1});
     }
     if (opener) opener.title = label.title || label.textContent || "";
@@ -9114,26 +9212,26 @@
   function renderPinnedItem(pin, index = 0, total = 0) {
     const msg = Object.assign({}, pin, {id: pin.messageId || pin.pinId});
     const el = renderMessageElement(msg);
-    el.classList.add("bmwc-pinned-item");
-    el.querySelectorAll(".bmwc-mini-actions, [data-delete], [data-pin], [data-reply]").forEach(node => node.remove());
-    el.classList.remove("bmwc-has-mini-actions");
-    const meta = el.querySelector(".bmwc-meta");
+    el.classList.add("kwc-pinned-item");
+    el.querySelectorAll(".kwc-mini-actions, [data-delete], [data-pin], [data-reply]").forEach(node => node.remove());
+    el.classList.remove("kwc-has-mini-actions");
+    const meta = el.querySelector(".kwc-meta");
     if (meta) {
       const detail = document.createElement("span");
-      detail.className = "bmwc-pinned-detail";
+      detail.className = "kwc-pinned-detail";
       detail.textContent = fmt("pinned.pinnedBy", "pinned by {user}", {user: pin.pinnedBy || "-"});
       const detailSep = document.createElement("span");
-      detailSep.className = "bmwc-meta-sep";
+      detailSep.className = "kwc-meta-sep";
       detailSep.setAttribute("aria-hidden", "true");
       detailSep.textContent = "·";
       meta.appendChild(detailSep);
       meta.appendChild(detail);
       if (state.moderationActionsVisible && state.pinsCanPin && pin.pinId) {
         const controls = document.createElement("span");
-        controls.className = "bmwc-mini-actions bmwc-pinned-actions";
+        controls.className = "kwc-mini-actions kwc-pinned-actions";
 
         const up = document.createElement("button");
-        up.className = "bmwc-mini-action bmwc-pinned-action bmwc-pinned-move-action";
+        up.className = "kwc-mini-action kwc-pinned-action kwc-pinned-move-action";
         up.type = "button";
         up.setAttribute("data-pin-move", pin.pinId);
         up.setAttribute("data-direction", "up");
@@ -9143,7 +9241,7 @@
         controls.appendChild(up);
 
         const down = document.createElement("button");
-        down.className = "bmwc-mini-action bmwc-pinned-action bmwc-pinned-move-action";
+        down.className = "kwc-mini-action kwc-pinned-action kwc-pinned-move-action";
         down.type = "button";
         down.setAttribute("data-pin-move", pin.pinId);
         down.setAttribute("data-direction", "down");
@@ -9153,7 +9251,7 @@
         controls.appendChild(down);
 
         const unpin = document.createElement("button");
-        unpin.className = "bmwc-mini-action bmwc-pinned-action bmwc-pinned-unpin-action";
+        unpin.className = "kwc-mini-action kwc-pinned-action kwc-pinned-unpin-action";
         unpin.type = "button";
         unpin.setAttribute("data-unpin", pin.pinId);
         unpin.title = t("button.unpin", "unpin");
@@ -9169,8 +9267,7 @@
 
   async function loadPins() {
     try {
-      const tokenQuery = state.token ? "?token=" + encodeURIComponent(state.token) : "";
-      const res = await api("/pins" + tokenQuery, {method: "GET"});
+      const res = await api("/pins", {method: "GET"});
       if (!res || !res.ok) return;
       state.pinsEnabled = res.enabled !== false;
       state.pinsCanPin = !!res.canPin;
@@ -9183,10 +9280,7 @@
 
   async function pinMessage(id) {
     if (!id || !state.token || !(state.role === "ADMIN" || state.role === "MODERATOR")) return;
-    const res = await adminApi("/admin/pin-message", {
-      method: "POST",
-      body: JSON.stringify({id})
-    });
+    const res = await adminWrite("/admin/pin-message", {id});
     if (!res.ok) {
       alertResponse("alert.pinFailed", "Pin failed: {error}", res);
       return;
@@ -9196,10 +9290,7 @@
 
   async function movePinnedMessage(pinId, direction) {
     if (!pinId || !direction || !state.token || !(state.role === "ADMIN" || state.role === "MODERATOR")) return;
-    const res = await adminApi("/admin/move-pin", {
-      method: "POST",
-      body: JSON.stringify({pinId, direction})
-    });
+    const res = await adminWrite("/admin/move-pin", {pinId, direction});
     if (!res.ok) {
       alertResponse("alert.movePinFailed", "Move failed: {error}", res);
       return;
@@ -9210,10 +9301,7 @@
 
   async function unpinMessage(pinId) {
     if (!pinId || !state.token || !(state.role === "ADMIN" || state.role === "MODERATOR")) return;
-    const res = await adminApi("/admin/unpin-message", {
-      method: "POST",
-      body: JSON.stringify({pinId})
-    });
+    const res = await adminWrite("/admin/unpin-message", {pinId});
     if (!res.ok) {
       alertResponse("alert.unpinFailed", "Unpin failed: {error}", res);
       return;
@@ -9224,28 +9312,28 @@
 
   function openPinnedModal() {
     if (!state.pinsEnabled || !state.pins.length) return;
-    const old = document.getElementById("bmwc-pinned-modal");
+    const old = document.getElementById("kwc-pinned-modal");
     if (old) old.remove();
     const wrap = document.createElement("div");
-    wrap.className = "bmwc-modal-backdrop bmwc-pinned-backdrop";
+    wrap.className = "kwc-modal-backdrop kwc-pinned-backdrop";
     applyDetachedModalTheme(wrap);
-    wrap.id = "bmwc-pinned-modal";
+    wrap.id = "kwc-pinned-modal";
     wrap.innerHTML = `
-      <div class="bmwc-modal bmwc-pinned-modal">
-        <div class="bmwc-modal-head">
+      <div class="kwc-modal kwc-pinned-modal">
+        <div class="kwc-modal-head">
           <h3>${t("pinned.title", "Pinned messages")}</h3>
-          <button class="bmwc-button" id="bmwc-pinned-close">${t("button.close", "Close")}</button>
+          <button class="kwc-button" id="kwc-pinned-close">${t("button.close", "Close")}</button>
         </div>
-        <div class="bmwc-pinned-list" id="bmwc-pinned-list"></div>
+        <div class="kwc-pinned-list" id="kwc-pinned-list"></div>
       </div>
     `;
     document.body.appendChild(wrap);
-    const list = wrap.querySelector("#bmwc-pinned-list");
+    const list = wrap.querySelector("#kwc-pinned-list");
     if (list) {
       if (!state.pins.length) list.innerHTML = `<p>${esc(t("pinned.empty", "No pinned messages."))}</p>`;
       state.pins.forEach((pin, index) => list.appendChild(renderPinnedItem(pin, index, state.pins.length)));
     }
-    wrap.querySelector("#bmwc-pinned-close").onclick = () => wrap.remove();
+    wrap.querySelector("#kwc-pinned-close").onclick = () => wrap.remove();
     wrap.addEventListener("click", e => {
       const move = e.target && e.target.closest ? e.target.closest("[data-pin-move]") : null;
       if (move && wrap.contains(move)) {
@@ -9265,17 +9353,51 @@
     });
   }
 
+  let adminRequestSerial = 0;
+  function nextAdminRequestId() {
+    adminRequestSerial = (adminRequestSerial + 1) % 0x7fffffff;
+    return `${Date.now().toString(36)}-${adminRequestSerial.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
   function adminApi(path, opts = {}) {
+    const requestOpts = Object.assign({}, opts);
+    const requestId = String(requestOpts.kwcRequestId || nextAdminRequestId());
+    delete requestOpts.kwcRequestId;
+    // Every Admin request gets a unique URL. This is stronger than relying on
+    // browser/proxy cache directives and avoids stale verification reads when a
+    // map host or reverse proxy caches /admin/* unexpectedly.
     const joiner = path.includes("?") ? "&" : "?";
-    return api(path + joiner + "token=" + encodeURIComponent(state.token), opts);
+    const url = path + joiner + "_kwc=" + encodeURIComponent(requestId);
+    if (!("cache" in requestOpts)) requestOpts.cache = "no-store";
+    return api(url, requestOpts).then(res => {
+      if (res && typeof res === "object") res._clientRequestId = requestId;
+      return res;
+    });
+  }
+
+  function adminWrite(path, fields = {}, opts = {}) {
+    const requestId = nextAdminRequestId();
+    const form = new URLSearchParams();
+    for (const [key, value] of Object.entries(fields || {})) form.set(key, value == null ? "" : String(value));
+    form.set("_requestId", requestId);
+    // Use the browser's native URL-encoded form body. It is CORS-safelisted,
+    // preserves Unicode/newlines through percent encoding, and avoids maintaining
+    // a second hand-written JSON transport just for Admin writes.
+    return adminApi(path, Object.assign({
+      method: "POST",
+      cache: "no-store",
+      returnHttpErrorResponse: true,
+      body: form,
+      kwcRequestId: requestId
+    }, opts)).then(res => {
+      if (res && typeof res === "object") res._clientRequestId = requestId;
+      return res;
+    });
   }
 
   async function deleteMessage(id) {
     if (!id || !confirmPlain(t("alert.confirmDelete", "Hide this message?"))) return;
-    const res = await adminApi("/admin/delete-message", {
-      method: "POST",
-      body: JSON.stringify({id})
-    });
+    const res = await adminWrite("/admin/delete-message", {id});
     if (!res.ok) {
       alertResponse("alert.deleteFailed", "Delete failed: {error}", res);
       return;
@@ -9291,26 +9413,27 @@
 
     const canManageMutes = (!state.config || state.config.moderationEnabled !== false) && (state.role === "ADMIN" || (!state.config || state.config.allowModeratorGuestMute !== false));
     const wrap = document.createElement("div");
-    wrap.className = "bmwc-modal-backdrop bmwc-user-prefs-backdrop";
+    wrap.className = "kwc-modal-backdrop kwc-user-prefs-backdrop";
     applyDetachedModalTheme(wrap);
     wrap.innerHTML = `
-      <div class="bmwc-modal bmwc-admin-modal">
-        <h3>${t("admin.title", "BlueMap Chat Admin")}</h3>
-        <div class="bmwc-tabs">
-          <button class="bmwc-button bmwc-tab" data-panel="summary">${t("admin.summary", "Summary")}</button>
-          ${canManageMutes ? `<button class="bmwc-button bmwc-tab" data-panel="mutes">${t("admin.mutes", "Mutes")}</button>` : ""}
-          ${state.role === "ADMIN" ? `<button class="bmwc-button bmwc-tab" data-panel="accounts">${t("admin.accounts", "Accounts")}</button>` : ""}
-          ${state.role === "ADMIN" ? `<button class="bmwc-button bmwc-tab" data-panel="sessions">${t("admin.sessions", "Sessions")}</button>` : ""}
-          ${state.role === "ADMIN" ? `<button class="bmwc-button bmwc-tab" data-panel="emojis">${t("admin.emojis", "Emojis")}</button>` : ""}
+      <div class="kwc-modal kwc-admin-modal">
+        <h3>${t("admin.title", "KOKOTO WebChat Admin")}</h3>
+        <div class="kwc-tabs">
+          <button class="kwc-button kwc-tab" data-panel="summary">${t("admin.summary", "Summary")}</button>
+          ${canManageMutes ? `<button class="kwc-button kwc-tab" data-panel="mutes">${t("admin.mutes", "Mutes")}</button>` : ""}
+          ${state.role === "ADMIN" ? `<button class="kwc-button kwc-tab" data-panel="accounts">${t("admin.accounts", "Accounts")}</button>` : ""}
+          ${state.role === "ADMIN" ? `<button class="kwc-button kwc-tab" data-panel="emojis">${t("admin.emojis", "Emojis")}</button>` : ""}
+          ${state.role === "ADMIN" ? `<button class="kwc-button kwc-tab" data-panel="filter">${t("admin.filter", "Filter")}</button>` : ""}
+          ${state.role === "ADMIN" ? `<button class="kwc-button kwc-tab" data-panel="settings">${t("admin.settings", "Settings")}</button>` : ""}
         </div>
-        <div id="bmwc-admin-content">${t("admin.loading", "Loading...")}</div>
+        <div id="kwc-admin-content">${t("admin.loading", "Loading...")}</div>
         <br>
-        <button class="bmwc-button" id="bmwc-admin-close">${t("button.close", "Close")}</button>
+        <button class="kwc-button" id="kwc-admin-close">${t("button.close", "Close")}</button>
       </div>
     `;
     protectHistoryEndNotice("admin-open", 6000);
     document.body.appendChild(wrap);
-    wrap.querySelector("#bmwc-admin-close").onclick = () => { protectHistoryEndNotice("admin-close", 6000); wrap.remove(); scheduleScrollAffordanceRefresh("admin-close"); };
+    wrap.querySelector("#kwc-admin-close").onclick = () => { protectHistoryEndNotice("admin-close", 6000); wrap.remove(); scheduleScrollAffordanceRefresh("admin-close"); };
     wrap.querySelectorAll("[data-panel]").forEach(btn => {
       btn.onclick = () => loadAdminPanel(wrap, btn.dataset.panel);
     });
@@ -9318,47 +9441,582 @@
   }
 
   async function loadAdminPanel(wrap, panel) {
-    const content = wrap.querySelector("#bmwc-admin-content");
+    const content = wrap.querySelector("#kwc-admin-content");
     content.textContent = t("admin.loading", "Loading...");
     try {
       if (panel === "summary") return renderAdminSummary(content);
       if (panel === "mutes") return renderAdminMutes(content);
       if (panel === "accounts") return renderAdminAccounts(content);
-      if (panel === "sessions") return renderAdminSessions(content);
+      // Compatibility for any stale in-page state that still references the old Sessions tab.
+      if (panel === "sessions") return renderAdminAccounts(content);
       if (panel === "emojis") return renderAdminEmojis(content);
+      if (panel === "filter") return renderAdminFilter(content);
+      if (panel === "settings") return renderAdminSettings(content);
     } catch (e) {
       content.textContent = fmt("admin.failed", "Failed: {error}", {error: e.message});
     }
+  }
+
+  async function adminUpdateSetting(path, value) {
+    return adminWrite("/admin/settings", {path, value: String(value)});
+  }
+
+  function adminSettingLabel(path) {
+    const key = "admin.setting." + String(path || "").replaceAll(".", "-");
+    return t(key, path);
+  }
+
+  function adminSettingInput(path, value, type = "text", options = null) {
+    const id = "kwc-setting-" + path.replace(/[^a-z0-9]+/gi, "-");
+    const label = adminSettingLabel(path);
+    const initial = type === "boolean" ? String(value === true) : String(value ?? "");
+    if (type === "boolean") {
+      return `<label class="kwc-admin-item kwc-admin-setting-item"><span><strong>${esc(label)}</strong></span><input id="${esc(id)}" data-setting-path="${esc(path)}" data-setting-initial="${esc(initial)}" type="checkbox" ${value ? "checked" : ""}></label>`;
+    }
+    if (options) {
+      const optionHtml = options.map(option => {
+        const optionValue = option && typeof option === "object" ? option.value : option;
+        const optionLabel = option && typeof option === "object" ? option.label : optionValue;
+        return `<option value="${esc(optionValue)}" ${String(value) === String(optionValue) ? "selected" : ""}>${esc(optionLabel)}</option>`;
+      }).join("");
+      return `<label class="kwc-admin-item kwc-admin-setting-item"><span><strong>${esc(label)}</strong></span><select class="kwc-input" id="${esc(id)}" data-setting-path="${esc(path)}" data-setting-initial="${esc(initial)}">${optionHtml}</select></label>`;
+    }
+    return `<label class="kwc-admin-item kwc-admin-setting-item"><span><strong>${esc(label)}</strong></span><input class="kwc-input" id="${esc(id)}" data-setting-path="${esc(path)}" data-setting-initial="${esc(initial)}" type="${type}" value="${esc(value ?? "")}"></label>`;
+  }
+
+  function adminSettingGroup(titleKey, fallback, rows) {
+    const body = Array.isArray(rows) ? rows.join("") : String(rows || "");
+    return `<section class="kwc-admin-section-card">
+      <div class="kwc-admin-section-title">${esc(t(titleKey, fallback))}</div>
+      <div class="kwc-admin-list kwc-admin-group-list">${body}</div>
+    </section>`;
+  }
+
+  function syncAdminSettingElements(content, settings, selector = "[data-setting-path]", updateInitial = false) {
+    if (!settings || typeof settings !== "object") return;
+    content.querySelectorAll(selector).forEach(el => {
+      const path = el.dataset.settingPath;
+      if (!Object.prototype.hasOwnProperty.call(settings, path)) return;
+      const value = settings[path];
+      if (el.type === "checkbox") el.checked = value === true;
+      else el.value = value ?? "";
+      if (updateInitial) el.dataset.settingInitial = el.type === "checkbox" ? String(value === true) : String(value ?? "");
+    });
+  }
+
+  async function saveAdminSettingElements(content, selector = "[data-setting-path]") {
+    const resultBox = content.querySelector("#kwc-settings-result") || content.querySelector("#kwc-filter-result");
+    const saveButton = content.querySelector("#kwc-settings-save") || content.querySelector("#kwc-filter-settings-save");
+    const changes = {};
+    for (const el of content.querySelectorAll(selector)) {
+      // Submit the complete visible panel on every Save. The server validates and
+      // persists the batch atomically, so repeated saves do not depend on a browser
+      // copy of the previous values being perfectly synchronized.
+      changes[el.dataset.settingPath] = el.type === "checkbox" ? String(el.checked) : String(el.value ?? "");
+    }
+    if (!Object.keys(changes).length) {
+      if (resultBox) resultBox.textContent = t("admin.settingsNoChanges", "No changes.");
+      return true;
+    }
+    if (saveButton) saveButton.disabled = true;
+    if (resultBox) resultBox.textContent = t("admin.settingsSaving", "Saving...");
+    try {
+      const res = await adminWrite("/admin/settings", changes);
+      if (!res?.ok) {
+        if (resultBox) resultBox.textContent = fmt("admin.failed", "Failed: {error}", {error: res?.error || "unknown"});
+        return false;
+      }
+      if (Number(res.writeProtocol || 0) !== 5) {
+        if (resultBox) resultBox.textContent = fmt("admin.failed", "Failed: {error}", {error: "admin_api_mismatch"});
+        return false;
+      }
+      // The POST handler itself writes config.yml and reads it back before returning.
+      // Use that same-request disk snapshot as the source of truth. A second GET here
+      // can be served by a stale intermediary and was the source of false rollback/
+      // verification failures in previous audit builds.
+      const persisted = res.settings;
+      if (!persisted || typeof persisted !== "object") {
+        if (resultBox) resultBox.textContent = t("admin.settingsVerifyFailed", "Saved response could not be verified from config.yml.");
+        return false;
+      }
+      // RuntimeSettingsController has already parsed each requested value, written
+      // config.yml, read the same paths back and compared the typed values before
+      // returning ok=true. Do not repeat that comparison as raw browser strings:
+      // valid normalization such as numeric 01 -> 1 must not be reported as a save
+      // failure. The returned settings object is the verified disk snapshot.
+      syncAdminSettingElements(content, persisted, selector, true);
+      // Refresh public runtime config after the Admin form has been verified. It is
+      // intentionally not used as the source of truth for the form itself.
+      loadConfig().catch(() => {});
+      if (resultBox) resultBox.textContent = fmt("admin.settingsSaved", "Saved. Sessions updated: {updated}, expired: {expired}", {updated:Number(res.sessionsUpdated || 0), expired:Number(res.sessionsExpired || 0)});
+      return true;
+    } catch (err) {
+      const message = err?.response?.error || err?.message || "unknown";
+      if (resultBox) resultBox.textContent = fmt("admin.failed", "Failed: {error}", {error: message});
+      return false;
+    } finally {
+      if (saveButton) saveButton.disabled = false;
+    }
+  }
+
+  async function renderAdminSettings(content) {
+    const data = await adminApi("/admin/settings");
+    if (!data?.ok) throw new Error(data?.error || "settings_failed");
+    if (Number(data.writeProtocol || 0) !== 5) throw new Error("admin_api_mismatch");
+    const v = data.settings || {};
+    const configuredAlertChannel = String(v["admin-alerts.discord.channel"] ?? "").trim();
+    const discordAlertChannels = Array.from(new Set((Array.isArray(data.discordAlertChannels) ? data.discordAlertChannels : [])
+      .map(value => String(value ?? "").trim()).filter(Boolean)));
+    if (configuredAlertChannel && !discordAlertChannels.includes(configuredAlertChannel)) discordAlertChannels.push(configuredAlertChannel);
+    const discordAlertChannelOptions = discordAlertChannels.length
+      ? discordAlertChannels.map(value => ({value, label:value}))
+      : [{value: configuredAlertChannel, label: configuredAlertChannel || t("admin.discordAlertNoChannels", "No DiscordSRV channels available")}];
+
+    const guestCaptchaRows = [
+      adminSettingInput("guest.enabled", v["guest.enabled"], "boolean"),
+      adminSettingInput("guest.allow-custom-name", v["guest.allow-custom-name"], "boolean"),
+      adminSettingInput("guest.cooldown-seconds", v["guest.cooldown-seconds"], "number"),
+      adminSettingInput("guest.max-messages-per-minute", v["guest.max-messages-per-minute"], "number"),
+      adminSettingInput("captcha.mode", v["captcha.mode"], "text", [{value:"off", label:t("admin.optionCaptchaOff", "Off")}, {value:"math", label:t("admin.optionCaptchaMath", "Math")}]),
+      adminSettingInput("captcha.require-on-each-message", v["captcha.require-on-each-message"], "boolean"),
+      adminSettingInput("captcha.pass-valid-minutes", v["captcha.pass-valid-minutes"], "number")
+    ];
+    const authSessionRows = [
+      adminSettingInput("auth.password-login", v["auth.password-login"], "boolean"),
+      adminSettingInput("auth.remember-session-days", v["auth.remember-session-days"], "number"),
+      adminSettingInput("admin.admin-session-expire-hours", v["admin.admin-session-expire-hours"], "number")
+    ];
+    const profileRows = [
+      adminSettingInput("ui.user-profiles.enabled", v["ui.user-profiles.enabled"], "boolean"),
+      adminSettingInput("ui.user-profiles.max-profiles", v["ui.user-profiles.max-profiles"], "number"),
+      adminSettingInput("ui.user-profiles.allow-import-export", v["ui.user-profiles.allow-import-export"], "boolean")
+    ];
+    const uploadRows = [
+      adminSettingInput("upload.enabled", v["upload.enabled"], "boolean"),
+      adminSettingInput("upload.allow-guest-upload", v["upload.allow-guest-upload"], "boolean"),
+      adminSettingInput("upload.allow-user-upload", v["upload.allow-user-upload"], "boolean"),
+      adminSettingInput("upload.allow-moderator-upload", v["upload.allow-moderator-upload"], "boolean"),
+      adminSettingInput("upload.allow-admin-upload", v["upload.allow-admin-upload"], "boolean"),
+      adminSettingInput("upload.cooldown-seconds", v["upload.cooldown-seconds"], "number"),
+      adminSettingInput("upload.max-uploads-per-minute", v["upload.max-uploads-per-minute"], "number"),
+      adminSettingInput("upload.max-file-size-mb", v["upload.max-file-size-mb"], "number"),
+      adminSettingInput("upload.max-total-size-mb", v["upload.max-total-size-mb"], "number"),
+      adminSettingInput("upload.max-files-per-message", v["upload.max-files-per-message"], "number"),
+      adminSettingInput("upload.retention-days", v["upload.retention-days"], "number"),
+      adminSettingInput("upload.filename-mode", v["upload.filename-mode"], "text", [{value:"random", label:t("admin.optionFilenameRandom", "Random")}, {value:"original", label:t("admin.optionFilenameOriginal", "Original")}])
+    ];
+    const discordAlertRows = [
+      adminSettingInput("admin-alerts.discord.enabled", v["admin-alerts.discord.enabled"], "boolean"),
+      adminSettingInput("admin-alerts.discord.channel", v["admin-alerts.discord.channel"], "text", discordAlertChannelOptions),
+      adminSettingInput("admin-alerts.discord.sources.public-chat", v["admin-alerts.discord.sources.public-chat"], "boolean"),
+      adminSettingInput("admin-alerts.discord.sources.relay-chat", v["admin-alerts.discord.sources.relay-chat"], "boolean"),
+      adminSettingInput("admin-alerts.discord.sources.dm", v["admin-alerts.discord.sources.dm"], "boolean"),
+      adminSettingInput("admin-alerts.discord.sources.group-chat", v["admin-alerts.discord.sources.group-chat"], "boolean"),
+      adminSettingInput("admin-alerts.discord.mention", v["admin-alerts.discord.mention"], "text", [{value:"none", label:t("admin.optionMentionNone", "None")}, {value:"here", label:"@here"}, {value:"everyone", label:"@everyone"}]),
+      adminSettingInput("admin-alerts.discord.case-sensitive", v["admin-alerts.discord.case-sensitive"], "boolean"),
+      adminSettingInput("admin-alerts.discord.keywords", v["admin-alerts.discord.keywords"], "text")
+    ];
+
+    content.innerHTML = `
+      <h4>${t("admin.settings", "Settings")}</h4>
+      <p><small>${t("admin.settingsHint", "These settings are applied immediately and written to config.yml. Session lifetime changes also recalculate currently valid sessions from their creation time.")}</small></p>
+      <div class="kwc-admin-section-stack kwc-settings-stack">
+        ${adminSettingGroup("admin.settingsGroupGuestCaptcha", "Guest & CAPTCHA", guestCaptchaRows)}
+        ${adminSettingGroup("admin.settingsGroupAuthSessions", "Authentication & sessions", authSessionRows)}
+        ${adminSettingGroup("admin.settingsGroupProfiles", "User profiles", profileRows)}
+        ${adminSettingGroup("admin.settingsGroupUploads", "Uploads", uploadRows)}
+        ${adminSettingGroup("admin.settingsGroupDiscordAlerts", "Discord admin alerts", discordAlertRows)}
+      </div>
+      <div class="kwc-row kwc-admin-save-row"><button class="kwc-button" type="button" id="kwc-settings-save">${t("button.save", "Save")}</button><small class="kwc-admin-result" id="kwc-settings-result"></small></div>`;
+    content.querySelector("#kwc-settings-save").onclick = () => saveAdminSettingElements(content);
+  }
+
+  function filterRuleMappingText(rule) {
+    return Object.entries(rule?.mappings || {}).map(([k,v]) => `${k} => ${v}`).join("\n");
+  }
+
+  function filterActionLabel(action) {
+    const value = String(action || "block").toLowerCase();
+    if (value === "mask") return t("admin.filterActionMask", "Mask");
+    if (value === "replace") return t("admin.filterActionReplace", "Replace");
+    return t("admin.filterActionBlock", "Block");
+  }
+
+  function filterRuleCard(rule) {
+    const words = Array.isArray(rule?.words) ? rule.words : [];
+    return `<div class="kwc-filter-rule-card" data-filter-rule-card="${esc(rule?.id || "")}">
+      <div class="kwc-filter-rule-card-main">
+        <div class="kwc-filter-rule-card-title"><strong>${esc(rule?.id || "-")}</strong><span class="kwc-filter-rule-badge">${esc(filterActionLabel(rule?.action))}</span>${rule?.enabled === false ? `<span class="kwc-filter-rule-disabled">${t("admin.filterDisabled", "Disabled")}</span>` : ""}</div>
+        <small>${esc(words.join(", "))}</small>
+      </div>
+      <div class="kwc-filter-rule-card-actions"><button class="kwc-button" type="button" data-filter-edit="${esc(rule?.id || "")}">${t("button.edit", "Edit")}</button><button class="kwc-button" type="button" data-filter-remove="${esc(rule?.id || "")}">${t("button.delete", "Delete")}</button></div>
+    </div>`;
+  }
+
+  function filterWordListCard(file) {
+    const name = String(file?.name || "");
+    const enabled = file?.enabled !== false;
+    const action = String(file?.action || "block").toLowerCase() === "mask" ? "mask" : "block";
+    const count = Number(file?.wordCount || 0);
+    const actionLabel = action === "mask" ? t("admin.filterListActionMask", "Filter") : t("admin.filterActionBlock", "Block");
+    return `<div class="kwc-filter-list-card" data-filter-list-card="${esc(name)}">
+      <div class="kwc-filter-list-card-main">
+        <div class="kwc-filter-rule-card-title"><strong>${esc(name || "-")}</strong><span class="kwc-filter-rule-badge">${fmt("admin.filterListWordCount", "{count} words", {count})}</span><span class="kwc-filter-rule-badge">${esc(actionLabel)}</span>${enabled ? "" : `<span class="kwc-filter-rule-disabled">${t("admin.filterDisabled", "Disabled")}</span>`}</div>
+      </div>
+      <div class="kwc-filter-rule-card-actions">
+        <button class="kwc-button" type="button" data-filter-list-edit="${esc(name)}">${t("button.edit", "Edit")}</button>
+        <button class="kwc-button" type="button" data-filter-list-toggle="${esc(name)}" data-enabled="${enabled ? "true" : "false"}">${enabled ? t("admin.filterListDisable", "Disable") : t("admin.filterListEnable", "Enable")}</button>
+        <button class="kwc-button" type="button" data-filter-list-delete="${esc(name)}">${t("button.delete", "Delete")}</button>
+      </div>
+    </div>`;
+  }
+
+  function filterRuleGuideHtml() {
+    return `<details class="kwc-filter-rule-guide">
+      <summary>${t("admin.filterGuideTitle", "Custom rule examples")}</summary>
+      <div class="kwc-filter-rule-guide-body">
+        <p>${t("admin.filterGuideChoose", "Use filter-word TXT lists for many simple Block/Filter words. Use custom rules when you need a different action, replacement candidates, or per-word replacements.")}</p>
+        <div class="kwc-filter-rule-guide-example"><strong>${t("admin.filterGuideBlockTitle", "1. Block a whole message")}</strong><code>${esc(t("admin.filterGuideBlockExample", "Action: Block\nTarget words:\nadvertisement\nscam-link"))}</code></div>
+        <div class="kwc-filter-rule-guide-example"><strong>${t("admin.filterGuideMaskTitle", "2. Mask only the matched text")}</strong><code>${esc(t("admin.filterGuideMaskExample", "Action: Mask\nTarget words:\nword1\nword2\nResult: matched text → content-filter.mask.text"))}</code></div>
+        <div class="kwc-filter-rule-guide-example"><strong>${t("admin.filterGuideReplaceTitle", "3. Replace with shared candidates")}</strong><code>${esc(t("admin.filterGuideReplaceExample", "Action: Replace\nTarget words:\nword1\nword2\nReplacement candidates:\nsoft expression\nanother expression\nMode: First or Random"))}</code></div>
+        <div class="kwc-filter-rule-guide-example"><strong>${t("admin.filterGuideMappingTitle", "4. Give each word its own replacement")}</strong><code>${esc(t("admin.filterGuideMappingExample", "Per-word replacements:\nword1 => replacement A\nword2 => replacement B"))}</code><small>${t("admin.filterGuideMappingNote", "A mapping key is automatically treated as a target word even if it is omitted from Target words. Per-word mappings take priority over shared replacement candidates.")}</small></div>
+        <div class="kwc-filter-rule-guide-example"><strong>${t("admin.filterGuideEvasionTitle", "5. Anti-evasion examples")}</strong><small>${t("admin.filterGuideEvasionText", "Compact matching catches separators such as 'word 1' or 'word-1' when the compact form matches. Interleave matching catches inserted letters/numbers such as 'woXrd' within interleave-max-gap. A Hangul jamo-only rule such as 'ㅅㅂ' remains a jamo shorthand rule and does not mean every complete Korean word with those initials.")}</small></div>
+        <p class="kwc-filter-rule-guide-test">${t("admin.filterGuideTest", "After saving, use Test below. It evaluates both TXT lists and custom rules without sending a message, even while the live filter is disabled.")}</p>
+      </div>
+    </details>`;
+  }
+
+  async function renderAdminFilter(content, suppliedData = null) {
+    const data = suppliedData && suppliedData.ok ? suppliedData : await adminApi("/admin/filter");
+    if (!data?.ok) throw new Error(data?.error || "filter_failed");
+    if (Number(data.writeProtocol || 0) !== 5) throw new Error("admin_api_mismatch");
+    const v = data.settings || {}, rules = Array.isArray(data.rules) ? data.rules : [];
+    const wordLists = Array.isArray(data.wordLists) ? data.wordLists : [];
+    content.innerHTML = `
+      <h4>${t("admin.filter", "Filter")}</h4>
+      <p><small>${t("admin.filterHint", "Registered KWC emoji tokens are protected from blocking/filtering. Unregistered :fake: tokens are treated as ordinary text.")}</small></p>
+      <div class="kwc-admin-section-stack kwc-filter-settings-stack">
+        ${adminSettingGroup("admin.filterGroupGeneral", "General & scopes", [
+          adminSettingInput("content-filter.enabled", v["content-filter.enabled"], "boolean"),
+          adminSettingInput("content-filter.scopes.public", v["content-filter.scopes.public"], "boolean"),
+          adminSettingInput("content-filter.scopes.group", v["content-filter.scopes.group"], "boolean"),
+          adminSettingInput("content-filter.scopes.dm", v["content-filter.scopes.dm"], "boolean")
+        ])}
+        ${adminSettingGroup("admin.filterGroupBehavior", "Blocking & filtering", [
+          adminSettingInput("content-filter.block.show-matched-word", v["content-filter.block.show-matched-word"], "boolean"),
+          adminSettingInput("content-filter.mask.text", v["content-filter.mask.text"], "text")
+        ])}
+        ${adminSettingGroup("admin.filterGroupAntiEvasion", "Anti-evasion", [
+          adminSettingInput("content-filter.anti-evasion.unicode-normalization", v["content-filter.anti-evasion.unicode-normalization"], "boolean"),
+          adminSettingInput("content-filter.anti-evasion.compact-match", v["content-filter.anti-evasion.compact-match"], "boolean"),
+          adminSettingInput("content-filter.anti-evasion.interleave-match", v["content-filter.anti-evasion.interleave-match"], "boolean"),
+          adminSettingInput("content-filter.anti-evasion.interleave-max-gap", v["content-filter.anti-evasion.interleave-max-gap"], "number"),
+          adminSettingInput("content-filter.anti-evasion.interleave-unlimited-gap", v["content-filter.anti-evasion.interleave-unlimited-gap"], "boolean"),
+          adminSettingInput("content-filter.anti-evasion.collapse-repeats", v["content-filter.anti-evasion.collapse-repeats"], "boolean"),
+          adminSettingInput("content-filter.anti-evasion.repeat-limit", v["content-filter.anti-evasion.repeat-limit"], "number")
+        ])}
+      </div>
+      <div class="kwc-row kwc-admin-save-row"><button class="kwc-button" type="button" id="kwc-filter-settings-save">${t("button.save", "Save")}</button><small class="kwc-admin-result" id="kwc-filter-result"></small></div>
+
+      <section class="kwc-admin-section-card kwc-filter-management-card">
+        <div class="kwc-filter-section-head"><h4>${t("admin.filterWordLists", "Filter word lists")}</h4><div class="kwc-row"><span class="kwc-filter-rule-count">${fmt("admin.filterWordListsSummary", "{files} file(s) · {words} active words", {files:wordLists.length, words:Number(data.activeWordCount || 0)})}</span><button class="kwc-button" type="button" id="kwc-filter-list-new">${t("admin.filterListNew", "New list")}</button><button class="kwc-button" type="button" id="kwc-filter-list-import">${t("admin.filterListImport", "Import TXT")}</button></div></div>
+        <small class="kwc-filter-list-hint">${t("admin.filterWordListsHint", "UTF-8 .txt files in filter-lists/. Use one word per line. Choose Block to reject the whole message or Filter to mask matched text using content-filter.mask.text. Blank lines and lines beginning with # are ignored.")}</small>
+        <div class="kwc-filter-list-list" id="kwc-filter-list-list">
+          ${wordLists.map(filterWordListCard).join("") || `<div class="kwc-filter-empty">${t("admin.filterWordListsEmpty", "No filter word list files are registered.")}</div>`}
+        </div>
+        <input type="file" id="kwc-filter-list-file" accept=".txt,text/plain" hidden>
+        <div class="kwc-filter-list-editor" id="kwc-filter-list-editor" hidden>
+          <div class="kwc-filter-editor-top kwc-filter-list-editor-top">
+            <label class="kwc-filter-field"><span>${t("admin.filterListName", "File name")}</span><input class="kwc-input" id="kwc-filter-list-name" placeholder="filter-words.txt"></label>
+            <label class="kwc-filter-field"><span>${t("admin.filterAction", "Action")}</span><select class="kwc-input" id="kwc-filter-list-action"><option value="block">${t("admin.filterActionBlock", "Block")}</option><option value="mask">${t("admin.filterListActionMask", "Filter")}</option></select></label>
+            <label class="kwc-filter-toggle"><input type="checkbox" id="kwc-filter-list-enabled" checked><span>${t("admin.enabled", "Enabled")}</span></label>
+          </div>
+          <label class="kwc-filter-field"><span>${t("admin.filterListWords", "Filter words")}</span><textarea class="kwc-input" id="kwc-filter-list-text" rows="10" placeholder="${t("admin.filterListWordsHint", "One word per line. # starts a comment.")}"></textarea></label>
+          <div class="kwc-filter-editor-actions"><button class="kwc-button" type="button" id="kwc-filter-list-save">${t("button.save", "Save")}</button><button class="kwc-button" type="button" id="kwc-filter-list-close">${t("button.close", "Close")}</button><small class="kwc-admin-result" id="kwc-filter-list-result"></small></div>
+        </div>
+      </section>
+
+      <section class="kwc-admin-section-card kwc-filter-management-card">
+        <div class="kwc-filter-section-head"><h4>${t("admin.filterRules", "Custom rules")}</h4><div class="kwc-row"><span class="kwc-filter-rule-count">${fmt("admin.filterRulesCount", "{count} rule(s)", {count:rules.length})}</span><button class="kwc-button" type="button" id="kwc-filter-rule-new">${t("admin.filterNewRule", "New rule")}</button></div></div>
+        ${filterRuleGuideHtml()}
+        <div class="kwc-filter-rule-list" id="kwc-filter-rule-list">
+          ${rules.map(filterRuleCard).join("") || `<div class="kwc-filter-empty">${t("admin.filterRulesEmpty", "No filter rules are registered in config.yml.")}</div>`}
+        </div>
+
+        <div class="kwc-admin-subsection-title">${t("admin.filterRuleEditor", "Rule editor")}</div>
+        <div class="kwc-filter-editor-card">
+          <div class="kwc-filter-editor-top">
+            <label class="kwc-filter-field kwc-filter-field-id"><span>${t("admin.filterRuleId", "Rule ID")}</span><input class="kwc-input" id="kwc-filter-id" placeholder="rule-id"></label>
+            <label class="kwc-filter-field"><span>${t("admin.filterAction", "Action")}</span><select class="kwc-input" id="kwc-filter-action"><option value="block">${t("admin.filterActionBlock", "Block")}</option><option value="mask">${t("admin.filterActionMask", "Mask")}</option><option value="replace">${t("admin.filterActionReplace", "Replace")}</option></select></label>
+            <label class="kwc-filter-toggle"><input type="checkbox" id="kwc-filter-rule-enabled" checked><span>${t("admin.enabled", "Enabled")}</span></label>
+          </div>
+          <label class="kwc-filter-field"><span>${t("admin.filterWords", "Target words")}</span><textarea class="kwc-input" id="kwc-filter-words" rows="5" placeholder="${t("admin.filterWordsHint", "One target word per line")}"></textarea></label>
+          <div class="kwc-filter-replace-options" id="kwc-filter-replace-options">
+            <label class="kwc-filter-field kwc-filter-mode-field"><span>${t("admin.filterReplacementMode", "Replacement mode")}</span><select class="kwc-input" id="kwc-filter-replacement-mode"><option value="first">${t("admin.filterModeFirst", "Use first replacement")}</option><option value="random">${t("admin.filterModeRandom", "Choose a random replacement")}</option></select><small>${t("admin.filterReplacementModeHint", "Per-word replacements take priority when configured.")}</small></label>
+            <label class="kwc-filter-field"><span>${t("admin.filterReplacements", "Replacement candidates")}</span><textarea class="kwc-input" id="kwc-filter-replacements" rows="4" placeholder="${t("admin.filterReplacementsHint", "One replacement per line; used by replace action")}"></textarea></label>
+            <label class="kwc-filter-field"><span>${t("admin.filterMappings", "Per-word replacements")}</span><textarea class="kwc-input" id="kwc-filter-mappings" rows="4" placeholder="${t("admin.filterMappingsHint", "word => replacement")}"></textarea></label>
+          </div>
+          <div class="kwc-filter-editor-actions"><button class="kwc-button" type="button" id="kwc-filter-rule-save">${t("button.save", "Save")}</button><button class="kwc-button" type="button" id="kwc-filter-rule-clear">${t("admin.filterClearEditor", "Clear")}</button><small class="kwc-admin-result" id="kwc-filter-rule-result"></small></div>
+        </div>
+      </section>
+
+      <section class="kwc-admin-section-card kwc-filter-management-card">
+        <div class="kwc-admin-section-title">${t("admin.filterTest", "Test")}</div>
+        <div class="kwc-filter-test-card kwc-filter-test-card-grouped">
+          <small class="kwc-filter-test-hint">${t("admin.filterTestHint", "Tests filter word lists and custom rules without sending a message, even when the live filter is disabled.")}</small>
+          <div class="kwc-filter-test-row"><select class="kwc-input" id="kwc-filter-test-scope"><option value="public">${t("admin.filterScopePublic", "Public")}</option><option value="group">${t("admin.filterScopeGroup", "Group")}</option><option value="dm">${t("admin.filterScopeDm", "DM")}</option></select><input class="kwc-input" id="kwc-filter-test-text" placeholder="${t("admin.filterTestText", "Text to test")}"><button class="kwc-button" type="button" id="kwc-filter-test-run">${t("button.test", "Test")}</button></div>
+          <div class="kwc-filter-test-result" id="kwc-filter-test-result"></div>
+        </div>
+      </section>`
+
+    content.querySelector("#kwc-filter-settings-save").onclick = () => saveAdminSettingElements(content, "[data-setting-path]");
+
+    const listEditor = content.querySelector("#kwc-filter-list-editor");
+    const listName = content.querySelector("#kwc-filter-list-name");
+    const listText = content.querySelector("#kwc-filter-list-text");
+    const listEnabled = content.querySelector("#kwc-filter-list-enabled");
+    const listAction = content.querySelector("#kwc-filter-list-action");
+    const listResult = content.querySelector("#kwc-filter-list-result");
+    const openListEditor = (name = "filter-words.txt", text = "", enabled = true, action = "block", lockName = false) => {
+      if (!listEditor || !listName || !listText || !listEnabled || !listAction) return;
+      listName.value = name || "filter-words.txt";
+      listName.disabled = !!lockName;
+      listName.dataset.originalName = lockName ? String(name || "") : "";
+      listText.value = String(text || "");
+      listEnabled.checked = enabled !== false;
+      listAction.value = String(action || "block").toLowerCase() === "mask" ? "mask" : "block";
+      if (listResult) listResult.textContent = "";
+      listEditor.hidden = false;
+      if (listEditor.scrollIntoView) listEditor.scrollIntoView({behavior:"smooth", block:"nearest"});
+      setTimeout(() => (lockName ? listText : listName).focus(), 0);
+    };
+    const closeListEditor = () => { if (listEditor) listEditor.hidden = true; };
+    content.querySelector("#kwc-filter-list-new").onclick = () => openListEditor("filter-words.txt", "", true, "block", false);
+    content.querySelector("#kwc-filter-list-close").onclick = closeListEditor;
+    const importInput = content.querySelector("#kwc-filter-list-file");
+    content.querySelector("#kwc-filter-list-import").onclick = () => importInput?.click();
+    if (importInput) importInput.onchange = async () => {
+      const file = importInput.files && importInput.files[0];
+      importInput.value = "";
+      if (!file) return;
+      try {
+        const text = await file.text();
+        openListEditor(file.name || "filter-words.txt", text, true, "block", false);
+      } catch (err) {
+        if (listResult) listResult.textContent = fmt("admin.failed", "Failed: {error}", {error:err?.message || "file_read_failed"});
+      }
+    };
+    content.querySelectorAll("[data-filter-list-edit]").forEach(btn => btn.onclick = async () => {
+      const name = String(btn.dataset.filterListEdit || "");
+      btn.disabled = true;
+      try {
+        const res = await adminApi("/admin/filter/lists?name=" + encodeURIComponent(name));
+        if (!res?.ok) throw new Error(res?.error || "filter_list_read_failed");
+        openListEditor(res.file?.name || name, res.text || "", res.file?.enabled !== false, res.file?.action || "block", true);
+      } catch (err) {
+        alert(fmt("admin.failed", "Failed: {error}", {error:err?.response?.error || err?.message || "unknown"}));
+      } finally { btn.disabled = false; }
+    });
+    content.querySelectorAll("[data-filter-list-toggle]").forEach(btn => btn.onclick = async () => {
+      const name = String(btn.dataset.filterListToggle || "");
+      const enabled = String(btn.dataset.enabled || "true") !== "true";
+      btn.disabled = true;
+      try {
+        const res = await adminWrite("/admin/filter/lists", {operation:"toggle", name, enabled:String(enabled)});
+        if (!res?.ok) throw new Error(res?.error || "filter_list_write_failed");
+        await renderAdminFilter(content);
+      } catch (err) {
+        alert(fmt("admin.failed", "Failed: {error}", {error:err?.response?.error || err?.message || "unknown"}));
+      } finally { if (btn.isConnected) btn.disabled = false; }
+    });
+    content.querySelectorAll("[data-filter-list-delete]").forEach(btn => btn.onclick = async () => {
+      const name = String(btn.dataset.filterListDelete || "");
+      if (!confirmPlain(fmt("admin.filterListDeleteConfirm", "Delete {name}?", {name}))) return;
+      btn.disabled = true;
+      try {
+        const res = await adminWrite("/admin/filter/lists", {operation:"delete", name});
+        if (!res?.ok) throw new Error(res?.error || "filter_list_write_failed");
+        await renderAdminFilter(content);
+      } catch (err) {
+        alert(fmt("admin.failed", "Failed: {error}", {error:err?.response?.error || err?.message || "unknown"}));
+      } finally { if (btn.isConnected) btn.disabled = false; }
+    });
+    content.querySelector("#kwc-filter-list-save").onclick = async () => {
+      const save = content.querySelector("#kwc-filter-list-save");
+      if (!listName || !listText || !listEnabled || !listAction || !save) return;
+      save.disabled = true;
+      if (listResult) listResult.textContent = t("admin.settingsSaving", "Saving...");
+      try {
+        const res = await adminWrite("/admin/filter/lists", {operation:"save", name:listName.value, text:listText.value, enabled:String(listEnabled.checked), action:listAction.value});
+        if (!res?.ok) throw new Error(res?.error || "filter_list_write_failed");
+        await renderAdminFilter(content);
+      } catch (err) {
+        if (listResult) listResult.textContent = fmt("admin.failed", "Failed: {error}", {error:err?.response?.error || err?.message || "unknown"});
+      } finally { if (save.isConnected) save.disabled = false; }
+    };
+
+    const replaceOptions = content.querySelector("#kwc-filter-replace-options");
+    const actionEl = content.querySelector("#kwc-filter-action");
+    const syncReplaceVisibility = () => {
+      if (replaceOptions) replaceOptions.hidden = actionEl?.value !== "replace";
+    };
+    let editingRuleId = "";
+    const fillRule = (rule, originalId) => {
+      // An explicit empty originalId means CREATE. Do not fall back to rule.id:
+      // doing so turns a new rule into an edit of a rule that does not exist.
+      editingRuleId = originalId !== undefined ? String(originalId || "") : String(rule?.id || "");
+      content.querySelector("#kwc-filter-id").value = rule?.id || "";
+      content.querySelector("#kwc-filter-action").value = rule?.action || "block";
+      content.querySelector("#kwc-filter-replacement-mode").value = rule?.replacementMode || "first";
+      content.querySelector("#kwc-filter-words").value = (rule?.words || []).join("\n");
+      content.querySelector("#kwc-filter-replacements").value = (rule?.replacements || []).join("\n");
+      content.querySelector("#kwc-filter-mappings").value = filterRuleMappingText(rule);
+      content.querySelector("#kwc-filter-rule-enabled").checked = rule?.enabled !== false;
+      syncReplaceVisibility();
+    };
+    const newRuleId = () => {
+      const existing = new Set(rules.map(r => String(r?.id || "").toLowerCase()));
+      let n = 1;
+      while (existing.has(`rule-${n}`)) n++;
+      return `rule-${n}`;
+    };
+    const startNewRule = () => {
+      const id = newRuleId();
+      fillRule({id, enabled:true, action:"block", replacementMode:"first", words:[], replacements:[], mappings:{}}, "");
+      const editor = content.querySelector(".kwc-filter-editor-card");
+      const words = content.querySelector("#kwc-filter-words");
+      if (editor?.scrollIntoView) editor.scrollIntoView({behavior:"smooth", block:"nearest"});
+      if (words) setTimeout(() => words.focus(), 0);
+    };
+    actionEl.onchange = syncReplaceVisibility;
+    syncReplaceVisibility();
+    content.querySelectorAll("[data-filter-edit]").forEach(btn => btn.onclick = () => {
+      const rule = rules.find(r => r.id === btn.dataset.filterEdit);
+      if (rule) fillRule(rule, rule.id);
+    });
+    content.querySelector("#kwc-filter-rule-new").onclick = startNewRule;
+    content.querySelector("#kwc-filter-rule-clear").onclick = () => fillRule(null, "");
+    content.querySelectorAll("[data-filter-remove]").forEach(btn => btn.onclick = async () => {
+      const result = content.querySelector("#kwc-filter-rule-result");
+      const id = String(btn.dataset.filterRemove || "");
+      btn.disabled = true;
+      if (result) result.textContent = t("admin.settingsSaving", "Saving...");
+      try {
+        const res = await adminWrite("/admin/filter/rules", {operation:"remove", id});
+        if (!res?.ok) {
+          if (result) result.textContent = fmt("admin.failed", "Failed: {error}", {error:res?.error || "unknown"});
+          return;
+        }
+        if (Number(res.writeProtocol || 0) !== 5) throw new Error("admin_api_mismatch");
+        if (!Array.isArray(res.rules)) throw new Error("filter_verify_failed");
+        // The remove transaction only returns ok=true after config.yml has been
+        // written and read back successfully. Render that authoritative snapshot
+        // directly instead of performing a second client-side semantic verify.
+        await renderAdminFilter(content, res);
+      } catch (err) {
+        if (result && result.isConnected) result.textContent = fmt("admin.failed", "Failed: {error}", {error:err?.response?.error || err?.message || "unknown"});
+      } finally {
+        if (btn.isConnected) btn.disabled = false;
+      }
+    });
+    content.querySelector("#kwc-filter-rule-save").onclick = async () => {
+      const save = content.querySelector("#kwc-filter-rule-save");
+      const result = content.querySelector("#kwc-filter-rule-result");
+      if (save) save.disabled = true;
+      if (result) result.textContent = t("admin.settingsSaving", "Saving...");
+      const body = {operation:editingRuleId ? "update" : "create", originalId:editingRuleId, id:content.querySelector("#kwc-filter-id").value, action:content.querySelector("#kwc-filter-action").value,
+        replacementMode:content.querySelector("#kwc-filter-replacement-mode").value, words:content.querySelector("#kwc-filter-words").value,
+        replacements:content.querySelector("#kwc-filter-replacements").value, mappings:content.querySelector("#kwc-filter-mappings").value,
+        enabled:String(content.querySelector("#kwc-filter-rule-enabled").checked)};
+      const normalizeRuleId = value => String(value || "").trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+      body.id = normalizeRuleId(body.id);
+      if (!body.id) body.id = newRuleId();
+      content.querySelector("#kwc-filter-id").value = body.id;
+      try {
+        const res = await adminWrite("/admin/filter/rules", body);
+        if (!res?.ok) {
+          if (result) result.textContent = fmt("admin.failed", "Failed: {error}", {error:res?.error || "unknown"});
+          return;
+        }
+        if (Number(res.writeProtocol || 0) !== 5) throw new Error("admin_api_mismatch");
+        if (!Array.isArray(res.rules)) throw new Error("filter_verify_failed");
+        // The backend compares the complete normalized rule list against the file
+        // it just wrote before returning ok=true. Rendering that exact persisted
+        // snapshot avoids false failures from browser-side comparisons of fields
+        // that the server legitimately normalizes for the selected action.
+        await renderAdminFilter(content, res);
+      } catch (err) {
+        if (result && result.isConnected) result.textContent = fmt("admin.failed", "Failed: {error}", {error:err?.response?.error || err?.message || "unknown"});
+      } finally {
+        if (save && save.isConnected) save.disabled = false;
+      }
+    };
+
+    const runFilterTest = async () => {
+      const button = content.querySelector("#kwc-filter-test-run");
+      const box = content.querySelector("#kwc-filter-test-result");
+      const scopeEl = content.querySelector("#kwc-filter-test-scope");
+      const textEl = content.querySelector("#kwc-filter-test-text");
+      if (!button || !box || !scopeEl || !textEl) return;
+      button.disabled = true;
+      box.textContent = t("admin.filterTesting", "Testing...");
+      try {
+        const requestedText = String(textEl.value ?? "");
+        const requestedScope = String(scopeEl.value || "public").toLowerCase();
+        const res = await adminWrite("/admin/filter/test", {scope:requestedScope, text:requestedText});
+        if (!res?.ok) {
+          box.textContent = fmt("admin.failed", "Failed: {error}", {error:res?.error || "unknown"});
+          return;
+        }
+        if (Number(res.writeProtocol || 0) !== 5) throw new Error("admin_api_mismatch");
+        const testedText = String(res.testedText ?? "");
+        const stateText = res.blocked ? t("admin.filterTestBlocked", "Blocked") : (res.changed ? t("admin.filterTestChanged", "Changed") : t("admin.filterTestNoMatch", "No match"));
+        const meta = [];
+        if (res.ruleId) meta.push(`${t("admin.filterTestRule", "Rule")}: ${esc(res.ruleId)}`);
+        if (res.matchedWord) meta.push(`${t("admin.filterTestWord", "Word")}: ${esc(res.matchedWord)}`);
+        if (res.matchMode) meta.push(`${t("admin.filterTestMatch", "Match")}: ${esc(res.matchMode)}`);
+        const output = res.message == null ? "" : String(res.message);
+        box.innerHTML = `<strong>${esc(stateText)}</strong>${meta.length ? `<small>${meta.join(" · ")}</small>` : ""}<small>${esc(t("admin.filterTestInput", "Tested input"))}: ${esc(testedText)}</small><div>${esc(output)}</div><small>${fmt("admin.filterTestRuleCount", "Loaded rules: {count}", {count:Number(res.ruleCount || 0)})}${Number(res.wordListWordCount || 0) > 0 ? ` · ${fmt("admin.filterTestListWordCount", "List words: {count}", {count:Number(res.wordListWordCount || 0)})}` : ""}</small>`;
+      } catch (err) {
+        box.textContent = fmt("admin.failed", "Failed: {error}", {error:err?.response?.error || err?.message || "unknown"});
+      } finally {
+        button.disabled = false;
+      }
+    };
+    content.querySelector("#kwc-filter-test-run").onclick = runFilterTest;
+    content.querySelector("#kwc-filter-test-text").addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); runFilterTest(); }
+    });
   }
 
   async function renderAdminSummary(content) {
     const summary = await adminApi("/admin/summary");
     const online = await adminApi("/admin/online");
     content.innerHTML = `
-      <div class="bmwc-admin-grid">
+      <div class="kwc-admin-grid">
         <div>${t("admin.online", "Online")}</div><strong>${esc(summary.onlineCount)}</strong>
         <div>${t("admin.accounts", "Accounts")}</div><strong>${esc(summary.accountCount)}</strong>
         <div>${t("admin.sessions", "Sessions")}</div><strong>${esc(summary.sessionCount)}</strong>
         <div>${t("admin.mutes", "Mutes")}</div><strong>${esc(summary.muteCount)}</strong>
       </div>
       <h4>${t("admin.onlinePlayers", "Online players")}</h4>
-      <div class="bmwc-admin-list">
-        ${(online.players || []).map(p => `<div>${directMessageIdentityHtml({displayName: p.displayName || p.name || "", username: p.name || "", uuid: p.uuid || ""}, "bmwc-sender")}</div>`).join("") || `<em>${t("admin.none", "none")}</em>`}
+      <div class="kwc-admin-list">
+        ${(online.players || []).map(p => `<div>${directMessageIdentityHtml({displayName: p.displayName || p.name || "", username: p.name || "", uuid: p.uuid || ""}, "kwc-sender")}</div>`).join("") || `<em>${t("admin.none", "none")}</em>`}
       </div>
       <br>
-      <div class="bmwc-row bmwc-admin-actions-row">
-        <button class="bmwc-button" id="bmwc-clear-history">${t("button.clearHistory", "Clear web history")}</button>
-        <button class="bmwc-button" id="bmwc-toggle-moderation-actions" type="button" aria-pressed="${state.moderationActionsVisible ? "true" : "false"}">${moderationActionsToggleLabel()}</button>
+      <div class="kwc-row kwc-admin-actions-row">
+        <button class="kwc-button" id="kwc-clear-history">${t("button.clearHistory", "Clear web history")}</button>
+        <button class="kwc-button" id="kwc-toggle-moderation-actions" type="button" aria-pressed="${state.moderationActionsVisible ? "true" : "false"}">${moderationActionsToggleLabel()}</button>
       </div>
     `;
     installSenderIdentityToggle(content);
-    const clear = content.querySelector("#bmwc-clear-history");
+    const clear = content.querySelector("#kwc-clear-history");
     if (clear) clear.onclick = async () => {
       if (!confirmPlain(t("alert.confirmClearHistory", "Clear web chat history?"))) return;
-      const res = await adminApi("/admin/clear-history", {method: "POST", body: "{}"});
+      const res = await adminWrite("/admin/clear-history", {});
       if (!res.ok) alertResponse("alert.failed", "Failed: {error}", res);
     };
-    const toggleModeration = content.querySelector("#bmwc-toggle-moderation-actions");
+    const toggleModeration = content.querySelector("#kwc-toggle-moderation-actions");
     updateModerationActionsToggleButton(toggleModeration);
     if (toggleModeration) toggleModeration.onclick = () => {
       setModerationActionsVisible(!state.moderationActionsVisible);
@@ -9370,45 +10028,42 @@
     const data = await adminApi("/admin/mutes");
     content.innerHTML = `
       <h4>${t("admin.muteGuestIp", "Mute guest/IP")}</h4>
-      <div class="bmwc-row">
-        <select class="bmwc-input" id="bmwc-mute-type">
+      <div class="kwc-row">
+        <select class="kwc-input" id="kwc-mute-type">
           <option value="guest">${t("admin.typeGuest", "guest")}</option>
           <option value="ip">${t("admin.typeIp", "ip")}</option>
         </select>
-        <input class="bmwc-input" id="bmwc-mute-value" placeholder="${t("placeholder.muteTarget", "Guest name or IP")}">
+        <input class="kwc-input" id="kwc-mute-value" placeholder="${t("placeholder.muteTarget", "Guest name or IP")}">
       </div>
-      <div class="bmwc-row">
-        <input class="bmwc-input" id="bmwc-mute-min" placeholder="${t("placeholder.minutes", "minutes")}" value="${esc(state.config?.defaultMuteMinutes || 60)}">
-        <input class="bmwc-input" id="bmwc-mute-reason" placeholder="${t("placeholder.reason", "reason")}">
-        <button class="bmwc-button" id="bmwc-mute-add">${t("button.mute", "Mute")}</button>
+      <div class="kwc-row">
+        <input class="kwc-input" id="kwc-mute-min" placeholder="${t("placeholder.minutes", "minutes")}" value="${esc(state.config?.defaultMuteMinutes || 60)}">
+        <input class="kwc-input" id="kwc-mute-reason" placeholder="${t("placeholder.reason", "reason")}">
+        <button class="kwc-button" id="kwc-mute-add">${t("button.mute", "Mute")}</button>
       </div>
       <h4>${t("admin.currentMutes", "Current mutes")}</h4>
-      <div class="bmwc-admin-list">
+      <div class="kwc-admin-list">
         ${(data.mutes || []).map(m => `
-          <div class="bmwc-admin-item">
+          <div class="kwc-admin-item">
             <div><strong>${esc(m.type)}</strong>: ${esc(m.value)}<br><small>${esc(m.reason || "")}</small></div>
-            <button class="bmwc-button" data-unmute-type="${esc(m.type)}" data-unmute-value="${esc(m.value)}">${t("button.unmute", "Unmute")}</button>
+            <button class="kwc-button" data-unmute-type="${esc(m.type)}" data-unmute-value="${esc(m.value)}">${t("button.unmute", "Unmute")}</button>
           </div>
         `).join("") || `<em>${t("admin.none", "none")}</em>`}
       </div>
     `;
-    content.querySelector("#bmwc-mute-add").onclick = async () => {
+    content.querySelector("#kwc-mute-add").onclick = async () => {
       const body = {
-        type: content.querySelector("#bmwc-mute-type").value,
-        value: content.querySelector("#bmwc-mute-value").value,
-        minutes: content.querySelector("#bmwc-mute-min").value,
-        reason: content.querySelector("#bmwc-mute-reason").value
+        type: content.querySelector("#kwc-mute-type").value,
+        value: content.querySelector("#kwc-mute-value").value,
+        minutes: content.querySelector("#kwc-mute-min").value,
+        reason: content.querySelector("#kwc-mute-reason").value
       };
-      const res = await adminApi("/admin/mute", {method: "POST", body: JSON.stringify(body)});
+      const res = await adminWrite("/admin/mute", body);
       if (!res.ok) alertResponse("alert.failed", "Failed: {error}", res);
       await renderAdminMutes(content);
     };
     content.querySelectorAll("[data-unmute-type]").forEach(btn => {
       btn.onclick = async () => {
-        const res = await adminApi("/admin/unmute", {
-          method: "POST",
-          body: JSON.stringify({type: btn.dataset.unmuteType, value: btn.dataset.unmuteValue})
-        });
+        const res = await adminWrite("/admin/unmute", {type: btn.dataset.unmuteType, value: btn.dataset.unmuteValue});
         if (!res.ok) alertResponse("alert.failed", "Failed: {error}", res);
         await renderAdminMutes(content);
       };
@@ -9426,7 +10081,7 @@
     let selectedPack = String(state.adminEmojiSelectedPack || "default");
     if (!packIds.has(selectedPack)) selectedPack = packs[0] && packs[0].id ? String(packs[0].id) : "default";
     state.adminEmojiSelectedPack = selectedPack;
-    localStorage.setItem("bmwc.adminEmojiPack", selectedPack);
+    localStorage.setItem("kwc.adminEmojiPack", selectedPack);
 
     const selectedPackInfo = packs.find(pack => String(pack.id || "default") === selectedPack) || {id: selectedPack, label: selectedPack, count: 0};
     const shown = items.filter(item => String(item.pack || "default") === selectedPack);
@@ -9434,7 +10089,7 @@
     const moveTargetPacks = packs.filter(pack => String(pack.id || "default") !== selectedPack);
     const defaultMoveTarget = moveTargetPacks[0] ? String(moveTargetPacks[0].id || "default") : "";
     const movePackOptions = moveTargetPacks.map(pack => `<option value="${esc(pack.id)}"${String(pack.id) === defaultMoveTarget ? " selected" : ""}>${esc(pack.label || pack.id)} (${esc(pack.count || 0)})</option>`).join("");
-    const packTabs = packs.map(pack => `<button type="button" class="bmwc-button bmwc-admin-emoji-tab${String(pack.id) === selectedPack ? " bmwc-active" : ""}" data-admin-emoji-pack="${esc(pack.id)}">${esc(pack.label || pack.id)} <span>${esc(pack.count || 0)}</span></button>`).join("");
+    const packTabs = packs.map(pack => `<button type="button" class="kwc-button kwc-admin-emoji-tab${String(pack.id) === selectedPack ? " kwc-active" : ""}" data-admin-emoji-pack="${esc(pack.id)}">${esc(pack.label || pack.id)} <span>${esc(pack.count || 0)}</span></button>`).join("");
     const showStorageUsage = data.showStorageUsage !== false;
     const showStorageLimit = data.showStorageLimit !== false;
     const maxTotalBytes = Number(data.maxTotalSize || 0) || (Number(data.maxTotalSizeMb || 0) > 0 ? Number(data.maxTotalSizeMb) * 1024 * 1024 : 0);
@@ -9455,55 +10110,67 @@
 
     content.innerHTML = `
       <h4>${t("admin.emojiTitle", "Custom emojis")}</h4>
-      <div class="bmwc-admin-emoji-tools">
-        <div class="bmwc-admin-emoji-upload-row">
-          <button class="bmwc-button" id="bmwc-emoji-upload" type="button">${t("button.uploadEmoji", "Upload")}</button>
-          <button class="bmwc-button" id="bmwc-emoji-pack-create" type="button">${t("button.createPack", "Create folder")}</button>
-          <input id="bmwc-emoji-upload-file" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp" hidden style="display:none !important;">
-        </div>
-        <div class="bmwc-upload-progress bmwc-admin-emoji-upload-stage bmwc-hidden" id="bmwc-emoji-upload-stage" aria-live="polite">
-          <div class="bmwc-upload-progress-head">
-            <span id="bmwc-emoji-upload-stage-text">${esc(t("upload.ready", "Ready"))}</span>
-            <button class="bmwc-button bmwc-upload-cancel" id="bmwc-emoji-upload-cancel" type="button">${esc(t("button.cancel", "Cancel"))}</button>
+      <div class="kwc-admin-emoji-tools">
+        <div class="kwc-admin-emoji-toolbar">
+          <div class="kwc-admin-emoji-upload-row">
+            <button class="kwc-button" id="kwc-emoji-upload" type="button">${t("button.uploadEmoji", "Upload")}</button>
+            <button class="kwc-button" id="kwc-emoji-pack-create" type="button">${t("button.createPack", "Create folder")}</button>
+            <input id="kwc-emoji-upload-file" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp" hidden style="display:none !important;">
           </div>
-          <div class="bmwc-upload-progress-bar"><div id="bmwc-emoji-upload-fill"></div></div>
+          <div class="kwc-admin-emoji-limit-lines">${limitLines.join("")}</div>
         </div>
-        ${limitLines.join("")}
+        <div class="kwc-upload-progress kwc-admin-emoji-upload-stage kwc-hidden" id="kwc-emoji-upload-stage" aria-live="polite">
+          <div class="kwc-upload-progress-head">
+            <span id="kwc-emoji-upload-stage-text">${esc(t("upload.ready", "Ready"))}</span>
+            <button class="kwc-button kwc-upload-cancel" id="kwc-emoji-upload-cancel" type="button">${esc(t("button.cancel", "Cancel"))}</button>
+          </div>
+          <div class="kwc-upload-progress-bar"><div id="kwc-emoji-upload-fill"></div></div>
+        </div>
       </div>
       <h4>${t("admin.emojiCurrent", "Current emojis")}</h4>
-      <div class="bmwc-admin-emoji-tabs">${packTabs || `<button type="button" class="bmwc-button bmwc-admin-emoji-tab bmwc-active" data-admin-emoji-pack="default">Default <span>0</span></button>`}</div>
-      <div class="bmwc-admin-emoji-pack-actions">
-        <div class="bmwc-admin-emoji-pack-summary">
-          <select class="bmwc-input" id="bmwc-emoji-pack-select" aria-label="${esc(t("admin.emojiFolderSelect", "Emoji folder"))}">${packOptions}</select>
-          <span>${esc(fmt("admin.emojiPackCount", "{count} emojis", {count: shown.length}))}</span>
+      <div class="kwc-admin-emoji-tabs">${packTabs || `<button type="button" class="kwc-button kwc-admin-emoji-tab kwc-active" data-admin-emoji-pack="default">Default <span>0</span></button>`}</div>
+      <div class="kwc-admin-emoji-pack-actions">
+        <div class="kwc-admin-emoji-control-row kwc-admin-emoji-selected-row">
+          <div class="kwc-admin-emoji-control-main">
+            <strong class="kwc-admin-emoji-control-label">${esc(t("admin.emojiFolderSelect", "Selected folder"))}</strong>
+            <select class="kwc-input" id="kwc-emoji-pack-select" aria-label="${esc(t("admin.emojiFolderSelect", "Selected folder"))}">${packOptions}</select>
+            <span class="kwc-admin-emoji-pack-count">${esc(fmt("admin.emojiPackCount", "{count} emojis", {count: shown.length}))}</span>
+          </div>
+          <div class="kwc-admin-emoji-control-actions kwc-admin-emoji-folder-actions">
+            ${selectedPack !== "default" ? `<button class="kwc-button" id="kwc-emoji-rename-pack" type="button">${t("button.renamePack", "Rename folder")}</button><button class="kwc-button" id="kwc-emoji-delete-pack" type="button">${t("button.deletePack", "Delete folder")}</button>` : ""}
+          </div>
         </div>
-        <div class="bmwc-admin-emoji-pack-buttons">
-          <button class="bmwc-button" id="bmwc-emoji-select-all" type="button" ${shown.length ? "" : "disabled"}>${t("button.selectAll", "Select all")}</button>
-          <select class="bmwc-input bmwc-admin-emoji-move-select" id="bmwc-emoji-move-pack" aria-label="${esc(t("admin.emojiMoveTarget", "Move to folder"))}" ${movePackOptions ? "" : "disabled"}>${movePackOptions || `<option value="">${esc(t("admin.emojiNoOtherFolder", "No other folder"))}</option>`}</select>
-          <button class="bmwc-button" id="bmwc-emoji-move-selected" type="button" ${shown.length && movePackOptions ? "" : "disabled"}>${t("button.moveSelected", "Move selected")}</button>
-          <button class="bmwc-button" id="bmwc-emoji-delete-selected" type="button" ${shown.length ? "" : "disabled"}>${t("button.deleteSelected", "Delete selected")}</button>
-          ${selectedPack !== "default" ? `<button class="bmwc-button" id="bmwc-emoji-rename-pack" type="button">${t("button.renamePack", "Rename folder")}</button><button class="bmwc-button" id="bmwc-emoji-delete-pack" type="button">${t("button.deletePack", "Delete folder")}</button>` : ""}
+        <div class="kwc-admin-emoji-control-row kwc-admin-emoji-move-row">
+          <div class="kwc-admin-emoji-control-main">
+            <strong class="kwc-admin-emoji-control-label">${esc(t("admin.emojiMoveTarget", "Destination folder"))}</strong>
+            <select class="kwc-input kwc-admin-emoji-move-select" id="kwc-emoji-move-pack" aria-label="${esc(t("admin.emojiMoveTarget", "Destination folder"))}" ${movePackOptions ? "" : "disabled"}>${movePackOptions || `<option value="">${esc(t("admin.emojiNoOtherFolder", "No other folder"))}</option>`}</select>
+            <button class="kwc-button" id="kwc-emoji-move-selected" type="button" ${shown.length && movePackOptions ? "" : "disabled"}>${t("button.moveSelected", "Move selected")}</button>
+          </div>
+          <div class="kwc-admin-emoji-control-actions kwc-admin-emoji-selection-actions">
+            <button class="kwc-button" id="kwc-emoji-select-all" type="button" ${shown.length ? "" : "disabled"}>${t("button.selectAll", "Select all")}</button>
+            <button class="kwc-button" id="kwc-emoji-delete-selected" type="button" ${shown.length ? "" : "disabled"}>${t("button.deleteSelected", "Delete selected")}</button>
+          </div>
         </div>
       </div>
-      <div class="bmwc-admin-list bmwc-admin-emoji-list">
+      <div class="kwc-admin-list kwc-admin-emoji-list">
         ${shown.map(item => `
-          <label class="bmwc-admin-emoji-item">
-            <input type="checkbox" class="bmwc-admin-emoji-check" data-emoji-delete-id="${esc(item.id)}">
+          <label class="kwc-admin-emoji-item">
+            <input type="checkbox" class="kwc-admin-emoji-check" data-emoji-delete-id="${esc(item.id)}">
             <img src="${esc(item.url)}" alt="${esc(item.label || item.name || item.id)}" title="${esc(item.label || item.name || item.id)}" loading="lazy" draggable="false">
-            <div class="bmwc-admin-emoji-item-label" title="${esc(item.label || item.name || item.id)}"><strong title="${esc(item.label || item.name || item.id)}">${esc(item.label || item.name || item.id)}</strong></div>
-            <div class="bmwc-admin-emoji-item-actions">
-              <button class="bmwc-mini-action" data-emoji-rename-one="${esc(item.id)}" data-emoji-current-name="${esc(item.label || item.name || item.id)}" type="button">${t("button.change", "Change")}</button>
-              <button class="bmwc-mini-action" data-emoji-move-one="${esc(item.id)}" data-emoji-current-pack="${esc(item.pack || "default")}" type="button" ${movePackOptions ? "" : "disabled"}>${t("button.move", "Move")}</button>
-              <button class="bmwc-mini-action" data-emoji-delete-one="${esc(item.id)}" type="button">${t("button.delete", "delete")}</button>
+            <div class="kwc-admin-emoji-item-label" title="${esc(item.label || item.name || item.id)}"><strong title="${esc(item.label || item.name || item.id)}">${esc(item.label || item.name || item.id)}</strong></div>
+            <div class="kwc-admin-emoji-item-actions">
+              <button class="kwc-mini-action" data-emoji-rename-one="${esc(item.id)}" data-emoji-current-name="${esc(item.label || item.name || item.id)}" type="button">${t("button.change", "Change")}</button>
+              <button class="kwc-mini-action" data-emoji-move-one="${esc(item.id)}" data-emoji-current-pack="${esc(item.pack || "default")}" type="button" ${movePackOptions ? "" : "disabled"}>${t("button.move", "Move")}</button>
+              <button class="kwc-mini-action" data-emoji-delete-one="${esc(item.id)}" type="button">${t("button.delete", "delete")}</button>
             </div>
           </label>
-        `).join("") || `<div class="bmwc-admin-emoji-empty" title="${esc(t("emoji.emptyPack", "No emojis in this folder."))}">${esc(t("emoji.emptyPack", "No emojis here."))}</div>`}
+        `).join("") || `<div class="kwc-admin-emoji-empty" title="${esc(t("emoji.emptyPack", "No emojis in this folder."))}">${esc(t("emoji.emptyPack", "No emojis here."))}</div>`}
       </div>
     `;
 
     const rerenderPack = async pack => {
       state.adminEmojiSelectedPack = String(pack || "default");
-      localStorage.setItem("bmwc.adminEmojiPack", state.adminEmojiSelectedPack);
+      localStorage.setItem("kwc.adminEmojiPack", state.adminEmojiSelectedPack);
       await renderAdminEmojis(content);
     };
 
@@ -9511,16 +10178,16 @@
       btn.onclick = () => rerenderPack(btn.dataset.adminEmojiPack || "default");
     });
 
-    const packSelect = content.querySelector("#bmwc-emoji-pack-select");
+    const packSelect = content.querySelector("#kwc-emoji-pack-select");
     if (packSelect) packSelect.onchange = () => rerenderPack(packSelect.value || "default");
 
-    const uploadFileInput = content.querySelector("#bmwc-emoji-upload-file");
-    const uploadStage = content.querySelector("#bmwc-emoji-upload-stage");
-    const uploadStageText = content.querySelector("#bmwc-emoji-upload-stage-text");
-    const uploadFill = content.querySelector("#bmwc-emoji-upload-fill");
-    const uploadBtn = content.querySelector("#bmwc-emoji-upload");
-    const uploadCancelBtn = content.querySelector("#bmwc-emoji-upload-cancel");
-    const createBtn = content.querySelector("#bmwc-emoji-pack-create");
+    const uploadFileInput = content.querySelector("#kwc-emoji-upload-file");
+    const uploadStage = content.querySelector("#kwc-emoji-upload-stage");
+    const uploadStageText = content.querySelector("#kwc-emoji-upload-stage-text");
+    const uploadFill = content.querySelector("#kwc-emoji-upload-fill");
+    const uploadBtn = content.querySelector("#kwc-emoji-upload");
+    const uploadCancelBtn = content.querySelector("#kwc-emoji-upload-cancel");
+    const createBtn = content.querySelector("#kwc-emoji-pack-create");
     let emojiUploadXhr = null;
     let emojiUploadCancelRequested = false;
     let emojiUploadActive = false;
@@ -9532,7 +10199,7 @@
     };
 
     const updateEmojiUploadProgress = (label, percent, active = true) => {
-      if (uploadStage) uploadStage.classList.toggle("bmwc-hidden", !active);
+      if (uploadStage) uploadStage.classList.toggle("kwc-hidden", !active);
       if (uploadStageText) uploadStageText.textContent = label || "";
       setEmojiUploadFill(percent);
       if (uploadCancelBtn) {
@@ -9574,7 +10241,8 @@
         emojiUploadXhr = null;
         reject({aborted: true});
       };
-      xhr.open("POST", apiBase + "/admin/emojis/upload?token=" + encodeURIComponent(state.token), true);
+      xhr.open("POST", apiBase + "/admin/emojis/upload", true);
+      if (state.token) xhr.setRequestHeader("Authorization", "Bearer " + state.token);
       xhr.send(form);
     });
 
@@ -9584,7 +10252,7 @@
       files = Array.from(files || []).filter(Boolean);
       if (!files.length || emojiUploadActive) return;
 
-      const select = content.querySelector("#bmwc-emoji-pack-select");
+      const select = content.querySelector("#kwc-emoji-pack-select");
       const pack = select ? select.value : selectedPack;
       const totalBytes = files.reduce((sum, file) => sum + Math.max(1, Number(file.size) || 1), 0);
       const failures = [];
@@ -9643,7 +10311,7 @@
 
       if (uploaded > 0) {
         state.adminEmojiSelectedPack = finalPack;
-        localStorage.setItem("bmwc.adminEmojiPack", state.adminEmojiSelectedPack);
+        localStorage.setItem("kwc.adminEmojiPack", state.adminEmojiSelectedPack);
         await loadEmojis({force: true});
         updateEmojiButton();
       }
@@ -9664,7 +10332,7 @@
       }
 
       setTimeout(() => {
-        if (!emojiUploadActive && uploadStage) uploadStage.classList.add("bmwc-hidden");
+        if (!emojiUploadActive && uploadStage) uploadStage.classList.add("kwc-hidden");
       }, 900);
 
       if (uploaded > 0) await renderAdminEmojis(content);
@@ -9696,10 +10364,10 @@
         if (next == null) return;
         const pack = String(next || "").trim();
         if (!pack) return alert(t("alert.emojiPackNameRequired", "Enter a folder name."));
-        const res = await adminApi("/admin/emojis/create-pack", {method: "POST", body: JSON.stringify({pack})});
+        const res = await adminWrite("/admin/emojis/create-pack", {pack});
         if (!res.ok) return alertResponse("alert.failed", "Failed: {error}", res);
         state.adminEmojiSelectedPack = res.pack || pack;
-        localStorage.setItem("bmwc.adminEmojiPack", state.adminEmojiSelectedPack);
+        localStorage.setItem("kwc.adminEmojiPack", state.adminEmojiSelectedPack);
         await loadEmojis({force: true});
         updateEmojiButton();
         await renderAdminEmojis(content);
@@ -9709,7 +10377,7 @@
     const deleteOne = async id => {
       if (!id) return;
       if (!confirmPlain(t("alert.confirmDeleteEmoji", "Delete this emoji?"))) return;
-      const res = await adminApi("/admin/emojis/delete", {method: "POST", body: JSON.stringify({type: "item", id})});
+      const res = await adminWrite("/admin/emojis/delete", {type: "item", id});
       if (!res.ok) return alertResponse("alert.failed", "Failed: {error}", res);
       await loadEmojis({force: true});
       updateEmojiButton();
@@ -9723,7 +10391,7 @@
       const name = String(next || "").trim();
       if (!name) return alert(t("alert.emojiRenameNameRequired", "Enter a new name."));
       if (!confirmPlain(fmt("alert.confirmRenameEmoji", "Rename this emoji to {name}? Existing emoji tokens using the old name will no longer match.", {name}))) return;
-      const res = await adminApi("/admin/emojis/rename", {method: "POST", body: JSON.stringify({type: "item", id, name})});
+      const res = await adminWrite("/admin/emojis/rename", {type: "item", id, name});
       if (!res.ok) return alertResponse("alert.renameFailed", "Rename failed: {error}", res);
       await loadEmojis({force: true});
       updateEmojiButton();
@@ -9731,7 +10399,7 @@
     };
 
     const selectedMoveTarget = () => {
-      const select = content.querySelector("#bmwc-emoji-move-pack");
+      const select = content.querySelector("#kwc-emoji-move-pack");
       return select ? String(select.value || "").trim() : "";
     };
 
@@ -9746,7 +10414,7 @@
         alert(t("alert.emojiMoveTargetSame", "Choose a different folder."));
         return false;
       }
-      const res = await adminApi("/admin/emojis/move", {method: "POST", body: JSON.stringify({type: "item", id, pack})});
+      const res = await adminWrite("/admin/emojis/move", {type: "item", id, pack});
       if (!res.ok) {
         alertResponse("alert.moveFailed", "Move failed: {error}", res);
         return false;
@@ -9782,16 +10450,16 @@
         const ok = await moveOne(btn.dataset.emojiMoveOne || "", targetPack, btn.dataset.emojiCurrentPack || "");
         if (!ok) return;
         state.adminEmojiSelectedPack = targetPack;
-        localStorage.setItem("bmwc.adminEmojiPack", state.adminEmojiSelectedPack);
+        localStorage.setItem("kwc.adminEmojiPack", state.adminEmojiSelectedPack);
         await loadEmojis({force: true});
         updateEmojiButton();
         await renderAdminEmojis(content);
       };
     });
 
-    const emojiChecks = () => Array.from(content.querySelectorAll(".bmwc-admin-emoji-check"));
+    const emojiChecks = () => Array.from(content.querySelectorAll(".kwc-admin-emoji-check"));
     const updateSelectAllButton = () => {
-      const btn = content.querySelector("#bmwc-emoji-select-all");
+      const btn = content.querySelector("#kwc-emoji-select-all");
       if (!btn) return;
       const checks = emojiChecks();
       const allChecked = checks.length > 0 && checks.every(check => check.checked);
@@ -9799,9 +10467,9 @@
       btn.setAttribute("aria-pressed", allChecked ? "true" : "false");
     };
 
-    const selectAll = content.querySelector("#bmwc-emoji-select-all");
+    const selectAll = content.querySelector("#kwc-emoji-select-all");
     if (selectAll) {
-      content.querySelectorAll(".bmwc-admin-emoji-check").forEach(check => {
+      content.querySelectorAll(".kwc-admin-emoji-check").forEach(check => {
         check.onchange = updateSelectAllButton;
       });
       updateSelectAllButton();
@@ -9815,10 +10483,10 @@
       };
     }
 
-    const moveSelected = content.querySelector("#bmwc-emoji-move-selected");
+    const moveSelected = content.querySelector("#kwc-emoji-move-selected");
     if (moveSelected) {
       moveSelected.onclick = async () => {
-        const ids = Array.from(content.querySelectorAll(".bmwc-admin-emoji-check:checked")).map(el => el.dataset.emojiDeleteId).filter(Boolean);
+        const ids = Array.from(content.querySelectorAll(".kwc-admin-emoji-check:checked")).map(el => el.dataset.emojiDeleteId).filter(Boolean);
         if (!ids.length) return alert(t("alert.emojiMoveSelectRequired", "Select emojis to move."));
         const targetPack = selectedMoveTarget();
         if (!targetPack) return alert(t("alert.emojiMoveTargetRequired", "Choose a destination folder."));
@@ -9832,7 +10500,7 @@
             if (!ok) return;
           }
           state.adminEmojiSelectedPack = targetPack;
-          localStorage.setItem("bmwc.adminEmojiPack", state.adminEmojiSelectedPack);
+          localStorage.setItem("kwc.adminEmojiPack", state.adminEmojiSelectedPack);
           await loadEmojis({force: true});
           updateEmojiButton();
           await renderAdminEmojis(content);
@@ -9842,16 +10510,16 @@
       };
     }
 
-    const deleteSelected = content.querySelector("#bmwc-emoji-delete-selected");
+    const deleteSelected = content.querySelector("#kwc-emoji-delete-selected");
     if (deleteSelected) {
       deleteSelected.onclick = async () => {
-        const ids = Array.from(content.querySelectorAll(".bmwc-admin-emoji-check:checked")).map(el => el.dataset.emojiDeleteId).filter(Boolean);
+        const ids = Array.from(content.querySelectorAll(".kwc-admin-emoji-check:checked")).map(el => el.dataset.emojiDeleteId).filter(Boolean);
         if (!ids.length) return alert(t("alert.emojiSelectRequired", "Select emojis to delete."));
         if (!confirmPlain(fmt("alert.confirmDeleteSelectedEmoji", "Delete {count} selected emojis?", {count: ids.length}))) return;
         deleteSelected.disabled = true;
         try {
           for (const id of ids) {
-            const res = await adminApi("/admin/emojis/delete", {method: "POST", body: JSON.stringify({type: "item", id})});
+            const res = await adminWrite("/admin/emojis/delete", {type: "item", id});
             if (!res.ok) return alertResponse("alert.failed", "Failed: {error}", res);
           }
           await loadEmojis({force: true});
@@ -9863,7 +10531,7 @@
       };
     }
 
-    const renamePack = content.querySelector("#bmwc-emoji-rename-pack");
+    const renamePack = content.querySelector("#kwc-emoji-rename-pack");
     if (renamePack) {
       renamePack.onclick = async () => {
         const next = prompt(t("prompt.renameEmojiPack", "New folder name"), selectedPackInfo.label || selectedPack);
@@ -9871,24 +10539,24 @@
         const name = String(next || "").trim();
         if (!name) return alert(t("alert.emojiRenameNameRequired", "Enter a new name."));
         if (!confirmPlain(fmt("alert.confirmRenameEmojiPack", "Rename folder {pack} to {name}? Emoji tokens in this folder will change.", {pack: selectedPackInfo.label || selectedPack, name}))) return;
-        const res = await adminApi("/admin/emojis/rename", {method: "POST", body: JSON.stringify({type: "pack", pack: selectedPack, name})});
+        const res = await adminWrite("/admin/emojis/rename", {type: "pack", pack: selectedPack, name});
         if (!res.ok) return alertResponse("alert.renameFailed", "Rename failed: {error}", res);
         state.adminEmojiSelectedPack = res.pack || name;
-        localStorage.setItem("bmwc.adminEmojiPack", state.adminEmojiSelectedPack);
+        localStorage.setItem("kwc.adminEmojiPack", state.adminEmojiSelectedPack);
         await loadEmojis({force: true});
         updateEmojiButton();
         await renderAdminEmojis(content);
       };
     }
 
-    const deletePack = content.querySelector("#bmwc-emoji-delete-pack");
+    const deletePack = content.querySelector("#kwc-emoji-delete-pack");
     if (deletePack) {
       deletePack.onclick = async () => {
         if (!confirmPlain(fmt("alert.confirmDeleteEmojiPack", "Delete folder {pack} and all emojis inside?", {pack: selectedPack}))) return;
-        const res = await adminApi("/admin/emojis/delete", {method: "POST", body: JSON.stringify({type: "pack", pack: selectedPack})});
+        const res = await adminWrite("/admin/emojis/delete", {type: "pack", pack: selectedPack});
         if (!res.ok) return alertResponse("alert.failed", "Failed: {error}", res);
         state.adminEmojiSelectedPack = "default";
-        localStorage.setItem("bmwc.adminEmojiPack", "default");
+        localStorage.setItem("kwc.adminEmojiPack", "default");
         await loadEmojis({force: true});
         updateEmojiButton();
         await renderAdminEmojis(content);
@@ -9898,51 +10566,57 @@
 
   async function renderAdminAccounts(content) {
     if (state.role !== "ADMIN") return;
-    const data = await adminApi("/admin/accounts");
+    const [accountData, sessionData] = await Promise.all([
+      adminApi("/admin/accounts"),
+      adminApi("/admin/sessions")
+    ]);
+    const accounts = Array.isArray(accountData?.accounts) ? accountData.accounts : [];
+    const sessions = Array.isArray(sessionData?.sessions) ? sessionData.sessions : [];
     content.innerHTML = `
-      <h4>${t("admin.accounts", "Accounts")}</h4>
-      <div class="bmwc-admin-list">
-        ${(data.accounts || []).map(a => `
-          <div class="bmwc-admin-item">
-            <div>
-              ${directMessageIdentityHtml({displayName: a.displayName || a.username || "", username: a.username || "", uuid: a.uuid || ""}, "bmwc-sender")} <strong>${esc(a.role || "")}</strong><br>
-              <small>${a.local ? esc(t("account.local", "Local")) : esc(t("account.linked", "Linked"))} / ${t("admin.passwordSet", "password")} ${a.passwordSet ? esc(t("admin.yes", "yes")) : esc(t("admin.no", "no"))} / ${t("admin.lastLogin", "last login")} ${a.lastLogin ? esc(formatMessageTimeFull(a.lastLogin)) : t("admin.never", "never")}</small>
-            </div>
+      <div class="kwc-admin-account-session-stack">
+        <section class="kwc-admin-record-section">
+          <h4>${t("admin.accounts", "Accounts")}</h4>
+          <div class="kwc-admin-list kwc-admin-record-list kwc-admin-account-list">
+            ${accounts.map(a => `
+              <div class="kwc-admin-item">
+                <div>
+                  ${directMessageIdentityHtml({displayName: a.displayName || a.username || "", username: a.username || "", uuid: a.uuid || ""}, "kwc-sender")} <strong>${esc(a.role || "")}</strong><br>
+                  <small>${a.local ? esc(t("account.local", "Local")) : esc(t("account.linked", "Linked"))} / ${t("admin.passwordSet", "password")} ${a.passwordSet ? esc(t("admin.yes", "yes")) : esc(t("admin.no", "no"))} / ${t("admin.lastLogin", "last login")} ${a.lastLogin ? esc(formatMessageTimeFull(a.lastLogin)) : t("admin.never", "never")}</small>
+                </div>
+              </div>
+            `).join("") || `<em>${t("admin.none", "none")}</em>`}
           </div>
-        `).join("") || `<em>${t("admin.none", "none")}</em>`}
-      </div>
-    `;
-    installSenderIdentityToggle(content);
-  }
-
-  async function renderAdminSessions(content) {
-    const data = await adminApi("/admin/sessions");
-    content.innerHTML = `
-      <h4>${t("admin.sessions", "Sessions")}</h4>
-      <div class="bmwc-admin-list">
-        ${(data.sessions || []).map(s => `
-          <div class="bmwc-admin-item">
-            <div>
-              ${directMessageIdentityHtml({displayName: s.displayName || s.username || "", username: s.username || "", uuid: s.uuid || ""}, "bmwc-sender")} <strong>${esc(s.role)}</strong><br>
-              <small>${esc(s.lastIp || "")} / ${t("admin.expires", "expires")} ${s.expiresAt ? esc(formatMessageTimeFull(s.expiresAt)) : t("admin.never", "never")}</small>
-            </div>
-            <button class="bmwc-button" data-revoke="${esc(s.username)}">${t("button.revoke", "Revoke")}</button>
+        </section>
+        <section class="kwc-admin-record-section">
+          <h4>${t("admin.sessions", "Sessions")}</h4>
+          <div class="kwc-admin-list kwc-admin-record-list kwc-admin-session-list">
+            ${sessions.map(s => `
+              <div class="kwc-admin-item">
+                <div>
+                  ${directMessageIdentityHtml({displayName: s.displayName || s.username || "", username: s.username || "", uuid: s.uuid || ""}, "kwc-sender")} <strong>${esc(s.role)}</strong><br>
+                  <small>${esc(s.lastIp || "")} / ${t("admin.expires", "expires")} ${s.expiresAt ? esc(formatMessageTimeFull(s.expiresAt)) : t("admin.never", "never")}</small>
+                </div>
+                <button class="kwc-button" data-revoke="${esc(s.username)}">${t("button.revoke", "Revoke")}</button>
+              </div>
+            `).join("") || `<em>${t("admin.none", "none")}</em>`}
           </div>
-        `).join("") || `<em>${t("admin.none", "none")}</em>`}
+        </section>
       </div>
     `;
     installSenderIdentityToggle(content);
     content.querySelectorAll("[data-revoke]").forEach(btn => {
       btn.onclick = async () => {
         if (!confirmPlain(fmt("admin.revokeConfirm", "Revoke all sessions for {username}?", {username: btn.dataset.revoke}))) return;
-        const res = await adminApi("/admin/revoke", {
-          method: "POST",
-          body: JSON.stringify({username: btn.dataset.revoke})
-        });
+        const res = await adminWrite("/admin/revoke", {username: btn.dataset.revoke});
         if (!res.ok) alertResponse("alert.failed", "Failed: {error}", res);
-        await renderAdminSessions(content);
+        await renderAdminAccounts(content);
       };
     });
+  }
+
+  async function renderAdminSessions(content) {
+    // Kept as an internal compatibility alias; Sessions is now part of Accounts.
+    return renderAdminAccounts(content);
   }
 
 
@@ -9958,12 +10632,12 @@
   }
 
   function makeModalDraggable(wrap, storageKey) {
-    const modal = wrap && wrap.querySelector(".bmwc-modal");
+    const modal = wrap && wrap.querySelector(".kwc-modal");
     const handle = modal && modal.querySelector("h3");
     if (!modal || !handle) return;
 
-    modal.classList.add("bmwc-draggable-modal");
-    handle.classList.add("bmwc-modal-drag-handle");
+    modal.classList.add("kwc-draggable-modal");
+    handle.classList.add("kwc-modal-drag-handle");
 
     const saved = storageKey ? localStorage.getItem(storageKey) : "";
     if (saved) {
@@ -9974,7 +10648,7 @@
         modal.style.left = clamped.left + "px";
         modal.style.top = clamped.top + "px";
         modal.style.margin = "0";
-        wrap.classList.add("bmwc-modal-dragging-ready");
+        wrap.classList.add("kwc-modal-dragging-ready");
       } catch (_) {}
     }
 
@@ -10003,7 +10677,7 @@
       modal.style.left = rect.left + "px";
       modal.style.top = rect.top + "px";
       modal.style.margin = "0";
-      wrap.classList.add("bmwc-modal-dragging-ready");
+      wrap.classList.add("kwc-modal-dragging-ready");
 
       event.preventDefault();
       event.stopPropagation();
@@ -10116,16 +10790,33 @@
     };
   }
 
+  function stripLegacyBrowserOnlyPreferenceNote(value) {
+    let text = normalizePreferenceLine(value);
+    const stale = [
+      "These settings are stored only in this browser.",
+      "This setting is stored only in this browser.",
+      "이 설정은 이 브라우저에만 저장됩니다.",
+      "この設定はこのブラウザにのみ保存されます。",
+      "この設定はこのブラウザーにのみ保存されます。",
+      "此设置仅保存在此浏览器中。"
+    ];
+    for (const line of stale) text = normalizePreferenceLine(text.replace(line, ""));
+    return text;
+  }
+
   function preferencesNoteParts(labels = {}) {
-    const fallbackNote = "Saved only in this browser.";
-    const fallbackDrag = "Drag the title to move this window.";
-    const rawNote = labels && labels.note ? String(labels.note) : t("preferences.note", fallbackNote);
+    const fallbackNote = "This settings window can be moved by dragging its title.";
+    const fallbackDrag = "This settings window can be moved by dragging its title.";
+    const rawNote = stripLegacyBrowserOnlyPreferenceNote(labels && labels.note ? String(labels.note) : t("preferences.note", fallbackNote));
+    const rawDrag = normalizePreferenceLine(labels && labels.noteDrag ? String(labels.noteDrag) : t("preferences.noteDrag", fallbackDrag));
+    if (rawNote && rawDrag && (rawNote === rawDrag || rawNote.includes(rawDrag))) {
+      return {note: rawNote, drag: ""};
+    }
     const split = splitLegacyPreferenceNote(rawNote);
-    const rawDrag = labels && labels.noteDrag ? String(labels.noteDrag) : t("preferences.noteDrag", split.drag || fallbackDrag);
-    return {
-      note: uniquePreferenceLines([split.note || rawNote || fallbackNote])[0] || fallbackNote,
-      drag: uniquePreferenceLines([split.drag || rawDrag || fallbackDrag])[0] || fallbackDrag
-    };
+    const note = split.note || rawNote || fallbackNote;
+    const drag = split.drag || rawDrag || "";
+    if (drag && (note === drag || note.includes(drag))) return {note, drag: ""};
+    return {note, drag};
   }
 
   function preferencesNoteText(labels = {}) {
@@ -10139,8 +10830,8 @@
   function preferencesNoteHtml(labels = {}, includeDrag = false, escapeFn = esc) {
     const parts = preferencesNoteParts(labels);
     const lines = [parts.note];
-    if (includeDrag) lines.push(parts.drag);
-    return uniquePreferenceLines(lines).map(line => escapeFn(line)).join("<br>");
+    if (includeDrag && parts.drag) lines.push(parts.drag);
+    return uniquePreferenceLines(lines).filter(Boolean).map(line => escapeFn(line)).join("<br>");
   }
 
   function preferencesFontHelpHtml(labels = {}, escapeFn = esc) {
@@ -10150,8 +10841,8 @@
 
 
 
-  const NOTIFICATION_INBOX_KEY = "bmwc.notificationInbox";
-  const NOTIFICATION_INBOX_READ_AT_KEY = "bmwc.notificationInboxReadAt";
+  const NOTIFICATION_INBOX_KEY = "kwc.notificationInbox";
+  const NOTIFICATION_INBOX_READ_AT_KEY = "kwc.notificationInboxReadAt";
 
   function readNotificationInbox() {
     try {
@@ -10193,49 +10884,49 @@
   }
 
   function updateNotificationInboxButton() {
-    const button = document.getElementById("bmwc-notifications");
+    const button = document.getElementById("kwc-notifications");
     if (button) {
       const hidden = !!state.minimized;
-      button.classList.toggle("bmwc-hidden", hidden);
+      button.classList.toggle("kwc-hidden", hidden);
       button.hidden = hidden;
       button.disabled = hidden;
       button.setAttribute("aria-hidden", hidden ? "true" : "false");
     }
-    const badge = document.getElementById("bmwc-notification-badge");
+    const badge = document.getElementById("kwc-notification-badge");
     if (!badge) return;
     const readAt = notificationInboxReadAt();
     const unread = readNotificationInbox().filter(item => Number(item.time || 0) > readAt).length;
     state.notificationInboxUnread = unread;
     badge.textContent = unread > 99 ? "99+" : String(unread);
-    badge.classList.toggle("bmwc-hidden", unread <= 0);
+    badge.classList.toggle("kwc-hidden", unread <= 0);
   }
 
   function openNotificationInboxModal() {
-    const existing = document.querySelector(".bmwc-notification-inbox-backdrop");
+    const existing = document.querySelector(".kwc-notification-inbox-backdrop");
     if (existing) existing.remove();
     localStorage.setItem(NOTIFICATION_INBOX_READ_AT_KEY, String(Date.now()));
     updateNotificationInboxButton();
     const items = readNotificationInbox();
     const wrap = document.createElement("div");
-    wrap.className = "bmwc-modal-backdrop bmwc-user-prefs-backdrop bmwc-notification-inbox-backdrop";
+    wrap.className = "kwc-modal-backdrop kwc-user-prefs-backdrop kwc-notification-inbox-backdrop";
     applyDetachedModalTheme(wrap);
     const rows = items.length ? items.map(item => `
-      <button type="button" class="bmwc-notification-row" data-message-id="${esc(item.messageId || "")}" data-dm-thread-id="${esc(item.dmThreadId || "")}" data-dm-message-id="${esc(item.dmMessageId || "")}" data-group-room-id="${esc(item.groupRoomId || "")}" data-group-message-id="${esc(item.groupMessageId || "")}" data-url="${esc(item.url || "")}">
-        <span class="bmwc-notification-row-title">${esc(item.title || configuredNotificationTitle())}</span>
-        ${item.body ? `<span class="bmwc-notification-row-body">${esc(item.body)}</span>` : ""}
-        <span class="bmwc-notification-row-time">${esc(formatMessageTime(Number(item.time || Date.now())))}</span>
+      <button type="button" class="kwc-notification-row" data-message-id="${esc(item.messageId || "")}" data-dm-thread-id="${esc(item.dmThreadId || "")}" data-dm-message-id="${esc(item.dmMessageId || "")}" data-group-room-id="${esc(item.groupRoomId || "")}" data-group-message-id="${esc(item.groupMessageId || "")}" data-url="${esc(item.url || "")}">
+        <span class="kwc-notification-row-title">${esc(item.title || configuredNotificationTitle())}</span>
+        ${item.body ? `<span class="kwc-notification-row-body">${esc(item.body)}</span>` : ""}
+        <span class="kwc-notification-row-time">${esc(formatMessageTime(Number(item.time || Date.now())))}</span>
       </button>
-    `).join("") : `<div class="bmwc-dm-empty">${esc(t("notifications.empty", "No missed notifications."))}</div>`;
+    `).join("") : `<div class="kwc-dm-empty">${esc(t("notifications.empty", "No missed notifications."))}</div>`;
     wrap.innerHTML = `
-      <div class="bmwc-modal bmwc-notification-inbox-modal">
-        <div class="bmwc-modal-head"><h3>${esc(t("notifications.inbox", "Notification inbox"))}</h3><button class="bmwc-button" id="bmwc-notification-close">${esc(t("button.close", "Close"))}</button></div>
-        <div class="bmwc-notification-list">${rows}</div>
-        <div class="bmwc-notification-actions"><button class="bmwc-button" id="bmwc-notification-clear">${esc(t("notifications.clear", "Clear notifications"))}</button></div>
+      <div class="kwc-modal kwc-notification-inbox-modal">
+        <div class="kwc-modal-head"><h3>${esc(t("notifications.inbox", "Notification inbox"))}</h3><button class="kwc-button" id="kwc-notification-close">${esc(t("button.close", "Close"))}</button></div>
+        <div class="kwc-notification-list">${rows}</div>
+        <div class="kwc-notification-actions"><button class="kwc-button" id="kwc-notification-clear">${esc(t("notifications.clear", "Clear notifications"))}</button></div>
       </div>
     `;
     document.body.appendChild(wrap);
-    wrap.querySelector("#bmwc-notification-close").addEventListener("click", () => wrap.remove());
-    wrap.querySelector("#bmwc-notification-clear").addEventListener("click", () => {
+    wrap.querySelector("#kwc-notification-close").addEventListener("click", () => wrap.remove());
+    wrap.querySelector("#kwc-notification-clear").addEventListener("click", () => {
       writeNotificationInbox([]);
       updateNotificationInboxButton();
       wrap.remove();
@@ -10274,11 +10965,11 @@
     }
     try {
       const url = new URL(String(value || window.location.href), window.location.href);
-      nav.messageId = nav.messageId || url.searchParams.get("bmwcMessage") || "";
-      nav.dmThreadId = nav.dmThreadId || url.searchParams.get("bmwcDmThread") || "";
-      nav.dmMessageId = nav.dmMessageId || url.searchParams.get("bmwcDmMessage") || "";
-      nav.groupRoomId = nav.groupRoomId || url.searchParams.get("bmwcGroupRoom") || "";
-      nav.groupMessageId = nav.groupMessageId || url.searchParams.get("bmwcGroupMessage") || "";
+      nav.messageId = nav.messageId || url.searchParams.get("kwcMessage") || url.searchParams.get("bmwcMessage") || "";
+      nav.dmThreadId = nav.dmThreadId || url.searchParams.get("kwcDmThread") || url.searchParams.get("bmwcDmThread") || "";
+      nav.dmMessageId = nav.dmMessageId || url.searchParams.get("kwcDmMessage") || url.searchParams.get("bmwcDmMessage") || "";
+      nav.groupRoomId = nav.groupRoomId || url.searchParams.get("kwcGroupRoom") || url.searchParams.get("bmwcGroupRoom") || "";
+      nav.groupMessageId = nav.groupMessageId || url.searchParams.get("kwcGroupMessage") || url.searchParams.get("bmwcGroupMessage") || "";
     } catch (_) {}
     return nav;
   }
@@ -10286,7 +10977,7 @@
   function clearNotificationNavigationParams() {
     try {
       const url = new URL(window.location.href);
-      ["bmwcMessage", "bmwcDmThread", "bmwcDmMessage", "bmwcGroupRoom", "bmwcGroupMessage"].forEach(k => url.searchParams.delete(k));
+      ["kwcMessage", "kwcDmThread", "kwcDmMessage", "kwcGroupRoom", "kwcGroupMessage", "bmwcMessage", "bmwcDmThread", "bmwcDmMessage", "bmwcGroupRoom", "bmwcGroupMessage"].forEach(k => url.searchParams.delete(k));
       window.history.replaceState(window.history.state, document.title, url.pathname + url.search + url.hash);
     } catch (_) {}
   }
@@ -10297,8 +10988,8 @@
     if (!el) return false;
     try { el.scrollIntoView({block: "center", behavior: "smooth"}); } catch (_) { try { el.scrollIntoView({block: "center"}); } catch (__) {} }
     try { highlightMessageElement(el); } catch (_) {
-      el.classList.add("bmwc-reply-highlight");
-      setTimeout(() => { try { el.classList.remove("bmwc-reply-highlight"); } catch (__) {} }, 2600);
+      el.classList.add("kwc-reply-highlight");
+      setTimeout(() => { try { el.classList.remove("kwc-reply-highlight"); } catch (__) {} }, 2600);
     }
     return true;
   }
@@ -10316,7 +11007,7 @@
     updateDirectMessageViewMode();
     await loadDirectMessageMessages(threadId);
     if (!messageId || messageId === "0") return true;
-    const box = document.getElementById("bmwc-dm-messages");
+    const box = document.getElementById("kwc-dm-messages");
     const selector = `[data-dm-message-id="${cssEscapeValue(messageId)}"]`;
     for (let i = 0; i < 20; i++) {
       if (await centerPrivateMessage(box, selector)) return true;
@@ -10336,7 +11027,7 @@
     await loadGroupChatRooms(true);
     await openGroupRoom(roomId);
     if (!messageId || messageId === "0") return true;
-    const box = document.getElementById("bmwc-group-messages");
+    const box = document.getElementById("kwc-group-messages");
     const selector = `[data-group-message-id="${cssEscapeValue(messageId)}"]`;
     for (let i = 0; i < 20; i++) {
       if (await centerPrivateMessage(box, selector)) return true;
@@ -10357,12 +11048,12 @@
   function notificationNavigationUrl(options = {}) {
     try {
       const url = new URL(window.location.href);
-      ["bmwcMessage", "bmwcDmThread", "bmwcDmMessage", "bmwcGroupRoom", "bmwcGroupMessage"].forEach(k => url.searchParams.delete(k));
-      if (options.messageId) url.searchParams.set("bmwcMessage", String(options.messageId));
-      if (options.dmThreadId) url.searchParams.set("bmwcDmThread", String(options.dmThreadId));
-      if (options.dmMessageId) url.searchParams.set("bmwcDmMessage", String(options.dmMessageId));
-      if (options.groupRoomId) url.searchParams.set("bmwcGroupRoom", String(options.groupRoomId));
-      if (options.groupMessageId) url.searchParams.set("bmwcGroupMessage", String(options.groupMessageId));
+      ["kwcMessage", "kwcDmThread", "kwcDmMessage", "kwcGroupRoom", "kwcGroupMessage", "bmwcMessage", "bmwcDmThread", "bmwcDmMessage", "bmwcGroupRoom", "bmwcGroupMessage"].forEach(k => url.searchParams.delete(k));
+      if (options.messageId) url.searchParams.set("kwcMessage", String(options.messageId));
+      if (options.dmThreadId) url.searchParams.set("kwcDmThread", String(options.dmThreadId));
+      if (options.dmMessageId) url.searchParams.set("kwcDmMessage", String(options.dmMessageId));
+      if (options.groupRoomId) url.searchParams.set("kwcGroupRoom", String(options.groupRoomId));
+      if (options.groupMessageId) url.searchParams.set("kwcGroupMessage", String(options.groupMessageId));
       return url.href;
     } catch (_) { return ""; }
   }
@@ -10372,9 +11063,9 @@
     return typeof window !== "undefined" && "Notification" in window;
   }
 
-  const NOTIFICATION_ENABLED_KEY = "bmwc.notify.enabled";
-  const LEGACY_NOTIFICATIONS_ENABLED_KEY = "bmwc.notifications.enabled";
-  const LEGACY_WEB_PUSH_ENABLED_KEY = "bmwc.webPush.enabled";
+  const NOTIFICATION_ENABLED_KEY = "kwc.notify.enabled";
+  const LEGACY_NOTIFICATIONS_ENABLED_KEY = "kwc.notifications.enabled";
+  const LEGACY_WEB_PUSH_ENABLED_KEY = "kwc.webPush.enabled";
 
   function readStorageValue(key) {
     try { return localStorage.getItem(key); } catch (_) { return null; }
@@ -10432,16 +11123,40 @@
     return seen ? enabled : null;
   }
 
+  const WEB_PUSH_DEVICE_ID_KEY = "kwc.webPush.deviceId";
+  let webPushDeviceIdMemory = "";
+
+  function webPushDeviceId() {
+    if (webPushDeviceIdMemory) return webPushDeviceIdMemory;
+    const stored = String(readStorageValue(WEB_PUSH_DEVICE_ID_KEY) || "").trim();
+    if (/^[A-Za-z0-9_-]{12,96}$/.test(stored)) {
+      webPushDeviceIdMemory = stored;
+      return stored;
+    }
+    let generated = "";
+    try {
+      if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        generated = "d_" + crypto.randomUUID().replace(/-/g, "");
+      } else if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+        const bytes = crypto.getRandomValues(new Uint8Array(16));
+        generated = "d_" + Array.from(bytes, v => v.toString(16).padStart(2, "0")).join("");
+      }
+    } catch (_) {}
+    if (!generated) generated = "d_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 18);
+    webPushDeviceIdMemory = generated.slice(0, 96);
+    writeStorageValue(WEB_PUSH_DEVICE_ID_KEY, webPushDeviceIdMemory);
+    return webPushDeviceIdMemory;
+  }
+
   const NOTIFICATION_OPTION_DEFS = [
-    {name: "normalChat", key: "bmwc.notify.normalChat", label: "notifyNormalChat", fallback: () => notificationServerDefault("normalChat")},
-    {name: "dm", key: "bmwc.notify.dm", label: "notifyDm", fallback: () => notificationServerDefault("dm")},
-    {name: "groupChat", key: "bmwc.notify.groupChat", label: "notifyGroupChat", fallback: () => notificationServerDefault("groupChat")},
-    {name: "mentions", key: "bmwc.notify.mentions", label: "notifyMentions", fallback: () => notificationServerDefault("mentions")},
-    {name: "replies", key: "bmwc.notify.replies", label: "notifyReplies", fallback: () => notificationServerDefault("replies")},
-    {name: "system", key: "bmwc.notify.system", label: "notifySystem", fallback: () => notificationServerDefault("system")},
-    {name: "keywords", key: "bmwc.notify.keywords", label: "notifyKeywords", fallback: () => notificationServerDefault("keywords")},
-    {name: "ownMessages", key: "bmwc.notify.ownMessages", label: "notifyOwnMessages", fallback: () => notificationServerDefault("ownMessages")},
-    {name: "preview", key: "bmwc.notify.preview", label: "notifyPreview", fallback: () => notificationServerDefault("preview")}
+    {name: "normalChat", key: "kwc.notify.normalChat", label: "notifyNormalChat", fallback: () => notificationServerDefault("normalChat")},
+    {name: "dm", key: "kwc.notify.dm", label: "notifyDm", fallback: () => notificationServerDefault("dm")},
+    {name: "groupChat", key: "kwc.notify.groupChat", label: "notifyGroupChat", fallback: () => notificationServerDefault("groupChat")},
+    {name: "mentions", key: "kwc.notify.mentions", label: "notifyMentions", fallback: () => notificationServerDefault("mentions")},
+    {name: "replies", key: "kwc.notify.replies", label: "notifyReplies", fallback: () => notificationServerDefault("replies")},
+    {name: "system", key: "kwc.notify.system", label: "notifySystem", fallback: () => notificationServerDefault("system")},
+    {name: "keywords", key: "kwc.notify.keywords", label: "notifyKeywords", fallback: () => notificationServerDefault("keywords")},
+    {name: "preview", key: "kwc.notify.preview", label: "notifyPreview", fallback: () => notificationServerDefault("preview")}
   ];
 
   function browserNotificationServerAllows(name) {
@@ -10452,7 +11167,6 @@
     if (name === "replies") return state.browserNotificationsNotifyReplies !== false;
     if (name === "system") return state.browserNotificationsNotifySystem !== false;
     if (name === "keywords") return state.browserNotificationsNotifyKeywords !== false;
-    if (name === "ownMessages") return state.browserNotificationsNotifyOwnMessages !== false;
     if (name === "preview") return state.browserNotificationsShowMessagePreview !== false;
     return true;
   }
@@ -10465,7 +11179,6 @@
     if (name === "replies") return state.webPushNotifyReplies !== false;
     if (name === "system") return state.webPushNotifySystem !== false;
     if (name === "keywords") return state.webPushNotifyKeywords !== false;
-    if (name === "ownMessages") return state.webPushNotifyOwnMessages !== false;
     if (name === "preview") return state.webPushShowMessagePreview !== false;
     return true;
   }
@@ -10506,7 +11219,7 @@
     return readStoredBool(def.key, def.fallback());
   }
 
-  const NOTIFICATION_SYSTEM_MODE_KEY = "bmwc.notify.systemMode";
+  const NOTIFICATION_SYSTEM_MODE_KEY = "kwc.notify.systemMode";
 
   function normalizeNotificationSystemMode(value, fallback = "all") {
     const v = String(value || "").trim().toLowerCase().replace(/_/g, "-");
@@ -10522,7 +11235,7 @@
       if (stored !== null) return normalizeNotificationSystemMode(stored, "all");
     } catch (_) {}
     const def = notificationOptionDef("system");
-    return readStoredBool(def && def.key || "bmwc.notify.system", notificationServerDefault("system")) ? "all" : "off";
+    return readStoredBool(def && def.key || "kwc.notify.system", notificationServerDefault("system")) ? "all" : "off";
   }
 
   function setNotificationSystemMode(mode) {
@@ -10530,6 +11243,7 @@
     try { localStorage.setItem(NOTIFICATION_SYSTEM_MODE_KEY, value); } catch (_) {}
     const def = notificationOptionDef("system");
     if (def) writeStoredBool(def.key, value !== "off");
+    scheduleAccountNotificationPreferencesSave();
   }
 
   function isJoinLeaveSystemMessage(msg) {
@@ -10554,6 +11268,7 @@
       return;
     }
     writeStoredBool(def.key, !!value);
+    scheduleAccountNotificationPreferencesSave();
   }
 
   function currentNotificationOptions() {
@@ -10569,8 +11284,8 @@
     return out;
   }
 
-  const NOTIFICATION_KEYWORDS_KEY = "bmwc.notify.keywords.list";
-  const LEGACY_NOTIFICATION_KEYWORDS_KEY = "bmwc.notify.keywords.text";
+  const NOTIFICATION_KEYWORDS_KEY = "kwc.notify.keywords.list";
+  const LEGACY_NOTIFICATION_KEYWORDS_KEY = "kwc.notify.keywords.text";
   const isPollutedNotificationKeywordText = value => /^(?:on|off|true|false|1|0)$/i.test(String(value || "").trim());
 
   function notificationKeywordsText() {
@@ -10595,6 +11310,7 @@
         localStorage.removeItem(LEGACY_NOTIFICATION_KEYWORDS_KEY);
       }
     } catch (_) {}
+    scheduleAccountNotificationPreferencesSave();
   }
 
   function notificationKeywords() {
@@ -10678,7 +11394,7 @@
       const disabled = allowed ? "" : " disabled";
       const title = allowed ? "" : ` title="${esc(labels.notifyDisabledByServer || "Disabled by server configuration.")}"`;
       const text = labels[def && def.label] || fallback;
-      return `<label class="bmwc-notify-option${allowed ? "" : " bmwc-notify-option-disabled"}"${title}><input id="${prefix}-${name}" type="checkbox" data-bmwc-notify-option="${name}"${checked}${disabled}> <span>${esc(text)}</span></label>`;
+      return `<label class="kwc-notify-option${allowed ? "" : " kwc-notify-option-disabled"}"${title}><input id="${prefix}-${name}" type="checkbox" data-kwc-notify-option="${name}"${checked}${disabled}> <span>${esc(text)}</span></label>`;
     };
     const systemAllowed = notificationServerAllows("system");
     const systemMode = notificationSystemMode();
@@ -10687,8 +11403,8 @@
     const systemAllLabel = normalizeNotifySystemModeLabel("all", labels.notifySystemAll || "");
     const systemJoinLeaveLabel = normalizeNotifySystemModeLabel("join-leave", labels.notifySystemJoinLeave || "");
     const systemOffLabel = normalizeNotifySystemModeLabel("off", labels.notifySystemOff || "");
-    const systemSelect = `<label class="bmwc-notify-option${systemAllowed ? "" : " bmwc-notify-option-disabled"}"${systemTitle}><span>${esc(systemLabel)}</span><select id="${prefix}-system-mode" data-bmwc-notify-system-mode ${systemAllowed ? "" : "disabled"}><option value="all"${systemMode === "all" ? " selected" : ""}>${esc(systemAllLabel)}</option><option value="join-leave"${systemMode === "join-leave" ? " selected" : ""}>${esc(systemJoinLeaveLabel)}</option><option value="off"${systemMode === "off" ? " selected" : ""}>${esc(systemOffLabel)}</option></select></label>`;
-    return `<div class="bmwc-notify-options">
+    const systemSelect = `<label class="kwc-notify-option${systemAllowed ? "" : " kwc-notify-option-disabled"}"${systemTitle}><span>${esc(systemLabel)}</span><select id="${prefix}-system-mode" data-kwc-notify-system-mode ${systemAllowed ? "" : "disabled"}><option value="all"${systemMode === "all" ? " selected" : ""}>${esc(systemAllLabel)}</option><option value="join-leave"${systemMode === "join-leave" ? " selected" : ""}>${esc(systemJoinLeaveLabel)}</option><option value="off"${systemMode === "off" ? " selected" : ""}>${esc(systemOffLabel)}</option></select></label>`;
+    return `<div class="kwc-notify-options">
       ${row("normalChat", "Normal chat")}
       ${row("dm", "DM")}
       ${row("groupChat", "Group chat")}
@@ -10696,24 +11412,23 @@
       ${row("replies", "Replies")}
       ${systemSelect}
       ${row("keywords", "Keyword alerts")}
-      ${row("ownMessages", "Own messages")}
       ${row("preview", "Message preview")}
     </div>`;
   }
 
   function bindNotificationOptionInputs(container, onChange) {
     if (!container) return;
-    container.querySelectorAll("[data-bmwc-notify-system-mode]").forEach(select => {
+    container.querySelectorAll("[data-kwc-notify-system-mode]").forEach(select => {
       if (select.disabled) { select.value = "off"; return; }
       select.addEventListener("change", () => {
         setNotificationSystemMode(select.value);
         if (typeof onChange === "function") onChange(currentNotificationOptions());
       });
     });
-    container.querySelectorAll("[data-bmwc-notify-option]").forEach(input => {
+    container.querySelectorAll("[data-kwc-notify-option]").forEach(input => {
       if (input.disabled) { input.checked = false; return; }
       input.addEventListener("change", () => {
-        setNotificationOption(input.dataset.bmwcNotifyOption, input.checked);
+        setNotificationOption(input.dataset.kwcNotifyOption, input.checked);
         if (typeof onChange === "function") onChange(currentNotificationOptions());
       });
     });
@@ -10751,13 +11466,16 @@
   }
 
   function webPushRequiresInstalledWebApp() {
-    // Android/desktop browsers can subscribe from the BlueMap addon when the
-    // current origin supports Service Worker + Push API. iOS/iPadOS Web Push is
-    // the special case: it must run as an installed Home Screen web app.
+    // Android can use the background Web Push path directly. iOS/iPadOS Web Push
+    // is the special case: it must run as an installed Home Screen web app.
+    // Desktop clients intentionally use the foreground Notification API instead.
     return webPushIsIosLike() && !webPushIsInstalledWebApp();
   }
 
   function webPushUnavailableReason(labels = {}) {
+    // Document PiP mirrors the original page's live connection and notification
+    // owner. Never attempt Service Worker / Push registration in the PiP document.
+    if (state.isPip) return prefStatusLabel(labels, "webPushUnsupported", "Web Push is not available in this server configuration.");
     if (!state.webPushEnabled) return prefStatusLabel(labels, "webPushServerDisabled", "Web Push is disabled by server configuration.");
     if (!state.webPushAvailable || !state.webPushVapidPublicKey) return prefStatusLabel(labels, "webPushUnsupported", "Web Push is not available in this server configuration.");
     if (!state.token) return t("error.not_logged_in", "Not logged in.");
@@ -10779,6 +11497,35 @@
     const reason = webPushUnavailableReason(labels);
     if (reason) return reason;
     return notificationsEnabledLocal() ? prefStatusLabel(labels, "webPushEnabledStatus", "Enabled in this browser.") : prefStatusLabel(labels, "webPushDisabledStatus", "Disabled in this browser.");
+  }
+
+  function notificationUsesMobilePushUi() {
+    try {
+      // Web Push is the background/mobile delivery path. Do not infer "mobile"
+      // from touch capability alone: Windows touch PCs and 2-in-1 devices often
+      // expose multiple coarse touch points but should keep the desktop
+      // Notification API path.
+      if (webPushIsIosLike()) return true;
+      const ua = String(navigator.userAgent || "");
+      if (/Android/i.test(ua)) return true;
+      try {
+        if (navigator.userAgentData && typeof navigator.userAgentData.mobile === "boolean") {
+          return navigator.userAgentData.mobile === true;
+        }
+      } catch (_) {}
+      if (/Windows NT|Macintosh|CrOS|X11|Linux/i.test(ua)) return false;
+      return /Mobile|Phone|Tablet/i.test(ua);
+    } catch (_) { return false; }
+  }
+
+  function unifiedNotificationStatusText(labels = {}) {
+    return notificationUsesMobilePushUi() ? webPushStatusText(labels) : notificationStatusText(labels);
+  }
+
+  function unifiedNotificationHelpText(labels = {}) {
+    return notificationUsesMobilePushUi()
+      ? prefStatusLabel(labels, "webPushHelp", "Mobile push requires mobile push to be enabled and notification permission to be allowed.")
+      : prefStatusLabel(labels, "notificationsPageHelp", "Browser notifications are available only in supported browsers.");
   }
 
   async function requestBrowserNotifications() {
@@ -10805,13 +11552,17 @@
     const finalBody = String(body || "");
     const navUrl = options.url || notificationNavigationUrl(options);
     if (options.store !== false) addNotificationInboxItem({title: finalTitle, body: finalBody, type: options.type || "notification", tag: options.tag || "", messageId: options.messageId || "", dmThreadId: options.dmThreadId || "", dmMessageId: options.dmMessageId || "", groupRoomId: options.groupRoomId || "", groupMessageId: options.groupMessageId || "", url: navUrl || ""});
+    // When this browser has an active Web Push subscription, the push service is
+    // the single OS-notification path. Keep the in-chat inbox entry but suppress
+    // the page Notification API copy so the same keyword/message cannot ring twice.
+    if (state.webPushSubscriptionActive && options.force !== true) return false;
     if (!attentionNeededForNotification(options.force === true)) return false;
     const visibleBody = browserNotificationOption("preview") ? String(body || "") : "";
     if (window.parent && window.parent !== window && !state.isPip) {
       postFrame("showNotification", {
         title: finalTitle,
         body: visibleBody,
-        tag: options.tag || "bmwc",
+        tag: options.tag || "kwc",
         force: options.force === true,
         url: navUrl || "",
         messageId: options.messageId || "",
@@ -10826,7 +11577,7 @@
     try {
       const n = new Notification(finalTitle, {
         body: visibleBody,
-        tag: options.tag || "bmwc",
+        tag: options.tag || "kwc",
         renotify: true,
         silent: false
       });
@@ -10884,7 +11635,7 @@
   function maybeNotifyChatMessage(msg) {
     if (!msg) return;
     const own = currentUserMatchesMessage(msg);
-    if (own && !browserNotificationOption("ownMessages")) return;
+    if (own) return;
     const source = String(msg.source || "").toLowerCase();
     const system = source === "event" || source === "system" || source === "server";
     const sender = plainNotificationText(msg.sender || configuredNotificationTitle(), 80);
@@ -10892,12 +11643,12 @@
     const systemAllowed = !system || systemNotificationAllowedForMessage(msg);
     const keyword = systemAllowed ? notificationKeywordMatch(sender + " " + body) : "";
     if (keyword && browserNotificationOption("keywords")) {
-      showBrowserNotification(keywordNotificationTitle(keyword), (system ? configuredNotificationTitle() : sender) + (body ? ": " + body : ""), {tag: "bmwc-keyword-" + keyword, type: "keyword", messageId: msg.id || ""});
+      showBrowserNotification(keywordNotificationTitle(keyword), (system ? configuredNotificationTitle() : sender) + (body ? ": " + body : ""), {tag: "kwc-keyword-" + keyword, type: "keyword", messageId: msg.id || ""});
       return;
     }
     const replyToMe = messageRepliesToCurrentUser(msg);
     if (!system && replyToMe && browserNotificationOption("replies")) {
-      showBrowserNotification(replyNotificationTitle(sender), body, {tag: "bmwc-reply-" + String(msg.replyToId || msg.id || ""), type: "reply", messageId: msg.id || ""});
+      showBrowserNotification(replyNotificationTitle(sender), body, {tag: "kwc-reply-" + String(msg.replyToId || msg.id || ""), type: "reply", messageId: msg.id || ""});
       return;
     }
     const mention = messageMentionsCurrentUser(msg.message || "");
@@ -10905,69 +11656,67 @@
       if (!systemAllowed) return;
     } else if (mention) {
       if (!browserNotificationOption("mentions")) return;
-    } else if (!browserNotificationOption("normalChat")) {
-      return;
+    } else {
+      if (!browserNotificationOption("normalChat")) return;
     }
-    showBrowserNotification(system ? configuredNotificationTitle() : sender, body, {tag: system ? "bmwc-system" : "bmwc-chat", type: system ? "system" : (mention ? "mention" : "chat"), messageId: msg.id || ""});
+    showBrowserNotification(system ? configuredNotificationTitle() : sender, body, {tag: system ? "kwc-system" : "kwc-chat", type: system ? "system" : (mention ? "mention" : "chat"), messageId: msg.id || ""});
   }
 
   function maybeNotifyDirectMessage(message, threadId) {
     if (!message) return;
-    if (currentUserMatchesMessage(message) && !browserNotificationOption("ownMessages")) return;
+    const own = currentUserMatchesMessage(message);
+    if (own) return;
     const sender = plainNotificationText(message.senderDisplayName || message.senderUsername || t("dm.title", "Messages"), 80);
     const body = plainNotificationText(message.body || "", 180);
     const keyword = notificationKeywordMatch(sender + " " + body);
     if (keyword && browserNotificationOption("keywords")) {
-      showBrowserNotification(keywordNotificationTitle(keyword), t("dm.title", "Messages") + ": " + sender + (body ? " · " + body : ""), {tag: "bmwc-keyword-" + keyword, type: "keyword", dmThreadId: threadId || message.threadId || "", dmMessageId: message.id || ""});
+      showBrowserNotification(keywordNotificationTitle(keyword), t("dm.title", "Messages") + ": " + sender + (body ? " · " + body : ""), {tag: "kwc-keyword-" + keyword, type: "keyword", dmThreadId: threadId || message.threadId || "", dmMessageId: message.id || ""});
       return;
     }
     if (!browserNotificationOption("dm")) return;
-    showBrowserNotification(t("dm.title", "Messages") + ": " + sender, body, {tag: "bmwc-dm-" + String(threadId || message.threadId || ""), dmThreadId: threadId || message.threadId || "", dmMessageId: message.id || ""});
+    showBrowserNotification(t("dm.title", "Messages") + ": " + sender, body, {tag: "kwc-dm-" + String(threadId || message.threadId || ""), dmThreadId: threadId || message.threadId || "", dmMessageId: message.id || ""});
   }
 
   function maybeNotifyDirectThread(thread) {
-    if (!thread) return;
-    const own = state.token && thread.lastSenderUuid && state.config && String(thread.lastSenderUuid || "").toLowerCase() === String(thread.selfUuid || "").toLowerCase();
-    if (own && !browserNotificationOption("ownMessages")) return;
-    if (Number(thread.unread || 0) <= 0 && !browserNotificationOption("ownMessages")) return;
+    if (!thread || Number(thread.unread || 0) <= 0) return;
     const sender = plainNotificationText(thread.otherLabel || thread.otherDisplayName || thread.otherUsername || t("dm.title", "Messages"), 80);
     const body = plainNotificationText(thread.lastMessage || "", 180);
     const keyword = notificationKeywordMatch(sender + " " + body);
     if (keyword && browserNotificationOption("keywords")) {
-      showBrowserNotification(keywordNotificationTitle(keyword), t("dm.title", "Messages") + ": " + sender + (body ? " · " + body : ""), {tag: "bmwc-keyword-" + keyword, type: "keyword", dmThreadId: thread.id || ""});
+      showBrowserNotification(keywordNotificationTitle(keyword), t("dm.title", "Messages") + ": " + sender + (body ? " · " + body : ""), {tag: "kwc-keyword-" + keyword, type: "keyword", dmThreadId: thread.id || ""});
       return;
     }
     if (!browserNotificationOption("dm")) return;
-    showBrowserNotification(t("dm.title", "Messages") + ": " + sender, body, {tag: "bmwc-dm-" + String(thread.id || ""), dmThreadId: thread.id || ""});
+    showBrowserNotification(t("dm.title", "Messages") + ": " + sender, body, {tag: "kwc-dm-" + String(thread.id || ""), dmThreadId: thread.id || ""});
   }
 
   function maybeNotifyGroupRoom(room) {
-    if (!room) return;
-    if (Number(room.unread || 0) <= 0 && !browserNotificationOption("ownMessages")) return;
+    if (!room || Number(room.unread || 0) <= 0) return;
     const roomName = plainNotificationText(room.name || t("group.title", "Group chats"), 80);
     const body = plainNotificationText(room.lastMessage || "", 180);
     const keyword = notificationKeywordMatch(roomName + " " + body);
     if (keyword && browserNotificationOption("keywords")) {
-      showBrowserNotification(keywordNotificationTitle(keyword), roomName + (body ? " · " + body : ""), {tag: "bmwc-keyword-" + keyword, type: "keyword", groupRoomId: room.id || ""});
+      showBrowserNotification(keywordNotificationTitle(keyword), roomName + (body ? " · " + body : ""), {tag: "kwc-keyword-" + keyword, type: "keyword", groupRoomId: room.id || ""});
       return;
     }
     if (!browserNotificationOption("groupChat")) return;
-    showBrowserNotification(roomName, body, {tag: "bmwc-group-" + String(room.id || ""), groupRoomId: room.id || ""});
+    showBrowserNotification(roomName, body, {tag: "kwc-group-" + String(room.id || ""), groupRoomId: room.id || ""});
   }
 
   function maybeNotifyGroupMessage(message, room) {
     if (!message) return;
-    if (currentUserMatchesMessage(message) && !browserNotificationOption("ownMessages")) return;
+    const own = currentUserMatchesMessage(message);
+    if (own) return;
     const roomName = plainNotificationText(room && room.name || t("group.title", "Group chats"), 80);
     const sender = plainNotificationText(message.senderDisplayName || message.senderUsername || "", 60);
     const body = plainNotificationText(message.body || "", 180);
     const keyword = notificationKeywordMatch(roomName + " " + sender + " " + body);
     if (keyword && browserNotificationOption("keywords")) {
-      showBrowserNotification(keywordNotificationTitle(keyword), roomName + (sender ? " · " + sender : "") + (body ? " · " + body : ""), {tag: "bmwc-keyword-" + keyword, type: "keyword", groupRoomId: room && room.id || message.roomId || "", groupMessageId: message.id || ""});
+      showBrowserNotification(keywordNotificationTitle(keyword), roomName + (sender ? " · " + sender : "") + (body ? " · " + body : ""), {tag: "kwc-keyword-" + keyword, type: "keyword", groupRoomId: room && room.id || message.roomId || "", groupMessageId: message.id || ""});
       return;
     }
     if (!browserNotificationOption("groupChat")) return;
-    showBrowserNotification(roomName + (sender ? " · " + sender : ""), body, {tag: "bmwc-group-" + String(room && room.id || message.roomId || ""), groupRoomId: room && room.id || message.roomId || "", groupMessageId: message.id || ""});
+    showBrowserNotification(roomName + (sender ? " · " + sender : ""), body, {tag: "kwc-group-" + String(room && room.id || message.roomId || ""), groupRoomId: room && room.id || message.roomId || "", groupMessageId: message.id || ""});
   }
 
   function base64UrlToUint8Array(value) {
@@ -11009,7 +11758,7 @@
   }
 
   function currentPageOpenUrl() {
-    const cfg = typeof window !== "undefined" && window.BlueMapWebChatConfig ? window.BlueMapWebChatConfig : {};
+    const cfg = typeof window !== "undefined" && window.KokotoWebChatConfig ? window.KokotoWebChatConfig : {};
     const candidates = [
       cfg.parentPageUrl,
       cfg.pageUrl,
@@ -11024,7 +11773,7 @@
   }
 
   function configuredStandaloneOpenUrl() {
-    const cfg = typeof window !== "undefined" && window.BlueMapWebChatConfig ? window.BlueMapWebChatConfig : {};
+    const cfg = typeof window !== "undefined" && window.KokotoWebChatConfig ? window.KokotoWebChatConfig : {};
     const standaloneEnabled = state.isStandalone || state.standaloneWebEnabled === true || (state.config && state.config.standaloneWebEnabled === true) || cfg.standalone === true;
     if (!standaloneEnabled) return "";
     const candidates = [
@@ -11046,11 +11795,11 @@
     try {
       // A push subscription belongs to the page where the user enabled it.
       // Therefore the open URL must prefer that current/parent page, regardless
-      // of standalone-web settings. Standalone URLs are only a fallback for
+      // of frontend.standalone settings. Standalone URLs are only a fallback for
       // standalone pages that cannot expose a clean current URL.
       const base = currentPageOpenUrl() || configuredStandaloneOpenUrl() || window.location.href;
       const url = new URL(base, window.location.href === "about:blank" ? window.location.origin + "/" : window.location.href);
-      ["bmwcMessage", "bmwcDmThread", "bmwcDmMessage", "bmwcGroupRoom", "bmwcGroupMessage"].forEach(k => url.searchParams.delete(k));
+      ["kwcMessage", "kwcDmThread", "kwcDmMessage", "kwcGroupRoom", "kwcGroupMessage", "bmwcMessage", "bmwcDmThread", "bmwcDmMessage", "bmwcGroupRoom", "bmwcGroupMessage"].forEach(k => url.searchParams.delete(k));
       return url.href;
     } catch (_) {
       return currentPageOpenUrl() || configuredStandaloneOpenUrl() || String(window.location.href || "");
@@ -11101,15 +11850,16 @@
         reject(new Error("parent_web_push_unavailable"));
         return;
       }
-      const requestId = "bmwc-webpush-" + Date.now() + "-" + (++webPushParentRequestSeq);
+      const requestId = "kwc-webpush-" + Date.now() + "-" + (++webPushParentRequestSeq);
       let timer = null;
       const cleanup = () => {
         try { window.removeEventListener("message", onMessage); } catch (_) {}
         if (timer) clearTimeout(timer);
       };
       const onMessage = event => {
+        if (!trustedParentMessageEvent(event)) return;
         const data = event && event.data || {};
-        if (!data || data.source !== "BlueMapWebChatParent" || data.type !== "webPushParentResult" || data.requestId !== requestId) return;
+        if (!data || data.source !== "KWCParent" || data.type !== "webPushParentResult" || data.requestId !== requestId) return;
         cleanup();
         if (data.ok === true) resolve(data.result || {});
         else reject(new Error(String(data.error || "parent_web_push_failed")));
@@ -11165,19 +11915,56 @@
     return endpoint;
   }
 
+  function webPushPushServiceFailure(error) {
+    const name = error && error.name ? String(error.name) : "";
+    const message = error && (error.message || error.name) ? String(error.message || error.name) : "";
+    return /AbortError/i.test(name + " " + message) && /push service|registration failed/i.test(message);
+  }
+
+  function noteWebPushAutomaticFailure(error) {
+    if (!webPushPushServiceFailure(error)) return false;
+    // Browser push-service failures are outside KWC. Repeating subscribe from
+    // startup/login/account-sync only creates a retry loop, so pause automatic
+    // attempts for this page. User-triggered enable/test can still retry now.
+    state.webPushAutoFailure = "push-service";
+    state.webPushAutoRetryAfter = Date.now() + 15 * 60 * 1000;
+    return true;
+  }
+
+  function clearWebPushAutomaticFailure() {
+    state.webPushAutoFailure = "";
+    state.webPushAutoRetryAfter = 0;
+  }
+
   function webPushErrorText(error) {
     const message = error && (error.message || error.name) ? String(error.message || error.name) : "";
     if (error && error.status) return t("preferences.webPushFailedHttp", "Web Push failed: HTTP {status}").replace("{status}", String(error.status));
     if (/permission/i.test(message)) return t("preferences.notificationsPermissionDenied", "Notification permission is blocked in this browser.");
     if (/secure|ssl|https/i.test(message)) return t("preferences.webPushInsecure", "Web Push requires HTTPS or localhost.");
     if (/VAPID|applicationServerKey/i.test(message)) return t("preferences.webPushInvalidVapid", "Web Push failed: invalid VAPID key.");
+    if (/push service|registration failed/i.test(message)) return t("preferences.webPushServiceUnavailable", "Web Push failed: the browser push service is unavailable. Retry later or use Test notification to retry now.");
     if (/AbortError|timeout/i.test(message)) return t("preferences.webPushTimeout", "Web Push failed: request timed out.");
     if (/invalid state/i.test(message)) return t("preferences.webPushInvalidDocument", "Web Push failed: the addon iframe document cannot register a Service Worker directly. Update chat.js so the BlueMap parent page performs the registration.");
     if (/parent_web_push_unavailable/i.test(message)) return t("preferences.webPushParentUnavailable", "Web Push failed: addon parent registration bridge is not available.");
     return message ? t("preferences.webPushFailedWithMessage", "Web Push failed: {message}").replace("{message}", message) : t("preferences.webPushFailed", "Web Push failed.");
   }
 
-  async function enableWebPush() {
+  let desktopWebPushCleanupDone = false;
+
+  async function cleanupDesktopWebPushSubscription() {
+    if (desktopWebPushCleanupDone || notificationUsesMobilePushUi()) return;
+    desktopWebPushCleanupDone = true;
+    // Older 5.0.0 builds could create a PushManager subscription on desktop even
+    // though desktop notifications use the page Notification API. Remove that
+    // stale browser/server subscription once, without disabling page notifications.
+    await disableWebPush();
+  }
+
+  async function enableWebPush(options = {}) {
+    if (!notificationUsesMobilePushUi()) {
+      await cleanupDesktopWebPushSubscription();
+      return false;
+    }
     const reason = webPushUnavailableReason({
       webPushServerDisabled: t("preferences.webPushServerDisabled", "Web Push is disabled by server configuration."),
       webPushUnsupported: t("preferences.webPushUnsupported", "Web Push is not available in this browser or server configuration."),
@@ -11192,6 +11979,7 @@
       writeStorageValue(LEGACY_WEB_PUSH_ENABLED_KEY, null);
       return false;
     }
+    if (options.automatic === true && Date.now() < Number(state.webPushAutoRetryAfter || 0)) return false;
     if (state.webPushRegistering) return false;
     state.webPushRegistering = true;
     state.webPushLastError = "";
@@ -11205,7 +11993,7 @@
       const json = await createWebPushSubscriptionJson();
       const opts = currentNotificationOptions();
       await api("/push/subscribe", {method: "POST", body: JSON.stringify({
-        token: state.token,
+        deviceId: webPushDeviceId(),
         endpoint: json.endpoint || "",
         p256dh: json.keys && json.keys.p256dh || "",
         auth: json.keys && json.keys.auth || "",
@@ -11220,14 +12008,16 @@
         keywords: notificationKeywordsText(),
         language: selectedLocale(),
         openUrl: notificationOpenUrl(),
-        notifyOwnMessages: opts.ownMessages === true,
         showMessagePreview: opts.preview === true
       })});
       writeStorageValue(LEGACY_WEB_PUSH_ENABLED_KEY, null);
       state.webPushLastError = "";
+      state.webPushSubscriptionActive = true;
+      clearWebPushAutomaticFailure();
       return true;
     } catch (e) {
-      console.warn("BlueMapWebChat Web Push subscribe failed", e);
+      const pushServiceFailure = noteWebPushAutomaticFailure(e);
+      if (!pushServiceFailure || options.automatic !== true) console.warn("KOKOTO WebChat Web Push subscribe failed", e);
       state.webPushLastError = webPushErrorText(e);
       writeStorageValue(LEGACY_WEB_PUSH_ENABLED_KEY, null);
       return false;
@@ -11239,20 +12029,26 @@
   async function disableWebPush() {
     try {
       const endpoint = await unsubscribeWebPushBrowserSubscription();
-      if (state.token && endpoint) await api("/push/unsubscribe", {method: "POST", body: JSON.stringify({token: state.token, endpoint})}).catch(() => {});
+      if (state.token) await api("/push/unsubscribe", {method: "POST", body: JSON.stringify({
+        endpoint,
+        deviceId: webPushDeviceId(),
+        clearLegacy: true
+      })}).catch(() => {});
     } catch (_) {
     } finally {
       writeStorageValue(LEGACY_WEB_PUSH_ENABLED_KEY, null);
       state.webPushLastError = "";
+      state.webPushSubscriptionActive = false;
+      clearWebPushAutomaticFailure();
     }
   }
 
   async function testWebPush() {
     state.webPushLastError = "";
-    const ok = await enableWebPush();
+    const ok = await enableWebPush({automatic: false});
     if (!ok) return false;
     try {
-      const res = await api("/push/test", {method: "POST", body: JSON.stringify({token: state.token})});
+      const res = await api("/push/test", {method: "POST", body: JSON.stringify({deviceId: webPushDeviceId()})});
       if (!res || res.ok === false) throw new Error(res && res.error || "push_test_failed");
       state.webPushLastError = t("preferences.webPushTestSent", "Test push sent. Check this device's notification area.");
       return true;
@@ -11262,8 +12058,72 @@
     }
   }
 
+  function accountNotificationPayload() {
+    const opts = currentNotificationOptions();
+    return {
+            normalChat: opts.normalChat === true,
+      dm: opts.dm === true,
+      groupChat: opts.groupChat === true,
+      mentions: opts.mentions === true,
+      replies: opts.replies === true,
+      systemMode: opts.systemMode || (opts.system === true ? "all" : "off"),
+      keywords: opts.keywords === true,
+      preview: opts.preview === true,
+      keywordText: notificationKeywordsText()
+    };
+  }
+
+  async function saveAccountNotificationPreferences() {
+    if (!state.token || state.applyingAccountNotificationPreferences) return false;
+    try {
+      const res = await api("/preferences/notifications", {method: "POST", body: JSON.stringify(accountNotificationPayload())});
+      return !!(res && res.ok !== false);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function scheduleAccountNotificationPreferencesSave() {
+    if (!state.token || state.applyingAccountNotificationPreferences) return;
+    if (state.accountNotificationSyncTimer) clearTimeout(state.accountNotificationSyncTimer);
+    state.accountNotificationSyncTimer = setTimeout(() => {
+      state.accountNotificationSyncTimer = null;
+      saveAccountNotificationPreferences().catch(() => {});
+    }, 350);
+  }
+
+  async function loadAccountNotificationPreferences() {
+    if (!state.token) return false;
+    try {
+      const res = await api("/preferences/notifications");
+      const prefs = res && res.preferences;
+      if (!prefs || typeof prefs !== "object") return false;
+      // First 5.0.0 use: preserve the browser's existing KWC notification/keyword
+      // settings by promoting them into the account store once. Later browsers
+      // then receive the same account-wide settings instead of starting empty.
+      if (prefs.configured !== true) return await saveAccountNotificationPreferences();
+      state.applyingAccountNotificationPreferences = true;
+      try {
+        setNotificationSystemMode(prefs.systemMode || (prefs.system === false ? "off" : "all"));
+        ["normalChat", "dm", "groupChat", "mentions", "replies", "keywords", "preview"].forEach(name => {
+          if (Object.prototype.hasOwnProperty.call(prefs, name)) setNotificationOption(name, prefs[name] === true);
+        });
+        if (Object.prototype.hasOwnProperty.call(prefs, "keywordText")) setNotificationKeywordsText(prefs.keywordText || "");
+      } finally {
+        state.applyingAccountNotificationPreferences = false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function ensurePreferredWebPush() {
-    if (notificationsEnabledLocal() && canUseWebPush()) await enableWebPush();
+    if (!notificationUsesMobilePushUi()) {
+      await cleanupDesktopWebPushSubscription();
+      return;
+    }
+    if (notificationsEnabledLocal() && canUseWebPush()) await enableWebPush({automatic: true});
   }
 
   function buildUserPreferencesPayload() {
@@ -11326,7 +12186,7 @@
         inputBackgroundColor: t("preferences.inputBackgroundColor", "Input background color"),
         notifications: t("preferences.notifications", "Notifications"),
         notificationsPage: t("preferences.notificationsPage", "Browser system notifications"),
-        notificationsPageHelp: t("preferences.notificationsPageHelp", "Shows OS notifications while this page is open."),
+        notificationsPageHelp: t("preferences.notificationsPageHelp", "Browser notifications are available only in supported browsers."),
         notificationsEnable: t("preferences.notificationsEnable", "Enable notifications"),
         notificationsDisable: t("preferences.notificationsDisable", "Disable notifications"),
         notificationsTest: t("preferences.notificationsTest", "Test notification"),
@@ -11337,7 +12197,7 @@
         notificationsAllowedDisabledStatus: t("preferences.notificationsAllowedDisabledStatus", "Allowed by browser, disabled in chat settings."),
         notificationsNotRequestedStatus: t("preferences.notificationsNotRequestedStatus", "Permission is not requested yet."),
         webPush: t("preferences.webPush", "Mobile/background push"),
-        webPushHelp: t("preferences.webPushHelp", "Requires HTTPS, service worker support, browser permission, and a supported browser. Android/desktop can use addon or standalone; iOS/iPadOS requires adding the page to the Home Screen."),
+        webPushHelp: t("preferences.webPushHelp", "Mobile push requires mobile push to be enabled and notification permission to be allowed."),
         webPushEnable: t("preferences.webPushEnable", "Enable notifications"),
         webPushDisable: t("preferences.webPushDisable", "Disable notifications"),
         webPushTest: t("preferences.webPushTest", "Test notification"),
@@ -11353,7 +12213,7 @@
         webPushEnabledStatus: t("preferences.webPushEnabledStatus", "Enabled on this browser."),
         webPushDisabledStatus: t("preferences.webPushDisabledStatus", "Disabled on this browser."),
         notifyTypes: t("preferences.notifyTypes", "Notification types"),
-        notifyTypesHelp: t("preferences.notifyTypesHelp", "These type options apply to both browser notifications and mobile/background Web Push on this device."),
+        notifyTypesHelp: t("preferences.notifyTypesHelp", "Signed-in users share these notification type settings across their KWC account; browser notification permission remains device-specific."),
         notifyNormalChat: t("preferences.notifyNormalChat", "Normal chat"),
         notifyDm: t("preferences.notifyDm", "DM"),
         notifyGroupChat: t("preferences.notifyGroupChat", "Group chat"),
@@ -11365,19 +12225,25 @@
         notifySystemOff: t("preferences.notifySystemOff", "Off"),
         notifyKeywords: t("preferences.notifyKeywords", "Keyword alerts"),
         notifyKeywordsList: t("preferences.notifyKeywordsList", "Keyword alert words"),
-        notifyKeywordsHelp: t("preferences.notifyKeywordsHelp", "Comma or line separated. Stored in this browser; Apply keywords also updates this device's mobile/background push subscription."),
+        notifyKeywordsHelp: t("preferences.notifyKeywordsHelp", "Comma or line separated. Signed-in users share this keyword list across their KWC account and all registered Web Push devices."),
         notifyKeywordsApply: t("preferences.notifyKeywordsApply", "Apply keywords"),
         notifyKeywordsSaved: t("preferences.notifyKeywordsSaved", "Keyword alerts saved."),
         notifyKeywordsNeedsApply: t("preferences.notifyKeywordsNeedsApply", "Keyword list changed. Tap Apply keywords to update push filtering."),
         notifyDisabledByServer: t("preferences.notifyDisabledByServer", "Disabled by server configuration."),
         keywordNotificationTitle: t("preferences.keywordNotificationTitle", "Keyword: {keyword}"),
-        notifyOwnMessages: t("preferences.notifyOwnMessages", "Own messages"),
         notifyPreview: t("preferences.notifyPreview", "Message preview"),
         presetName: t("preferences.presetName", "Preset name"),
         presets: t("preferences.presets", "Saved chat settings"),
         presetSave: t("preferences.presetSave", "Save"),
         presetLoad: t("preferences.presetLoad", "Load"),
         presetDelete: t("preferences.presetDelete", "Delete"),
+        presetExport: t("preferences.presetExport", "Export"),
+        presetImport: t("preferences.presetImport", "Import"),
+        presetNew: t("preferences.presetNew", "New profile"),
+        presetServerHelp: t("preferences.presetServerHelp", "Signed-in users can save multiple chat-setting profiles to their KWC account and load them on other devices."),
+        presetLocalHelp: t("preferences.presetLocalHelp", "Guest presets are stored only in this browser."),
+        presetImportFailed: t("preferences.presetImportFailed", "Import failed."),
+        presetExportFailed: t("preferences.presetExportFailed", "Export failed."),
         presetNamePrompt: t("preferences.presetNamePrompt", "Preset name"),
         presetEmpty: t("preferences.presetEmpty", "No saved settings."),
         presetSaved: t("preferences.presetSaved", "Saved."),
@@ -11413,7 +12279,13 @@
       notificationOptions: currentNotificationOptions(),
       notificationOptionsAllowed: currentNotificationOptionsAllowed(),
       notificationKeywords: notificationKeywordsText(),
+      accountPreferencesActive: !!state.token,
       fontOptions,
+      serverProfilesEnabled: serverUserProfilesActive(),
+      serverProfilesMax: state.userProfilesMaxProfiles,
+      serverProfilesAllowImportExport: state.userProfilesAllowImportExport,
+      serverProfiles: serverUserProfilesActive() ? (state.accountProfiles || []) : [],
+      selectedServerProfileId: serverUserProfilesActive() ? selectedAccountProfileId() : "",
       theme: savedUserTheme(),
       themeOptions: [
         {value: "", label: t("preferences.themeDefault", "Default")},
@@ -11432,17 +12304,17 @@
   }
 
 
-  const CHAT_SETTING_PRESETS_KEY = "bmwc.chatSettingPresets";
+  const CHAT_SETTING_PRESETS_KEY = "kwc.chatSettingPresets";
   const CHAT_SETTING_PRESET_STORAGE_KEYS = [
-    "bmwc.userTheme", "bmwc.userOpacity", "bmwc.userFontSize", "bmwc.userFontFamily",
-    "bmwc.userTextColor", "bmwc.userUiTextColor", "bmwc.userTextShadowMode", "bmwc.userTextShadowCustom",
-    "bmwc.userBackgroundColor", "bmwc.userInputBackgroundColor", "bmwc.language",
-    "bmwc.senderIdentityMode", "bmwc.timeDisplayMode", "bmwc.dmConversationFocus",
-    "bmwc.emojiPanelHeightPx", "bmwc.windowWidth", "bmwc.windowHeight",
-    "bmwc.resizeLocked", "bmwc.minimized", NOTIFICATION_ENABLED_KEY,
-    "bmwc.notify.normalChat", "bmwc.notify.dm", "bmwc.notify.groupChat", "bmwc.notify.mentions",
-    "bmwc.notify.system", "bmwc.notify.keywords", "bmwc.notify.keywords.list", "bmwc.notify.ownMessages", "bmwc.notify.preview",
-    "bmwc.parentFramePosition", "bmwc.parentUserPrefsModalPos", "bmwc.localUserPrefsModalPos"
+    "kwc.userTheme", "kwc.userOpacity", "kwc.userFontSize", "kwc.userFontFamily",
+    "kwc.userTextColor", "kwc.userUiTextColor", "kwc.userTextShadowMode", "kwc.userTextShadowCustom",
+    "kwc.userBackgroundColor", "kwc.userInputBackgroundColor", "kwc.language",
+    "kwc.senderIdentityMode", "kwc.timeDisplayMode", "kwc.dmConversationFocus",
+    "kwc.emojiPanelHeightPx", "kwc.windowWidth", "kwc.windowHeight",
+    "kwc.resizeLocked", "kwc.minimized", NOTIFICATION_ENABLED_KEY,
+    "kwc.notify.normalChat", "kwc.notify.dm", "kwc.notify.groupChat", "kwc.notify.mentions",
+    "kwc.notify.system", "kwc.notify.keywords", "kwc.notify.keywords.list", "kwc.notify.preview",
+    "kwc.parentFramePosition", "kwc.parentUserPrefsModalPos", "kwc.localUserPrefsModalPos"
   ];
 
   function readLocalStorageValue(key) {
@@ -11475,14 +12347,14 @@
       const legacyKeywords = storage[LEGACY_NOTIFICATION_KEYWORDS_KEY];
       writeLocalStorageValue(NOTIFICATION_KEYWORDS_KEY, isPollutedNotificationKeywordText(legacyKeywords) ? "" : legacyKeywords);
     }
-    state.resizeLocked = localStorage.getItem("bmwc.resizeLocked") === "1";
-    if (Object.prototype.hasOwnProperty.call(storage, "bmwc.minimized")) {
-      state.minimized = localStorage.getItem("bmwc.minimized") === "1";
+    state.resizeLocked = localStorage.getItem("kwc.resizeLocked") === "1";
+    if (Object.prototype.hasOwnProperty.call(storage, "kwc.minimized")) {
+      state.minimized = localStorage.getItem("kwc.minimized") === "1";
     }
-    state.senderIdentityMode = localStorage.getItem("bmwc.senderIdentityMode") === "real" ? "real" : "display";
-    state.timeDisplayMode = localStorage.getItem("bmwc.timeDisplayMode") === "full" ? "full" : "short";
-    state.dmConversationFocus = localStorage.getItem("bmwc.dmConversationFocus") === "1";
-    const emojiHeight = Number(localStorage.getItem("bmwc.emojiPanelHeightPx") || state.emojiPanelHeightPx || 180);
+    state.senderIdentityMode = localStorage.getItem("kwc.senderIdentityMode") === "real" ? "real" : "display";
+    state.timeDisplayMode = localStorage.getItem("kwc.timeDisplayMode") === "full" ? "full" : "short";
+    state.dmConversationFocus = localStorage.getItem("kwc.dmConversationFocus") === "1";
+    const emojiHeight = Number(localStorage.getItem("kwc.emojiPanelHeightPx") || state.emojiPanelHeightPx || 180);
     if (Number.isFinite(emojiHeight)) state.emojiPanelHeightPx = Math.max(56, Math.min(420, emojiHeight));
     applyWindowSizeConfig();
     updateResizeLockButton();
@@ -11546,8 +12418,8 @@
     if (data.storage && typeof data.storage === "object") applyChatSettingPresetStorage(data.storage);
     if (Object.prototype.hasOwnProperty.call(data, "theme")) {
       const theme = String(data.theme || "");
-      if (theme) localStorage.setItem("bmwc.userTheme", normalizedTheme(theme));
-      else localStorage.removeItem("bmwc.userTheme");
+      if (theme) localStorage.setItem("kwc.userTheme", normalizedTheme(theme));
+      else localStorage.removeItem("kwc.userTheme");
     }
     applyNullablePreference(data.opacity, setUserOpacity, resetUserOpacity);
     applyNullablePreference(data.fontSize, setUserFontSize, resetUserFontSize);
@@ -11562,7 +12434,7 @@
     applyFontSizeConfig();
     applyThemeConfig();
     refreshRenderedMessagesForLocale();
-    scheduleVirtualRender({preserveScroll: true, stickToBottom: false, allowDuringMedia: true, deferDuringScroll: false, deferDuringMediaLayout: false});
+    scheduleVirtualRender({preserveScroll: true, stickToBottom: false, deferDuringScroll: false});
   }
 
   function cleanPresetSaveButtonLabel(value) {
@@ -11573,7 +12445,137 @@
     return text || "Save";
   }
 
+  const USER_PROFILE_SELECTED_KEY = "kwc.userProfileId";
+
+  function serverUserProfilesActive() {
+    return !!(state.token && state.userProfilesEnabled && state.userProfilesMaxProfiles > 0);
+  }
+
+  function selectedAccountProfileId() {
+    try { return localStorage.getItem(USER_PROFILE_SELECTED_KEY) || ""; } catch (_) { return ""; }
+  }
+
+  function setSelectedAccountProfileId(id) {
+    try {
+      if (id) localStorage.setItem(USER_PROFILE_SELECTED_KEY, String(id));
+      else localStorage.removeItem(USER_PROFILE_SELECTED_KEY);
+    } catch (_) {}
+  }
+
+  async function loadAccountProfiles() {
+    if (!serverUserProfilesActive() || state.accountProfilesLoading) return state.accountProfiles || [];
+    state.accountProfilesLoading = true;
+    try {
+      const res = await api("/preferences/profiles");
+      state.userProfilesEnabled = res && res.enabled === true;
+      state.userProfilesMaxProfiles = Math.max(0, Math.min(20, Math.floor(Number(res && res.maxProfiles) || 0)));
+      state.userProfilesAllowImportExport = !res || res.allowImportExport !== false;
+      state.accountProfiles = Array.isArray(res && res.profiles) ? res.profiles : [];
+      const selected = selectedAccountProfileId();
+      if (selected && !state.accountProfiles.some(item => String(item && item.id || "") === selected)) setSelectedAccountProfileId("");
+      return state.accountProfiles;
+    } catch (_) {
+      return state.accountProfiles || [];
+    } finally {
+      state.accountProfilesLoading = false;
+    }
+  }
+
+  function currentAccountProfileData(name, id = "") {
+    return {
+            id: String(id || ""),
+      name: String(name || "").trim(),
+      theme: savedUserTheme(),
+      opacity: Number(effectiveOpacity()),
+      fontSize: Number(effectiveBaseFontSize()) || 13,
+      fontFamily: savedUserFontFamily(),
+      textColor: savedUserTextColor(),
+      uiTextColor: savedUserUiTextColor(),
+      textShadowMode: savedUserTextShadowMode() || "auto",
+      textShadowCustom: savedUserTextShadowCustom(),
+      backgroundColor: savedUserBackgroundColor(),
+      inputBackgroundColor: savedUserInputBackgroundColor(),
+      language: savedUserLanguage()
+    };
+  }
+
+  async function saveAccountProfile(id, name) {
+    const res = await api("/preferences/profile/save", {method: "POST", body: JSON.stringify(currentAccountProfileData(name, id))});
+    if (!res || res.ok === false || !res.profile) throw new Error(res && res.error || "profile_save_failed");
+    await loadAccountProfiles();
+    setSelectedAccountProfileId(res.profile.id || "");
+    return res.profile;
+  }
+
+  function applyAccountProfile(profile) {
+    if (!profile || typeof profile !== "object") return false;
+    applyChatSettingPresetData(profile);
+    setSelectedAccountProfileId(profile.id || "");
+    return true;
+  }
+
+  async function deleteAccountProfile(id) {
+    const res = await api("/preferences/profile/delete", {method: "POST", body: JSON.stringify({id: String(id || "")})});
+    if (!res || res.ok === false) throw new Error(res && res.error || "profile_delete_failed");
+    if (selectedAccountProfileId() === String(id || "")) setSelectedAccountProfileId("");
+    await loadAccountProfiles();
+    return true;
+  }
+
+  function safeProfileDownloadName(name) {
+    const base = String(name || "profile").replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").trim().slice(0, 80) || "profile";
+    return "KWC-profile-" + base + ".json";
+  }
+
+  async function fetchAccountProfileExport(id) {
+    if (!state.userProfilesAllowImportExport) throw new Error("profile_export_disabled");
+    const res = await api("/preferences/profile/export?id=" + encodeURIComponent(String(id || "")));
+    if (!res || res.ok === false || typeof res.json !== "string") throw new Error(res && res.error || "profile_export_failed");
+    const profile = (state.accountProfiles || []).find(item => String(item && item.id || "") === String(id || ""));
+    return {json: res.json, name: profile && profile.name || "profile"};
+  }
+
+  async function exportAccountProfile(id) {
+    const exported = await fetchAccountProfileExport(id);
+    const blob = new Blob([exported.json], {type: "application/json;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = safeProfileDownloadName(exported.name);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  }
+
+  async function importAccountProfileJson(json) {
+    if (!state.userProfilesAllowImportExport) throw new Error("profile_import_disabled");
+    const text = String(json || "");
+    if (new TextEncoder().encode(text).length > 16 * 1024) throw new Error("profile_import_too_large");
+    const res = await api("/preferences/profile/import", {method: "POST", body: JSON.stringify({profileJson: text})});
+    if (!res || res.ok === false || !res.profile) throw new Error(res && res.error || "profile_import_failed");
+    await loadAccountProfiles();
+    setSelectedAccountProfileId(res.profile.id || "");
+    return res.profile;
+  }
+
+  function accountProfileOptionsHtml(selected = "") {
+    const list = Array.isArray(state.accountProfiles) ? state.accountProfiles : [];
+    const current = String(selected || "");
+    const createOption = `<option value=""${current ? "" : " selected"}>${esc(t("preferences.presetNew", "New profile"))}</option>`;
+    if (!list.length) return createOption;
+    return createOption + list.map(item => {
+      const id = String(item && item.id || "");
+      const name = String(item && item.name || "").trim();
+      return `<option value="${esc(id)}" ${id === current ? "selected" : ""}>${esc(name)}</option>`;
+    }).join("");
+  }
+
   function chatSettingPresetOptionsHtml(selected = "") {
+    if (serverUserProfilesActive()) return accountProfileOptionsHtml(selected || selectedAccountProfileId());
     const list = loadChatSettingPresets();
     if (!list.length) return `<option value="">${esc(t("preferences.presetEmpty", "No saved settings."))}</option>`;
     return list.map(item => {
@@ -11582,7 +12584,7 @@
     }).join("");
   }
 
-  const USER_PREF_SECTION_STATE_KEY = "bmwc.userPrefsSectionsOpen";
+  const USER_PREF_SECTION_STATE_KEY = "kwc.userPrefsSectionsOpen";
 
   function readUserPrefSectionsOpen() {
     try {
@@ -11609,178 +12611,177 @@
 
   function bindUserPrefSectionPersistence(root) {
     if (!root) return;
-    root.querySelectorAll("details[data-bmwc-pref-section]").forEach(details => {
-      const name = details.getAttribute("data-bmwc-pref-section") || "";
+    root.querySelectorAll("details[data-kwc-pref-section]").forEach(details => {
+      const name = details.getAttribute("data-kwc-pref-section") || "";
       details.open = userPrefSectionOpen(name);
       details.addEventListener("toggle", () => setUserPrefSectionOpen(name, details.open));
     });
   }
 
   function openLocalUserPreferencesModal(payload) {
-    const old = document.getElementById("bmwc-user-prefs-modal");
+    const old = document.getElementById("kwc-user-prefs-modal");
     if (old) old.remove();
     const labels = payload.labels || {};
     const includeDragNote = !state.isPip;
     const wrap = document.createElement("div");
-    wrap.className = "bmwc-modal-backdrop bmwc-user-prefs-backdrop";
-    wrap.id = "bmwc-user-prefs-modal";
+    wrap.className = "kwc-modal-backdrop kwc-user-prefs-backdrop";
+    wrap.id = "kwc-user-prefs-modal";
     applyDetachedModalTheme(wrap);
     wrap.innerHTML = `
-      <div class="bmwc-modal bmwc-user-prefs-modal">
-        <div class="bmwc-modal-head">
+      <div class="kwc-modal kwc-user-prefs-modal">
+        <div class="kwc-modal-head">
           <h3>${esc(labels.title || "Chat settings")}</h3>
-          <div class="bmwc-modal-head-actions">
-            <button class="bmwc-button" id="bmwc-prefs-reset">${esc(labels.reset || "Reset")}</button>
-            <button class="bmwc-button" id="bmwc-prefs-close">${esc(labels.close || "Close")}</button>
+          <div class="kwc-modal-head-actions">
+            <button class="kwc-button" id="kwc-prefs-reset">${esc(labels.reset || "Reset")}</button>
+            <button class="kwc-button" id="kwc-prefs-close">${esc(labels.close || "Close")}</button>
           </div>
         </div>
 
-        <div class="bmwc-user-prefs-scroll">
-        <details class="bmwc-pref-section bmwc-pref-collapsible" data-bmwc-pref-section="languageTheme">
+        <div class="kwc-user-prefs-scroll">
+        <details class="kwc-pref-section kwc-pref-collapsible" data-kwc-pref-section="languageTheme">
           <summary>${esc(labels.languageAndTheme || "Language and theme")}</summary>
-          <label class="bmwc-pref-label"><span>${esc(labels.language || "Language")}</span></label>
-          <select class="bmwc-input bmwc-pref-select" id="bmwc-prefs-language">${optionListHtml(payload.languageOptions, payload.language)}</select>
-          <label class="bmwc-pref-label"><span>${esc(labels.theme || "Theme")}</span></label>
-          <select class="bmwc-input bmwc-pref-select" id="bmwc-prefs-theme">${optionListHtml(payload.themeOptions, payload.theme)}</select>
-          <p class="bmwc-pref-font-help">${esc(labels.themeResetNote || "Changing the theme resets visual chat settings to the theme defaults.")}</p>
+          <label class="kwc-pref-label"><span>${esc(labels.language || "Language")}</span></label>
+          <select class="kwc-input kwc-pref-select" id="kwc-prefs-language">${optionListHtml(payload.languageOptions, payload.language)}</select>
+          <label class="kwc-pref-label"><span>${esc(labels.theme || "Theme")}</span></label>
+          <select class="kwc-input kwc-pref-select" id="kwc-prefs-theme">${optionListHtml(payload.themeOptions, payload.theme)}</select>
+          <p class="kwc-pref-font-help">${esc(labels.themeResetNote || "Changing the theme resets visual chat settings to the theme defaults.")}</p>
         </details>
 
-        <details class="bmwc-pref-section bmwc-pref-collapsible" data-bmwc-pref-section="window">
+        <details class="kwc-pref-section kwc-pref-collapsible" data-kwc-pref-section="window">
           <summary>${esc(labels.windowSettings || "Window settings")}</summary>
-          <label class="bmwc-pref-label"><span>${esc(labels.opacity || "Opacity")}</span><strong id="bmwc-prefs-opacity-value">${Math.round(payload.opacityPercent || 100)}%</strong></label>
-          <input class="bmwc-pref-range" id="bmwc-prefs-opacity" type="range" min="10" max="100" step="1" value="${Math.round(payload.opacityPercent || 100)}">
-          <div class="bmwc-pref-hints"><span>10%</span><span>100%</span></div>
-          <label class="bmwc-pref-label"><span>${esc(labels.backgroundColor || "Background color")}</span><input class="bmwc-pref-color-input" id="bmwc-prefs-background-color" type="color" value="${esc(payload.backgroundColor || "#121216")}"></label>
-          <label class="bmwc-pref-label"><span>${esc(labels.inputBackgroundColor || "Input background color")}</span><input class="bmwc-pref-color-input" id="bmwc-prefs-input-background-color" type="color" value="${esc(payload.inputBackgroundColor || "#000000")}"></label>
+          <label class="kwc-pref-label"><span>${esc(labels.opacity || "Opacity")}</span><strong id="kwc-prefs-opacity-value">${Math.round(payload.opacityPercent || 100)}%</strong></label>
+          <input class="kwc-pref-range" id="kwc-prefs-opacity" type="range" min="10" max="100" step="1" value="${Math.round(payload.opacityPercent || 100)}">
+          <div class="kwc-pref-hints"><span>10%</span><span>100%</span></div>
+          <label class="kwc-pref-label"><span>${esc(labels.backgroundColor || "Background color")}</span><input class="kwc-pref-color-input" id="kwc-prefs-background-color" type="color" value="${esc(payload.backgroundColor || "#121216")}"></label>
+          <label class="kwc-pref-label"><span>${esc(labels.inputBackgroundColor || "Input background color")}</span><input class="kwc-pref-color-input" id="kwc-prefs-input-background-color" type="color" value="${esc(payload.inputBackgroundColor || "#000000")}"></label>
         </details>
 
-        <details class="bmwc-pref-section bmwc-pref-collapsible" data-bmwc-pref-section="font">
+        <details class="kwc-pref-section kwc-pref-collapsible" data-kwc-pref-section="font">
           <summary>${esc(labels.fontSettings || "Font settings")}</summary>
-          <label class="bmwc-pref-label"><span>${esc(labels.fontFamily || "Font")}</span></label>
-          <select class="bmwc-input bmwc-pref-select" id="bmwc-prefs-font-family">${optionListHtml(payload.fontOptions, payload.fontFamily)}</select>
-          <label class="bmwc-pref-label"><span>${esc(labels.fontCustom || "Custom font")}</span></label>
-          <div class="bmwc-pref-inline-row">
-            <input class="bmwc-input" id="bmwc-prefs-font-family-custom" type="text" value="${esc(payload.fontFamily || "")}" placeholder="${esc(labels.fontCustomPlaceholder || "Installed font name or CSS font-family")}">
-            <button class="bmwc-button" id="bmwc-prefs-font-family-test" type="button">${esc(labels.fontTest || "Test")}</button>
-            <button class="bmwc-button" id="bmwc-prefs-font-family-apply" type="button">${esc(labels.fontApply || "Apply")}</button>
+          <label class="kwc-pref-label"><span>${esc(labels.fontFamily || "Font")}</span></label>
+          <select class="kwc-input kwc-pref-select" id="kwc-prefs-font-family">${optionListHtml(payload.fontOptions, payload.fontFamily)}</select>
+          <label class="kwc-pref-label"><span>${esc(labels.fontCustom || "Custom font")}</span></label>
+          <div class="kwc-pref-inline-row">
+            <input class="kwc-input" id="kwc-prefs-font-family-custom" type="text" value="${esc(payload.fontFamily || "")}" placeholder="${esc(labels.fontCustomPlaceholder || "Installed font name or CSS font-family")}">
+            <button class="kwc-button" id="kwc-prefs-font-family-test" type="button">${esc(labels.fontTest || "Test")}</button>
+            <button class="kwc-button" id="kwc-prefs-font-family-apply" type="button">${esc(labels.fontApply || "Apply")}</button>
           </div>
-          <p class="bmwc-pref-font-help">${preferencesFontHelpHtml(labels, esc)}</p>
-          <p class="bmwc-pref-font-status" id="bmwc-prefs-font-family-status" aria-live="polite"></p>
-          <label class="bmwc-pref-label"><span>${esc(labels.fontSize || "Font size")}</span><strong id="bmwc-prefs-font-size-value">${pxLabel(payload.fontSizePx || 13)}</strong></label>
-          <input class="bmwc-pref-range" id="bmwc-prefs-font-size" type="range" min="8" max="36" step="0.1" value="${formatDecimalNumber(payload.fontSizePx || 13, 2)}">
-          <div class="bmwc-pref-hints"><span>8px</span><span>36px</span></div>
-          <label class="bmwc-pref-label"><span>${esc(labels.textColor || "Message text color")}</span><input class="bmwc-pref-color-input" id="bmwc-prefs-text-color" type="color" value="${esc(payload.textColor || "#ffffff")}"></label>
-          <label class="bmwc-pref-label"><span>${esc(labels.uiTextColor || "UI text color")}</span><input class="bmwc-pref-color-input" id="bmwc-prefs-ui-text-color" type="color" value="${esc(payload.uiTextColor || "#ffffff")}"></label>
-          <label class="bmwc-pref-label"><span>${esc(labels.textShadow || "Text shadow")}</span></label>
-          <select class="bmwc-input bmwc-pref-select" id="bmwc-prefs-text-shadow-mode">
+          <p class="kwc-pref-font-help">${preferencesFontHelpHtml(labels, esc)}</p>
+          <p class="kwc-pref-font-status" id="kwc-prefs-font-family-status" aria-live="polite"></p>
+          <label class="kwc-pref-label"><span>${esc(labels.fontSize || "Font size")}</span><strong id="kwc-prefs-font-size-value">${pxLabel(payload.fontSizePx || 13)}</strong></label>
+          <input class="kwc-pref-range" id="kwc-prefs-font-size" type="range" min="8" max="36" step="0.1" value="${formatDecimalNumber(payload.fontSizePx || 13, 2)}">
+          <div class="kwc-pref-hints"><span>8px</span><span>36px</span></div>
+          <label class="kwc-pref-label"><span>${esc(labels.textColor || "Message text color")}</span><input class="kwc-pref-color-input" id="kwc-prefs-text-color" type="color" value="${esc(payload.textColor || "#ffffff")}"></label>
+          <label class="kwc-pref-label"><span>${esc(labels.uiTextColor || "UI text color")}</span><input class="kwc-pref-color-input" id="kwc-prefs-ui-text-color" type="color" value="${esc(payload.uiTextColor || "#ffffff")}"></label>
+          <label class="kwc-pref-label"><span>${esc(labels.textShadow || "Text shadow")}</span></label>
+          <select class="kwc-input kwc-pref-select" id="kwc-prefs-text-shadow-mode">
             <option value="none" ${payload.textShadowMode === "none" ? "selected" : ""}>${esc(labels.textShadowNone || "None")}</option>
             <option value="auto" ${payload.textShadowMode === "auto" ? "selected" : ""}>${esc(labels.textShadowAuto || "Auto")}</option>
             <option value="dark" ${payload.textShadowMode === "dark" ? "selected" : ""}>${esc(labels.textShadowDark || "Dark shadow")}</option>
             <option value="light" ${payload.textShadowMode === "light" ? "selected" : ""}>${esc(labels.textShadowLight || "Light shadow")}</option>
             <option value="custom" ${payload.textShadowMode === "custom" ? "selected" : ""}>${esc(labels.textShadowCustom || "Custom")}</option>
           </select>
-          <div class="bmwc-shadow-custom-panel" id="bmwc-prefs-text-shadow-custom-panel">
-            <label class="bmwc-pref-label"><span>${esc(labels.textShadowCustomColor || "Shadow color")}</span><input class="bmwc-pref-color-input" id="bmwc-prefs-text-shadow-color" type="color"></label>
-            <label class="bmwc-pref-label"><span>${esc(labels.textShadowCustomX || "X offset")}</span><strong id="bmwc-prefs-text-shadow-x-value">0px</strong></label>
-            <input class="bmwc-pref-range" id="bmwc-prefs-text-shadow-x" type="range" min="-12" max="12" step="0.1">
-            <label class="bmwc-pref-label"><span>${esc(labels.textShadowCustomY || "Y offset")}</span><strong id="bmwc-prefs-text-shadow-y-value">1px</strong></label>
-            <input class="bmwc-pref-range" id="bmwc-prefs-text-shadow-y" type="range" min="-12" max="12" step="0.1">
-            <label class="bmwc-pref-label"><span>${esc(labels.textShadowCustomBlur || "Blur")}</span><strong id="bmwc-prefs-text-shadow-blur-value">2px</strong></label>
-            <input class="bmwc-pref-range" id="bmwc-prefs-text-shadow-blur" type="range" min="0" max="24" step="0.1">
-            <label class="bmwc-pref-label"><span>${esc(labels.textShadowCustomOpacity || "Opacity")}</span><strong id="bmwc-prefs-text-shadow-opacity-value">85%</strong></label>
-            <input class="bmwc-pref-range" id="bmwc-prefs-text-shadow-opacity" type="range" min="0" max="100" step="1">
-            <div class="bmwc-shadow-preview" id="bmwc-prefs-text-shadow-preview">${esc(labels.textShadowCustomPreview || "Shadow preview")}</div>
+          <div class="kwc-shadow-custom-panel" id="kwc-prefs-text-shadow-custom-panel">
+            <label class="kwc-pref-label"><span>${esc(labels.textShadowCustomColor || "Shadow color")}</span><input class="kwc-pref-color-input" id="kwc-prefs-text-shadow-color" type="color"></label>
+            <label class="kwc-pref-label"><span>${esc(labels.textShadowCustomX || "X offset")}</span><strong id="kwc-prefs-text-shadow-x-value">0px</strong></label>
+            <input class="kwc-pref-range" id="kwc-prefs-text-shadow-x" type="range" min="-12" max="12" step="0.1">
+            <label class="kwc-pref-label"><span>${esc(labels.textShadowCustomY || "Y offset")}</span><strong id="kwc-prefs-text-shadow-y-value">1px</strong></label>
+            <input class="kwc-pref-range" id="kwc-prefs-text-shadow-y" type="range" min="-12" max="12" step="0.1">
+            <label class="kwc-pref-label"><span>${esc(labels.textShadowCustomBlur || "Blur")}</span><strong id="kwc-prefs-text-shadow-blur-value">2px</strong></label>
+            <input class="kwc-pref-range" id="kwc-prefs-text-shadow-blur" type="range" min="0" max="24" step="0.1">
+            <label class="kwc-pref-label"><span>${esc(labels.textShadowCustomOpacity || "Opacity")}</span><strong id="kwc-prefs-text-shadow-opacity-value">85%</strong></label>
+            <input class="kwc-pref-range" id="kwc-prefs-text-shadow-opacity" type="range" min="0" max="100" step="1">
+            <div class="kwc-shadow-preview" id="kwc-prefs-text-shadow-preview">${esc(labels.textShadowCustomPreview || "Shadow preview")}</div>
           </div>
         </details>
 
-        <details class="bmwc-pref-section bmwc-pref-collapsible" data-bmwc-pref-section="notifications">
+        <details class="kwc-pref-section kwc-pref-collapsible" data-kwc-pref-section="notifications">
           <summary>${esc(labels.notifications || "Notifications")}</summary>
-          <p class="bmwc-pref-font-help">${esc(labels.notificationsPageHelp || "Shows OS notifications while this page is open.")}</p>
-          <div class="bmwc-pref-button-row">
-            <button class="bmwc-button" id="bmwc-prefs-notifications-toggle" type="button">${esc(notificationsEnabledLocal() ? (labels.notificationsDisable || "Disable notifications") : (labels.notificationsEnable || "Enable notifications"))}</button>
-            <button class="bmwc-button" id="bmwc-prefs-notifications-test" type="button">${esc(labels.notificationsTest || "Test notification")}</button>
+          <p class="kwc-pref-font-help" id="kwc-prefs-notifications-help">${esc(unifiedNotificationHelpText(labels))}</p>
+          <div class="kwc-pref-button-row kwc-pref-notification-actions">
+            <button class="kwc-button" id="kwc-prefs-notifications-toggle" type="button">${esc(notificationsEnabledLocal() ? (labels.notificationsDisable || "Disable notifications") : (labels.notificationsEnable || "Enable notifications"))}</button>
+            <button class="kwc-button" id="kwc-prefs-notifications-test" type="button">${esc(labels.notificationsTest || "Test notification")}</button>
           </div>
-          <p class="bmwc-pref-font-help" id="bmwc-prefs-notifications-status" aria-live="polite">${esc(notificationStatusText(labels))}</p>
-          <p class="bmwc-pref-font-help">${esc(labels.webPushHelp || "Requires HTTPS, service worker support, browser permission, and a supported browser. Android/desktop can use addon or standalone; iOS/iPadOS requires adding the page to the Home Screen.")}</p>
-          <p class="bmwc-pref-font-help">${esc(labels.webPushHowToTest || "Mobile/background push uses the same notification switch and type options. Supported browsers will subscribe automatically when notifications are enabled.")}</p>
-          <p class="bmwc-pref-font-help" id="bmwc-prefs-web-push-status" aria-live="polite">${esc(webPushStatusText(labels))}</p>
-          <label class="bmwc-pref-label"><span>${esc(labels.notifyTypes || "Notification types")}</span></label>
-          <p class="bmwc-pref-font-help">${esc(labels.notifyTypesHelp || "These type options apply to both browser notifications and mobile/background Web Push on this device.")}</p>
-          ${notificationOptionsHtml("bmwc-prefs-notify", labels)}
-          <label class="bmwc-pref-label"><span>${esc(labels.notifyKeywordsList || "Keyword alert words")}</span></label>
-          <textarea class="bmwc-input bmwc-pref-textarea" id="bmwc-prefs-notify-keywords-list" rows="3" placeholder="keyword1, keyword2">${esc(notificationKeywordsText())}</textarea>
-          <div class="bmwc-pref-button-row bmwc-pref-keyword-actions">
-            <button class="bmwc-button" id="bmwc-prefs-notify-keywords-apply" type="button">${esc(labels.notifyKeywordsApply || "Apply keywords")}</button>
-            <span class="bmwc-pref-inline-status" id="bmwc-prefs-notify-keywords-status" aria-live="polite"></span>
+          <p class="kwc-pref-font-help" id="kwc-prefs-notifications-status" aria-live="polite">${esc(unifiedNotificationStatusText(labels))}</p>
+          <label class="kwc-pref-label"><span>${esc(labels.notifyTypes || "Notification types")}</span></label>
+          ${notificationOptionsHtml("kwc-prefs-notify", labels)}
+          <label class="kwc-pref-label"><span>${esc(labels.notifyKeywordsList || "Keyword alert words")}</span></label>
+          <textarea class="kwc-input kwc-pref-textarea" id="kwc-prefs-notify-keywords-list" rows="3" placeholder="keyword1, keyword2">${esc(notificationKeywordsText())}</textarea>
+          <div class="kwc-pref-button-row kwc-pref-keyword-actions">
+            <button class="kwc-button" id="kwc-prefs-notify-keywords-apply" type="button">${esc(labels.notifyKeywordsApply || "Apply keywords")}</button>
+            <span class="kwc-pref-inline-status" id="kwc-prefs-notify-keywords-status" aria-live="polite"></span>
           </div>
-          <p class="bmwc-pref-font-help">${esc(labels.notifyKeywordsHelp || "Comma or line separated. Stored in this browser; Apply keywords also updates this device's mobile/background push subscription.")}</p>
+          <p class="kwc-pref-font-help">${esc(labels.notifyKeywordsHelp || "Comma or line separated. Signed-in users share this keyword list across their KWC account and all registered Web Push devices.")}</p>
         </details>
 
-        <div class="bmwc-pref-section bmwc-pref-static">
-          <div class="bmwc-pref-section-title">${esc(labels.presets || "Saved chat settings")}</div>
-          <div class="bmwc-preset-row bmwc-preset-row-stacked">
-            <select class="bmwc-input bmwc-pref-select" id="bmwc-prefs-preset-select">${chatSettingPresetOptionsHtml("")}</select>
-            <div class="bmwc-preset-actions">
-              <button class="bmwc-button" id="bmwc-prefs-preset-save" type="button">${esc(cleanPresetSaveButtonLabel(labels.presetSave || "Save"))}</button>
-              <button class="bmwc-button" id="bmwc-prefs-preset-load" type="button">${esc(labels.presetLoad || "Load")}</button>
-              <button class="bmwc-button" id="bmwc-prefs-preset-delete" type="button">${esc(labels.presetDelete || "Delete")}</button>
+        <div class="kwc-pref-section kwc-pref-static">
+          <div class="kwc-pref-section-title">${esc(labels.presets || "Saved chat settings")}</div>
+          <div class="kwc-preset-row kwc-preset-row-stacked">
+            <select class="kwc-input kwc-pref-select" id="kwc-prefs-preset-select">${chatSettingPresetOptionsHtml("")}</select>
+            <div class="kwc-preset-actions kwc-preset-actions-primary">
+              <button class="kwc-button" id="kwc-prefs-preset-save" type="button">${esc(cleanPresetSaveButtonLabel(labels.presetSave || "Save"))}</button>
+              <button class="kwc-button" id="kwc-prefs-preset-load" type="button">${esc(labels.presetLoad || "Load")}</button>
+              <button class="kwc-button" id="kwc-prefs-preset-delete" type="button">${esc(labels.presetDelete || "Delete")}</button>
             </div>
+            ${payload.serverProfilesEnabled && payload.serverProfilesAllowImportExport ? `<div class="kwc-preset-actions kwc-preset-actions-secondary"><button class="kwc-button" id="kwc-prefs-preset-export" type="button">${esc(labels.presetExport || "Export")}</button><button class="kwc-button" id="kwc-prefs-preset-import" type="button">${esc(labels.presetImport || "Import")}</button></div>` : ""}
           </div>
-          <p class="bmwc-pref-font-help" id="bmwc-prefs-preset-status" aria-live="polite"></p>
+          <p class="kwc-pref-font-help">${esc(payload.serverProfilesEnabled ? (labels.presetServerHelp || "Signed-in users can save multiple chat-setting profiles to their KWC account and load them on other devices.") : (labels.presetLocalHelp || "Guest presets are stored only in this browser."))}</p>
+          <p class="kwc-pref-font-help" id="kwc-prefs-preset-status" aria-live="polite"></p>
         </div>
 
-        <p class="bmwc-opacity-note">${preferencesNoteHtml(labels, includeDragNote, esc)}</p>
+        <p class="kwc-opacity-note">${preferencesNoteHtml(labels, includeDragNote, esc)}</p>
         </div>
       </div>
     `;
     document.body.appendChild(wrap);
-    makeModalDraggable(wrap, "bmwc.localUserPrefsModalPos");
+    makeModalDraggable(wrap, "kwc.localUserPrefsModalPos");
     bindUserPrefSectionPersistence(wrap);
 
-    const themeSelect = wrap.querySelector("#bmwc-prefs-theme");
-    const opacityInput = wrap.querySelector("#bmwc-prefs-opacity");
-    const opacityValue = wrap.querySelector("#bmwc-prefs-opacity-value");
-    const sizeInput = wrap.querySelector("#bmwc-prefs-font-size");
-    const sizeValue = wrap.querySelector("#bmwc-prefs-font-size-value");
-    const familySelect = wrap.querySelector("#bmwc-prefs-font-family");
-    const familyCustomInput = wrap.querySelector("#bmwc-prefs-font-family-custom");
-    const familyApplyButton = wrap.querySelector("#bmwc-prefs-font-family-apply");
-    const familyTestButton = wrap.querySelector("#bmwc-prefs-font-family-test");
-    const familyStatus = wrap.querySelector("#bmwc-prefs-font-family-status");
-    const textColorInput = wrap.querySelector("#bmwc-prefs-text-color");
-    const uiTextColorInput = wrap.querySelector("#bmwc-prefs-ui-text-color");
-    const textShadowModeInput = wrap.querySelector("#bmwc-prefs-text-shadow-mode");
-    const textShadowCustomPanel = wrap.querySelector("#bmwc-prefs-text-shadow-custom-panel");
-    const textShadowColorInput = wrap.querySelector("#bmwc-prefs-text-shadow-color");
-    const textShadowXInput = wrap.querySelector("#bmwc-prefs-text-shadow-x");
-    const textShadowYInput = wrap.querySelector("#bmwc-prefs-text-shadow-y");
-    const textShadowBlurInput = wrap.querySelector("#bmwc-prefs-text-shadow-blur");
-    const textShadowOpacityInput = wrap.querySelector("#bmwc-prefs-text-shadow-opacity");
-    const textShadowXValue = wrap.querySelector("#bmwc-prefs-text-shadow-x-value");
-    const textShadowYValue = wrap.querySelector("#bmwc-prefs-text-shadow-y-value");
-    const textShadowBlurValue = wrap.querySelector("#bmwc-prefs-text-shadow-blur-value");
-    const textShadowOpacityValue = wrap.querySelector("#bmwc-prefs-text-shadow-opacity-value");
-    const textShadowPreview = wrap.querySelector("#bmwc-prefs-text-shadow-preview");
-    const backgroundColorInput = wrap.querySelector("#bmwc-prefs-background-color");
-    const inputBackgroundColorInput = wrap.querySelector("#bmwc-prefs-input-background-color");
-    const notifyKeywordsInput = wrap.querySelector("#bmwc-prefs-notify-keywords-list");
-    const notifyKeywordsApply = wrap.querySelector("#bmwc-prefs-notify-keywords-apply");
-    const notifyKeywordsStatus = wrap.querySelector("#bmwc-prefs-notify-keywords-status");
-    const languageSelect = wrap.querySelector("#bmwc-prefs-language");
-    const notificationsToggle = wrap.querySelector("#bmwc-prefs-notifications-toggle");
-    const notificationsTest = wrap.querySelector("#bmwc-prefs-notifications-test");
-    const notificationsStatus = wrap.querySelector("#bmwc-prefs-notifications-status");
-    const webPushStatus = wrap.querySelector("#bmwc-prefs-web-push-status");
-    const presetSelect = wrap.querySelector("#bmwc-prefs-preset-select");
+    const themeSelect = wrap.querySelector("#kwc-prefs-theme");
+    const opacityInput = wrap.querySelector("#kwc-prefs-opacity");
+    const opacityValue = wrap.querySelector("#kwc-prefs-opacity-value");
+    const sizeInput = wrap.querySelector("#kwc-prefs-font-size");
+    const sizeValue = wrap.querySelector("#kwc-prefs-font-size-value");
+    const familySelect = wrap.querySelector("#kwc-prefs-font-family");
+    const familyCustomInput = wrap.querySelector("#kwc-prefs-font-family-custom");
+    const familyApplyButton = wrap.querySelector("#kwc-prefs-font-family-apply");
+    const familyTestButton = wrap.querySelector("#kwc-prefs-font-family-test");
+    const familyStatus = wrap.querySelector("#kwc-prefs-font-family-status");
+    const textColorInput = wrap.querySelector("#kwc-prefs-text-color");
+    const uiTextColorInput = wrap.querySelector("#kwc-prefs-ui-text-color");
+    const textShadowModeInput = wrap.querySelector("#kwc-prefs-text-shadow-mode");
+    const textShadowCustomPanel = wrap.querySelector("#kwc-prefs-text-shadow-custom-panel");
+    const textShadowColorInput = wrap.querySelector("#kwc-prefs-text-shadow-color");
+    const textShadowXInput = wrap.querySelector("#kwc-prefs-text-shadow-x");
+    const textShadowYInput = wrap.querySelector("#kwc-prefs-text-shadow-y");
+    const textShadowBlurInput = wrap.querySelector("#kwc-prefs-text-shadow-blur");
+    const textShadowOpacityInput = wrap.querySelector("#kwc-prefs-text-shadow-opacity");
+    const textShadowXValue = wrap.querySelector("#kwc-prefs-text-shadow-x-value");
+    const textShadowYValue = wrap.querySelector("#kwc-prefs-text-shadow-y-value");
+    const textShadowBlurValue = wrap.querySelector("#kwc-prefs-text-shadow-blur-value");
+    const textShadowOpacityValue = wrap.querySelector("#kwc-prefs-text-shadow-opacity-value");
+    const textShadowPreview = wrap.querySelector("#kwc-prefs-text-shadow-preview");
+    const backgroundColorInput = wrap.querySelector("#kwc-prefs-background-color");
+    const inputBackgroundColorInput = wrap.querySelector("#kwc-prefs-input-background-color");
+    const notifyKeywordsInput = wrap.querySelector("#kwc-prefs-notify-keywords-list");
+    const notifyKeywordsApply = wrap.querySelector("#kwc-prefs-notify-keywords-apply");
+    const notifyKeywordsStatus = wrap.querySelector("#kwc-prefs-notify-keywords-status");
+    const languageSelect = wrap.querySelector("#kwc-prefs-language");
+    const notificationsToggle = wrap.querySelector("#kwc-prefs-notifications-toggle");
+    const notificationsTest = wrap.querySelector("#kwc-prefs-notifications-test");
+    const notificationsStatus = wrap.querySelector("#kwc-prefs-notifications-status");
+    const presetSelect = wrap.querySelector("#kwc-prefs-preset-select");
     const presetNameInput = null;
-    const presetSave = wrap.querySelector("#bmwc-prefs-preset-save");
-    const presetLoad = wrap.querySelector("#bmwc-prefs-preset-load");
-    const presetDelete = wrap.querySelector("#bmwc-prefs-preset-delete");
-    const presetStatus = wrap.querySelector("#bmwc-prefs-preset-status");
+    const presetSave = wrap.querySelector("#kwc-prefs-preset-save");
+    const presetLoad = wrap.querySelector("#kwc-prefs-preset-load");
+    const presetDelete = wrap.querySelector("#kwc-prefs-preset-delete");
+    const presetExport = wrap.querySelector("#kwc-prefs-preset-export");
+    const presetImport = wrap.querySelector("#kwc-prefs-preset-import");
+    const presetStatus = wrap.querySelector("#kwc-prefs-preset-status");
     const setPresetStatus = message => { if (presetStatus) presetStatus.textContent = message || ""; };
 
     const close = () => { wrap.remove(); state.prefsModalOpen = false; };
-    wrap.querySelector("#bmwc-prefs-close").onclick = close;
+    wrap.querySelector("#kwc-prefs-close").onclick = close;
     wrap.addEventListener("click", e => { if (e.target === wrap) close(); });
 
     if (themeSelect) themeSelect.addEventListener("change", () => setUserTheme(themeSelect.value));
@@ -11866,7 +12867,7 @@
       setUserTextShadowCustom(buildTextShadowFromParts(parts));
     };
     const updateShadowPanelVisibility = () => {
-      if (textShadowCustomPanel) textShadowCustomPanel.classList.toggle("bmwc-hidden", !textShadowModeInput || textShadowModeInput.value !== "custom");
+      if (textShadowCustomPanel) textShadowCustomPanel.classList.toggle("kwc-hidden", !textShadowModeInput || textShadowModeInput.value !== "custom");
     };
     syncShadowControls(parseTextShadowParts(payload.textShadowCustom));
     updateShadowPanelVisibility();
@@ -11882,8 +12883,7 @@
     languageSelect.addEventListener("change", () => setUserLanguage(languageSelect.value));
 
     const updateNotificationStatuses = () => {
-      if (notificationsStatus) notificationsStatus.textContent = notificationStatusText(labels);
-      if (webPushStatus) webPushStatus.textContent = webPushStatusText(labels);
+      if (notificationsStatus) notificationsStatus.textContent = unifiedNotificationStatusText(labels);
       if (notificationsToggle) notificationsToggle.textContent = notificationsEnabledLocal() ? (labels.notificationsDisable || "Disable notifications") : (labels.notificationsEnable || "Enable notifications");
     };
     updateNotificationStatuses();
@@ -11892,8 +12892,8 @@
       updateNotificationStatuses();
     });
     const updateNotifyKeywordOptionInputs = () => {
-      wrap.querySelectorAll("[data-bmwc-notify-option]").forEach(input => {
-        const name = input.dataset.bmwcNotifyOption;
+      wrap.querySelectorAll("[data-kwc-notify-option]").forEach(input => {
+        const name = input.dataset.kwcNotifyOption;
         input.disabled = !notificationServerAllows(name);
         input.checked = notificationOption(name);
       });
@@ -11939,9 +12939,9 @@
       const ok = await requestBrowserNotifications();
       if (ok) {
         setNotificationsEnabledLocal(true);
-        if (canUseWebPush()) await enableWebPush();
+        if (notificationUsesMobilePushUi() && canUseWebPush()) await testWebPush();
+        else showBrowserNotification(configuredNotificationTitle(), labels.notificationsTest || "Test notification", {tag: "kwc-test", force: true});
       }
-      showBrowserNotification(configuredNotificationTitle(), labels.notificationsTest || "Test notification", {tag: "bmwc-test", force: true});
       updateNotificationStatuses();
     });
 
@@ -11949,14 +12949,16 @@
       if (!presetSelect) return;
       presetSelect.innerHTML = chatSettingPresetOptionsHtml(selected || "");
     };
-    if (presetSave) presetSave.addEventListener("click", () => {
-      const suggested = String((presetSelect && presetSelect.value) || "").trim();
+    if (presetSave) presetSave.addEventListener("click", async () => {
+      const selectedValue = String((presetSelect && presetSelect.value) || "").trim();
+      const currentServer = serverUserProfilesActive() ? (state.accountProfiles || []).find(item => String(item && item.id || "") === selectedValue) : null;
+      const suggested = currentServer ? String(currentServer.name || "") : selectedValue;
       const name = String(window.prompt(labels.presetNamePrompt || labels.presetName || "Preset name", suggested) || "").trim();
       if (!name) return;
       if (themeSelect) {
         const theme = String(themeSelect.value || "");
-        if (theme) localStorage.setItem("bmwc.userTheme", normalizedTheme(theme));
-        else localStorage.removeItem("bmwc.userTheme");
+        if (theme) localStorage.setItem("kwc.userTheme", normalizedTheme(theme));
+        else localStorage.removeItem("kwc.userTheme");
       }
       if (opacityInput) setUserOpacity((Number(opacityInput.value) || payload.defaultOpacityPercent || 100) / 100, true);
       if (sizeInput) setUserFontSize(Number(sizeInput.value) || payload.defaultFontSizePx || 13, true);
@@ -11968,6 +12970,16 @@
       if (backgroundColorInput) setUserBackgroundColor(backgroundColorInput.value);
       if (inputBackgroundColorInput) setUserInputBackgroundColor(inputBackgroundColorInput.value);
       if (languageSelect) setUserLanguage(languageSelect.value);
+      if (serverUserProfilesActive()) {
+        try {
+          const profile = await saveAccountProfile(selectedValue, name);
+          refreshPresetSelect(profile.id || "");
+          setPresetStatus((labels.presetSaved || "Saved.") + " " + name);
+        } catch (e) {
+          setPresetStatus((labels.presetSaveFailed || "Save failed.") + " " + String(e && e.message || ""));
+        }
+        return;
+      }
       const list = loadChatSettingPresets();
       const data = currentChatSettingPresetData();
       const existing = list.findIndex(item => String(item.name || "") === name);
@@ -11982,33 +12994,92 @@
       setPresetStatus((labels.presetSaved || "Saved.") + " " + name);
     });
     if (presetLoad) presetLoad.addEventListener("click", () => {
-      const name = String(presetSelect && presetSelect.value || "").trim();
-      if (!name) return alert(labels.presetSelectRequired || "Select saved settings first.");
-      const item = loadChatSettingPresets().find(p => String(p.name || "") === name);
+      const value = String(presetSelect && presetSelect.value || "").trim();
+      if (!value) return alert(labels.presetSelectRequired || "Select saved settings first.");
+      if (serverUserProfilesActive()) {
+        const item = (state.accountProfiles || []).find(p => String(p && p.id || "") === value);
+        if (!item) return alert(labels.presetSelectRequired || "Select saved settings first.");
+        applyAccountProfile(item);
+        wrap.remove();
+        state.prefsModalOpen = false;
+        openUserPreferencesModal(true);
+        return;
+      }
+      const item = loadChatSettingPresets().find(p => String(p.name || "") === value);
       if (!item) return alert(labels.presetSelectRequired || "Select saved settings first.");
       applyChatSettingPresetData(item.data || {});
       wrap.remove();
       state.prefsModalOpen = false;
       openUserPreferencesModal(true);
-      setTimeout(() => {
-        const status = document.querySelector("#bmwc-prefs-preset-status");
-        if (status) status.textContent = (labels.presetLoaded || "Loaded.") + " " + name;
-      }, 0);
     });
-    if (presetDelete) presetDelete.addEventListener("click", () => {
-      const name = String(presetSelect && presetSelect.value || "").trim();
-      if (!name) return alert(labels.presetSelectRequired || "Select saved settings first.");
-      const message = (labels.presetConfirmDelete || "Delete saved settings {name}?").replace("{name}", name);
+    if (presetDelete) presetDelete.addEventListener("click", async () => {
+      const value = String(presetSelect && presetSelect.value || "").trim();
+      if (!value) return alert(labels.presetSelectRequired || "Select saved settings first.");
+      const currentServer = serverUserProfilesActive() ? (state.accountProfiles || []).find(p => String(p && p.id || "") === value) : null;
+      const displayName = currentServer ? String(currentServer.name || "") : value;
+      const message = (labels.presetConfirmDelete || "Delete saved settings {name}?").replace("{name}", displayName);
       if (!confirmPlain(message)) return;
-      if (!saveChatSettingPresets(loadChatSettingPresets().filter(p => String(p.name || "") !== name))) {
+      if (serverUserProfilesActive()) {
+        try {
+          await deleteAccountProfile(value);
+          refreshPresetSelect("");
+          setPresetStatus((labels.presetDeleted || "Deleted.") + " " + displayName);
+        } catch (e) {
+          setPresetStatus((labels.presetSaveFailed || "Save failed.") + " " + String(e && e.message || ""));
+        }
+        return;
+      }
+      if (!saveChatSettingPresets(loadChatSettingPresets().filter(p => String(p.name || "") !== value))) {
         setPresetStatus(labels.presetSaveFailed || "Save failed. Browser storage may be blocked.");
         return;
       }
       refreshPresetSelect("");
-      setPresetStatus((labels.presetDeleted || "Deleted.") + " " + name);
+      setPresetStatus((labels.presetDeleted || "Deleted.") + " " + displayName);
     });
+    if (presetExport) presetExport.addEventListener("click", async () => {
+      const id = String(presetSelect && presetSelect.value || "").trim();
+      if (!id) return alert(labels.presetSelectRequired || "Select saved settings first.");
+      try { await exportAccountProfile(id); }
+      catch (e) { setPresetStatus((labels.presetExportFailed || "Export failed.") + " " + String(e && e.message || "")); }
+    });
+    if (presetImport) {
+      presetImport.addEventListener("click", () => {
+        // Do not keep a file input inside the settings modal. Some map frontends
+        // override the HTML hidden/display rules for form controls and exposed the
+        // browser's native "Choose file" control next to the preset buttons.
+        // A short-lived off-screen picker cannot affect the modal layout.
+        const picker = document.createElement("input");
+        picker.type = "file";
+        picker.accept = "application/json,.json";
+        picker.tabIndex = -1;
+        picker.setAttribute("aria-hidden", "true");
+        picker.style.cssText = "position:fixed;left:-10000px;top:-10000px;width:1px;height:1px;opacity:0;pointer-events:none;";
+        const cleanup = () => { try { picker.remove(); } catch (_) {} };
+        picker.addEventListener("cancel", cleanup, {once: true});
+        picker.addEventListener("change", async () => {
+          const file = picker.files && picker.files[0];
+          if (!file) { cleanup(); return; }
+          if (file.size > 16 * 1024) {
+            setPresetStatus((labels.presetImportFailed || "Import failed.") + " profile_import_too_large");
+            cleanup();
+            return;
+          }
+          try {
+            const profile = await importAccountProfileJson(await file.text());
+            refreshPresetSelect(profile.id || "");
+            setPresetStatus((labels.presetSaved || "Saved.") + " " + String(profile.name || ""));
+          } catch (e) {
+            setPresetStatus((labels.presetImportFailed || "Import failed.") + " " + String(e && e.message || ""));
+          } finally {
+            cleanup();
+          }
+        }, {once: true});
+        document.body.appendChild(picker);
+        picker.click();
+      });
+    }
 
-    wrap.querySelector("#bmwc-prefs-reset").onclick = () => {
+    wrap.querySelector("#kwc-prefs-reset").onclick = () => {
       resetUserOpacity();
       resetUserFontSize();
       resetUserFontFamily();
@@ -12023,16 +13094,17 @@
       updateShadowPanelVisibility();
       resetUserBackgroundColor();
       resetUserInputBackgroundColor();
-      localStorage.removeItem("bmwc.userTheme");
+      localStorage.removeItem("kwc.userTheme");
       resetUserLanguage();
       wrap.remove();
       state.prefsModalOpen = false;
     };
   }
 
-  function openUserPreferencesModal(force = false) {
+  async function openUserPreferencesModal(force = false) {
     if ((state.prefsModalOpen && !force) || !state.config || state.config.uiUserPreferencesControl === false) return;
     state.prefsModalOpen = true;
+    if (serverUserProfilesActive()) await loadAccountProfiles();
     const payload = buildUserPreferencesPayload();
     if (state.isPip || window.parent === window) {
       openLocalUserPreferencesModal(payload);
@@ -12052,7 +13124,7 @@
   function renderSearchResults(container, messages) {
     if (!container) return;
     if (!Array.isArray(messages) || messages.length === 0) {
-      container.innerHTML = `<div class="bmwc-search-status">${t("search.noResults", "No matching messages.")}</div>`;
+      container.innerHTML = `<div class="kwc-search-status">${t("search.noResults", "No matching messages.")}</div>`;
       return;
     }
     container.innerHTML = messages.map(msg => {
@@ -12061,32 +13133,32 @@
       const time = esc(formatMessageTime(msg.time || Date.now()));
       const source = esc(msg.source || "");
       const preview = esc(searchResultPreviewText(msg));
-      return `<button type="button" class="bmwc-search-result" data-id="${id}">
-        <span class="bmwc-search-result-meta"><strong>${sender}</strong> <span>${time}</span> <span>${source}</span></span>
-        <span class="bmwc-search-result-preview">${preview}</span>
+      return `<button type="button" class="kwc-search-result" data-id="${id}">
+        <span class="kwc-search-result-meta"><strong>${sender}</strong> <span>${time}</span> <span>${source}</span></span>
+        <span class="kwc-search-result-preview">${preview}</span>
       </button>`;
     }).join("");
   }
 
   function applyDetachedModalTheme(backdrop) {
-    const root = document.getElementById("bmwc-root");
+    const root = document.getElementById("kwc-root");
     if (!root || !backdrop) return;
     const cs = getComputedStyle(root);
     const vars = [
-      "--bmwc-font-size", "--bmwc-message-font-size", "--bmwc-input-font-size", "--bmwc-button-font-size", "--bmwc-badge-font-size",
-      "--bmwc-chat-font-family", "--bmwc-chat-message-font-size", "--bmwc-chat-text-color", "--bmwc-chat-ui-text-color", "--bmwc-chat-background-color", "--bmwc-chat-text-shadow",
-      "--bmwc-text-color", "--bmwc-ui-color", "--bmwc-ui-text-color", "--bmwc-muted-color", "--bmwc-border-color", "--bmwc-button-text",
-      "--bmwc-button-bg", "--bmwc-button-hover-bg", "--bmwc-input-bg", "--bmwc-compose-input-bg", "--bmwc-link-color",
-      "--bmwc-modal-bg-rgb", "--bmwc-panel-bg-rgb", "--bmwc-panel-opacity", "--bmwc-shadow-color",
-      "--bmwc-surface-bg", "--bmwc-surface-hover-bg", "--bmwc-text-shadow", "--bmwc-ui-text-shadow",
-      "--bmwc-emoji-render-size", "--bmwc-emoji-picker-size", "--bmwc-emoji-panel-height", "--bmwc-emoji-panel-min-height"
+      "--kwc-font-size", "--kwc-message-font-size", "--kwc-input-font-size", "--kwc-button-font-size", "--kwc-badge-font-size",
+      "--kwc-chat-font-family", "--kwc-chat-message-font-size", "--kwc-chat-text-color", "--kwc-chat-ui-text-color", "--kwc-chat-background-color", "--kwc-chat-text-shadow",
+      "--kwc-text-color", "--kwc-ui-color", "--kwc-ui-text-color", "--kwc-muted-color", "--kwc-border-color", "--kwc-button-text",
+      "--kwc-button-bg", "--kwc-button-hover-bg", "--kwc-input-bg", "--kwc-compose-input-bg", "--kwc-link-color",
+      "--kwc-modal-bg-rgb", "--kwc-panel-bg-rgb", "--kwc-panel-opacity", "--kwc-shadow-color",
+      "--kwc-surface-bg", "--kwc-surface-strong-bg", "--kwc-surface-hover-bg", "--kwc-admin-list-bg", "--kwc-admin-row-bg", "--kwc-text-shadow", "--kwc-ui-text-shadow",
+      "--kwc-emoji-render-size", "--kwc-emoji-picker-size", "--kwc-emoji-panel-height", "--kwc-emoji-panel-min-height"
     ];
     vars.forEach(name => {
       const value = cs.getPropertyValue(name);
       if (value) backdrop.style.setProperty(name, value.trim());
     });
     backdrop.style.fontFamily = cs.fontFamily || "";
-    ["bmwc-theme-light", "bmwc-theme-dark", "bmwc-theme-system", "bmwc-theme-high-contrast"].forEach(cls => {
+    ["kwc-theme-light", "kwc-theme-dark", "kwc-theme-system", "kwc-theme-high-contrast"].forEach(cls => {
       backdrop.classList.toggle(cls, root.classList.contains(cls));
     });
   }
@@ -12096,7 +13168,7 @@
   }
 
   function currentSearchLanguage() {
-    return String(state.selectedLanguage || localStorage.getItem("bmwc.language") || "").trim();
+    return String(state.selectedLanguage || localStorage.getItem("kwc.language") || "").trim();
   }
 
   function searchEnabled() {
@@ -12126,31 +13198,31 @@
   function openSearchModal() {
     if (!searchEnabled()) return;
     if (state.searchModalOpen) {
-      const existing = document.querySelector(".bmwc-search-modal-backdrop");
-      const input = existing && existing.querySelector("#bmwc-search-query");
+      const existing = document.querySelector(".kwc-search-modal-backdrop");
+      const input = existing && existing.querySelector("#kwc-search-query");
       if (input) input.focus();
       return;
     }
     const wrap = document.createElement("div");
-    wrap.className = "bmwc-modal-backdrop bmwc-search-modal-backdrop";
+    wrap.className = "kwc-modal-backdrop kwc-search-modal-backdrop";
     applySearchModalTheme(wrap);
     wrap.innerHTML = `
-      <div class="bmwc-modal bmwc-search-modal" role="dialog" aria-modal="true" aria-label="${t("search.title", "Search messages")}">
-        <div class="bmwc-search-head">
+      <div class="kwc-modal kwc-search-modal" role="dialog" aria-modal="true" aria-label="${t("search.title", "Search messages")}">
+        <div class="kwc-search-head">
           <h3>${t("search.title", "Search messages")}</h3>
-          <button class="bmwc-button bmwc-search-x" id="bmwc-search-close-x" type="button" aria-label="${t("button.close", "Close")}">×</button>
+          <button class="kwc-button kwc-search-x" id="kwc-search-close-x" type="button" aria-label="${t("button.close", "Close")}">×</button>
         </div>
-        <div class="bmwc-search-row">
-          <input class="bmwc-input" id="bmwc-search-query" maxlength="120" placeholder="${t("search.placeholder", "Search message text or sender")}">
-          <button class="bmwc-button" id="bmwc-search-run" type="button">${t("button.search", "Search")}</button>
+        <div class="kwc-search-row">
+          <input class="kwc-input" id="kwc-search-query" maxlength="120" placeholder="${t("search.placeholder", "Search message text or sender")}">
+          <button class="kwc-button" id="kwc-search-run" type="button">${t("button.search", "Search")}</button>
         </div>
-        <details class="bmwc-search-options" id="bmwc-search-options">
+        <details class="kwc-search-options" id="kwc-search-options">
           <summary>${t("search.options", "Options")}</summary>
-          <div class="bmwc-search-options-grid">
-            <label><span>${t("search.from", "From")}</span><input class="bmwc-input" id="bmwc-search-from" type="datetime-local"></label>
-            <label><span>${t("search.to", "To")}</span><input class="bmwc-input" id="bmwc-search-to" type="datetime-local"></label>
-            <label><span>${t("search.sender", "Sender")}</span><input class="bmwc-input" id="bmwc-search-sender" maxlength="64" placeholder="${t("search.senderPlaceholder", "Optional sender")}"></label>
-            <label><span>${t("search.source", "Source")}</span><select class="bmwc-input" id="bmwc-search-source">
+          <div class="kwc-search-options-grid">
+            <label><span>${t("search.from", "From")}</span><input class="kwc-input" id="kwc-search-from" type="datetime-local"></label>
+            <label><span>${t("search.to", "To")}</span><input class="kwc-input" id="kwc-search-to" type="datetime-local"></label>
+            <label><span>${t("search.sender", "Sender")}</span><input class="kwc-input" id="kwc-search-sender" maxlength="64" placeholder="${t("search.senderPlaceholder", "Optional sender")}"></label>
+            <label><span>${t("search.source", "Source")}</span><select class="kwc-input" id="kwc-search-source">
               <option value="">${t("search.sourceAll", "All")}</option>
               <option value="game">${t("search.sourceGame", "Game")}</option>
               <option value="web">${t("search.sourceWeb", "Web")}</option>
@@ -12158,29 +13230,29 @@
               <option value="system">${t("search.sourceSystem", "System/Event")}</option>
             </select></label>
           </div>
-          <label class="bmwc-search-check"><input id="bmwc-search-include-system" type="checkbox" checked> <span>${t("search.includeSystem", "Include system/event messages")}</span></label>
+          <label class="kwc-search-check"><input id="kwc-search-include-system" type="checkbox" checked> <span>${t("search.includeSystem", "Include system/event messages")}</span></label>
         </details>
-        <div class="bmwc-search-status" id="bmwc-search-status"></div>
-        <div class="bmwc-search-results" id="bmwc-search-results"></div>
-        <div class="bmwc-search-footer">
-          <button class="bmwc-button" id="bmwc-search-close" type="button">${t("button.close", "Close")}</button>
+        <div class="kwc-search-status" id="kwc-search-status"></div>
+        <div class="kwc-search-results" id="kwc-search-results"></div>
+        <div class="kwc-search-footer">
+          <button class="kwc-button" id="kwc-search-close" type="button">${t("button.close", "Close")}</button>
         </div>
       </div>
     `;
     document.body.appendChild(wrap);
     state.searchModalOpen = true;
 
-    const input = wrap.querySelector("#bmwc-search-query");
-    const run = wrap.querySelector("#bmwc-search-run");
-    const close = wrap.querySelector("#bmwc-search-close");
-    const closeX = wrap.querySelector("#bmwc-search-close-x");
-    const status = wrap.querySelector("#bmwc-search-status");
-    const results = wrap.querySelector("#bmwc-search-results");
-    const fromInput = wrap.querySelector("#bmwc-search-from");
-    const toInput = wrap.querySelector("#bmwc-search-to");
-    const senderInput = wrap.querySelector("#bmwc-search-sender");
-    const sourceSelect = wrap.querySelector("#bmwc-search-source");
-    const includeSystemInput = wrap.querySelector("#bmwc-search-include-system");
+    const input = wrap.querySelector("#kwc-search-query");
+    const run = wrap.querySelector("#kwc-search-run");
+    const close = wrap.querySelector("#kwc-search-close");
+    const closeX = wrap.querySelector("#kwc-search-close-x");
+    const status = wrap.querySelector("#kwc-search-status");
+    const results = wrap.querySelector("#kwc-search-results");
+    const fromInput = wrap.querySelector("#kwc-search-from");
+    const toInput = wrap.querySelector("#kwc-search-to");
+    const senderInput = wrap.querySelector("#kwc-search-sender");
+    const sourceSelect = wrap.querySelector("#kwc-search-source");
+    const includeSystemInput = wrap.querySelector("#kwc-search-include-system");
 
     const closeModal = () => {
       if (wrap.parentNode) wrap.remove();
@@ -12259,7 +13331,7 @@
       }
     });
     if (results) results.addEventListener("click", event => {
-      const item = event.target && event.target.closest ? event.target.closest(".bmwc-search-result[data-id]") : null;
+      const item = event.target && event.target.closest ? event.target.closest(".kwc-search-result[data-id]") : null;
       if (!item) return;
       const id = item.dataset.id || "";
       closeModal();
@@ -12282,62 +13354,62 @@
     }
 
     const wrap = document.createElement("div");
-    wrap.className = "bmwc-modal-backdrop bmwc-user-prefs-backdrop";
+    wrap.className = "kwc-modal-backdrop kwc-user-prefs-backdrop";
     applyDetachedModalTheme(wrap);
     wrap.innerHTML = `
-      <div class="bmwc-modal">
-        <h3>${t("login.title", "BlueMap Chat Login")}</h3>
-        <div class="bmwc-tabs">
-          <button class="bmwc-button bmwc-tab" id="bmwc-tab-login">${t("login.tabLogin", "Login")}</button>
-          <button class="bmwc-button bmwc-tab" id="bmwc-tab-link">${t("login.tabLink", "Link")}</button>
+      <div class="kwc-modal">
+        <h3>${t("login.title", "KOKOTO WebChat Login")}</h3>
+        <div class="kwc-tabs">
+          <button class="kwc-button kwc-tab" id="kwc-tab-login">${t("login.tabLogin", "Login")}</button>
+          <button class="kwc-button kwc-tab" id="kwc-tab-link">${t("login.tabLink", "Link")}</button>
         </div>
 
-        <div id="bmwc-login-pane">
+        <div id="kwc-login-pane">
           <p>${t("login.description", "Log in with an already linked account.")}</p>
-          <input class="bmwc-input" id="bmwc-login-id" placeholder="${t("placeholder.username", "username")}">
+          <input class="kwc-input" id="kwc-login-id" placeholder="${t("placeholder.username", "username")}">
           <br><br>
-          <input class="bmwc-input" id="bmwc-login-pw" type="password" placeholder="${t("placeholder.password", "password")}">
+          <input class="kwc-input" id="kwc-login-pw" type="password" placeholder="${t("placeholder.password", "password")}">
           <br><br>
-          <button class="bmwc-button" id="bmwc-login-submit">${t("button.login", "Login")}</button>
-          <button class="bmwc-button" id="bmwc-close">${t("button.close", "Close")}</button>
+          <button class="kwc-button" id="kwc-login-submit">${t("button.login", "Login")}</button>
+          <button class="kwc-button" id="kwc-close">${t("button.close", "Close")}</button>
         </div>
 
-        <div id="bmwc-link-pane" class="bmwc-hidden">
+        <div id="kwc-link-pane" class="kwc-hidden">
           <p>${t("link.description", "Run the command below in game.")}</p>
-          <div class="bmwc-code" id="bmwc-link-code">----</div>
-          <p><code>${t("link.commandHint", "/bmchat auth <code>").replace("<", "&lt;").replace(">", "&gt;")}</code></p>
-          <p id="bmwc-link-status">${t("link.statusReady", "Press Start to issue a code.")}</p>
-          <button class="bmwc-button" id="bmwc-link-start">${t("button.start", "Start")}</button>
-          <button class="bmwc-button" id="bmwc-close2">${t("button.close", "Close")}</button>
+          <div class="kwc-code" id="kwc-link-code">----</div>
+          <p><code>${t("link.commandHint", "/kchat auth <code>").replace("<", "&lt;").replace(">", "&gt;")}</code></p>
+          <p id="kwc-link-status">${t("link.statusReady", "Press Start to issue a code.")}</p>
+          <button class="kwc-button" id="kwc-link-start">${t("button.start", "Start")}</button>
+          <button class="kwc-button" id="kwc-close2">${t("button.close", "Close")}</button>
         </div>
       </div>
     `;
     document.body.appendChild(wrap);
 
-    const loginPane = wrap.querySelector("#bmwc-login-pane");
-    const linkPane = wrap.querySelector("#bmwc-link-pane");
+    const loginPane = wrap.querySelector("#kwc-login-pane");
+    const linkPane = wrap.querySelector("#kwc-link-pane");
 
-    wrap.querySelector("#bmwc-tab-login").onclick = () => {
-      loginPane.classList.remove("bmwc-hidden");
-      linkPane.classList.add("bmwc-hidden");
+    wrap.querySelector("#kwc-tab-login").onclick = () => {
+      loginPane.classList.remove("kwc-hidden");
+      linkPane.classList.add("kwc-hidden");
     };
-    wrap.querySelector("#bmwc-tab-link").onclick = () => {
-      loginPane.classList.add("bmwc-hidden");
-      linkPane.classList.remove("bmwc-hidden");
+    wrap.querySelector("#kwc-tab-link").onclick = () => {
+      loginPane.classList.add("kwc-hidden");
+      linkPane.classList.remove("kwc-hidden");
     };
     const closeLoginModal = () => {
       wrap.remove();
       state.loginModalOpen = false;
       updateFrameSize();
     };
-    wrap.querySelector("#bmwc-close").onclick = closeLoginModal;
-    wrap.querySelector("#bmwc-close2").onclick = closeLoginModal;
+    wrap.querySelector("#kwc-close").onclick = closeLoginModal;
+    wrap.querySelector("#kwc-close2").onclick = closeLoginModal;
 
     const submitLogin = async () => {
-      const submit = wrap.querySelector("#bmwc-login-submit");
+      const submit = wrap.querySelector("#kwc-login-submit");
       if (submit && submit.disabled) return;
-      const username = wrap.querySelector("#bmwc-login-id").value.trim();
-      const password = wrap.querySelector("#bmwc-login-pw").value;
+      const username = wrap.querySelector("#kwc-login-id").value.trim();
+      const password = wrap.querySelector("#kwc-login-pw").value;
       if (submit) submit.disabled = true;
       try {
         const res = await api("/auth/login", {method: "POST", body: JSON.stringify({username, password})});
@@ -12354,9 +13426,9 @@
       }
     };
 
-    wrap.querySelector("#bmwc-login-submit").onclick = submitLogin;
-    const loginIdInput = wrap.querySelector("#bmwc-login-id");
-    const loginPasswordInput = wrap.querySelector("#bmwc-login-pw");
+    wrap.querySelector("#kwc-login-submit").onclick = submitLogin;
+    const loginIdInput = wrap.querySelector("#kwc-login-id");
+    const loginPasswordInput = wrap.querySelector("#kwc-login-pw");
     if (loginIdInput) {
       loginIdInput.addEventListener("keydown", event => {
         if (event.key !== "Enter" || event.isComposing) return;
@@ -12373,14 +13445,14 @@
     }
     if (loginIdInput) setTimeout(() => loginIdInput.focus(), 0);
 
-    wrap.querySelector("#bmwc-link-start").onclick = async () => {
+    wrap.querySelector("#kwc-link-start").onclick = async () => {
       const res = await api("/auth/code", {method: "POST", body: "{}"});
       if (!res.ok) {
         alertResponse("alert.codeFailed", "Failed to issue code: {error}", res);
         return;
       }
-      wrap.querySelector("#bmwc-link-code").textContent = res.code;
-      wrap.querySelector("#bmwc-link-status").textContent = fmt("link.statusWaiting", "Waiting for /bmchat auth {code} in game...", {code: res.code});
+      wrap.querySelector("#kwc-link-code").textContent = res.code;
+      wrap.querySelector("#kwc-link-status").textContent = fmt("link.statusWaiting", "Waiting for /kchat auth {code} in game...", {code: res.code});
       pollLink(res.poll, wrap);
     };
   }
@@ -12397,7 +13469,7 @@
       if (res.status === "linked") {
         clearInterval(timer);
         setLogin(res);
-        modal.querySelector("#bmwc-link-status").textContent = t("link.statusLinked", "Linked.");
+        modal.querySelector("#kwc-link-status").textContent = t("link.statusLinked", "Linked.");
         if (!res.passwordSet) {
           setTimeout(() => {
             modal.remove();
@@ -12414,7 +13486,7 @@
         }
       } else if (res.status === "expired") {
         clearInterval(timer);
-        modal.querySelector("#bmwc-link-status").textContent = t("link.statusExpired", "Code expired.");
+        modal.querySelector("#kwc-link-status").textContent = t("link.statusExpired", "Code expired.");
       }
     }, 1000);
   }
@@ -12458,7 +13530,7 @@
   function directMessageAdminIdentityHtml(item) {
     const a = {displayName: item.userADisplayName || item.userALabel || "", username: item.userAUsername || "", uuid: item.userAUuid || ""};
     const b = {displayName: item.userBDisplayName || item.userBLabel || "", username: item.userBUsername || "", uuid: item.userBUuid || ""};
-    return `<span class="bmwc-admin-meta-identities">${directMessageIdentityHtml(a, "bmwc-admin-meta-user")} <span class="bmwc-admin-meta-separator">↔</span> ${directMessageIdentityHtml(b, "bmwc-admin-meta-user")}</span>`;
+    return `<span class="kwc-admin-meta-identities">${directMessageIdentityHtml(a, "kwc-admin-meta-user")} <span class="kwc-admin-meta-separator">↔</span> ${directMessageIdentityHtml(b, "kwc-admin-meta-user")}</span>`;
   }
 
   async function deleteAdminDmThread(threadId) {
@@ -12466,7 +13538,8 @@
     if (!threadId || !state.token || !state.privateChatSuperAdmin) return;
     if (!confirmPlain(t("admin.confirmDeleteDmThread", "Delete this DM session and all of its metadata/messages/uploads? This cannot be undone."))) return;
     try {
-      await api("/admin/delete-dm-thread", {method: "POST", body: JSON.stringify({token: state.token, threadId})});
+      const res = await adminWrite("/admin/delete-dm-thread", {threadId});
+      if (!res?.ok) throw Object.assign(new Error(res?.error || "delete_failed"), {response: res});
       if (state.dmActiveThreadId === threadId) returnDirectMessageToList();
       await loadDirectMessageThreads(true);
       renderDirectMessageThreads();
@@ -12488,15 +13561,16 @@
     const body = fmt("admin.cleanupPreviewBody", "{expired} old messages, {empty} empty sessions, {locked} locked, {exempt} excluded", {
       expired: String(expired), empty: String(empty), locked: String(locked), exempt: String(exempt)
     });
-    return `<div class="bmwc-admin-cleanup-preview"><strong>${esc(title)}</strong><span>${esc(retention)} · ${esc(body)}</span></div>`;
+    return `<div class="kwc-admin-cleanup-preview"><strong>${esc(title)}</strong><span>${esc(retention)} · ${esc(body)}</span></div>`;
   }
 
   async function setAdminSessionFlag(type, id, patch) {
     id = String(id || "").trim();
     if (!id || !state.token || !state.privateChatSuperAdmin) return;
     try {
-      const body = Object.assign({token: state.token, type, id}, patch || {});
-      await api("/admin/session-flags", {method: "POST", body: JSON.stringify(body)});
+      const body = Object.assign({type, id}, patch || {});
+      const res = await adminWrite("/admin/session-flags", body);
+      if (!res?.ok) throw Object.assign(new Error(res?.error || "admin_action_failed"), {response: res});
       if (type === "dm") {
         await loadDirectMessageThreads(true);
         renderDirectMessageThreads();
@@ -12510,13 +13584,13 @@
   }
 
   function updateDirectMessageButton() {
-    const btn = document.getElementById("bmwc-dm");
-    const badge = document.getElementById("bmwc-dm-badge");
-    if (btn) btn.classList.toggle("bmwc-hidden", !(state.token && state.directMessageEnabled) || state.minimized);
+    const btn = document.getElementById("kwc-dm");
+    const badge = document.getElementById("kwc-dm-badge");
+    if (btn) btn.classList.toggle("kwc-hidden", !(state.token && state.directMessageEnabled) || state.minimized);
     if (!badge) return;
     const unread = Math.max(0, Number(state.dmUnread || 0));
     badge.textContent = unread > 99 ? "99+" : String(unread);
-    badge.classList.toggle("bmwc-hidden", !(state.directMessageWebUnreadBadge && unread > 0));
+    badge.classList.toggle("kwc-hidden", !(state.directMessageWebUnreadBadge && unread > 0));
   }
 
   async function loadDirectMessageThreads(silent = false) {
@@ -12543,7 +13617,7 @@
       return null;
     }
     try {
-      const res = await api("/dm/threads?token=" + encodeURIComponent(state.token));
+      const res = await api("/dm/threads");
       if (!res || res.enabled === false) {
         state.dmUnread = 0;
         state.dmThreads = [];
@@ -12595,9 +13669,9 @@
     const extra = className ? " " + className : "";
     if (identity.real) {
       const title = state.senderIdentityMode === "real" ? senderDisplayTitle(identity.display) : senderOriginalTitle(identity.real);
-      return `<span class="bmwc-dm-identity bmwc-sender-has-real${extra}" title="${esc(title)}" data-bmwc-identity-toggle="1" data-display-sender="${esc(identity.display)}" data-real-sender="${esc(identity.real)}" data-source="dm" data-showing-real="${state.senderIdentityMode === "real" ? "1" : "0"}" role="button" tabindex="0">${senderNameHtml(identity.display, identity.real, "dm")}</span>`;
+      return `<span class="kwc-dm-identity kwc-sender-has-real${extra}" title="${esc(title)}" data-kwc-identity-toggle="1" data-display-sender="${esc(identity.display)}" data-real-sender="${esc(identity.real)}" data-source="dm" data-showing-real="${state.senderIdentityMode === "real" ? "1" : "0"}" role="button" tabindex="0">${senderNameHtml(identity.display, identity.real, "dm")}</span>`;
     }
-    return `<span class="bmwc-dm-identity${extra}" title="${esc(directMessagePlainLabel(identity.display))}">${directMessageLabelHtml(identity.display)}</span>`;
+    return `<span class="kwc-dm-identity${extra}" title="${esc(directMessagePlainLabel(identity.display))}">${directMessageLabelHtml(identity.display)}</span>`;
   }
 
   function directMessageRemoteServer(item) {
@@ -12652,7 +13726,7 @@
     };
     const identityHtml = directMessageIdentityHtml(identityItem, className);
     if (!resolved.server.remote || !resolved.server.label) return identityHtml;
-    return `<span class="bmwc-dm-title-server">[${esc(resolved.server.label)}]</span> ${identityHtml}`;
+    return `<span class="kwc-dm-title-server">[${esc(resolved.server.label)}]</span> ${identityHtml}`;
   }
 
   function directMessageHeaderPlainLabel(item, fallback = "") {
@@ -12679,9 +13753,9 @@
 
   function hydrateDirectMessageRenderedContent(root) {
     if (!root) return;
-    root.querySelectorAll(".bmwc-youtube-card").forEach(card => {
-      if (card.dataset.bmwcDmYoutubeInstalled === "1") return;
-      card.dataset.bmwcDmYoutubeInstalled = "1";
+    root.querySelectorAll(".kwc-youtube-card").forEach(card => {
+      if (card.dataset.kwcDmYoutubeInstalled === "1") return;
+      card.dataset.kwcDmYoutubeInstalled = "1";
       card.addEventListener("click", () => {
         const embed = card.dataset.youtubeEmbed || "";
         if (!/^https:\/\/(www\.)?youtube(-nocookie)?\.com\/embed\//i.test(embed)) return;
@@ -12692,13 +13766,13 @@
         }
         const isShorts = card.dataset.youtubeShorts === "1";
         const wrap = document.createElement("div");
-        wrap.className = isShorts ? "bmwc-youtube-wrap bmwc-youtube-shorts-wrap" : "bmwc-youtube-wrap";
+        wrap.className = isShorts ? "kwc-youtube-wrap kwc-youtube-shorts-wrap" : "kwc-youtube-wrap";
         if (key) wrap.setAttribute("data-youtube-key", key);
         wrap.style.cssText = youtubeShellStyle(isShorts, "");
         const safeEmbed = safeYouTubeEmbedUrl(embed);
         if (!safeEmbed) return;
         const iframe = document.createElement("iframe");
-        iframe.className = "bmwc-youtube-frame";
+        iframe.className = "kwc-youtube-frame";
         iframe.style.cssText = "position:absolute;inset:0;width:100%;height:100%;border:0;";
         iframe.src = safeEmbed;
         iframe.title = t("media.youtubeTitle", "YouTube video");
@@ -12709,10 +13783,10 @@
         card.replaceWith(wrap);
       }, {once: true});
     });
-    root.querySelectorAll(".bmwc-social-card").forEach(card => {
-      if (card.dataset.bmwcDmSocialInstalled === "1") return;
-      card.dataset.bmwcDmSocialInstalled = "1";
-      const load = card.querySelector(".bmwc-media-load");
+    root.querySelectorAll(".kwc-social-card").forEach(card => {
+      if (card.dataset.kwcDmSocialInstalled === "1") return;
+      card.dataset.kwcDmSocialInstalled = "1";
+      const load = card.querySelector(".kwc-media-load");
       if (!load) return;
       load.addEventListener("click", () => {
         const kind = card.dataset.socialKind || "";
@@ -12729,10 +13803,10 @@
       }, {once: true});
     });
     hydrateSocialEmbeds(root);
-    root.querySelectorAll(".bmwc-media-card").forEach(card => {
-      if (card.dataset.bmwcDmMediaCardInstalled === "1") return;
-      card.dataset.bmwcDmMediaCardInstalled = "1";
-      const load = card.querySelector(".bmwc-media-load");
+    root.querySelectorAll(".kwc-media-card").forEach(card => {
+      if (card.dataset.kwcDmMediaCardInstalled === "1") return;
+      card.dataset.kwcDmMediaCardInstalled = "1";
+      const load = card.querySelector(".kwc-media-load");
       if (!load) return;
       load.addEventListener("click", () => {
         const kind = card.dataset.mediaKind || "";
@@ -12742,16 +13816,15 @@
         if (!safeSrc) return;
         if (key) state.mediaOpen.add(key);
         const wrap = document.createElement("div");
-        wrap.className = kind === "audio" ? "bmwc-audio-wrap" : "bmwc-video-wrap";
+        wrap.className = kind === "audio" ? "kwc-audio-wrap" : "kwc-video-wrap";
         if (key) wrap.setAttribute("data-preview-key", key);
         const media = createMediaElement(kind, safeSrc, key);
         if (media) wrap.appendChild(media);
         if (media) {
           media.addEventListener("error", () => {
-            window.__bmwcPreviewFailed && window.__bmwcPreviewFailed(key);
+            window.__kwcPreviewFailed && window.__kwcPreviewFailed(key);
             setMediaError(wrap, kind);
           }, {once: true});
-          media.addEventListener("loadedmetadata", () => window.__bmwcPreviewLoaded && window.__bmwcPreviewLoaded(media), {once: true});
         }
         card.replaceWith(wrap);
         if (media && kind === "video" && typeof media.play === "function") {
@@ -12761,9 +13834,9 @@
       }, {once: true});
     });
     hydratePreviewMedia(root);
-    root.querySelectorAll("a.bmwc-link, a.bmwc-image-link").forEach(link => {
-      if (link.dataset.bmwcDmLinkInstalled === "1") return;
-      link.dataset.bmwcDmLinkInstalled = "1";
+    root.querySelectorAll("a.kwc-link, a.kwc-image-link").forEach(link => {
+      if (link.dataset.kwcDmLinkInstalled === "1") return;
+      link.dataset.kwcDmLinkInstalled = "1";
       link.addEventListener("click", event => {
         const href = link.getAttribute("href") || "";
         if (/^https?:\/\//i.test(href) && openChatExternalLink(href)) {
@@ -12783,12 +13856,12 @@
   }
 
   function updateDirectMessageViewMode() {
-    const modal = document.querySelector(".bmwc-dm-modal");
+    const modal = document.querySelector(".kwc-dm-modal");
     const open = hasDirectMessageConversationOpen();
-    if (modal) modal.classList.toggle("bmwc-dm-thread-mode", open);
-    const title = document.getElementById("bmwc-dm-title");
+    if (modal) modal.classList.toggle("kwc-dm-thread-mode", open);
+    const title = document.getElementById("kwc-dm-title");
     if (title) {
-      title.classList.toggle("bmwc-dm-title-back", open);
+      title.classList.toggle("kwc-dm-title-back", open);
       const label = open ? t("dm.backToList", "Back to conversation list") : t("dm.selectThread", "Select a thread");
       title.title = open ? label : "";
       title.setAttribute("aria-label", open ? label : t("dm.selectThread", "Select a thread"));
@@ -12813,28 +13886,28 @@
   }
 
   function renderDirectMessageThreads() {
-    const list = document.getElementById("bmwc-dm-thread-list");
+    const list = document.getElementById("kwc-dm-thread-list");
     if (!list) return;
     const threads = Array.isArray(state.dmThreads) ? state.dmThreads : [];
     const adminThreads = Array.isArray(state.dmAdminThreads) ? state.dmAdminThreads : [];
     if (!threads.length && !adminThreads.length) {
-      list.innerHTML = `<div class="bmwc-dm-empty">${esc(t("dm.noThreads", "No message threads."))}</div>`;
+      list.innerHTML = `<div class="kwc-dm-empty">${esc(t("dm.noThreads", "No message threads."))}</div>`;
       updateDirectMessageViewMode();
       return;
     }
     const userHtml = threads.map(thread => {
-      const active = thread.id === state.dmActiveThreadId ? " bmwc-active" : "";
+      const active = thread.id === state.dmActiveThreadId ? " kwc-active" : "";
       const unread = Number(thread.unread || 0);
-      const badge = unread > 0 ? `<span class="bmwc-dm-thread-badge">${esc(unread > 99 ? "99+" : String(unread))}</span>` : "";
-      return `<button type="button" class="bmwc-dm-thread${active}" data-dm-thread="${esc(thread.id)}">
-        ${directMessageIdentityHtml(thread, "bmwc-dm-thread-name")}${badge}
-        <span class="bmwc-dm-thread-preview" title="${esc(plainLegacyText(thread.lastMessage || ""))}">${directMessageBodyHtml(thread.lastMessage || "")}</span>
+      const badge = unread > 0 ? `<span class="kwc-dm-thread-badge">${esc(unread > 99 ? "99+" : String(unread))}</span>` : "";
+      return `<button type="button" class="kwc-dm-thread${active}" data-dm-thread="${esc(thread.id)}">
+        ${directMessageIdentityHtml(thread, "kwc-dm-thread-name")}${badge}
+        <span class="kwc-dm-thread-preview" title="${esc(plainLegacyText(thread.lastMessage || ""))}">${directMessageBodyHtml(thread.lastMessage || "")}</span>
       </button>`;
     }).join("");
     const adminTitle = state.privateChatContentAccess
       ? t("admin.privateContentAccess", "Admin DM audit (contents available)")
       : t("admin.privateMetaOnly", "Admin metadata only");
-    const adminHtml = adminThreads.length ? `<div class="bmwc-admin-meta-title">🛡 ${esc(adminTitle)}</div>` + adminThreads.map(item => {
+    const adminHtml = adminThreads.length ? `<div class="kwc-admin-meta-title">🛡 ${esc(adminTitle)}</div>` + adminThreads.map(item => {
       const retention = retentionRemainingText(item.retentionBaseAt || item.latestMessageAt || item.updatedAt, item.retentionDays ?? state.directMessageRetentionDays, "dm", item.retentionExpiresAt);
       const flags = `${item.locked ? esc(t("admin.locked", "locked")) + " · " : ""}${item.retentionExempt ? esc(t("admin.retentionExempt", "auto-delete excluded")) + " · " : ""}`;
       const meta = `${esc(retention)} · ${flags}${esc(t("admin.messages", "messages"))}: ${esc(item.messageCount || 0)} · ${esc(t("admin.storage", "storage"))}: ${esc(formatBytes(item.storageBytes || 0))}`;
@@ -12845,8 +13918,8 @@
       const deleteTitle = t("admin.deleteDmThreadHint", "Delete this DM session, including metadata, messages, and uploads.");
       const openTitle = state.privateChatContentAccess ? t("admin.openDmAudit", "Open this DM session in read-only audit view.") : t("admin.noContentAccess", "Message contents are not accessible from this view.");
       const openAttrs = state.privateChatContentAccess ? ` data-dm-admin-open-thread="${esc(item.id || "")}" role="button" tabindex="0"` : "";
-      const openClass = state.privateChatContentAccess ? " bmwc-admin-meta-open" : "";
-      return `<div class="bmwc-dm-thread bmwc-admin-meta-row${openClass}"${openAttrs} title="${esc(openTitle)}"><span class="bmwc-dm-thread-name">🛡 ${directMessageAdminIdentityHtml(item)}</span><span class="bmwc-admin-meta-actions"><button type="button" class="bmwc-button" data-dm-admin-lock-thread="${esc(item.id || "")}" data-next-locked="${item.locked ? "false" : "true"}" title="${esc(lockTitle)}" aria-label="${esc(lockTitle)}">${esc(lockLabel)}</button><button type="button" class="bmwc-button" data-dm-admin-retention-thread="${esc(item.id || "")}" data-next-exempt="${item.retentionExempt ? "false" : "true"}" title="${esc(exemptTitle)}" aria-label="${esc(exemptTitle)}">${esc(exemptLabel)}</button><button type="button" class="bmwc-button bmwc-admin-meta-danger" data-dm-admin-delete-thread="${esc(item.id || "")}" title="${esc(deleteTitle)}" aria-label="${esc(deleteTitle)}">${esc(t("admin.deleteThread", "Delete"))}</button></span><span class="bmwc-dm-thread-preview" title="${esc(meta.replace(/<[^>]*>/g, ""))}">${meta}</span></div>`;
+      const openClass = state.privateChatContentAccess ? " kwc-admin-meta-open" : "";
+      return `<div class="kwc-dm-thread kwc-admin-meta-row${openClass}"${openAttrs} title="${esc(openTitle)}"><span class="kwc-dm-thread-name">🛡 ${directMessageAdminIdentityHtml(item)}</span><span class="kwc-admin-meta-actions"><button type="button" class="kwc-button" data-dm-admin-lock-thread="${esc(item.id || "")}" data-next-locked="${item.locked ? "false" : "true"}" title="${esc(lockTitle)}" aria-label="${esc(lockTitle)}">${esc(lockLabel)}</button><button type="button" class="kwc-button" data-dm-admin-retention-thread="${esc(item.id || "")}" data-next-exempt="${item.retentionExempt ? "false" : "true"}" title="${esc(exemptTitle)}" aria-label="${esc(exemptTitle)}">${esc(exemptLabel)}</button><button type="button" class="kwc-button kwc-admin-meta-danger" data-dm-admin-delete-thread="${esc(item.id || "")}" title="${esc(deleteTitle)}" aria-label="${esc(deleteTitle)}">${esc(t("admin.deleteThread", "Delete"))}</button></span><span class="kwc-dm-thread-preview" title="${esc(meta.replace(/<[^>]*>/g, ""))}">${meta}</span></div>`;
     }).join("") : "";
     const previewHtml = state.privateChatSuperAdmin ? cleanupPreviewHtml(state.dmCleanupPreview, "dm") : "";
     list.innerHTML = userHtml + previewHtml + adminHtml;
@@ -12909,16 +13982,16 @@
   }
 
   function renderDirectMessageHeader(label) {
-    const title = document.getElementById("bmwc-dm-title");
+    const title = document.getElementById("kwc-dm-title");
     if (!title) return;
     const thread = state.dmActiveThreadId ? (state.dmThreads || []).find(t => t.id === state.dmActiveThreadId) : null;
     const target = thread || state.dmDraftTarget || null;
     const value = label || (target ? directMessageLabel(target) : t("dm.selectThread", "Select a thread"));
     if (state.dmAuditMode && state.dmAuditThread) {
-      title.innerHTML = `<span class="bmwc-admin-meta-title">🛡 ${esc(t("admin.dmAuditView", "DM audit (read-only)"))}</span> ${directMessageAdminIdentityHtml(state.dmAuditThread)}`;
+      title.innerHTML = `<span class="kwc-admin-meta-title">🛡 ${esc(t("admin.dmAuditView", "DM audit (read-only)"))}</span> ${directMessageAdminIdentityHtml(state.dmAuditThread)}`;
       title.dataset.dmPlainTitle = directMessagePlainLabel(value);
     } else if (target) {
-      title.innerHTML = directMessageHeaderIdentityHtml(target, "bmwc-dm-title-name");
+      title.innerHTML = directMessageHeaderIdentityHtml(target, "kwc-dm-title-name");
       title.dataset.dmPlainTitle = directMessageHeaderPlainLabel(target, value);
     } else {
       title.innerHTML = directMessageLabelHtml(value);
@@ -12981,12 +14054,12 @@
     if (!mine || !msg) return "";
     const status = String(msg.deliveryStatus || "delivered").toLowerCase();
     if (status === "pending") {
-      return `<span class="bmwc-delivery-status bmwc-delivery-pending">${esc(t("delivery.pending", "Sending"))}</span>`;
+      return `<span class="kwc-delivery-status kwc-delivery-pending">${esc(t("delivery.pending", "Sending"))}</span>`;
     }
     if (status === "failed") {
       const error = String(msg.deliveryError || "").trim();
       const attr = type === "group" ? "data-group-retry-message" : "data-dm-retry-message";
-      return `<span class="bmwc-delivery-status bmwc-delivery-failed"${error ? ` title="${esc(error)}"` : ""}><span>${esc(t("delivery.failed", "Failed"))}</span><button type="button" class="bmwc-delivery-retry" ${attr}="${esc(msg.id || "")}">${esc(t("delivery.retry", "Retry"))}</button></span>`;
+      return `<span class="kwc-delivery-status kwc-delivery-failed"${error ? ` title="${esc(error)}"` : ""}><span>${esc(t("delivery.failed", "Failed"))}</span><button type="button" class="kwc-delivery-retry" ${attr}="${esc(msg.id || "")}">${esc(t("delivery.retry", "Retry"))}</button></span>`;
     }
     return "";
   }
@@ -13001,19 +14074,19 @@
         : (msg.readByOther === true ? 0 : 1);
       if (count <= 0) {
         const label = t("receipt.read", "Read");
-        return `<span class="bmwc-read-receipt bmwc-read-receipt-dm" title="${esc(label)}" aria-label="${esc(label)}">✓</span>`;
+        return `<span class="kwc-read-receipt kwc-read-receipt-dm" title="${esc(label)}" aria-label="${esc(label)}">✓</span>`;
       }
       const label = t("receipt.unread", "Unread");
-      return `<span class="bmwc-read-receipt bmwc-read-receipt-dm" title="${esc(label)}" aria-label="${esc(label)}">${esc(label)}</span>`;
+      return `<span class="kwc-read-receipt kwc-read-receipt-dm" title="${esc(label)}" aria-label="${esc(label)}">${esc(label)}</span>`;
     }
     if (type === "group") {
       const count = Math.max(0, Number(msg.unreadMemberCount || 0));
       if (count <= 0) {
         const label = t("receipt.readAll", "Read by everyone");
-        return `<span class="bmwc-read-receipt bmwc-read-receipt-group" title="${esc(label)}" aria-label="${esc(label)}">✓</span>`;
+        return `<span class="kwc-read-receipt kwc-read-receipt-group" title="${esc(label)}" aria-label="${esc(label)}">✓</span>`;
       }
       const label = fmt("receipt.unreadCount", "{count} people have not read this message", {count: String(count)});
-      return `<span class="bmwc-read-receipt bmwc-read-receipt-group" title="${esc(label)}" aria-label="${esc(label)}">${esc(String(count))}</span>`;
+      return `<span class="kwc-read-receipt kwc-read-receipt-group" title="${esc(label)}" aria-label="${esc(label)}">${esc(String(count))}</span>`;
     }
     return "";
   }
@@ -13022,7 +14095,7 @@
     const delivery = privateDeliveryStatusHtml(msg, mine, type);
     const receipt = privateReadReceiptHtml(msg, type);
     if (!delivery && !receipt) return "";
-    return `<span class="bmwc-private-meta-status">${delivery}${receipt}</span>`;
+    return `<span class="kwc-private-meta-status">${delivery}${receipt}</span>`;
   }
 
   function directMessageOptimisticMessage(clientMessageId, message, requestBody) {
@@ -13037,7 +14110,7 @@
       deliveryStatus: "pending",
       deliveryError: "",
       clientMessageId,
-      _bmwcDmRequestBody: Object.assign({}, requestBody || {})
+      _kwcDmRequestBody: Object.assign({}, requestBody || {})
     };
   }
 
@@ -13066,7 +14139,7 @@
       return true;
     } catch (e) {
       const response = e && e.response || {};
-      updateOptimisticDirectMessage(clientMessageId, "failed", String(response.error || e.message || "send_failed"));
+      updateOptimisticDirectMessage(clientMessageId, "failed", responseError(response, e.message || "send_failed"));
       return false;
     }
   }
@@ -13075,13 +14148,13 @@
     messageId = String(messageId || "").trim();
     if (!messageId || !state.token) return;
 
-    // A local optimistic ID means the request to this BMWC server itself was
+    // A local optimistic ID means the request to this KWC server itself was
     // uncertain. Re-submit the exact same clientMessageId so the server can
     // return the already-created message instead of creating a duplicate.
     if (messageId.startsWith("local-dm-")) {
       const item = (state.dmMessages || []).find(msg => String(msg && msg.id || "") === messageId);
       const clientMessageId = String(item && item.clientMessageId || "").trim();
-      const requestBody = item && item._bmwcDmRequestBody ? Object.assign({}, item._bmwcDmRequestBody) : null;
+      const requestBody = item && item._kwcDmRequestBody ? Object.assign({}, item._kwcDmRequestBody) : null;
       if (!item || !clientMessageId || !requestBody) return;
       item.deliveryStatus = "pending";
       item.deliveryError = "";
@@ -13091,7 +14164,7 @@
     }
 
     try {
-      await api("/dm/retry", {method: "POST", body: JSON.stringify({token: state.token, messageId})});
+      await api("/dm/retry", {method: "POST", body: JSON.stringify({messageId})});
       if (state.dmActiveThreadId) await loadDirectMessageMessages(state.dmActiveThreadId);
     } catch (e) {
       alertResponse("alert.dmRetryFailed", "Failed to retry message: {error}", e.response || {error: e.message || "error"});
@@ -13114,7 +14187,7 @@
   function privateMessageMetaHtml(msg, mine, type = "dm") {
     const sender = msg.senderDisplayName || msg.senderUsername || msg.senderUuid || "";
     const senderIdentity = {senderDisplayName: sender, senderUsername: msg.senderUsername || "", senderUuid: msg.senderUuid || ""};
-    return `${directMessageIdentityHtml(senderIdentity, "bmwc-sender")}<span class="bmwc-meta-sep" aria-hidden="true">·</span><span class="bmwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span>${type === "dm" ? (state.dmAuditMode ? "" : privateMessageMetaStatusHtml(msg, mine, "dm")) : (state.groupAuditMode ? "" : privateMessageMetaStatusHtml(msg, mine, "group"))}`;
+    return `${directMessageIdentityHtml(senderIdentity, "kwc-sender")}<span class="kwc-meta-sep" aria-hidden="true">·</span><span class="kwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span>${type === "dm" ? (state.dmAuditMode ? "" : privateMessageMetaStatusHtml(msg, mine, "dm")) : (state.groupAuditMode ? "" : privateMessageMetaStatusHtml(msg, mine, "group"))}`;
   }
 
   function createPrivateMessageElement(msg, type = "dm") {
@@ -13122,33 +14195,33 @@
     const rawMessageId = String(msg.id || "");
     const body = String(msg.body || "");
     const el = document.createElement("div");
-    el.className = `bmwc-msg bmwc-dm-message${type === "group" ? " bmwc-group-message" : ""}${mine ? " bmwc-mine" : ""}`;
-    el.dataset.bmwcPrivateMessageKey = privateMessageDomKey(msg, type);
-    el.dataset.bmwcPrivateBody = body;
+    el.className = `kwc-msg kwc-dm-message${type === "group" ? " kwc-group-message" : ""}${mine ? " kwc-mine" : ""}`;
+    el.dataset.kwcPrivateMessageKey = privateMessageDomKey(msg, type);
+    el.dataset.kwcPrivateBody = body;
     if (type === "group") el.dataset.groupMessageId = rawMessageId;
     else el.dataset.dmMessageId = rawMessageId;
     const persisted = /^\d+$/.test(rawMessageId);
     const hideButton = type === "group"
-      ? (!state.groupAuditMode && persisted ? `<button type="button" class="bmwc-dm-message-hide" data-group-hide-message="${esc(rawMessageId)}" title="${esc(t("dm.hideMessage", "Hide this message"))}">×</button>` : "")
-      : (state.dmAuditMode ? "" : `<button type="button" class="bmwc-dm-message-hide" data-dm-hide-message="${esc(rawMessageId)}" title="${esc(t("dm.hideMessage", "Hide this message"))}" aria-label="${esc(t("dm.hideMessage", "Hide this message"))}">×</button>`);
-    el.innerHTML = `<div class="bmwc-meta bmwc-dm-message-meta">${privateMessageMetaHtml(msg, mine, type)}</div>${hideButton}<div class="bmwc-text bmwc-dm-message-body">${directMessageBodyHtml(body)}</div>${directMessagePreviewHtml(body, rawMessageId, type)}`;
+      ? (!state.groupAuditMode && persisted ? `<button type="button" class="kwc-dm-message-hide" data-group-hide-message="${esc(rawMessageId)}" title="${esc(t("dm.hideMessage", "Hide this message"))}">×</button>` : "")
+      : (state.dmAuditMode ? "" : `<button type="button" class="kwc-dm-message-hide" data-dm-hide-message="${esc(rawMessageId)}" title="${esc(t("dm.hideMessage", "Hide this message"))}" aria-label="${esc(t("dm.hideMessage", "Hide this message"))}">×</button>`);
+    el.innerHTML = `<div class="kwc-meta kwc-dm-message-meta">${privateMessageMetaHtml(msg, mine, type)}</div>${hideButton}<div class="kwc-text kwc-dm-message-body">${directMessageBodyHtml(body)}</div>${directMessagePreviewHtml(body, rawMessageId, type)}`;
     return el;
   }
 
   function syncPrivateMessageElement(el, msg, type = "dm") {
     if (!el || !msg) return el;
     const mine = !!(state.username && msg.senderUsername && String(msg.senderUsername).toLowerCase() === String(state.username).toLowerCase());
-    el.classList.toggle("bmwc-mine", mine);
+    el.classList.toggle("kwc-mine", mine);
     const rawMessageId = String(msg.id || "");
     if (type === "group") el.dataset.groupMessageId = rawMessageId;
     else el.dataset.dmMessageId = rawMessageId;
-    const meta = el.querySelector(":scope > .bmwc-dm-message-meta");
+    const meta = el.querySelector(":scope > .kwc-dm-message-meta");
     if (meta) meta.innerHTML = privateMessageMetaHtml(msg, mine, type);
     // Private chat message bodies are immutable after storage. Do not rebuild the
     // body/preview on delivery/read refreshes: a loaded video/audio element must
     // remain mounted in exactly the same message DOM node, like public chat.
     const body = String(msg.body || "");
-    if (String(el.dataset.bmwcPrivateBody || "") !== body) {
+    if (String(el.dataset.kwcPrivateBody || "") !== body) {
       const replacement = createPrivateMessageElement(msg, type);
       el.replaceWith(replacement);
       return replacement;
@@ -13160,24 +14233,24 @@
     if (!root) return;
     if (type === "group") {
       root.querySelectorAll("[data-group-hide-message]").forEach(btn => {
-        if (btn.dataset.bmwcPrivateActionInstalled === "1") return;
-        btn.dataset.bmwcPrivateActionInstalled = "1";
+        if (btn.dataset.kwcPrivateActionInstalled === "1") return;
+        btn.dataset.kwcPrivateActionInstalled = "1";
         btn.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); hideGroupMessage(btn.dataset.groupHideMessage || ""); });
       });
       root.querySelectorAll("[data-group-retry-message]").forEach(btn => {
-        if (btn.dataset.bmwcPrivateActionInstalled === "1") return;
-        btn.dataset.bmwcPrivateActionInstalled = "1";
+        if (btn.dataset.kwcPrivateActionInstalled === "1") return;
+        btn.dataset.kwcPrivateActionInstalled = "1";
         btn.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); retryGroupChatMessage(btn.dataset.groupRetryMessage || ""); });
       });
     } else {
       root.querySelectorAll("[data-dm-hide-message]").forEach(btn => {
-        if (btn.dataset.bmwcPrivateActionInstalled === "1") return;
-        btn.dataset.bmwcPrivateActionInstalled = "1";
+        if (btn.dataset.kwcPrivateActionInstalled === "1") return;
+        btn.dataset.kwcPrivateActionInstalled = "1";
         btn.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); hideDirectMessageForMe(btn.dataset.dmHideMessage || ""); });
       });
       root.querySelectorAll("[data-dm-retry-message]").forEach(btn => {
-        if (btn.dataset.bmwcPrivateActionInstalled === "1") return;
-        btn.dataset.bmwcPrivateActionInstalled = "1";
+        if (btn.dataset.kwcPrivateActionInstalled === "1") return;
+        btn.dataset.kwcPrivateActionInstalled = "1";
         btn.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); retryDirectMessageDelivery(btn.dataset.dmRetryMessage || ""); });
       });
     }
@@ -13200,23 +14273,23 @@
       state.youtubeExpanded.delete(key);
     });
     box.replaceChildren();
-    box.removeAttribute("data-bmwc-private-media-conversation");
+    box.removeAttribute("data-kwc-private-media-conversation");
     box.scrollTop = 0;
   }
 
   function reconcilePrivateMessageList(box, messages, type, conversationKey, auditNoticeHtml, emptyHtml) {
     const arr = Array.isArray(messages) ? messages : [];
-    const sameConversation = String(box.dataset.bmwcPrivateMediaConversation || "") === String(conversationKey || "");
+    const sameConversation = String(box.dataset.kwcPrivateMediaConversation || "") === String(conversationKey || "");
     const wasNearBottom = sameConversation ? privateMessageNearBottom(box) : true;
     if (!sameConversation) {
       // Conversation changes intentionally discard the old DOM and its
       // click-to-load/open state. Same-conversation refreshes never
       // clear/reparent an existing message/media node.
       discardPrivateMessageDom(box);
-      box.dataset.bmwcPrivateMediaConversation = String(conversationKey || "");
+      box.dataset.kwcPrivateMediaConversation = String(conversationKey || "");
     }
 
-    let notice = box.querySelector(":scope > .bmwc-admin-audit-notice");
+    let notice = box.querySelector(":scope > .kwc-admin-audit-notice");
     if (auditNoticeHtml) {
       if (!notice) {
         const holder = document.createElement("div");
@@ -13234,9 +14307,9 @@
       notice = null;
     }
 
-    const empty = box.querySelector(":scope > .bmwc-dm-empty");
+    const empty = box.querySelector(":scope > .kwc-dm-empty");
     if (!arr.length) {
-      box.querySelectorAll(":scope > .bmwc-msg[data-bmwc-private-message-key]").forEach(el => el.remove());
+      box.querySelectorAll(":scope > .kwc-msg[data-kwc-private-message-key]").forEach(el => el.remove());
       if (empty) empty.outerHTML = emptyHtml;
       else {
         const holder = document.createElement("div");
@@ -13249,8 +14322,8 @@
     if (empty) empty.remove();
 
     const renderedByKey = new Map();
-    box.querySelectorAll(":scope > .bmwc-msg[data-bmwc-private-message-key]").forEach(el => {
-      const key = String(el.dataset.bmwcPrivateMessageKey || "");
+    box.querySelectorAll(":scope > .kwc-msg[data-kwc-private-message-key]").forEach(el => {
+      const key = String(el.dataset.kwcPrivateMessageKey || "");
       if (key) renderedByKey.set(key, el);
     });
     const desiredKeys = new Set(arr.map(msg => privateMessageDomKey(msg, type)));
@@ -13281,7 +14354,7 @@
       else box.appendChild(el);
       renderedByKey.set(key, el);
     }
-    box.dataset.bmwcPrivateMediaConversation = String(conversationKey || "");
+    box.dataset.kwcPrivateMediaConversation = String(conversationKey || "");
     hydrateDirectMessageRenderedContent(box);
     installSenderIdentityToggle(box);
     installTimeToggle(box);
@@ -13290,7 +14363,7 @@
   }
 
   function renderDirectMessageMessages(messages, options = {}) {
-    const box = document.getElementById("bmwc-dm-messages");
+    const box = document.getElementById("kwc-dm-messages");
     if (!box) return;
     hideDirectMessageEdgeToast(true);
     const arr = Array.isArray(messages) ? messages : [];
@@ -13301,7 +14374,7 @@
       state.dmMessagesHasMore = false;
       discardPrivateMessageDom(box);
       const empty = document.createElement("div");
-      empty.className = "bmwc-dm-empty";
+      empty.className = "kwc-dm-empty";
       empty.textContent = t("dm.selectThread", "Select a thread");
       box.appendChild(empty);
       renderDirectMessageHeader("");
@@ -13309,9 +14382,9 @@
     }
     const conversationKey = "dm:" + String(state.dmActiveThreadId || (state.dmDraftTarget && state.dmDraftTarget.uuid) || "");
     const auditNotice = state.dmAuditMode
-      ? `<div class="bmwc-admin-audit-notice">🛡 ${esc(t("admin.dmAuditReadOnly", "This administrator audit view is read-only. Every access is recorded in the audit log."))}</div>`
+      ? `<div class="kwc-admin-audit-notice">🛡 ${esc(t("admin.dmAuditReadOnly", "This administrator audit view is read-only. Every access is recorded in the audit log."))}</div>`
       : "";
-    const result = reconcilePrivateMessageList(box, arr, "dm", conversationKey, auditNotice, `<div class="bmwc-dm-empty">${esc(t("dm.emptyThread", "No messages yet."))}</div>`);
+    const result = reconcilePrivateMessageList(box, arr, "dm", conversationKey, auditNotice, `<div class="kwc-dm-empty">${esc(t("dm.emptyThread", "No messages yet."))}</div>`);
     if (options && options.preserveTop) {
       const delta = Math.max(0, Number(box.scrollHeight || 0) - prevHeight);
       box.scrollTop = prevTop + delta;
@@ -13322,8 +14395,7 @@
 
   function directMessageMessagesUrl(threadId, beforeId = 0, limit = 100) {
     const path = state.dmAuditMode ? "/admin/dm/messages" : "/dm/messages";
-    let url = path + "?token=" + encodeURIComponent(state.token)
-      + "&threadId=" + encodeURIComponent(threadId)
+    let url = path + "?threadId=" + encodeURIComponent(threadId)
       + "&limit=" + encodeURIComponent(String(limit));
     if (Number(beforeId || 0) > 0) url += "&before=" + encodeURIComponent(String(beforeId));
     return url;
@@ -13361,7 +14433,7 @@
       state.dmMessagesHasMore = false;
       return false;
     }
-    if (!box) box = document.getElementById("bmwc-dm-messages");
+    if (!box) box = document.getElementById("kwc-dm-messages");
     const prevTop = box ? Number(box.scrollTop || 0) : 0;
     const prevHeight = box ? Number(box.scrollHeight || 0) : 0;
     state.dmMessagesLoading = true;
@@ -13417,7 +14489,7 @@
     if (!messageId || !state.token) return;
     if (state.directMessageConfirmHide && !confirmPlain(t("dm.confirmHideMessage", "Hide this message from your view?"))) return;
     try {
-      const res = await api("/dm/hide-message", {method: "POST", body: JSON.stringify({token: state.token, messageId})});
+      const res = await api("/dm/hide-message", {method: "POST", body: JSON.stringify({messageId})});
       state.dmUnread = Number(res.unread || 0);
       updateDirectMessageButton();
       if (state.dmActiveThreadId) await loadDirectMessageMessages(state.dmActiveThreadId);
@@ -13429,8 +14501,8 @@
   }
 
   function syncDirectMessagePlayerSearchPanelSize() {
-    const panel = document.getElementById("bmwc-dm-search-panel");
-    const modal = panel && panel.closest ? panel.closest(".bmwc-dm-modal") : null;
+    const panel = document.getElementById("kwc-dm-search-panel");
+    const modal = panel && panel.closest ? panel.closest(".kwc-dm-modal") : null;
     if (!panel || !modal) return;
 
     // This panel had an older compact-width rule with !important.  Apply the
@@ -13447,24 +14519,24 @@
   }
 
   function resetDirectMessagePlayerSearchPanelSize() {
-    const panel = document.getElementById("bmwc-dm-search-panel");
+    const panel = document.getElementById("kwc-dm-search-panel");
     if (!panel) return;
     ["left", "right", "width", "max-width", "box-sizing"].forEach(name => panel.style.removeProperty(name));
   }
 
   function closeDirectMessagePlayerSearch() {
     state.dmSearchPanelOpen = false;
-    const panel = document.getElementById("bmwc-dm-search-panel");
-    if (panel) panel.classList.add("bmwc-hidden");
+    const panel = document.getElementById("kwc-dm-search-panel");
+    if (panel) panel.classList.add("kwc-hidden");
     resetDirectMessagePlayerSearchPanelSize();
   }
 
   function openDirectMessagePlayerSearch() {
     state.dmSearchPanelOpen = true;
-    const panel = document.getElementById("bmwc-dm-search-panel");
-    const input = document.getElementById("bmwc-dm-search");
+    const panel = document.getElementById("kwc-dm-search-panel");
+    const input = document.getElementById("kwc-dm-search");
     if (panel) {
-      panel.classList.remove("bmwc-hidden");
+      panel.classList.remove("kwc-hidden");
       syncDirectMessagePlayerSearchPanelSize();
     }
     if (input) {
@@ -13476,9 +14548,9 @@
 
   function closeDirectMessageEmojiPanel() {
     state.dmEmojiPanelOpen = false;
-    const panel = document.getElementById("bmwc-dm-emoji-panel");
+    const panel = document.getElementById("kwc-dm-emoji-panel");
     if (panel) {
-      panel.classList.add("bmwc-hidden");
+      panel.classList.add("kwc-hidden");
       panel.hidden = true;
       panel.style.display = "none";
       panel.style.height = "0px";
@@ -13490,7 +14562,7 @@
 
   function toggleDirectMessageEmojiPanel() {
     if (!canUseCustomEmoji()) return;
-    setActiveComposeInput("bmwc-dm-input");
+    setActiveComposeInput("kwc-dm-input");
     state.dmEmojiPanelOpen = !state.dmEmojiPanelOpen;
     renderDirectMessageEmojiPanel();
   }
@@ -13506,17 +14578,17 @@
     }
     state.emojiPanelHeightPx = height;
     if (persist) {
-      try { localStorage.setItem("bmwc.emojiPanelHeightPx", String(height)); } catch (_) {}
+      try { localStorage.setItem("kwc.emojiPanelHeightPx", String(height)); } catch (_) {}
     }
-    const root = document.getElementById("bmwc-root");
+    const root = document.getElementById("kwc-root");
     if (root) {
-      root.style.setProperty("--bmwc-emoji-panel-height", height + "px");
-      root.style.setProperty("--bmwc-emoji-panel-min-height", minHeight + "px");
+      root.style.setProperty("--kwc-emoji-panel-height", height + "px");
+      root.style.setProperty("--kwc-emoji-panel-min-height", minHeight + "px");
     }
-    const wrap = document.querySelector(".bmwc-dm-modal-backdrop");
+    const wrap = document.querySelector(".kwc-dm-modal-backdrop");
     if (wrap) {
-      wrap.style.setProperty("--bmwc-emoji-panel-height", height + "px");
-      wrap.style.setProperty("--bmwc-emoji-panel-min-height", minHeight + "px");
+      wrap.style.setProperty("--kwc-emoji-panel-height", height + "px");
+      wrap.style.setProperty("--kwc-emoji-panel-min-height", minHeight + "px");
     }
     panel.hidden = false;
     panel.style.display = "flex";
@@ -13530,18 +14602,18 @@
 
 
   function updateDirectMessageEmojiResizeHandleVisibility() {
-    const handle = document.getElementById("bmwc-dm-emoji-resize");
+    const handle = document.getElementById("kwc-dm-emoji-resize");
     if (!handle) return;
     const visible = !!(state.dmModalOpen && state.dmEmojiPanelOpen && canUseCustomEmoji());
-    handle.classList.toggle("bmwc-hidden", !visible);
+    handle.classList.toggle("kwc-hidden", !visible);
     handle.hidden = !visible;
   }
 
   function installDirectMessageEmojiPanelResize(wrap) {
-    const handle = document.getElementById("bmwc-dm-emoji-resize");
-    const panel = document.getElementById("bmwc-dm-emoji-panel");
-    if (!wrap || !handle || !panel || handle.dataset.bmwcInstalled === "1") return;
-    handle.dataset.bmwcInstalled = "1";
+    const handle = document.getElementById("kwc-dm-emoji-resize");
+    const panel = document.getElementById("kwc-dm-emoji-panel");
+    if (!wrap || !handle || !panel || handle.dataset.kwcInstalled === "1") return;
+    handle.dataset.kwcInstalled = "1";
     const pointY = event => {
       const src = event.touches && event.touches.length ? event.touches[0] :
                   event.changedTouches && event.changedTouches.length ? event.changedTouches[0] :
@@ -13559,7 +14631,7 @@
         height: Number(panel.getBoundingClientRect().height || emojiPanelHeightPx()),
         currentHeight: Number(panel.getBoundingClientRect().height || emojiPanelHeightPx())
       };
-      document.body.classList.add("bmwc-emoji-resizing");
+      document.body.classList.add("kwc-emoji-resizing");
       try { handle.setPointerCapture && event.pointerId != null && handle.setPointerCapture(event.pointerId); } catch (_) {}
     };
     const move = event => {
@@ -13577,7 +14649,7 @@
       event.stopPropagation();
       setDirectMessageEmojiPanelHeight(panel, start.currentHeight || emojiPanelHeightPx(), true, {snap: false, snapScroll: true});
       state.emojiPanelResizeStart = null;
-      document.body.classList.remove("bmwc-emoji-resizing");
+      document.body.classList.remove("kwc-emoji-resizing");
     };
     handle.addEventListener("pointerdown", begin, {passive: false});
     document.addEventListener("pointermove", move, {passive: false});
@@ -13604,7 +14676,7 @@
 
   function directMessageEdgeToastEligible(box, position = "top") {
     if (!state.dmModalOpen || !hasDirectMessageConversationOpen()) return false;
-    if (!box || !box.querySelector || !box.querySelector(".bmwc-dm-message")) return false;
+    if (!box || !box.querySelector || !box.querySelector(".kwc-dm-message")) return false;
     return position === "bottom" ? directMessageEdgeAtBottom(box) : directMessageEdgeAtTop(box);
   }
 
@@ -13620,22 +14692,22 @@
       state.dmEdgePendingBottomUntil = 0;
       state.dmEdgeBottomExtraScrollCount = 0;
     }
-    const toast = document.getElementById("bmwc-dm-edge-toast");
-    if (toast) toast.classList.add("bmwc-hidden");
+    const toast = document.getElementById("kwc-dm-edge-toast");
+    if (toast) toast.classList.add("kwc-hidden");
   }
 
   function showDirectMessageEdgeToast(position = "top") {
-    const box = document.getElementById("bmwc-dm-messages");
+    const box = document.getElementById("kwc-dm-messages");
     const pos = position === "bottom" ? "bottom" : "top";
     if (!directMessageEdgeToastEligible(box, pos)) return;
 
-    const conv = document.querySelector(".bmwc-dm-conversation");
+    const conv = document.querySelector(".kwc-dm-conversation");
     if (!conv) return;
-    let toast = document.getElementById("bmwc-dm-edge-toast");
+    let toast = document.getElementById("kwc-dm-edge-toast");
     if (!toast) {
       toast = document.createElement("div");
-      toast.id = "bmwc-dm-edge-toast";
-      toast.className = "bmwc-dm-edge-toast bmwc-hidden";
+      toast.id = "kwc-dm-edge-toast";
+      toast.className = "kwc-dm-edge-toast kwc-hidden";
       conv.appendChild(toast);
     }
 
@@ -13644,9 +14716,9 @@
     if (now - Number(state.dmEdgeToastLastShownAt || 0) < 250) return;
 
     toast.textContent = t("history.end", "No more messages to display.");
-    toast.classList.toggle("bmwc-dm-edge-bottom", pos === "bottom");
-    toast.classList.toggle("bmwc-dm-edge-top", pos !== "bottom");
-    toast.classList.remove("bmwc-hidden");
+    toast.classList.toggle("kwc-dm-edge-bottom", pos === "bottom");
+    toast.classList.toggle("kwc-dm-edge-top", pos !== "bottom");
+    toast.classList.remove("kwc-hidden");
 
     state.dmEdgeToastVisible = true;
     state.dmEdgeToastVisibleUntil = now + 2500;
@@ -13664,7 +14736,7 @@
   }
 
   function maybeShowDirectMessageEdgeToastFromUserScroll(box, reason = "") {
-    if (!box) box = document.getElementById("bmwc-dm-messages");
+    if (!box) box = document.getElementById("kwc-dm-messages");
     if (!box) return;
     const now = Date.now();
     const atTop = directMessageEdgeAtTop(box);
@@ -13724,14 +14796,14 @@
   }
 
   function installDirectMessageEdgeToasts(wrap) {
-    const box = document.getElementById("bmwc-dm-messages");
-    if (!wrap || !box || box.dataset.bmwcDmEdgeInstalled === "1") return;
-    box.dataset.bmwcDmEdgeInstalled = "1";
+    const box = document.getElementById("kwc-dm-messages");
+    if (!wrap || !box || box.dataset.kwcDmEdgeInstalled === "1") return;
+    box.dataset.kwcDmEdgeInstalled = "1";
 
     const interactiveTarget = target => {
       try {
         return !!(target && target.closest && target.closest(
-          "button, input, textarea, select, a, .bmwc-media-card, .bmwc-youtube-card, .bmwc-social-card, .bmwc-social-embed"
+          "button, input, textarea, select, a, .kwc-media-card, .kwc-youtube-card, .kwc-social-card, .kwc-social-embed"
         ));
       } catch (_) {
         return false;
@@ -13836,7 +14908,7 @@
 
   function groupChatEdgeToastEligible(box, position = "top") {
     if (!state.groupModalOpen || !hasGroupChatConversationOpen()) return false;
-    if (!box || !box.querySelector || !box.querySelector(".bmwc-group-message")) return false;
+    if (!box || !box.querySelector || !box.querySelector(".kwc-group-message")) return false;
     return position === "bottom" ? groupChatEdgeAtBottom(box) : groupChatEdgeAtTop(box);
   }
 
@@ -13852,22 +14924,22 @@
       state.groupEdgePendingBottomUntil = 0;
       state.groupEdgeBottomExtraScrollCount = 0;
     }
-    const toast = document.getElementById("bmwc-group-edge-toast");
-    if (toast) toast.classList.add("bmwc-hidden");
+    const toast = document.getElementById("kwc-group-edge-toast");
+    if (toast) toast.classList.add("kwc-hidden");
   }
 
   function showGroupChatEdgeToast(position = "top") {
-    const box = document.getElementById("bmwc-group-messages");
+    const box = document.getElementById("kwc-group-messages");
     const pos = position === "bottom" ? "bottom" : "top";
     if (!groupChatEdgeToastEligible(box, pos)) return;
 
-    const conv = document.querySelector(".bmwc-group-modal .bmwc-dm-conversation");
+    const conv = document.querySelector(".kwc-group-modal .kwc-dm-conversation");
     if (!conv) return;
-    let toast = document.getElementById("bmwc-group-edge-toast");
+    let toast = document.getElementById("kwc-group-edge-toast");
     if (!toast) {
       toast = document.createElement("div");
-      toast.id = "bmwc-group-edge-toast";
-      toast.className = "bmwc-dm-edge-toast bmwc-hidden";
+      toast.id = "kwc-group-edge-toast";
+      toast.className = "kwc-dm-edge-toast kwc-hidden";
       conv.appendChild(toast);
     }
 
@@ -13876,9 +14948,9 @@
     if (now - Number(state.groupEdgeToastLastShownAt || 0) < 250) return;
 
     toast.textContent = t("history.end", "No more messages to display.");
-    toast.classList.toggle("bmwc-dm-edge-bottom", pos === "bottom");
-    toast.classList.toggle("bmwc-dm-edge-top", pos !== "bottom");
-    toast.classList.remove("bmwc-hidden");
+    toast.classList.toggle("kwc-dm-edge-bottom", pos === "bottom");
+    toast.classList.toggle("kwc-dm-edge-top", pos !== "bottom");
+    toast.classList.remove("kwc-hidden");
 
     state.groupEdgeToastVisible = true;
     state.groupEdgeToastVisibleUntil = now + 2500;
@@ -13896,7 +14968,7 @@
   }
 
   function maybeShowGroupChatEdgeToastFromUserScroll(box, reason = "") {
-    if (!box) box = document.getElementById("bmwc-group-messages");
+    if (!box) box = document.getElementById("kwc-group-messages");
     if (!box) return;
     const now = Date.now();
     const atTop = groupChatEdgeAtTop(box);
@@ -13954,14 +15026,14 @@
   }
 
   function installGroupChatEdgeToasts(wrap) {
-    const box = document.getElementById("bmwc-group-messages");
-    if (!wrap || !box || box.dataset.bmwcGroupEdgeInstalled === "1") return;
-    box.dataset.bmwcGroupEdgeInstalled = "1";
+    const box = document.getElementById("kwc-group-messages");
+    if (!wrap || !box || box.dataset.kwcGroupEdgeInstalled === "1") return;
+    box.dataset.kwcGroupEdgeInstalled = "1";
 
     const interactiveTarget = target => {
       try {
         return !!(target && target.closest && target.closest(
-          "button, input, textarea, select, a, .bmwc-media-card, .bmwc-youtube-card, .bmwc-social-card, .bmwc-social-embed"
+          "button, input, textarea, select, a, .kwc-media-card, .kwc-youtube-card, .kwc-social-card, .kwc-social-embed"
         ));
       } catch (_) {
         return false;
@@ -14049,9 +15121,9 @@
 
 
   function installDirectMessageWindowDrag(wrap) {
-    if (!wrap || wrap.dataset.bmwcDmWindowDragInstalled === "1") return;
-    wrap.dataset.bmwcDmWindowDragInstalled = "1";
-    const header = wrap.querySelector(".bmwc-dm-head");
+    if (!wrap || wrap.dataset.kwcDmWindowDragInstalled === "1") return;
+    wrap.dataset.kwcDmWindowDragInstalled = "1";
+    const header = wrap.querySelector(".kwc-dm-head");
     if (!header) return;
     let active = false;
     let lastX = 0;
@@ -14108,7 +15180,7 @@
   }
 
   function renderDirectMessageEmojiPanel() {
-    const panel = document.getElementById("bmwc-dm-emoji-panel");
+    const panel = document.getElementById("kwc-dm-emoji-panel");
     if (!panel) return;
     if (!state.dmEmojiPanelOpen || !canUseCustomEmoji()) {
       closeDirectMessageEmojiPanel();
@@ -14117,8 +15189,8 @@
     const packs = Array.isArray(state.emojiPacks) ? state.emojiPacks : [];
     const items = Array.isArray(state.emojiItems) ? state.emojiItems : [];
     if (!items.length) {
-      panel.innerHTML = `<div class="bmwc-emoji-scroll"><div class="bmwc-emoji-empty">${esc(t("emoji.empty", "No emojis configured."))}</div></div>`;
-      panel.classList.remove("bmwc-hidden");
+      panel.innerHTML = `<div class="kwc-emoji-scroll"><div class="kwc-emoji-empty">${esc(t("emoji.empty", "No emojis configured."))}</div></div>`;
+      panel.classList.remove("kwc-hidden");
       setDirectMessageEmojiPanelHeight(panel);
       installEmojiPanelWheelStep(panel);
       return;
@@ -14129,14 +15201,14 @@
     }
     state.dmEmojiSelectedPack = selectedPack;
     const packTabs = packs.length > 1
-      ? `<div class="bmwc-emoji-tabs">${packs.map(pack => {
+      ? `<div class="kwc-emoji-tabs">${packs.map(pack => {
           const id = String(pack.id || "");
-          return `<button type="button" class="bmwc-emoji-tab${id === selectedPack ? " bmwc-active" : ""}" data-emoji-pack="${esc(id)}">${esc(pack.label || id)} <span>${esc(pack.count || "")}</span></button>`;
+          return `<button type="button" class="kwc-emoji-tab${id === selectedPack ? " kwc-active" : ""}" data-emoji-pack="${esc(id)}">${esc(pack.label || id)} <span>${esc(pack.count || "")}</span></button>`;
         }).join("")}</div>`
       : "";
     const shown = selectedPack ? items.filter(item => String(item.pack || "") === selectedPack) : items;
-    panel.innerHTML = packTabs + `<div class="bmwc-emoji-scroll"><div class="bmwc-emoji-grid">${shown.map(emojiButtonHtml).join("")}</div></div>`;
-    panel.classList.remove("bmwc-hidden");
+    panel.innerHTML = packTabs + `<div class="kwc-emoji-scroll"><div class="kwc-emoji-grid">${shown.map(emojiButtonHtml).join("")}</div></div>`;
+    panel.classList.remove("kwc-hidden");
     setDirectMessageEmojiPanelHeight(panel);
     installEmojiPanelWheelStep(panel);
 
@@ -14144,8 +15216,8 @@
       btn.addEventListener("click", () => {
         const pack = btn.dataset.emojiPack || "";
         state.dmEmojiSelectedPack = pack;
-        panel.querySelectorAll(".bmwc-emoji-tab").forEach(tab => tab.classList.toggle("bmwc-active", tab === btn));
-        const grid = panel.querySelector(".bmwc-emoji-grid");
+        panel.querySelectorAll(".kwc-emoji-tab").forEach(tab => tab.classList.toggle("kwc-active", tab === btn));
+        const grid = panel.querySelector(".kwc-emoji-grid");
         if (grid) grid.innerHTML = items.filter(item => String(item.pack || "") === pack).map(emojiButtonHtml).join("");
         const scroll = emojiScrollElement(panel);
         if (scroll) scroll.scrollTop = 0;
@@ -14157,7 +15229,7 @@
   }
 
   function renderDirectMessagePlayers(players) {
-    const box = document.getElementById("bmwc-dm-player-results");
+    const box = document.getElementById("kwc-dm-player-results");
     if (!box) return;
     const arr = Array.isArray(players) ? players : [];
     if (!arr.length) {
@@ -14177,7 +15249,7 @@
         serverId: remote ? String(player.serverId || "") : "",
         serverName: remote ? String(player.serverName || player.serverId || "") : ""
       };
-      return `<button type="button" class="bmwc-dm-player" data-dm-player="${esc(uuid)}" ${directMessageTargetDataAttributes(target)} title="${esc(directMessagePlainLabel(label))}">${directMessageLabelHtml(label)}</button>`;
+      return `<button type="button" class="kwc-dm-player" data-dm-player="${esc(uuid)}" ${directMessageTargetDataAttributes(target)} title="${esc(directMessagePlainLabel(label))}">${directMessageLabelHtml(label)}</button>`;
     }).join("");
     box.querySelectorAll("[data-dm-player]").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -14198,7 +15270,7 @@
         updateDirectMessageViewMode();
         box.innerHTML = "";
         closeDirectMessagePlayerSearch();
-        const input = document.getElementById("bmwc-dm-input");
+        const input = document.getElementById("kwc-dm-input");
         if (input) {
           setActiveComposeInput(input);
           input.focus();
@@ -14215,7 +15287,7 @@
     }
     try {
       const cleanQuery = directMessagePlainLabel(stripMinecraftColorCodes(query));
-      const res = await api("/dm/players?token=" + encodeURIComponent(state.token) + "&q=" + encodeURIComponent(cleanQuery) + "&limit=20");
+      const res = await api("/dm/players?q=" + encodeURIComponent(cleanQuery) + "&limit=20");
       renderDirectMessagePlayers(res.players || []);
     } catch (_) {}
   }
@@ -14223,9 +15295,9 @@
   function installDirectMessageDragAndDropUpload(wrap) {
     if (!wrap || wrap.dataset.dmDropInstalled === "1") return;
     wrap.dataset.dmDropInstalled = "1";
-    const modal = wrap.querySelector(".bmwc-dm-modal") || wrap;
+    const modal = wrap.querySelector(".kwc-dm-modal") || wrap;
     const setOver = visible => {
-      try { modal.classList.toggle("bmwc-dm-drag-over", !!visible); } catch (_) {}
+      try { modal.classList.toggle("kwc-dm-drag-over", !!visible); } catch (_) {}
     };
     const allowed = () => !state.dmAuditMode && !state.uploadActive && canUpload();
     ["dragenter", "dragover"].forEach(type => {
@@ -14251,7 +15323,7 @@
       if (state.dmAuditMode) return;
       const files = dropEventFiles(event);
       if (!files.length) return;
-      setActiveComposeInput("bmwc-dm-input");
+      setActiveComposeInput("kwc-dm-input");
       if (state.uploadActive) {
         alert(t("upload.dropBusy", "Upload is already in progress."));
         return;
@@ -14268,7 +15340,7 @@
   async function sendDirectMessageFromModal() {
     if (state.dmAuditMode) return;
     if (!state.token || !state.directMessageEnabled || !state.directMessageAllowWebSend) return;
-    const input = document.getElementById("bmwc-dm-input");
+    const input = document.getElementById("kwc-dm-input");
     if (!input) return;
     let message = String(input.value || "").trim();
     if (!message) return;
@@ -14276,7 +15348,7 @@
       message = message.slice(0, state.directMessageMaxMessageLength);
     }
     const clientMessageId = privateClientMessageId("dm");
-    const body = {token: state.token, message, clientMessageId};
+    const body = {message, clientMessageId};
     if (state.dmActiveThreadId) {
       const thread = (state.dmThreads || []).find(t => t.id === state.dmActiveThreadId);
       if (thread) {
@@ -14318,13 +15390,13 @@
 
 
   function updateGroupChatButton() {
-    const btn = document.getElementById("bmwc-group");
-    const badge = document.getElementById("bmwc-group-badge");
-    if (btn) btn.classList.toggle("bmwc-hidden", !(state.token && state.groupChatEnabled) || state.minimized);
+    const btn = document.getElementById("kwc-group");
+    const badge = document.getElementById("kwc-group-badge");
+    if (btn) btn.classList.toggle("kwc-hidden", !(state.token && state.groupChatEnabled) || state.minimized);
     if (!badge) return;
     const unread = Math.max(0, Number(state.groupUnread || 0));
     badge.textContent = unread > 99 ? "99+" : String(unread);
-    badge.classList.toggle("bmwc-hidden", !(state.token && state.groupChatEnabled && unread > 0));
+    badge.classList.toggle("kwc-hidden", !(state.token && state.groupChatEnabled && unread > 0));
   }
 
   function reconcileActiveGroupRoomAfterRoomLoad() {
@@ -14355,7 +15427,7 @@
   async function loadGroupChatRooms(silent = false) {
     if (!state.token || !state.groupChatEnabled) return;
     try {
-      const res = await api("/group/rooms?token=" + encodeURIComponent(state.token) + "&limit=200");
+      const res = await api("/group/rooms?limit=200");
       state.groupRooms = Array.isArray(res.rooms) ? res.rooms : [];
       state.groupInvites = Array.isArray(res.invites) ? res.invites : [];
       state.groupHiddenRooms = Array.isArray(res.hiddenRooms) ? res.hiddenRooms : [];
@@ -14395,41 +15467,41 @@
   }
 
   function renderGroupChatRooms() {
-    const list = document.getElementById("bmwc-group-room-list");
-    const invites = document.getElementById("bmwc-group-invites");
+    const list = document.getElementById("kwc-group-room-list");
+    const invites = document.getElementById("kwc-group-invites");
     if (!list) return;
     const rooms = Array.isArray(state.groupRooms) ? state.groupRooms : [];
     const hiddenRooms = Array.isArray(state.groupHiddenRooms) ? state.groupHiddenRooms : [];
     const adminRooms = Array.isArray(state.groupAdminRooms) ? state.groupAdminRooms : [];
     if (invites) {
       const arr = Array.isArray(state.groupInvites) ? state.groupInvites : [];
-      invites.innerHTML = arr.length ? `<div class="bmwc-group-invite-title">${esc(t("group.invites", "Invites"))}</div>` + arr.map(inv => `<div class="bmwc-group-invite"><span>${esc(inv.roomName || "")}</span><button class="bmwc-button" data-group-accept="${esc(inv.id)}">${esc(t("button.accept", "Accept"))}</button><button class="bmwc-button" data-group-decline="${esc(inv.id)}">${esc(t("button.decline", "Decline"))}</button></div>`).join("") : "";
+      invites.innerHTML = arr.length ? `<div class="kwc-group-invite-title">${esc(t("group.invites", "Invites"))}</div>` + arr.map(inv => `<div class="kwc-group-invite"><span>${esc(inv.roomName || "")}</span><button class="kwc-button" data-group-accept="${esc(inv.id)}">${esc(t("button.accept", "Accept"))}</button><button class="kwc-button" data-group-decline="${esc(inv.id)}">${esc(t("button.decline", "Decline"))}</button></div>`).join("") : "";
       invites.querySelectorAll("[data-group-accept]").forEach(btn => btn.addEventListener("click", () => respondGroupInvite(btn.dataset.groupAccept, true)));
       invites.querySelectorAll("[data-group-decline]").forEach(btn => btn.addEventListener("click", () => respondGroupInvite(btn.dataset.groupDecline, false)));
     }
     if (!rooms.length && !hiddenRooms.length && !adminRooms.length) {
-      list.innerHTML = `<div class="bmwc-dm-empty">${esc(t("group.noRooms", "No group chats."))}</div>`;
+      list.innerHTML = `<div class="kwc-dm-empty">${esc(t("group.noRooms", "No group chats."))}</div>`;
       return;
     }
     const roomHtml = rooms.map(room => {
-      const active = room.id === state.groupActiveRoomId ? " bmwc-active" : "";
+      const active = room.id === state.groupActiveRoomId ? " kwc-active" : "";
       const unread = Number(room.unread || 0);
-      const badge = unread > 0 ? `<span class="bmwc-dm-thread-badge">${esc(unread > 99 ? "99+" : String(unread))}</span>` : "";
+      const badge = unread > 0 ? `<span class="kwc-dm-thread-badge">${esc(unread > 99 ? "99+" : String(unread))}</span>` : "";
       const visibility = room.visibility === "public" ? t("group.public", "public") : t("group.private", "private");
       const privacyIcon = room.visibility === "public" ? "🌐" : "🔒";
       const passwordIcon = room.passwordProtected ? " 🔑" : "";
-      const join = room.member ? "" : ` <span class="bmwc-group-join-hint">${esc(t("group.join", "join"))}</span>`;
-      return `<button type="button" class="bmwc-dm-thread bmwc-group-room${active}" data-group-room="${esc(room.id)}"><span class="bmwc-dm-thread-name"><span class="bmwc-group-room-icon" aria-hidden="true">${privacyIcon}</span> ${esc(groupRoomLabel(room))}${passwordIcon}</span>${badge}<span class="bmwc-dm-thread-preview">${esc(visibility)} · ${esc(room.memberCount || 0)} ${esc(t("group.membersShort", "members"))}${join}</span></button>`;
+      const join = room.member ? "" : ` <span class="kwc-group-join-hint">${esc(t("group.join", "join"))}</span>`;
+      return `<button type="button" class="kwc-dm-thread kwc-group-room${active}" data-group-room="${esc(room.id)}"><span class="kwc-dm-thread-name"><span class="kwc-group-room-icon" aria-hidden="true">${privacyIcon}</span> ${esc(groupRoomLabel(room))}${passwordIcon}</span>${badge}<span class="kwc-dm-thread-preview">${esc(visibility)} · ${esc(room.memberCount || 0)} ${esc(t("group.membersShort", "members"))}${join}</span></button>`;
     }).join("");
-    const hiddenHtml = hiddenRooms.length ? `<div class="bmwc-admin-meta-title">${esc(t("group.hiddenRooms", "Hidden rooms"))}</div>` + hiddenRooms.map(room => {
+    const hiddenHtml = hiddenRooms.length ? `<div class="kwc-admin-meta-title">${esc(t("group.hiddenRooms", "Hidden rooms"))}</div>` + hiddenRooms.map(room => {
       const privacyIcon = room.visibility === "public" ? "🌐" : "🔒";
       const passwordIcon = room.passwordProtected ? " 🔑" : "";
-      return `<div class="bmwc-dm-thread bmwc-group-hidden-row"><span class="bmwc-dm-thread-name"><span class="bmwc-group-room-icon" aria-hidden="true">${privacyIcon}</span> ${esc(groupRoomLabel(room))}${passwordIcon}</span><span class="bmwc-admin-meta-actions"><button type="button" class="bmwc-button" data-group-unhide-room="${esc(room.id || "")}">${esc(t("group.showRoom", "Show"))}</button></span><span class="bmwc-dm-thread-preview">${esc(t("group.hiddenRoomHint", "Hidden from your list"))}</span></div>`;
+      return `<div class="kwc-dm-thread kwc-group-hidden-row"><span class="kwc-dm-thread-name"><span class="kwc-group-room-icon" aria-hidden="true">${privacyIcon}</span> ${esc(groupRoomLabel(room))}${passwordIcon}</span><span class="kwc-admin-meta-actions"><button type="button" class="kwc-button" data-group-unhide-room="${esc(room.id || "")}">${esc(t("group.showRoom", "Show"))}</button></span><span class="kwc-dm-thread-preview">${esc(t("group.hiddenRoomHint", "Hidden from your list"))}</span></div>`;
     }).join("") : "";
     const adminTitle = state.groupChatContentAccess
       ? t("admin.groupAuditTitle", "Admin group audit")
       : t("admin.groupMetaOnly", "Admin room metadata");
-    const adminHtml = adminRooms.length ? `<div class="bmwc-admin-meta-title">🛡 ${esc(adminTitle)}</div>` + adminRooms.map(room => {
+    const adminHtml = adminRooms.length ? `<div class="kwc-admin-meta-title">🛡 ${esc(adminTitle)}</div>` + adminRooms.map(room => {
       const privacyIcon = room.visibility === "public" ? "🌐" : "🔒";
       const passwordIcon = room.passwordProtected ? " 🔑" : "";
       const archived = room.archived ? ` · ${esc(t("admin.archived", "archived"))}` : "";
@@ -14443,14 +15515,14 @@
       const deleteTitle = t("admin.deleteGroupRoomHint", "Delete this group room, including metadata, messages, and uploads.");
       const openTitle = state.groupChatContentAccess ? t("admin.openGroupAudit", "Open this group chat in read-only audit view.") : t("admin.noContentAccess", "Message contents are not accessible from this view.");
       const openAttrs = state.groupChatContentAccess ? ` data-group-admin-open-room="${esc(room.id || "")}" role="button" tabindex="0"` : "";
-      const openClass = state.groupChatContentAccess ? " bmwc-admin-meta-open" : "";
-      return `<div class="bmwc-dm-thread bmwc-admin-meta-row${openClass}"${openAttrs}><span class="bmwc-dm-thread-name" title="${esc(openTitle)}">🛡 ${privacyIcon} ${esc(room.name || t("group.untitled", "Untitled room"))}${passwordIcon}</span><span class="bmwc-admin-meta-actions"><button type="button" class="bmwc-button" data-group-admin-lock-room="${esc(room.id || "")}" data-next-locked="${room.locked ? "false" : "true"}" title="${esc(lockTitle)}" aria-label="${esc(lockTitle)}">${esc(lockLabel)}</button><button type="button" class="bmwc-button" data-group-admin-retention-room="${esc(room.id || "")}" data-next-exempt="${room.retentionExempt ? "false" : "true"}" title="${esc(exemptTitle)}" aria-label="${esc(exemptTitle)}">${esc(exemptLabel)}</button><button type="button" class="bmwc-button bmwc-admin-meta-danger" data-group-admin-delete-room="${esc(room.id || "")}" title="${esc(deleteTitle)}" aria-label="${esc(deleteTitle)}">${esc(t("admin.deleteRoom", "Delete"))}</button></span><span class="bmwc-dm-thread-preview" title="${esc(meta.replace(/<[^>]*>/g, ""))}">${meta}</span></div>`;
+      const openClass = state.groupChatContentAccess ? " kwc-admin-meta-open" : "";
+      return `<div class="kwc-dm-thread kwc-admin-meta-row${openClass}"${openAttrs}><span class="kwc-dm-thread-name" title="${esc(openTitle)}">🛡 ${privacyIcon} ${esc(room.name || t("group.untitled", "Untitled room"))}${passwordIcon}</span><span class="kwc-admin-meta-actions"><button type="button" class="kwc-button" data-group-admin-lock-room="${esc(room.id || "")}" data-next-locked="${room.locked ? "false" : "true"}" title="${esc(lockTitle)}" aria-label="${esc(lockTitle)}">${esc(lockLabel)}</button><button type="button" class="kwc-button" data-group-admin-retention-room="${esc(room.id || "")}" data-next-exempt="${room.retentionExempt ? "false" : "true"}" title="${esc(exemptTitle)}" aria-label="${esc(exemptTitle)}">${esc(exemptLabel)}</button><button type="button" class="kwc-button kwc-admin-meta-danger" data-group-admin-delete-room="${esc(room.id || "")}" title="${esc(deleteTitle)}" aria-label="${esc(deleteTitle)}">${esc(t("admin.deleteRoom", "Delete"))}</button></span><span class="kwc-dm-thread-preview" title="${esc(meta.replace(/<[^>]*>/g, ""))}">${meta}</span></div>`;
     }).join("") : "";
     const previewHtml = state.privateChatSuperAdmin ? cleanupPreviewHtml(state.groupCleanupPreview, "group") : "";
     list.innerHTML = roomHtml + hiddenHtml + previewHtml + adminHtml;
     list.querySelectorAll("[data-group-admin-open-room]").forEach(row => {
       const open = event => {
-        if (event && event.target && event.target.closest && event.target.closest(".bmwc-admin-meta-actions")) return;
+        if (event && event.target && event.target.closest && event.target.closest(".kwc-admin-meta-actions")) return;
         const roomId = row.dataset.groupAdminOpenRoom || "";
         if (!roomId || !state.groupChatContentAccess) return;
         openGroupAuditRoom(roomId);
@@ -14507,7 +15579,7 @@
     roomId = String(roomId || "").trim();
     if (!roomId || !state.token) return;
     try {
-      await api("/group/unhide-room", {method: "POST", body: JSON.stringify({token: state.token, roomId})});
+      await api("/group/unhide-room", {method: "POST", body: JSON.stringify({roomId})});
       await loadGroupChatRooms(true);
       renderGroupChatRooms();
     } catch (e) {
@@ -14520,7 +15592,8 @@
     if (!roomId || !state.token || !state.privateChatSuperAdmin) return;
     if (!confirmPlain(t("admin.confirmDeleteGroupRoom", "Delete this group chat session and all of its metadata/messages/uploads? This cannot be undone."))) return;
     try {
-      await api("/admin/delete-group-room", {method: "POST", body: JSON.stringify({token: state.token, roomId})});
+      const res = await adminWrite("/admin/delete-group-room", {roomId});
+      if (!res?.ok) throw Object.assign(new Error(res?.error || "delete_failed"), {response: res});
       if (state.groupActiveRoomId === roomId) {
         state.groupActiveRoomId = "";
         state.groupActiveRoom = null;
@@ -14561,7 +15634,7 @@
       let password = "";
       if (room.passwordProtected) password = prompt(t("group.passwordPrompt", "Room password")) || "";
       try {
-        const res = await api("/group/join", {method: "POST", body: JSON.stringify({token: state.token, roomId, password})});
+        const res = await api("/group/join", {method: "POST", body: JSON.stringify({roomId, password})});
         if (res.room) state.groupActiveRoom = res.room;
         await loadGroupChatRooms(true);
         const refreshed = (state.groupRooms || []).find(r => r.id === roomId);
@@ -14607,14 +15680,14 @@
   }
 
   function renderGroupChatHeader() {
-    const title = document.getElementById("bmwc-group-title");
+    const title = document.getElementById("kwc-group-title");
     if (!title) return;
-    const modal = title.closest(".bmwc-group-modal");
+    const modal = title.closest(".kwc-group-modal");
     const room = state.groupActiveRoom || (state.groupRooms || []).find(r => r.id === state.groupActiveRoomId);
-    if (modal) modal.classList.toggle("bmwc-dm-thread-mode", !!room);
+    if (modal) modal.classList.toggle("kwc-dm-thread-mode", !!room);
     if (!room) {
       title.textContent = t("group.selectRoom", "Select a room");
-      title.classList.remove("bmwc-dm-title-back");
+      title.classList.remove("kwc-dm-title-back");
       title.title = "";
       title.removeAttribute("aria-label");
       title.removeAttribute("role");
@@ -14626,12 +15699,12 @@
     if (state.groupAuditMode) {
       const privacyIcon = room.visibility === "public" ? "🌐" : "🔒";
       const backLabel = t("group.backToList", "Back to group chat list");
-      title.classList.add("bmwc-dm-title-back");
+      title.classList.add("kwc-dm-title-back");
       title.title = backLabel;
       title.setAttribute("aria-label", backLabel);
       title.setAttribute("role", "button");
       title.tabIndex = 0;
-      title.innerHTML = `<span class="bmwc-group-title-main"><span class="bmwc-group-title-name">🛡 ${privacyIcon} ${esc(groupRoomLabel(room))}</span></span><small>${esc(t("admin.groupAuditReadOnly", "Read-only audit · every access is logged"))}</small>`;
+      title.innerHTML = `<span class="kwc-group-title-main"><span class="kwc-group-title-name">🛡 ${privacyIcon} ${esc(groupRoomLabel(room))}</span></span><small>${esc(t("admin.groupAuditReadOnly", "Read-only audit · every access is logged"))}</small>`;
       title.onclick = () => returnGroupChatToList();
       title.onkeydown = event => {
         if (!event || (event.key !== "Enter" && event.key !== " ")) return;
@@ -14646,7 +15719,7 @@
     const privacyIcon = room.visibility === "public" ? "🌐" : "🔒";
     const passwordText = room.passwordProtected ? ` · 🔑 ${esc(t("group.passwordProtected", "password"))}` : "";
     const backLabel = t("group.backToList", "Back to group chat list");
-    title.classList.add("bmwc-dm-title-back");
+    title.classList.add("kwc-dm-title-back");
     title.title = backLabel;
     title.setAttribute("aria-label", backLabel);
     title.setAttribute("role", "button");
@@ -14654,10 +15727,10 @@
     const memberCount = Math.max(0, Number(room.memberCount || 0));
     const onlineCount = Math.max(0, Number(room.onlineMemberCount || 0));
     const countText = fmt("group.memberOnlineCount", "{online}/{total} online", {online: onlineCount, total: memberCount});
-    title.innerHTML = `<span class="bmwc-group-title-main"><span class="bmwc-group-title-name">${privacyIcon} ${esc(groupRoomLabel(room))}</span><span class="bmwc-group-member-counts" id="bmwc-group-member-counts" role="button" tabindex="0" title="${esc(t("group.members", "Members"))}" aria-label="${esc(t("group.members", "Members"))}">${esc(countText)}</span></span><small>${esc(privacyLabel)}${passwordText}</small><span class="bmwc-group-actions">${manage ? `<button class="bmwc-button" id="bmwc-group-invite">${esc(t("group.invite", "Invite"))}</button>` : ""}<button class="bmwc-button" id="bmwc-group-hide-room">${esc(t("button.hide", "Hide"))}</button><button class="bmwc-button" id="bmwc-group-leave">${esc(t("group.leave", "Leave"))}</button></span>`;
+    title.innerHTML = `<span class="kwc-group-title-main"><span class="kwc-group-title-name">${privacyIcon} ${esc(groupRoomLabel(room))}</span><span class="kwc-group-member-counts" id="kwc-group-member-counts" role="button" tabindex="0" title="${esc(t("group.members", "Members"))}" aria-label="${esc(t("group.members", "Members"))}">${esc(countText)}</span></span><small>${esc(privacyLabel)}${passwordText}</small><span class="kwc-group-actions">${manage ? `<button class="kwc-button" id="kwc-group-invite">${esc(t("group.invite", "Invite"))}</button>` : ""}<button class="kwc-button" id="kwc-group-hide-room">${esc(t("button.hide", "Hide"))}</button><button class="kwc-button" id="kwc-group-leave">${esc(t("group.leave", "Leave"))}</button></span>`;
     title.onclick = event => {
-      if (event && event.target && event.target.closest && event.target.closest(".bmwc-group-actions")) return;
-      if (event && event.target && event.target.closest && event.target.closest(".bmwc-group-member-counts")) return;
+      if (event && event.target && event.target.closest && event.target.closest(".kwc-group-actions")) return;
+      if (event && event.target && event.target.closest && event.target.closest(".kwc-group-member-counts")) return;
       returnGroupChatToList();
     };
     title.onkeydown = event => {
@@ -14665,9 +15738,9 @@
       event.preventDefault();
       returnGroupChatToList();
     };
-    const invite = document.getElementById("bmwc-group-invite");
+    const invite = document.getElementById("kwc-group-invite");
     if (invite) invite.onclick = event => { event.preventDefault(); event.stopPropagation(); inviteToGroupRoom(); };
-    const memberCounts = document.getElementById("bmwc-group-member-counts");
+    const memberCounts = document.getElementById("kwc-group-member-counts");
     if (memberCounts) {
       memberCounts.onclick = event => { event.preventDefault(); event.stopPropagation(); openGroupManagePanel(); };
       memberCounts.onkeydown = event => {
@@ -14677,9 +15750,9 @@
         openGroupManagePanel();
       };
     }
-    const hideRoom = document.getElementById("bmwc-group-hide-room");
+    const hideRoom = document.getElementById("kwc-group-hide-room");
     if (hideRoom) hideRoom.onclick = event => { event.preventDefault(); event.stopPropagation(); hideGroupRoomForMe(); };
-    const leave = document.getElementById("bmwc-group-leave");
+    const leave = document.getElementById("kwc-group-leave");
     if (leave) leave.onclick = event => { event.preventDefault(); event.stopPropagation(); leaveGroupRoom(); };
     updateGroupChatComposeControls();
   }
@@ -14690,7 +15763,7 @@
     if (!roomId || !state.token) return;
     if (!confirmPlain(t("group.confirmHideRoom", "Hide this room from your group chat list?"))) return;
     try {
-      await api("/group/hide-room", {method: "POST", body: JSON.stringify({token: state.token, roomId})});
+      await api("/group/hide-room", {method: "POST", body: JSON.stringify({roomId})});
       state.groupActiveRoomId = "";
       state.groupActiveRoom = null;
       await loadGroupChatRooms(true);
@@ -14707,29 +15780,29 @@
     const roomId = state.groupActiveRoomId;
     if (!room || !roomId || !state.token) return;
     try {
-      const res = await api("/group/members?token=" + encodeURIComponent(state.token) + "&roomId=" + encodeURIComponent(roomId));
+      const res = await api("/group/members?roomId=" + encodeURIComponent(roomId));
       const members = Array.isArray(res.members) ? res.members : [];
       const bans = Array.isArray(res.bans) ? res.bans : [];
       const wrap = document.createElement("div");
-      wrap.className = "bmwc-modal-backdrop bmwc-user-prefs-backdrop";
+      wrap.className = "kwc-modal-backdrop kwc-user-prefs-backdrop";
       applyDetachedModalTheme(wrap);
       const canManage = room.role === "owner" || room.role === "admin";
       const canTransfer = room.role === "owner";
       const memberRows = members.map(m => {
         const online = m.online === true;
         const onlineText = online ? t("group.online", "Online") : t("group.offline", "Offline");
-        const actions = canManage ? `${m.role !== "owner" ? `<button class="bmwc-button" data-group-kick="${esc(m.uuid)}">${esc(t("group.kick", "Kick"))}</button><button class="bmwc-button" data-group-ban="${esc(m.uuid)}">${esc(t("group.ban", "Ban"))}</button>` : ""}${canTransfer && m.role !== "owner" ? `<button class="bmwc-button" data-group-transfer="${esc(m.uuid)}">${esc(t("group.transferOwner", "Transfer owner"))}</button>` : ""}` : "";
-        return `<div class="bmwc-group-member-row"><span>${directMessageIdentityHtml({displayName: m.displayName || m.label || m.username || "", username: m.username || "", uuid: m.uuid || ""}, "bmwc-sender")}<small>${esc(m.role || "member")} · <span class="bmwc-group-online-state"><span class="bmwc-group-online-dot${online ? "" : " bmwc-offline"}"></span>${esc(onlineText)}</span></small></span><span class="bmwc-group-member-actions">${actions}</span></div>`;
-      }).join("") || `<div class="bmwc-dm-empty">${esc(t("group.noMembers", "No members."))}</div>`;
-      const banRows = bans.map(b => `<div class="bmwc-group-member-row"><span>${directMessageIdentityHtml({displayName: b.displayName || b.label || b.username || "", username: b.username || "", uuid: b.uuid || ""}, "bmwc-sender")}<small>${esc(t("group.banned", "Banned"))}${b.bannedByLabel ? " · " + esc(b.bannedByLabel) : ""}</small></span><span class="bmwc-group-member-actions"><button class="bmwc-button" data-group-unban="${esc(b.uuid)}">${esc(t("group.unban", "Unban"))}</button></span></div>`).join("") || `<div class="bmwc-dm-empty">${esc(t("group.noBans", "No banned users."))}</div>`;
+        const actions = canManage ? `${m.role !== "owner" ? `<button class="kwc-button" data-group-kick="${esc(m.uuid)}">${esc(t("group.kick", "Kick"))}</button><button class="kwc-button" data-group-ban="${esc(m.uuid)}">${esc(t("group.ban", "Ban"))}</button>` : ""}${canTransfer && m.role !== "owner" ? `<button class="kwc-button" data-group-transfer="${esc(m.uuid)}">${esc(t("group.transferOwner", "Transfer owner"))}</button>` : ""}` : "";
+        return `<div class="kwc-group-member-row"><span>${directMessageIdentityHtml({displayName: m.displayName || m.label || m.username || "", username: m.username || "", uuid: m.uuid || ""}, "kwc-sender")}<small>${esc(m.role || "member")} · <span class="kwc-group-online-state"><span class="kwc-group-online-dot${online ? "" : " kwc-offline"}"></span>${esc(onlineText)}</span></small></span><span class="kwc-group-member-actions">${actions}</span></div>`;
+      }).join("") || `<div class="kwc-dm-empty">${esc(t("group.noMembers", "No members."))}</div>`;
+      const banRows = bans.map(b => `<div class="kwc-group-member-row"><span>${directMessageIdentityHtml({displayName: b.displayName || b.label || b.username || "", username: b.username || "", uuid: b.uuid || ""}, "kwc-sender")}<small>${esc(t("group.banned", "Banned"))}${b.bannedByLabel ? " · " + esc(b.bannedByLabel) : ""}</small></span><span class="kwc-group-member-actions"><button class="kwc-button" data-group-unban="${esc(b.uuid)}">${esc(t("group.unban", "Unban"))}</button></span></div>`).join("") || `<div class="kwc-dm-empty">${esc(t("group.noBans", "No banned users."))}</div>`;
       const manageNote = canManage ? t("group.manageNote", "Room managers can kick, ban, or transfer ownership. Message contents are not shown here.") : t("group.memberListNote", "Members can view the participant list. Management actions are only shown to room managers.");
-      const bansSection = canManage ? `<h4>${esc(t("group.bannedUsers", "Banned users"))}</h4><div class="bmwc-group-member-list">${banRows}</div>` : "";
-      wrap.innerHTML = `<div class="bmwc-modal bmwc-group-manage-modal"><h3>${esc(t("group.manage", "Manage"))} · ${esc(groupRoomLabel(room))}</h3><p class="bmwc-admin-meta-note">${esc(manageNote)}</p><h4>${esc(t("group.members", "Members"))}</h4><div class="bmwc-group-member-list">${memberRows}</div>${bansSection}<div class="bmwc-row"><button class="bmwc-button" id="bmwc-group-manage-close">${esc(t("button.close", "Close"))}</button></div></div>`;
+      const bansSection = canManage ? `<h4>${esc(t("group.bannedUsers", "Banned users"))}</h4><div class="kwc-group-member-list">${banRows}</div>` : "";
+      wrap.innerHTML = `<div class="kwc-modal kwc-group-manage-modal"><h3>${esc(t("group.manage", "Manage"))} · ${esc(groupRoomLabel(room))}</h3><p class="kwc-admin-meta-note">${esc(manageNote)}</p><h4>${esc(t("group.members", "Members"))}</h4><div class="kwc-group-member-list">${memberRows}</div>${bansSection}<div class="kwc-row"><button class="kwc-button" id="kwc-group-manage-close">${esc(t("button.close", "Close"))}</button></div></div>`;
       document.body.appendChild(wrap);
       installSenderIdentityToggle(wrap);
       const close = () => wrap.remove();
       wrap.addEventListener("click", e => { if (e.target === wrap) close(); });
-      wrap.querySelector("#bmwc-group-manage-close").onclick = close;
+      wrap.querySelector("#kwc-group-manage-close").onclick = close;
       const labelForTarget = targetUuid => {
         const found = (members.find(m => m.uuid === targetUuid) || bans.find(b => b.uuid === targetUuid) || {});
         return found.label || found.displayName || found.username || targetUuid;
@@ -14739,7 +15812,7 @@
         const label = labelForTarget(targetUuid);
         if (!confirmPlain(fmt(confirmKey, fallback, {player: label}))) return;
         try {
-          await api(endpoint, {method: "POST", body: JSON.stringify({token: state.token, roomId, targetUuid})});
+          await api(endpoint, {method: "POST", body: JSON.stringify({roomId, targetUuid})});
           close();
           await loadGroupChatRooms(true);
           const refreshed = (state.groupRooms || []).find(r => r.id === roomId);
@@ -14770,8 +15843,8 @@
   }
 
   function syncGroupPlayerSearchPanelSize() {
-    const panel = document.getElementById("bmwc-group-search-panel");
-    const modal = panel && panel.closest ? panel.closest(".bmwc-group-modal") : null;
+    const panel = document.getElementById("kwc-group-search-panel");
+    const modal = panel && panel.closest ? panel.closest(".kwc-group-modal") : null;
     if (!panel || !modal) return;
     const sideGap = (Number(modal.getBoundingClientRect().width || 0) <= 360) ? 6 : 10;
     panel.style.setProperty("left", sideGap + "px", "important");
@@ -14782,25 +15855,25 @@
   }
 
   function resetGroupPlayerSearchPanelSize() {
-    const panel = document.getElementById("bmwc-group-search-panel");
+    const panel = document.getElementById("kwc-group-search-panel");
     if (!panel) return;
     ["left", "right", "width", "max-width", "box-sizing"].forEach(name => panel.style.removeProperty(name));
   }
 
   function closeGroupPlayerSearch() {
     state.groupSearchPanelOpen = false;
-    const panel = document.getElementById("bmwc-group-search-panel");
-    if (panel) panel.classList.add("bmwc-hidden");
+    const panel = document.getElementById("kwc-group-search-panel");
+    if (panel) panel.classList.add("kwc-hidden");
     resetGroupPlayerSearchPanelSize();
   }
 
   function openGroupPlayerSearch() {
     if (!state.groupActiveRoomId) return;
     state.groupSearchPanelOpen = true;
-    const panel = document.getElementById("bmwc-group-search-panel");
-    const input = document.getElementById("bmwc-group-search");
+    const panel = document.getElementById("kwc-group-search-panel");
+    const input = document.getElementById("kwc-group-search");
     if (panel) {
-      panel.classList.remove("bmwc-hidden");
+      panel.classList.remove("kwc-hidden");
       syncGroupPlayerSearchPanelSize();
     }
     if (input) {
@@ -14811,7 +15884,7 @@
   }
 
   function renderGroupPlayers(players) {
-    const box = document.getElementById("bmwc-group-player-results");
+    const box = document.getElementById("kwc-group-player-results");
     if (!box) return;
     const arr = Array.isArray(players) ? players : [];
     if (!arr.length) {
@@ -14820,7 +15893,7 @@
     }
     box.innerHTML = arr.map(player => {
       const label = player.label || player.displayName || player.username || player.uuid;
-      return `<button type="button" class="bmwc-dm-player" data-group-player="${esc(player.uuid)}" data-group-player-label="${esc(label)}" title="${esc(directMessagePlainLabel(label))}">${directMessageLabelHtml(label)}</button>`;
+      return `<button type="button" class="kwc-dm-player" data-group-player="${esc(player.uuid)}" data-group-player-label="${esc(label)}" title="${esc(directMessagePlainLabel(label))}">${directMessageLabelHtml(label)}</button>`;
     }).join("");
     box.querySelectorAll("[data-group-player]").forEach(btn => {
       btn.addEventListener("click", async event => {
@@ -14839,16 +15912,16 @@
     }
     try {
       const cleanQuery = directMessagePlainLabel(stripMinecraftColorCodes(query));
-      const res = await api("/group/players?token=" + encodeURIComponent(state.token) + "&q=" + encodeURIComponent(cleanQuery) + "&limit=20");
+      const res = await api("/group/players?q=" + encodeURIComponent(cleanQuery) + "&limit=20");
       renderGroupPlayers(res.players || []);
     } catch (_) {}
   }
 
   function closeGroupChatEmojiPanel() {
     state.groupEmojiPanelOpen = false;
-    const panel = document.getElementById("bmwc-group-emoji-panel");
+    const panel = document.getElementById("kwc-group-emoji-panel");
     if (panel) {
-      panel.classList.add("bmwc-hidden");
+      panel.classList.add("kwc-hidden");
       panel.hidden = true;
       panel.style.display = "none";
       panel.style.height = "0px";
@@ -14860,7 +15933,7 @@
 
   function toggleGroupChatEmojiPanel() {
     if (!canUseCustomEmoji()) return;
-    setActiveComposeInput("bmwc-group-input");
+    setActiveComposeInput("kwc-group-input");
     state.groupEmojiPanelOpen = !state.groupEmojiPanelOpen;
     renderGroupChatEmojiPanel();
   }
@@ -14874,17 +15947,17 @@
     if (!options || options.snap !== false) height = snapEmojiPanelHeightPx(height, panel);
     state.emojiPanelHeightPx = height;
     if (persist) {
-      try { localStorage.setItem("bmwc.emojiPanelHeightPx", String(height)); } catch (_) {}
+      try { localStorage.setItem("kwc.emojiPanelHeightPx", String(height)); } catch (_) {}
     }
-    const root = document.getElementById("bmwc-root");
+    const root = document.getElementById("kwc-root");
     if (root) {
-      root.style.setProperty("--bmwc-emoji-panel-height", height + "px");
-      root.style.setProperty("--bmwc-emoji-panel-min-height", minHeight + "px");
+      root.style.setProperty("--kwc-emoji-panel-height", height + "px");
+      root.style.setProperty("--kwc-emoji-panel-min-height", minHeight + "px");
     }
-    const wrap = document.querySelector(".bmwc-group-modal-backdrop");
+    const wrap = document.querySelector(".kwc-group-modal-backdrop");
     if (wrap) {
-      wrap.style.setProperty("--bmwc-emoji-panel-height", height + "px");
-      wrap.style.setProperty("--bmwc-emoji-panel-min-height", minHeight + "px");
+      wrap.style.setProperty("--kwc-emoji-panel-height", height + "px");
+      wrap.style.setProperty("--kwc-emoji-panel-min-height", minHeight + "px");
     }
     panel.hidden = false;
     panel.style.display = "flex";
@@ -14897,18 +15970,18 @@
   }
 
   function updateGroupChatEmojiResizeHandleVisibility() {
-    const handle = document.getElementById("bmwc-group-emoji-resize");
+    const handle = document.getElementById("kwc-group-emoji-resize");
     if (!handle) return;
     const visible = !!(state.groupModalOpen && state.groupEmojiPanelOpen && canUseCustomEmoji());
-    handle.classList.toggle("bmwc-hidden", !visible);
+    handle.classList.toggle("kwc-hidden", !visible);
     handle.hidden = !visible;
   }
 
   function installGroupChatEmojiPanelResize(wrap) {
-    const handle = document.getElementById("bmwc-group-emoji-resize");
-    const panel = document.getElementById("bmwc-group-emoji-panel");
-    if (!wrap || !handle || !panel || handle.dataset.bmwcInstalled === "1") return;
-    handle.dataset.bmwcInstalled = "1";
+    const handle = document.getElementById("kwc-group-emoji-resize");
+    const panel = document.getElementById("kwc-group-emoji-panel");
+    if (!wrap || !handle || !panel || handle.dataset.kwcInstalled === "1") return;
+    handle.dataset.kwcInstalled = "1";
     const pointY = event => {
       const src = event.touches && event.touches.length ? event.touches[0] :
                   event.changedTouches && event.changedTouches.length ? event.changedTouches[0] :
@@ -14926,7 +15999,7 @@
         height: Number(panel.getBoundingClientRect().height || emojiPanelHeightPx()),
         currentHeight: Number(panel.getBoundingClientRect().height || emojiPanelHeightPx())
       };
-      document.body.classList.add("bmwc-emoji-resizing");
+      document.body.classList.add("kwc-emoji-resizing");
       try { handle.setPointerCapture && event.pointerId != null && handle.setPointerCapture(event.pointerId); } catch (_) {}
     };
     const move = event => {
@@ -14944,7 +16017,7 @@
       event.stopPropagation();
       setGroupChatEmojiPanelHeight(panel, start.currentHeight || emojiPanelHeightPx(), true, {snap: false, snapScroll: true});
       state.emojiPanelResizeStart = null;
-      document.body.classList.remove("bmwc-emoji-resizing");
+      document.body.classList.remove("kwc-emoji-resizing");
     };
     handle.addEventListener("pointerdown", begin, {passive: false});
     document.addEventListener("pointermove", move, {passive: false});
@@ -14958,7 +16031,7 @@
   }
 
   function renderGroupChatEmojiPanel() {
-    const panel = document.getElementById("bmwc-group-emoji-panel");
+    const panel = document.getElementById("kwc-group-emoji-panel");
     if (!panel) return;
     if (!state.groupEmojiPanelOpen || !canUseCustomEmoji()) {
       closeGroupChatEmojiPanel();
@@ -14967,8 +16040,8 @@
     const packs = Array.isArray(state.emojiPacks) ? state.emojiPacks : [];
     const items = Array.isArray(state.emojiItems) ? state.emojiItems : [];
     if (!items.length) {
-      panel.innerHTML = `<div class="bmwc-emoji-scroll"><div class="bmwc-emoji-empty">${esc(t("emoji.empty", "No emojis configured."))}</div></div>`;
-      panel.classList.remove("bmwc-hidden");
+      panel.innerHTML = `<div class="kwc-emoji-scroll"><div class="kwc-emoji-empty">${esc(t("emoji.empty", "No emojis configured."))}</div></div>`;
+      panel.classList.remove("kwc-hidden");
       setGroupChatEmojiPanelHeight(panel);
       installEmojiPanelWheelStep(panel);
       return;
@@ -14976,21 +16049,21 @@
     let selectedPack = String(state.groupEmojiSelectedPack || "");
     if (!selectedPack || (packs.length && !packs.some(pack => String(pack.id || "") === selectedPack))) selectedPack = packs[0] && packs[0].id ? String(packs[0].id) : "";
     state.groupEmojiSelectedPack = selectedPack;
-    const packTabs = packs.length > 1 ? `<div class="bmwc-emoji-tabs">${packs.map(pack => {
+    const packTabs = packs.length > 1 ? `<div class="kwc-emoji-tabs">${packs.map(pack => {
       const id = String(pack.id || "");
-      return `<button type="button" class="bmwc-emoji-tab${id === selectedPack ? " bmwc-active" : ""}" data-emoji-pack="${esc(id)}">${esc(pack.label || id)} <span>${esc(pack.count || "")}</span></button>`;
+      return `<button type="button" class="kwc-emoji-tab${id === selectedPack ? " kwc-active" : ""}" data-emoji-pack="${esc(id)}">${esc(pack.label || id)} <span>${esc(pack.count || "")}</span></button>`;
     }).join("")}</div>` : "";
     const shown = selectedPack ? items.filter(item => String(item.pack || "") === selectedPack) : items;
-    panel.innerHTML = packTabs + `<div class="bmwc-emoji-scroll"><div class="bmwc-emoji-grid">${shown.map(emojiButtonHtml).join("")}</div></div>`;
-    panel.classList.remove("bmwc-hidden");
+    panel.innerHTML = packTabs + `<div class="kwc-emoji-scroll"><div class="kwc-emoji-grid">${shown.map(emojiButtonHtml).join("")}</div></div>`;
+    panel.classList.remove("kwc-hidden");
     setGroupChatEmojiPanelHeight(panel);
     installEmojiPanelWheelStep(panel);
     panel.querySelectorAll("[data-emoji-pack]").forEach(btn => {
       btn.addEventListener("click", () => {
         const pack = btn.dataset.emojiPack || "";
         state.groupEmojiSelectedPack = pack;
-        panel.querySelectorAll(".bmwc-emoji-tab").forEach(tab => tab.classList.toggle("bmwc-active", tab === btn));
-        const grid = panel.querySelector(".bmwc-emoji-grid");
+        panel.querySelectorAll(".kwc-emoji-tab").forEach(tab => tab.classList.toggle("kwc-active", tab === btn));
+        const grid = panel.querySelector(".kwc-emoji-grid");
         if (grid) grid.innerHTML = items.filter(item => String(item.pack || "") === pack).map(emojiButtonHtml).join("");
         const scroll = emojiScrollElement(panel);
         if (scroll) scroll.scrollTop = 0;
@@ -15004,9 +16077,9 @@
   function installGroupChatDragAndDropUpload(wrap) {
     if (!wrap || wrap.dataset.groupDropInstalled === "1") return;
     wrap.dataset.groupDropInstalled = "1";
-    const modal = wrap.querySelector(".bmwc-group-modal") || wrap;
+    const modal = wrap.querySelector(".kwc-group-modal") || wrap;
     const setOver = visible => {
-      try { modal.classList.toggle("bmwc-dm-drag-over", !!visible); } catch (_) {}
+      try { modal.classList.toggle("kwc-dm-drag-over", !!visible); } catch (_) {}
     };
     const allowed = () => !state.groupAuditMode && !state.uploadActive && canUpload();
     ["dragenter", "dragover"].forEach(type => {
@@ -15032,7 +16105,7 @@
       if (state.groupAuditMode) return;
       const files = dropEventFiles(event);
       if (!files.length) return;
-      setActiveComposeInput("bmwc-group-input");
+      setActiveComposeInput("kwc-group-input");
       if (state.uploadActive) {
         alert(t("upload.dropBusy", "Upload is already in progress."));
         return;
@@ -15047,7 +16120,7 @@
   }
 
   function renderGroupChatMessages(messages, options = {}) {
-    const box = document.getElementById("bmwc-group-messages");
+    const box = document.getElementById("kwc-group-messages");
     if (!box) return;
     hideGroupChatEdgeToast(true);
     const arr = Array.isArray(messages) ? messages : [];
@@ -15058,7 +16131,7 @@
       state.groupMessagesHasMore = false;
       discardPrivateMessageDom(box);
       const empty = document.createElement("div");
-      empty.className = "bmwc-dm-empty";
+      empty.className = "kwc-dm-empty";
       empty.textContent = t("group.selectRoom", "Select a room");
       box.appendChild(empty);
       updateGroupChatComposeControls();
@@ -15066,9 +16139,9 @@
     }
     const conversationKey = "group:" + String(state.groupActiveRoomId || "");
     const auditNotice = state.groupAuditMode
-      ? `<div class="bmwc-admin-audit-notice">🛡 ${esc(t("admin.groupAuditReadOnly", "This administrator audit view is read-only. Every access is recorded in the audit log."))}</div>`
+      ? `<div class="kwc-admin-audit-notice">🛡 ${esc(t("admin.groupAuditReadOnly", "This administrator audit view is read-only. Every access is recorded in the audit log."))}</div>`
       : "";
-    const result = reconcilePrivateMessageList(box, arr, "group", conversationKey, auditNotice, `<div class="bmwc-dm-empty">${esc(t("group.emptyRoom", "No messages yet."))}</div>`);
+    const result = reconcilePrivateMessageList(box, arr, "group", conversationKey, auditNotice, `<div class="kwc-dm-empty">${esc(t("group.emptyRoom", "No messages yet."))}</div>`);
     if (options && options.preserveTop) {
       const delta = Math.max(0, Number(box.scrollHeight || 0) - prevHeight);
       box.scrollTop = prevTop + delta;
@@ -15086,7 +16159,7 @@
     try {
       const limit = privateMessagePageLimit();
       const path = state.groupAuditMode ? "/admin/group/messages" : "/group/messages";
-      const res = await api(path + "?token=" + encodeURIComponent(state.token) + "&roomId=" + encodeURIComponent(roomId) + "&limit=" + encodeURIComponent(String(limit)));
+      const res = await api(path + "?roomId=" + encodeURIComponent(roomId) + "&limit=" + encodeURIComponent(String(limit)));
       state.groupActiveRoomId = roomId;
       state.groupMessages = Array.isArray(res.messages) ? res.messages : [];
       state.groupMessagesHasMore = state.groupMessages.length >= limit;
@@ -15094,7 +16167,7 @@
       if (!state.groupAuditMode) {
         state.groupUnread = Number(res.unread || 0);
         updateGroupChatButton();
-        await api("/group/read", {method: "POST", body: JSON.stringify({token: state.token, roomId})}).catch(() => {});
+        await api("/group/read", {method: "POST", body: JSON.stringify({roomId})}).catch(() => {});
         await loadGroupChatRooms(true);
         const refreshed = (state.groupRooms || []).find(r => r.id === roomId);
         if (refreshed) state.groupActiveRoom = refreshed;
@@ -15115,14 +16188,14 @@
       state.groupMessagesHasMore = false;
       return false;
     }
-    if (!box) box = document.getElementById("bmwc-group-messages");
+    if (!box) box = document.getElementById("kwc-group-messages");
     const prevTop = box ? Number(box.scrollTop || 0) : 0;
     const prevHeight = box ? Number(box.scrollHeight || 0) : 0;
     state.groupMessagesLoading = true;
     try {
       const limit = privateMessagePageLimit();
       const path = state.groupAuditMode ? "/admin/group/messages" : "/group/messages";
-      const res = await api(path + "?token=" + encodeURIComponent(state.token) + "&roomId=" + encodeURIComponent(state.groupActiveRoomId) + "&before=" + encodeURIComponent(String(oldest)) + "&limit=" + encodeURIComponent(String(limit)), {timeoutMs: 15000});
+      const res = await api(path + "?roomId=" + encodeURIComponent(state.groupActiveRoomId) + "&before=" + encodeURIComponent(String(oldest)) + "&limit=" + encodeURIComponent(String(limit)), {timeoutMs: 15000});
       const older = Array.isArray(res.messages) ? res.messages : [];
       const beforeCount = state.groupMessages.length;
       state.groupMessages = mergePrivateMessagePages(older, state.groupMessages);
@@ -15149,7 +16222,7 @@
     try {
       const limit = privateMessagePageLimit();
       const path = state.groupAuditMode ? "/admin/group/messages" : "/group/messages";
-      const res = await api(path + "?token=" + encodeURIComponent(state.token) + "&roomId=" + encodeURIComponent(state.groupActiveRoomId) + "&limit=" + encodeURIComponent(String(limit)), {timeoutMs: 15000});
+      const res = await api(path + "?roomId=" + encodeURIComponent(state.groupActiveRoomId) + "&limit=" + encodeURIComponent(String(limit)), {timeoutMs: 15000});
       const messages = Array.isArray(res.messages) ? res.messages : [];
       const afterNewest = privateMessageNewestId(messages);
       state.groupMessages = messages;
@@ -15194,14 +16267,14 @@
 
   async function sendGroupChatAttempt(roomId, message, clientMessageId) {
     try {
-      const res = await api("/group/send", {method: "POST", body: JSON.stringify({token: state.token, roomId, message, clientMessageId})});
+      const res = await api("/group/send", {method: "POST", body: JSON.stringify({roomId, message, clientMessageId})});
       if (res.room) state.groupActiveRoom = res.room;
       await loadGroupChatRooms(true);
       if (state.groupActiveRoomId === roomId) await loadGroupChatMessages(roomId);
       return true;
     } catch (e) {
       const response = e && e.response || {};
-      updateOptimisticGroupMessage(clientMessageId, "failed", String(response.error || e.message || "send_failed"));
+      updateOptimisticGroupMessage(clientMessageId, "failed", responseError(response, e.message || "send_failed"));
       return false;
     }
   }
@@ -15220,7 +16293,7 @@
   async function sendGroupChatMessage() {
     if (state.groupAuditMode) return;
     if (!state.token || !state.groupChatEnabled || !state.groupChatAllowWebSend || !state.groupActiveRoomId) return;
-    const input = document.getElementById("bmwc-group-input");
+    const input = document.getElementById("kwc-group-input");
     if (!input) return;
     let message = String(input.value || "").trim();
     if (!message) return;
@@ -15243,9 +16316,9 @@
   function groupVisibilityOptionsHtml(current = "private") {
     const cur = String(current || "private").toLowerCase() === "public" ? "public" : "private";
     if (!state.groupChatAllowPublicRooms) {
-      return `<select class="bmwc-input" id="bmwc-group-form-visibility" disabled><option value="private" selected>${esc(t("group.private", "private"))}</option></select>`;
+      return `<select class="kwc-input" id="kwc-group-form-visibility" disabled><option value="private" selected>${esc(t("group.private", "private"))}</option></select>`;
     }
-    return `<select class="bmwc-input" id="bmwc-group-form-visibility"><option value="private"${cur === "private" ? " selected" : ""}>${esc(t("group.private", "private"))}</option><option value="public"${cur === "public" ? " selected" : ""}>${esc(t("group.public", "public"))}</option></select>`;
+    return `<select class="kwc-input" id="kwc-group-form-visibility"><option value="private"${cur === "private" ? " selected" : ""}>${esc(t("group.private", "private"))}</option><option value="public"${cur === "public" ? " selected" : ""}>${esc(t("group.public", "public"))}</option></select>`;
   }
 
   function openGroupRoomForm(options = {}) {
@@ -15253,18 +16326,18 @@
       const room = options.room || {};
       const isSettings = options.mode === "settings";
       const wrap = document.createElement("div");
-      wrap.className = "bmwc-modal-backdrop bmwc-dm-modal-backdrop bmwc-group-form-backdrop";
+      wrap.className = "kwc-modal-backdrop kwc-dm-modal-backdrop kwc-group-form-backdrop";
       applyDetachedModalTheme(wrap);
       const title = isSettings ? t("group.settings", "Settings") : t("group.newRoom", "New room");
       const currentName = isSettings ? groupRoomLabel(room) : "";
-      const passwordBlock = state.groupChatAllowRoomPasswords ? `<label class="bmwc-group-form-field"><span>${esc(isSettings ? t("group.passwordSettingsLabel", "Password (blank removes it)") : t("group.passwordOptionalLabel", "Password (optional)"))}</span><input class="bmwc-input" id="bmwc-group-form-password" type="password" autocomplete="new-password"></label>` : "";
-      wrap.innerHTML = `<div class="bmwc-modal bmwc-group-form-modal"><div class="bmwc-group-form-head"><h3>${esc(title)}</h3></div><div class="bmwc-group-form-grid"><label class="bmwc-group-form-field"><span>${esc(t("group.roomName", "Room name"))}</span><input class="bmwc-input" id="bmwc-group-form-name" value="${esc(currentName)}" maxlength="80"></label><label class="bmwc-group-form-field"><span>${esc(t("group.visibility", "Visibility"))}</span>${groupVisibilityOptionsHtml(room.visibility || "private")}</label>${passwordBlock}</div><div class="bmwc-row bmwc-group-form-actions"><button type="button" class="bmwc-button" id="bmwc-group-form-save">${esc(t("button.save", "Save"))}</button><button type="button" class="bmwc-button" id="bmwc-group-form-cancel">${esc(t("button.cancel", "Cancel"))}</button></div></div>`;
+      const passwordBlock = state.groupChatAllowRoomPasswords ? `<label class="kwc-group-form-field"><span>${esc(isSettings ? t("group.passwordSettingsLabel", "Password (blank removes it)") : t("group.passwordOptionalLabel", "Password (optional)"))}</span><input class="kwc-input" id="kwc-group-form-password" type="password" autocomplete="new-password"></label>` : "";
+      wrap.innerHTML = `<div class="kwc-modal kwc-group-form-modal"><div class="kwc-group-form-head"><h3>${esc(title)}</h3></div><div class="kwc-group-form-grid"><label class="kwc-group-form-field"><span>${esc(t("group.roomName", "Room name"))}</span><input class="kwc-input" id="kwc-group-form-name" value="${esc(currentName)}" maxlength="80"></label><label class="kwc-group-form-field"><span>${esc(t("group.visibility", "Visibility"))}</span>${groupVisibilityOptionsHtml(room.visibility || "private")}</label>${passwordBlock}</div><div class="kwc-row kwc-group-form-actions"><button type="button" class="kwc-button" id="kwc-group-form-save">${esc(t("button.save", "Save"))}</button><button type="button" class="kwc-button" id="kwc-group-form-cancel">${esc(t("button.cancel", "Cancel"))}</button></div></div>`;
       document.body.appendChild(wrap);
       const close = value => { wrap.remove(); resolve(value); };
       wrap.addEventListener("click", event => { if (event.target === wrap) close(null); });
-      const nameInput = wrap.querySelector("#bmwc-group-form-name");
-      const visibilityInput = wrap.querySelector("#bmwc-group-form-visibility");
-      const passwordInput = wrap.querySelector("#bmwc-group-form-password");
+      const nameInput = wrap.querySelector("#kwc-group-form-name");
+      const visibilityInput = wrap.querySelector("#kwc-group-form-visibility");
+      const passwordInput = wrap.querySelector("#kwc-group-form-password");
       const submit = () => {
         const name = String(nameInput && nameInput.value || "").trim();
         if (!name) { if (nameInput) nameInput.focus(); return; }
@@ -15273,8 +16346,8 @@
         if (state.groupChatAllowRoomPasswords && passwordInput) out.password = String(passwordInput.value || "");
         close(out);
       };
-      wrap.querySelector("#bmwc-group-form-save").addEventListener("click", submit);
-      wrap.querySelector("#bmwc-group-form-cancel").addEventListener("click", () => close(null));
+      wrap.querySelector("#kwc-group-form-save").addEventListener("click", submit);
+      wrap.querySelector("#kwc-group-form-cancel").addEventListener("click", () => close(null));
       wrap.addEventListener("keydown", event => {
         if (event.key === "Escape") { event.preventDefault(); close(null); }
         if (event.key === "Enter" && event.target && event.target.tagName !== "SELECT") { event.preventDefault(); submit(); }
@@ -15287,7 +16360,7 @@
     const form = await openGroupRoomForm({mode: "create"});
     if (!form) return;
     try {
-      const res = await api("/group/create", {method: "POST", body: JSON.stringify({token: state.token, name: form.name, visibility: form.visibility, password: form.password || ""})});
+      const res = await api("/group/create", {method: "POST", body: JSON.stringify({name: form.name, visibility: form.visibility, password: form.password || ""})});
       if (res.room) { state.groupActiveRoomId = String(res.room.id || ""); state.groupActiveRoom = res.room; }
       await loadGroupChatRooms(true);
       const refreshed = (state.groupRooms || []).find(r => r.id === state.groupActiveRoomId);
@@ -15305,7 +16378,7 @@
     const plainLabel = directMessagePlainLabel(label) || targetUuid;
     if (!confirmPlain(fmt("group.confirmInvite", "Invite {player} to this group chat?", {player: plainLabel}))) return;
     try {
-      await api("/group/invite", {method: "POST", body: JSON.stringify({token: state.token, roomId: state.groupActiveRoomId, targetUuid})});
+      await api("/group/invite", {method: "POST", body: JSON.stringify({roomId: state.groupActiveRoomId, targetUuid})});
       closeGroupPlayerSearch();
       alert(label ? fmt("group.inviteSentTo", "Invitation sent to {player}.", {player: plainLabel}) : t("group.inviteSent", "Invitation sent."));
       await loadGroupChatRooms(true);
@@ -15322,7 +16395,7 @@
     if (!state.groupActiveRoomId) return;
     if (state.groupChatConfirmLeave && !confirmPlain(t("group.confirmLeave", "Leave this group chat?"))) return;
     const roomId = state.groupActiveRoomId;
-    try { await api("/group/leave", {method: "POST", body: JSON.stringify({token: state.token, roomId})}); state.groupActiveRoomId = ""; state.groupActiveRoom = null; renderGroupChatMessages([]); renderGroupChatHeader(); await loadGroupChatRooms(true); }
+    try { await api("/group/leave", {method: "POST", body: JSON.stringify({roomId})}); state.groupActiveRoomId = ""; state.groupActiveRoom = null; renderGroupChatMessages([]); renderGroupChatHeader(); await loadGroupChatRooms(true); }
     catch (e) { alertResponse("alert.groupLeaveFailed", "Failed to leave room: {error}", e.response || {error: e.message || "error"}); }
   }
 
@@ -15331,7 +16404,7 @@
     if (!room) return;
     const form = await openGroupRoomForm({mode: "settings", room});
     if (!form) return;
-    const body = {token: state.token, roomId: state.groupActiveRoomId, name: form.name, visibility: form.visibility};
+    const body = {roomId: state.groupActiveRoomId, name: form.name, visibility: form.visibility};
     if (state.groupChatAllowRoomPasswords) body.password = form.password || "";
     try {
       const res = await api("/group/settings", {method: "POST", body: JSON.stringify(body)});
@@ -15346,7 +16419,7 @@
   }
 
   async function respondGroupInvite(inviteId, accept) {
-    try { const res = await api("/group/invite/respond", {method: "POST", body: JSON.stringify({token: state.token, inviteId, accept})}); if (accept && res.room) { state.groupActiveRoomId = res.room.id; state.groupActiveRoom = res.room; } await loadGroupChatRooms(true); if (state.groupActiveRoomId) await loadGroupChatMessages(state.groupActiveRoomId); }
+    try { const res = await api("/group/invite/respond", {method: "POST", body: JSON.stringify({inviteId, accept})}); if (accept && res.room) { state.groupActiveRoomId = res.room.id; state.groupActiveRoom = res.room; } await loadGroupChatRooms(true); if (state.groupActiveRoomId) await loadGroupChatMessages(state.groupActiveRoomId); }
     catch (e) { alertResponse("alert.groupInviteFailed", "Failed to update invitation: {error}", e.response || {error: e.message || "error"}); }
   }
 
@@ -15355,7 +16428,7 @@
     messageId = String(messageId || "").trim();
     if (!messageId || !state.token) return;
     if (state.groupChatConfirmHide && !confirmPlain(t("group.confirmHideMessage", "Hide this message from your view?"))) return;
-    try { await api("/group/hide-message", {method: "POST", body: JSON.stringify({token: state.token, messageId})}); if (state.groupActiveRoomId) await loadGroupChatMessages(state.groupActiveRoomId); await loadGroupChatRooms(true); }
+    try { await api("/group/hide-message", {method: "POST", body: JSON.stringify({messageId})}); if (state.groupActiveRoomId) await loadGroupChatMessages(state.groupActiveRoomId); await loadGroupChatRooms(true); }
     catch (e) { alertResponse("alert.groupHideFailed", "Failed to hide message: {error}", e.response || {error: e.message || "error"}); }
   }
 
@@ -15369,13 +16442,13 @@
     state.groupAuditMode = false;
     state.groupAuditRoom = null;
     const wrap = document.createElement("div");
-    wrap.className = "bmwc-modal-backdrop bmwc-dm-modal-backdrop bmwc-group-modal-backdrop";
+    wrap.className = "kwc-modal-backdrop kwc-dm-modal-backdrop kwc-group-modal-backdrop";
     applyDetachedModalTheme(wrap);
-    wrap.style.setProperty("--bmwc-emoji-render-size", emojiRenderSizePx() + "px");
-    wrap.style.setProperty("--bmwc-emoji-picker-size", emojiPickerSizePx() + "px");
-    wrap.style.setProperty("--bmwc-emoji-panel-height", emojiPanelHeightPx() + "px");
-    wrap.style.setProperty("--bmwc-emoji-panel-min-height", emojiPanelMinHeightPx() + "px");
-    wrap.innerHTML = `<div class="bmwc-modal bmwc-dm-modal bmwc-group-modal"><div class="bmwc-dm-head"><h3 class="bmwc-dm-main-title"><span>${esc(t("group.title", "Group chats"))}</span><span class="bmwc-dm-retention" title="${esc(groupRoomRetentionText())}">${esc(groupRoomRetentionText())}</span></h3><button class="bmwc-button" id="bmwc-group-close">${esc(t("button.close", "Close"))}</button></div><div class="bmwc-dm-layout"><aside class="bmwc-dm-sidebar"><button type="button" class="bmwc-button bmwc-dm-new" id="bmwc-group-create">${esc(t("group.newRoom", "New room"))}</button><div class="bmwc-group-invites" id="bmwc-group-invites"></div><div class="bmwc-dm-thread-list" id="bmwc-group-room-list"></div></aside><section class="bmwc-dm-conversation"><div class="bmwc-dm-title bmwc-group-title" id="bmwc-group-title">${esc(t("group.selectRoom", "Select a room"))}</div><div class="bmwc-dm-messages" id="bmwc-group-messages"></div><div class="bmwc-emoji-resize-handle bmwc-dm-emoji-resize bmwc-hidden" id="bmwc-group-emoji-resize" title="${esc(t("button.resizeEmojiPanel", "Drag to resize emoji picker"))}" aria-label="${esc(t("button.resizeEmojiPanel", "Drag to resize emoji picker"))}"></div><div class="bmwc-dm-compose bmwc-row"><input class="bmwc-input" id="bmwc-group-input" placeholder="${esc(t("placeholder.message", "message"))}" ${state.groupChatMaxMessageLength > 0 ? `maxlength="${state.groupChatMaxMessageLength}"` : ""}><button class="bmwc-button bmwc-dm-emoji-button bmwc-hidden" id="bmwc-group-emoji" title="${esc(t("button.emoji", "Emoji"))}">☺</button><button class="bmwc-button bmwc-dm-upload bmwc-hidden" id="bmwc-group-upload" title="${esc(t("button.upload", "Attach"))}">&#128206;</button><button class="bmwc-button bmwc-dm-send" id="bmwc-group-send">${esc(t("button.send", "Send"))}</button><input type="file" id="bmwc-group-file" class="bmwc-file-input" multiple hidden style="display:none !important;"></div><div class="bmwc-emoji-panel bmwc-dm-emoji-panel bmwc-group-emoji-panel bmwc-hidden" id="bmwc-group-emoji-panel" aria-live="polite"></div>${uploadProgressHtml("bmwc-group-upload-progress")}</section></div><div class="bmwc-dm-search-panel bmwc-hidden" id="bmwc-group-search-panel"><div class="bmwc-dm-search-head"><strong>${esc(t("group.searchPlayer", "Search player to invite"))}</strong><button class="bmwc-button" id="bmwc-group-search-close" type="button">${esc(t("button.close", "Close"))}</button></div><input class="bmwc-input" id="bmwc-group-search" placeholder="${esc(t("group.searchPlayer", "Search player to invite"))}"><div class="bmwc-dm-player-results" id="bmwc-group-player-results"></div></div></div>`;
+    wrap.style.setProperty("--kwc-emoji-render-size", emojiRenderSizePx() + "px");
+    wrap.style.setProperty("--kwc-emoji-picker-size", emojiPickerSizePx() + "px");
+    wrap.style.setProperty("--kwc-emoji-panel-height", emojiPanelHeightPx() + "px");
+    wrap.style.setProperty("--kwc-emoji-panel-min-height", emojiPanelMinHeightPx() + "px");
+    wrap.innerHTML = `<div class="kwc-modal kwc-dm-modal kwc-group-modal"><div class="kwc-dm-head"><h3 class="kwc-dm-main-title"><span>${esc(t("group.title", "Group chats"))}</span><span class="kwc-dm-retention" title="${esc(groupRoomRetentionText())}">${esc(groupRoomRetentionText())}</span></h3><button class="kwc-button" id="kwc-group-close">${esc(t("button.close", "Close"))}</button></div><div class="kwc-dm-layout"><aside class="kwc-dm-sidebar"><button type="button" class="kwc-button kwc-dm-new" id="kwc-group-create">${esc(t("group.newRoom", "New room"))}</button><div class="kwc-group-invites" id="kwc-group-invites"></div><div class="kwc-dm-thread-list" id="kwc-group-room-list"></div></aside><section class="kwc-dm-conversation"><div class="kwc-dm-title kwc-group-title" id="kwc-group-title">${esc(t("group.selectRoom", "Select a room"))}</div><div class="kwc-dm-messages" id="kwc-group-messages"></div><div class="kwc-emoji-resize-handle kwc-dm-emoji-resize kwc-hidden" id="kwc-group-emoji-resize" title="${esc(t("button.resizeEmojiPanel", "Drag to resize emoji picker"))}" aria-label="${esc(t("button.resizeEmojiPanel", "Drag to resize emoji picker"))}"></div><div class="kwc-dm-compose kwc-row"><input class="kwc-input" id="kwc-group-input" placeholder="${esc(t("placeholder.message", "message"))}" ${state.groupChatMaxMessageLength > 0 ? `maxlength="${state.groupChatMaxMessageLength}"` : ""}><button class="kwc-button kwc-dm-emoji-button kwc-hidden" id="kwc-group-emoji" title="${esc(t("button.emoji", "Emoji"))}">☺</button><button class="kwc-button kwc-dm-upload kwc-hidden" id="kwc-group-upload" title="${esc(t("button.upload", "Attach"))}">&#128206;</button><button class="kwc-button kwc-dm-send" id="kwc-group-send">${esc(t("button.send", "Send"))}</button><input type="file" id="kwc-group-file" class="kwc-file-input" multiple hidden style="display:none !important;"></div><div class="kwc-emoji-panel kwc-dm-emoji-panel kwc-group-emoji-panel kwc-hidden" id="kwc-group-emoji-panel" aria-live="polite"></div>${uploadProgressHtml("kwc-group-upload-progress")}</section></div><div class="kwc-dm-search-panel kwc-hidden" id="kwc-group-search-panel"><div class="kwc-dm-search-head"><strong>${esc(t("group.searchPlayer", "Search player to invite"))}</strong><button class="kwc-button" id="kwc-group-search-close" type="button">${esc(t("button.close", "Close"))}</button></div><input class="kwc-input" id="kwc-group-search" placeholder="${esc(t("group.searchPlayer", "Search player to invite"))}"><div class="kwc-dm-player-results" id="kwc-group-player-results"></div></div></div>`;
     document.body.appendChild(wrap);
     installDirectMessageIdentityToggleGuard(wrap);
     const close = () => {
@@ -15383,33 +16456,33 @@
       closeGroupChatEmojiPanel();
       closeGroupPlayerSearch();
       hideGroupChatEdgeToast(true);
-      discardPrivateMessageDom(wrap.querySelector("#bmwc-group-messages"));
+      discardPrivateMessageDom(wrap.querySelector("#kwc-group-messages"));
       wrap.remove();
       state.groupModalOpen = false;
       state.groupActiveRoomId = "";
       state.groupActiveRoom = null;
       state.groupAuditMode = false;
       state.groupAuditRoom = null;
-      if (state.activeComposeInputId === "bmwc-group-input") state.activeComposeInputId = "bmwc-message";
+      if (state.activeComposeInputId === "kwc-group-input") state.activeComposeInputId = "kwc-message";
     };
-    wrap.querySelector("#bmwc-group-close").onclick = close;
+    wrap.querySelector("#kwc-group-close").onclick = close;
     wrap.addEventListener("click", e => { if (e.target === wrap) close(); });
     wrap.addEventListener("click", e => {
       if (!state.groupSearchPanelOpen) return;
-      const panel = wrap.querySelector("#bmwc-group-search-panel");
-      const inviteButton = wrap.querySelector("#bmwc-group-invite");
+      const panel = wrap.querySelector("#kwc-group-search-panel");
+      const inviteButton = wrap.querySelector("#kwc-group-invite");
       const target = e.target;
       if (panel && panel.contains(target)) return;
       if (inviteButton && inviteButton.contains(target)) return;
       closeGroupPlayerSearch();
     });
-    wrap.querySelector("#bmwc-group-create").onclick = createGroupRoom;
-    wrap.querySelector("#bmwc-group-send").onclick = sendGroupChatMessage;
-    const roomList = wrap.querySelector("#bmwc-group-room-list");
+    wrap.querySelector("#kwc-group-create").onclick = createGroupRoom;
+    wrap.querySelector("#kwc-group-send").onclick = sendGroupChatMessage;
+    const roomList = wrap.querySelector("#kwc-group-room-list");
     if (roomList) roomList.addEventListener("click", handleGroupRoomListClick);
-    const searchClose = wrap.querySelector("#bmwc-group-search-close");
+    const searchClose = wrap.querySelector("#kwc-group-search-close");
     if (searchClose) searchClose.addEventListener("click", closeGroupPlayerSearch);
-    const search = wrap.querySelector("#bmwc-group-search");
+    const search = wrap.querySelector("#kwc-group-search");
     if (search) search.addEventListener("input", () => {
       clearTimeout(state.groupSearchTimer);
       state.groupSearchTimer = setTimeout(() => searchGroupPlayers(search.value), 180);
@@ -15417,33 +16490,33 @@
     window.addEventListener("resize", () => {
       if (state.groupModalOpen && state.groupSearchPanelOpen) syncGroupPlayerSearchPanelSize();
     }, {passive: true});
-    const groupEmoji = wrap.querySelector("#bmwc-group-emoji");
+    const groupEmoji = wrap.querySelector("#kwc-group-emoji");
     if (groupEmoji) groupEmoji.addEventListener("click", () => toggleGroupChatEmojiPanel());
-    const groupUpload = wrap.querySelector("#bmwc-group-upload");
-    const groupFile = wrap.querySelector("#bmwc-group-file");
+    const groupUpload = wrap.querySelector("#kwc-group-upload");
+    const groupFile = wrap.querySelector("#kwc-group-file");
     if (groupUpload) {
       groupUpload.addEventListener("click", () => {
-        setActiveComposeInput("bmwc-group-input");
+        setActiveComposeInput("kwc-group-input");
         if (groupFile) groupFile.click();
       });
     }
     if (groupFile) {
       groupFile.accept = uploadAcceptList();
       groupFile.addEventListener("change", async e => {
-        setActiveComposeInput("bmwc-group-input");
+        setActiveComposeInput("kwc-group-input");
         await uploadSelectedFiles(e);
       });
     }
-    const groupUploadCancel = wrap.querySelector("#bmwc-group-upload-progress-cancel");
+    const groupUploadCancel = wrap.querySelector("#kwc-group-upload-progress-cancel");
     if (groupUploadCancel) groupUploadCancel.addEventListener("click", cancelCurrentUpload);
-    const input = wrap.querySelector("#bmwc-group-input");
+    const input = wrap.querySelector("#kwc-group-input");
     input.addEventListener("focus", () => setActiveComposeInput(input));
     input.addEventListener("paste", async e => {
       setActiveComposeInput(input);
       await handlePasteUpload(e);
     });
     input.addEventListener("keydown", e => {
-      if (e.key !== "Enter" || e.isComposing) return;
+      if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
       e.preventDefault();
       closeGroupChatEmojiPanel();
       sendGroupChatMessage();
@@ -15473,67 +16546,67 @@
     state.dmAuditMode = false;
     state.dmAuditThread = null;
     const wrap = document.createElement("div");
-    wrap.className = "bmwc-modal-backdrop bmwc-dm-modal-backdrop";
+    wrap.className = "kwc-modal-backdrop kwc-dm-modal-backdrop";
     applyDetachedModalTheme(wrap);
-    // The DM modal is attached to document.body instead of inside #bmwc-root.
+    // The DM modal is attached to document.body instead of inside #kwc-root.
     // Copy live emoji size variables explicitly so DM rendering/picker follows
     // the same emoji.render-size-px and emoji.picker-size-px settings as public chat.
-    wrap.style.setProperty("--bmwc-emoji-render-size", emojiRenderSizePx() + "px");
-    wrap.style.setProperty("--bmwc-emoji-picker-size", emojiPickerSizePx() + "px");
-    wrap.style.setProperty("--bmwc-emoji-panel-height", emojiPanelHeightPx() + "px");
-    wrap.style.setProperty("--bmwc-emoji-panel-min-height", emojiPanelMinHeightPx() + "px");
+    wrap.style.setProperty("--kwc-emoji-render-size", emojiRenderSizePx() + "px");
+    wrap.style.setProperty("--kwc-emoji-picker-size", emojiPickerSizePx() + "px");
+    wrap.style.setProperty("--kwc-emoji-panel-height", emojiPanelHeightPx() + "px");
+    wrap.style.setProperty("--kwc-emoji-panel-min-height", emojiPanelMinHeightPx() + "px");
     wrap.innerHTML = `
-      <div class="bmwc-modal bmwc-dm-modal">
-        <div class="bmwc-dm-head">
-          <h3 class="bmwc-dm-main-title"><span>${t("dm.title", "Messages")}</span><span class="bmwc-dm-retention" id="bmwc-dm-retention" title="${esc(directMessageRetentionNoticeText())}">${esc(directMessageRetentionNoticeText())}</span></h3>
-          <div class="bmwc-dm-head-actions">
-            <button class="bmwc-button" id="bmwc-dm-close">${t("button.close", "Close")}</button>
+      <div class="kwc-modal kwc-dm-modal">
+        <div class="kwc-dm-head">
+          <h3 class="kwc-dm-main-title"><span>${t("dm.title", "Messages")}</span><span class="kwc-dm-retention" id="kwc-dm-retention" title="${esc(directMessageRetentionNoticeText())}">${esc(directMessageRetentionNoticeText())}</span></h3>
+          <div class="kwc-dm-head-actions">
+            <button class="kwc-button" id="kwc-dm-close">${t("button.close", "Close")}</button>
           </div>
         </div>
-        <div class="bmwc-dm-layout">
-          <aside class="bmwc-dm-sidebar" id="bmwc-dm-sidebar">
-            <button type="button" class="bmwc-button bmwc-dm-new" id="bmwc-dm-new">${t("dm.newMessage", "New message")}</button>
-            <div class="bmwc-dm-thread-list" id="bmwc-dm-thread-list"></div>
+        <div class="kwc-dm-layout">
+          <aside class="kwc-dm-sidebar" id="kwc-dm-sidebar">
+            <button type="button" class="kwc-button kwc-dm-new" id="kwc-dm-new">${t("dm.newMessage", "New message")}</button>
+            <div class="kwc-dm-thread-list" id="kwc-dm-thread-list"></div>
           </aside>
-          <section class="bmwc-dm-conversation">
-            <div class="bmwc-dm-title" id="bmwc-dm-title">${t("dm.selectThread", "Select a thread")}</div>
-            <div class="bmwc-dm-messages" id="bmwc-dm-messages"></div>
-            <div class="bmwc-emoji-resize-handle bmwc-dm-emoji-resize bmwc-hidden" id="bmwc-dm-emoji-resize" title="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}" aria-label="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}"></div>
-            <div class="bmwc-dm-compose bmwc-row">
-              <input class="bmwc-input" id="bmwc-dm-input" placeholder="${t("placeholder.message", "message")}" ${state.directMessageMaxMessageLength > 0 ? `maxlength="${state.directMessageMaxMessageLength}"` : ""}>
-              <button class="bmwc-button bmwc-dm-emoji-button bmwc-hidden" id="bmwc-dm-emoji" title="${t("button.emoji", "Emoji")}">☺</button>
-              <button class="bmwc-button bmwc-dm-upload bmwc-hidden" id="bmwc-dm-upload" title="${t("button.upload", "Attach")}">&#128206;</button>
-              <button class="bmwc-button bmwc-dm-send" id="bmwc-dm-send">${t("button.send", "Send")}</button>
-              <input type="file" id="bmwc-dm-file" class="bmwc-file-input" multiple hidden style="display:none !important;">
+          <section class="kwc-dm-conversation">
+            <div class="kwc-dm-title" id="kwc-dm-title">${t("dm.selectThread", "Select a thread")}</div>
+            <div class="kwc-dm-messages" id="kwc-dm-messages"></div>
+            <div class="kwc-emoji-resize-handle kwc-dm-emoji-resize kwc-hidden" id="kwc-dm-emoji-resize" title="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}" aria-label="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}"></div>
+            <div class="kwc-dm-compose kwc-row">
+              <input class="kwc-input" id="kwc-dm-input" placeholder="${t("placeholder.message", "message")}" ${state.directMessageMaxMessageLength > 0 ? `maxlength="${state.directMessageMaxMessageLength}"` : ""}>
+              <button class="kwc-button kwc-dm-emoji-button kwc-hidden" id="kwc-dm-emoji" title="${t("button.emoji", "Emoji")}">☺</button>
+              <button class="kwc-button kwc-dm-upload kwc-hidden" id="kwc-dm-upload" title="${t("button.upload", "Attach")}">&#128206;</button>
+              <button class="kwc-button kwc-dm-send" id="kwc-dm-send">${t("button.send", "Send")}</button>
+              <input type="file" id="kwc-dm-file" class="kwc-file-input" multiple hidden style="display:none !important;">
             </div>
-            <div class="bmwc-emoji-panel bmwc-dm-emoji-panel bmwc-hidden" id="bmwc-dm-emoji-panel" aria-live="polite"></div>
-            ${uploadProgressHtml("bmwc-dm-upload-progress")}
+            <div class="kwc-emoji-panel kwc-dm-emoji-panel kwc-hidden" id="kwc-dm-emoji-panel" aria-live="polite"></div>
+            ${uploadProgressHtml("kwc-dm-upload-progress")}
           </section>
         </div>
-        <div class="bmwc-dm-search-panel bmwc-hidden" id="bmwc-dm-search-panel">
-          <div class="bmwc-dm-search-head">
+        <div class="kwc-dm-search-panel kwc-hidden" id="kwc-dm-search-panel">
+          <div class="kwc-dm-search-head">
             <strong>${t("dm.searchPlayer", "Search player")}</strong>
-            <button class="bmwc-button" id="bmwc-dm-search-close" type="button">${t("button.close", "Close")}</button>
+            <button class="kwc-button" id="kwc-dm-search-close" type="button">${t("button.close", "Close")}</button>
           </div>
-          <input class="bmwc-input" id="bmwc-dm-search" placeholder="${t("dm.searchPlayer", "Search player")}">
-          <div class="bmwc-dm-player-results" id="bmwc-dm-player-results"></div>
+          <input class="kwc-input" id="kwc-dm-search" placeholder="${t("dm.searchPlayer", "Search player")}">
+          <div class="kwc-dm-player-results" id="kwc-dm-player-results"></div>
         </div>
       </div>`;
     document.body.appendChild(wrap);
     installDirectMessageIdentityToggleGuard(wrap);
-    const close = () => { hideEmojiAutocomplete(); closeDirectMessageEmojiPanel(); closeDirectMessagePlayerSearch(); hideDirectMessageEdgeToast(true); discardPrivateMessageDom(wrap.querySelector("#bmwc-dm-messages")); wrap.remove(); state.dmModalOpen = false; state.dmAuditMode = false; state.dmAuditThread = null; if (state.activeComposeInputId === "bmwc-dm-input") state.activeComposeInputId = "bmwc-message"; };
-    wrap.querySelector("#bmwc-dm-close").onclick = close;
+    const close = () => { hideEmojiAutocomplete(); closeDirectMessageEmojiPanel(); closeDirectMessagePlayerSearch(); hideDirectMessageEdgeToast(true); discardPrivateMessageDom(wrap.querySelector("#kwc-dm-messages")); wrap.remove(); state.dmModalOpen = false; state.dmAuditMode = false; state.dmAuditThread = null; if (state.activeComposeInputId === "kwc-dm-input") state.activeComposeInputId = "kwc-message"; };
+    wrap.querySelector("#kwc-dm-close").onclick = close;
     wrap.addEventListener("click", e => { if (e.target === wrap) close(); });
     wrap.addEventListener("click", e => {
       if (!state.dmSearchPanelOpen) return;
-      const panel = wrap.querySelector("#bmwc-dm-search-panel");
-      const newButton = wrap.querySelector("#bmwc-dm-new");
+      const panel = wrap.querySelector("#kwc-dm-search-panel");
+      const newButton = wrap.querySelector("#kwc-dm-new");
       const target = e.target;
       if (panel && panel.contains(target)) return;
       if (newButton && newButton.contains(target)) return;
       closeDirectMessagePlayerSearch();
     });
-    const title = wrap.querySelector("#bmwc-dm-title");
+    const title = wrap.querySelector("#kwc-dm-title");
     if (title) {
       title.addEventListener("click", e => {
         if (e && e.target && e.target.closest && e.target.closest(senderIdentitySelector())) return;
@@ -15548,48 +16621,48 @@
       });
     }
     updateDirectMessageViewMode();
-    const newBtn = wrap.querySelector("#bmwc-dm-new");
+    const newBtn = wrap.querySelector("#kwc-dm-new");
     if (newBtn) newBtn.addEventListener("click", openDirectMessagePlayerSearch);
     window.addEventListener("resize", () => {
       if (state.dmModalOpen && state.dmSearchPanelOpen) syncDirectMessagePlayerSearchPanelSize();
     }, {passive: true});
-    const searchClose = wrap.querySelector("#bmwc-dm-search-close");
+    const searchClose = wrap.querySelector("#kwc-dm-search-close");
     if (searchClose) searchClose.addEventListener("click", closeDirectMessagePlayerSearch);
-    const search = wrap.querySelector("#bmwc-dm-search");
+    const search = wrap.querySelector("#kwc-dm-search");
     if (search) search.addEventListener("input", () => {
       clearTimeout(state.dmSearchTimer);
       state.dmSearchTimer = setTimeout(() => searchDirectMessagePlayers(search.value), 180);
     });
-    wrap.querySelector("#bmwc-dm-send").onclick = sendDirectMessageFromModal;
-    const dmEmoji = wrap.querySelector("#bmwc-dm-emoji");
+    wrap.querySelector("#kwc-dm-send").onclick = sendDirectMessageFromModal;
+    const dmEmoji = wrap.querySelector("#kwc-dm-emoji");
     if (dmEmoji) {
       dmEmoji.addEventListener("click", () => toggleDirectMessageEmojiPanel());
     }
-    const dmUpload = wrap.querySelector("#bmwc-dm-upload");
-    const dmFile = wrap.querySelector("#bmwc-dm-file");
+    const dmUpload = wrap.querySelector("#kwc-dm-upload");
+    const dmFile = wrap.querySelector("#kwc-dm-file");
     if (dmUpload) {
       dmUpload.addEventListener("click", () => {
-        setActiveComposeInput("bmwc-dm-input");
+        setActiveComposeInput("kwc-dm-input");
         if (dmFile) dmFile.click();
       });
     }
     if (dmFile) {
       dmFile.accept = uploadAcceptList();
       dmFile.addEventListener("change", async e => {
-        setActiveComposeInput("bmwc-dm-input");
+        setActiveComposeInput("kwc-dm-input");
         await uploadSelectedFiles(e);
       });
     }
-    const dmUploadCancel = wrap.querySelector("#bmwc-dm-upload-progress-cancel");
+    const dmUploadCancel = wrap.querySelector("#kwc-dm-upload-progress-cancel");
     if (dmUploadCancel) dmUploadCancel.addEventListener("click", cancelCurrentUpload);
-    const dmInput = wrap.querySelector("#bmwc-dm-input");
+    const dmInput = wrap.querySelector("#kwc-dm-input");
     dmInput.addEventListener("focus", () => setActiveComposeInput(dmInput));
     dmInput.addEventListener("paste", async e => {
       setActiveComposeInput(dmInput);
       await handlePasteUpload(e);
     });
     dmInput.addEventListener("keydown", e => {
-      if (e.key !== "Enter" || e.isComposing) return;
+      if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
       e.preventDefault();
       closeDirectMessageEmojiPanel();
       sendDirectMessageFromModal();
@@ -15607,59 +16680,59 @@
 
   function openSetPasswordModal() {
     const wrap = document.createElement("div");
-    wrap.className = "bmwc-modal-backdrop bmwc-user-prefs-backdrop";
+    wrap.className = "kwc-modal-backdrop kwc-user-prefs-backdrop";
     applyDetachedModalTheme(wrap);
     wrap.innerHTML = `
-      <div class="bmwc-modal">
+      <div class="kwc-modal">
         <h3>${t("password.title", "Set password")}</h3>
         <p>${t("password.description", "Set a web password so you can log in without joining the game next time.")}</p>
-        <input class="bmwc-input" id="bmwc-new-pw" type="password" placeholder="${t("placeholder.newPassword", "new password")}">
+        <input class="kwc-input" id="kwc-new-pw" type="password" placeholder="${t("placeholder.newPassword", "new password")}">
         <br><br>
-        <button class="bmwc-button" id="bmwc-save-pw">${t("button.save", "Save")}</button>
-        <button class="bmwc-button" id="bmwc-skip-pw">${t("button.skip", "Skip")}</button>
+        <button class="kwc-button" id="kwc-save-pw">${t("button.save", "Save")}</button>
+        <button class="kwc-button" id="kwc-skip-pw">${t("button.skip", "Skip")}</button>
       </div>
     `;
     document.body.appendChild(wrap);
-    wrap.querySelector("#bmwc-save-pw").onclick = async () => {
-      const password = wrap.querySelector("#bmwc-new-pw").value;
-      const res = await api("/auth/set-password", {method: "POST", body: JSON.stringify({token: state.token, password})});
+    wrap.querySelector("#kwc-save-pw").onclick = async () => {
+      const password = wrap.querySelector("#kwc-new-pw").value;
+      const res = await api("/auth/set-password", {method: "POST", body: JSON.stringify({password})});
       if (!res.ok) {
         alertResponse("alert.saveFailed", "Save failed: {error}", res);
         return;
       }
       wrap.remove();
     };
-    wrap.querySelector("#bmwc-skip-pw").onclick = () => wrap.remove();
+    wrap.querySelector("#kwc-skip-pw").onclick = () => wrap.remove();
   }
 
   function openAccountModal() {
     const wrap = document.createElement("div");
-    wrap.className = "bmwc-modal-backdrop bmwc-user-prefs-backdrop";
+    wrap.className = "kwc-modal-backdrop kwc-user-prefs-backdrop";
     applyDetachedModalTheme(wrap);
     wrap.innerHTML = `
-      <div class="bmwc-modal bmwc-account-modal">
+      <div class="kwc-modal kwc-account-modal">
         <h3>${esc(state.username)}</h3>
         <p>${t("account.role", "Role")}: ${esc(state.role)}</p>
-        <div class="bmwc-account-actions">
-          ${(!state.config || state.config.uiUserPreferencesControl !== false) ? `<button class="bmwc-button" id="bmwc-user-prefs">${t("preferences.title", "Chat settings")}</button>` : ""}
-          <button class="bmwc-button" id="bmwc-set-pw">${t("button.setPassword", "Set password")}</button>
-          <button class="bmwc-button" id="bmwc-logout">${t("button.logout", "Logout")}</button>
-          <button class="bmwc-button" id="bmwc-close">${t("button.close", "Close")}</button>
+        <div class="kwc-account-actions">
+          ${(!state.config || state.config.uiUserPreferencesControl !== false) ? `<button class="kwc-button" id="kwc-user-prefs">${t("preferences.title", "Chat settings")}</button>` : ""}
+          <button class="kwc-button" id="kwc-set-pw">${t("button.setPassword", "Set password")}</button>
+          <button class="kwc-button" id="kwc-logout">${t("button.logout", "Logout")}</button>
+          <button class="kwc-button" id="kwc-close">${t("button.close", "Close")}</button>
         </div>
       </div>
     `;
     document.body.appendChild(wrap);
-    wrap.querySelector("#bmwc-close").onclick = () => { wrap.remove(); state.loginModalOpen = false; };
-    const prefsBtn = wrap.querySelector("#bmwc-user-prefs");
+    wrap.querySelector("#kwc-close").onclick = () => { wrap.remove(); state.loginModalOpen = false; };
+    const prefsBtn = wrap.querySelector("#kwc-user-prefs");
     if (prefsBtn) prefsBtn.onclick = () => {
       wrap.remove();
       state.loginModalOpen = false;
       state.prefsModalOpen = false;
       openUserPreferencesModal();
     };
-    wrap.querySelector("#bmwc-set-pw").onclick = () => { wrap.remove(); openSetPasswordModal(); };
-    wrap.querySelector("#bmwc-logout").onclick = async () => {
-      try { await api("/auth/logout", {method: "POST", body: JSON.stringify({token: state.token})}); } catch (_) {}
+    wrap.querySelector("#kwc-set-pw").onclick = () => { wrap.remove(); openSetPasswordModal(); };
+    wrap.querySelector("#kwc-logout").onclick = async () => {
+      try { await api("/auth/logout", {method: "POST", body: JSON.stringify({})}); } catch (_) {}
       handleAuthExpired("logout");
       await loadCommands();
       await refreshCaptcha();
@@ -15671,10 +16744,9 @@
     state.token = res.token;
     state.username = res.username;
     state.role = res.role;
-    localStorage.setItem("bmwc.token", state.token);
-    localStorage.setItem("bmwc.username", state.username);
-    localStorage.setItem("bmwc.role", state.role);
-    setLoginRequiredUntilLogin(false);
+    localStorage.setItem("kwc.token", state.token);
+    localStorage.setItem("kwc.username", state.username);
+    localStorage.setItem("kwc.role", state.role);
     updateLoginState();
     updateGuestVisibility();
     refreshCaptcha();
@@ -15682,21 +16754,22 @@
     loadCommands();
     loadDirectMessageThreads(true);
     loadGroupChatRooms(true);
-    connectStream({refreshAfterOpen: true, reason: "login"});
+    loadAccountNotificationPreferences().then(() => { if (!state.isPip) ensurePreferredWebPush().catch(() => {}); }).catch(() => {});
+    if (!state.isPip) connectStream({refreshAfterOpen: true, reason: "login"});
   }
 
   async function verifyStoredToken() {
     if (!state.token) return false;
     try {
-      const res = await api("/auth/me?token=" + encodeURIComponent(state.token));
+      const res = await api("/auth/me");
       if (!res.ok) {
         handleAuthExpired("verify", {reconnect: false});
         return false;
       } else {
         state.username = res.username;
         state.role = res.role;
-        localStorage.setItem("bmwc.username", state.username || "");
-        localStorage.setItem("bmwc.role", state.role || "");
+        localStorage.setItem("kwc.username", state.username || "");
+        localStorage.setItem("kwc.role", state.role || "");
       }
     } catch (_) {
       return false;
@@ -15709,25 +16782,30 @@
   if (typeof navigator !== "undefined" && navigator.serviceWorker) {
     navigator.serviceWorker.addEventListener("message", event => {
       const data = event && event.data || {};
-      if (!data || (data.source !== "BlueMapWebChat" && data.source !== "BlueMapWebChatParent") || data.type !== "notificationNavigate") return;
+      if (!data || (data.source !== "KWC" && data.source !== "KWCParent") || data.type !== "notificationNavigate") return;
       navigateFromNotification(data.url || data);
     });
   }
 
   window.addEventListener("message", event => {
+    if (!trustedParentMessageEvent(event)) return;
     const data = event && event.data || {};
-    if (!data || (data.source !== "BlueMapWebChat" && data.source !== "BlueMapWebChatParent") || data.type !== "notificationNavigate") return;
+    if (!data || (data.source !== "KWC" && data.source !== "KWCParent") || data.type !== "notificationNavigate") return;
     navigateFromNotification(data.url || data);
   });
 
 
   async function start() {
+    try { localStorage.removeItem("kwc.loginRequiredUntilLogin"); } catch (_) {}
+    if (state.captchaPass === "frontend-ok") {
+      state.captchaPass = "";
+      try { localStorage.removeItem("kwc.captchaPass"); } catch (_) {}
+    }
     installFrameFocusBridge();
     installMapPointerRelayBridge();
     installParentResizeBridge();
     installResumeRefreshHandlers();
     await loadConfig();
-    await ensurePreferredWebPush();
     await loadLang();
     makeRoot();
     await loadEmojis();
@@ -15735,14 +16813,25 @@
     updateFrameSize();
     updateGuestVisibility();
     await refreshCaptcha();
-    await verifyStoredToken();
+    const verified = await verifyStoredToken();
+    if (verified) await loadAccountNotificationPreferences();
     await loadPins();
     await loadCommands();
     await loadDirectMessageThreads(true);
     await loadGroupChatRooms(true);
     if (!guestChatHidden()) await loadHistory();
     await navigateFromNotification(window.location.href);
-    connectStream();
+    if (state.isPip && standalonePipRelayId) {
+      // PiP is a live mirror of the original standalone connection. Do not open
+      // a second EventSource or register another ServiceWorker/Web Push client.
+      installStandalonePipRelaySubscriber();
+      updateLoginState();
+    } else {
+      connectStream();
+      // Web Push is optional. Browser push-service registration can take several
+      // seconds or fail transiently, so it must never block the chat UI startup.
+      ensurePreferredWebPush().catch(() => {});
+    }
   }
 
   if (document.readyState === "loading") {

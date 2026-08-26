@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+
+APP_HOME=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+GRADLE_VERSION="${KWC_GRADLE_VERSION:-9.3.1}"
+DIST_NAME="gradle-${GRADLE_VERSION}"
+CACHE_ROOT="${GRADLE_USER_HOME:-$HOME/.gradle}/wrapper/dists/kwc-bootstrap-${GRADLE_VERSION}"
+DIST_DIR="$CACHE_ROOT/$DIST_NAME"
+ZIP_FILE="$CACHE_ROOT/${DIST_NAME}-bin.zip"
+DIST_URL="https://services.gradle.org/distributions/${DIST_NAME}-bin.zip"
+GRADLE_BIN="$DIST_DIR/bin/gradle"
+
+if [ ! -x "$GRADLE_BIN" ]; then
+    mkdir -p "$CACHE_ROOT"
+    if [ ! -f "$ZIP_FILE" ]; then
+        echo "Downloading Gradle ${GRADLE_VERSION}..." >&2
+        if command -v curl >/dev/null 2>&1; then
+            curl -fL --retry 3 --connect-timeout 15 "$DIST_URL" -o "$ZIP_FILE"
+        elif command -v wget >/dev/null 2>&1; then
+            wget -O "$ZIP_FILE" "$DIST_URL"
+        else
+            echo "ERROR: curl or wget is required for the first Gradle download." >&2
+            exit 1
+        fi
+    fi
+    rm -rf "$DIST_DIR"
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -q "$ZIP_FILE" -d "$CACHE_ROOT"
+    else
+        echo "ERROR: unzip is required to extract Gradle." >&2
+        exit 1
+    fi
+fi
+
+exec "$GRADLE_BIN" -p "$APP_HOME" "$@"

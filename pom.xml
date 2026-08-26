@@ -4,16 +4,30 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>dev.kokoto</groupId>
-    <artifactId>bluemap-web-chat</artifactId>
-    <version>4.7.0</version>
-    <packaging>jar</packaging>
+    <artifactId>kokoto-webchat-parent</artifactId>
+    <version>5.0.0</version>
+    <packaging>pom</packaging>
 
-    <name>BlueMapWebChat</name>
-    <description>Standalone web chat addon for BlueMap with guest chat and account linking.</description>
+    <name>KOKOTO WebChat Parent</name>
+    <description>Multi-module build for the KOKOTO WebChat 5.0.0 platform, frontend, and map-adapter separation.</description>
+
+    <modules>
+        <module>kwc-core</module>
+        <module>kwc-standalone-frontend</module>
+        <module>kwc-adapter-bluemap</module>
+        <module>kwc-adapter-squaremap</module>
+        <module>kwc-adapter-dynmap</module>
+        <module>kwc-adapter-pl3xmap</module>
+        <module>kwc-adapter-liveatlas</module>
+        <module>kwc-adapter-unmined</module>
+        <module>kwc-adapter-overviewer</module>
+        <module>kwc-platform-bukkit</module>
+    </modules>
 
     <properties>
         <java.version>17</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>${java.version}</maven.compiler.release>
     </properties>
 
     <repositories>
@@ -23,66 +37,19 @@
         </repository>
     </repositories>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.spigotmc</groupId>
-            <artifactId>spigot-api</artifactId>
-            <version>1.18.2-R0.1-SNAPSHOT</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.twelvemonkeys.imageio</groupId>
-            <artifactId>imageio-webp</artifactId>
-            <version>3.13.1</version>
-        </dependency>
-        <dependency>
-            <groupId>org.xerial</groupId>
-            <artifactId>sqlite-jdbc</artifactId>
-            <version>3.53.2.0</version>
-        </dependency>
-    </dependencies>
-
     <build>
-        <finalName>BlueMapWebChat-${project.version}</finalName>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <release>${java.version}</release>
-                    <encoding>UTF-8</encoding>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.6.0</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <filters>
-                                <filter>
-                                    <artifact>*:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/*.SF</exclude>
-                                        <exclude>META-INF/*.DSA</exclude>
-                                        <exclude>META-INF/*.RSA</exclude>
-                                    </excludes>
-                                </filter>
-                            </filters>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
-                            </transformers>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
+                    <configuration>
+                        <release>${java.version}</release>
+                        <encoding>UTF-8</encoding>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
 </project>

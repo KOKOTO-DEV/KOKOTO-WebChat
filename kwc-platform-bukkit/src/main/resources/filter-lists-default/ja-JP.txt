@@ -1,0 +1,18 @@
+# KOKOTO WebChat starter blocked-word list (Japanese)
+# UTF-8, one term per line. Conservative starter set; customize for your community.
+クソ野郎
+くそ野郎
+糞野郎
+死ね
+しね
+シネ
+くたばれ
+ファック
+ふぁっく
+ビッチ
+ちんこ
+チンコ
+まんこ
+マンコ
+ちくしょう
+畜生

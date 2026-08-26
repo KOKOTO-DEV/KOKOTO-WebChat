@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "dev.kokoto.webchat.fabric",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": ["KwcFabricChatMixin"],
+  "injectors": {"defaultRequire": 1}
+}

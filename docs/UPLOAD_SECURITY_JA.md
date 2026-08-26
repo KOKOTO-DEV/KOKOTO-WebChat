@@ -1,4 +1,4 @@
-# BlueMapWebChat アップロードのセキュリティ注意点
+# KOKOTO WebChat アップロードのセキュリティ注意点
 
 ファイルアップロードは便利ですが、公開サーバーでは悪用される可能性があります。既定設定ではゲストアップロードは無効です。
 
@@ -34,15 +34,16 @@ upload:
 同一ドメイン HTTPS プロキシ例:
 
 ```yaml
-web-addon:
-  api-base-url: "/bmwc/api"
+http:
+  path-prefix: "/api"
+  public-prefix: "/chat"
 
 upload:
-  # 推奨は空です。アップロード URL は自動的に /bmwc/api に従います。
+  # 推奨は空です。アップロード URL は自動的に /chat/api に従います。
   public-base-url: ""
 
 emoji:
-  # 推奨は空です。絵文字 URL は自動的に /bmwc/api に従います。
+  # 推奨は空です。絵文字 URL は自動的に /chat/api に従います。
   public-base-url: ""
 ```
 
@@ -50,23 +51,23 @@ emoji:
 
 ```yaml
 upload:
-  public-base-url: "/bmwc/api"        # プラグインが /uploads を追加
-  # または: "/bmwc/api/uploads"
+  public-base-url: "/chat/api"        # プラグインが /uploads を追加
+  # または: "/chat/api/uploads"
 
 emoji:
-  public-base-url: "/bmwc/api"        # プラグインが /emojis を追加
-  # または: "/bmwc/api/emojis"
+  public-base-url: "/chat/api"        # プラグインが /emojis を追加
+  # または: "/chat/api/emojis"
 ```
 
 先頭が `/` の値は同一 origin のブラウザパスとして扱われます。同一ドメインプロキシでは完全な FQDN は不要です。
 
 ## 許可拡張子
 
-チャットで表示または共有したいファイル形式だけを許可してください。BlueMapWebChat は拡張子とサイズで制限しますが、公開運用では制限されたディレクトリから配信し、HTTPS を使うことを推奨します。`upload.max-total-size-mb` で `upload.directory` 直下の通常ファイルの合計保存容量も制限できます。`0` は無制限です。有効時は古い未参照アップロードから削除し、それでも不足する場合は新しいアップロードを拒否します。
+チャットで表示または共有したいファイル形式だけを許可してください。KOKOTO WebChat は拡張子とサイズで制限しますが、公開運用では制限されたディレクトリから配信し、HTTPS を使うことを推奨します。`upload.max-total-size-mb` で `upload.directory` 直下の通常ファイルの合計保存容量も制限できます。`0` は無制限です。有効時は古い未参照アップロードから削除し、それでも不足する場合は新しいアップロードを拒否します。
 
 ### URL 設定の解決規則
 
-`web-addon.api-base-url` が HTTPS 公開 API 経路の基準です。`standalone-web.api-base-url`、`upload.public-base-url`、`emoji.public-base-url` は互換目的がなければ空のままにします。standalone の空値は `web-addon.api-base-url` を使い、upload/emoji の空値は `/uploads` と `/emojis` を追加します。`/bmwc/api` のような絶対ブラウザパスはそのまま使います。先頭 `/` のない相対値は `http.cors-origin` が実際の origin のときその origin に対して解決されます。`https://...` の完全 URL はそのまま使います。
+`http.public-prefix + http.path-prefix` が HTTPS 公開 API の基準で、既定値は `/chat/api` です。adapter/standalone の API override は互いに独立しており、通常は空のままにします。upload/emoji が空なら共通 API base に `/uploads`、`/emojis` を追加します。
 
 
 管理者向けカスタム絵文字メモ: 絵文字ファイル名またはフォルダー名を変更すると `:emoji:pack/name:` トークンも変わります。古いトークンを含む既存メッセージは、古いファイル/フォルダー名を残さない限り表示されなくなる場合があります。

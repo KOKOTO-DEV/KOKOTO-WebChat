@@ -4,11 +4,11 @@
 
 The Java plugin does not depend on the BlueMap API. `plugin.yml` does not declare BlueMap as a `depend` or `softdepend`, and the Java sources do not import BlueMap classes. The runtime dependency is Bukkit/Spigot-compatible server APIs. DiscordSRV integration is optional.
 
-The chat feature can therefore run without BlueMap. The BlueMap-specific part is the optional web addon installer that copies web assets into the BlueMap web directory and patches `webapp.conf`.
+The chat feature can therefore run without BlueMap. The BlueMap-specific part is the optional `kwc-adapter-bluemap` that copies embedded-addon assets into the BlueMap web directory and patches `webapp.conf`. The standalone assets are packaged separately in `kwc-standalone-frontend` and are no longer loaded from the BlueMap adapter.
 
 ## Supported modes
 
-BlueMapWebChat currently supports both modes:
+KOKOTO WebChat currently supports both modes:
 
 ```text
 BlueMap addon panel
@@ -21,18 +21,18 @@ Standalone mode is disabled by default. Enable it explicitly when needed:
   api-base-url: ""
 ```
 
-`standalone-web.api-base-url` can remain empty for auto-detection. If the standalone page shares the same reverse-proxied API route as the BlueMap addon, it can also be set to the same value as `web-addon.api-base-url`, for example `/bmwc/api`.
+`frontend.standalone.api-base-url` normally remains empty. Direct HTTP uses the internal `http.path-prefix`; through the reverse proxy it uses `http.public-prefix + http.path-prefix`, `/chat/api` by default. Set this option only when standalone must use a different public API URL.
 
 Direct HTTP URL:
 
 ```text
-http://<server-host>:8899/chat
+http://<server-host>:8899/
 ```
 
 HTTPS reverse-proxy URL example:
 
 ```text
-https://<domain>/bmwc/chat
+https://<domain>/chat
 ```
 
 ## Standalone-only deployment
@@ -40,13 +40,15 @@ https://<domain>/bmwc/chat
 Use this when you do not want any chat UI injected into BlueMap:
 
 ```yaml
-web-addon:
-  auto-install: false
-  auto-patch-webapp-conf: false
+adapters:
+  bluemap:
+    auto-install: false
+    auto-patch-webapp-conf: false
 
-standalone-web:
-  enabled: true
-  path: "/chat"
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
 ```
 
 
@@ -57,6 +59,6 @@ Standalone browser windows and Document Picture-in-Picture windows cannot be mad
 
 ### URL setting resolution
 
-`web-addon.api-base-url` is the primary HTTPS public API path. Leave `standalone-web.api-base-url`, `upload.public-base-url`, and `emoji.public-base-url` empty unless you need a compatibility override. Empty standalone follows `web-addon.api-base-url`; empty upload/emoji append `/uploads` and `/emojis`. Absolute browser paths such as `/bmwc/api` are used as-is. Relative values without a leading `/` are resolved against `http.cors-origin` when it is a real origin. Full `https://...` URLs are used as-is.
+`frontend.standalone.api-base-url` is the standalone page's own API override and normally stays empty. It does not inherit `adapters.bluemap.api-base-url`. Empty upload/emoji settings follow the canonical public API base and append `/uploads` and `/emojis`. Absolute browser paths such as `/chat/api` are used as-is. Relative values without a leading `/` are resolved against `http.cors-origin` when it is a real origin. Full `https://...` URLs are used as-is.
 
 

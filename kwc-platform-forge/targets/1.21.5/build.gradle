@@ -1,0 +1,28 @@
+plugins { id 'java'; id 'net.minecraftforge.gradle' version '[7.0.17,8)'; id 'net.minecraftforge.jarjar' version '0.2.3' }
+
+group='dev.kokoto'
+version='5.0.0'
+java.toolchain.languageVersion=JavaLanguageVersion.of(21)
+jarJar.register()
+repositories { minecraft.mavenizer(it); maven fg.forgeMaven; maven fg.minecraftLibsMaven; mavenCentral();  }
+minecraft { mappings channel:'official', version:'1.21.5' }
+sourceSets.main.java.srcDirs=['../../src/common/java','../../src/compatClassic/java','../../../kwc-core/src/main/java','../../../kwc-adapter-bluemap/src/main/java','../../../kwc-adapter-squaremap/src/main/java','../../../kwc-adapter-dynmap/src/main/java','../../../kwc-adapter-liveatlas/src/main/java','../../../kwc-adapter-unmined/src/main/java','../../../kwc-adapter-overviewer/src/main/java']
+sourceSets.main.resources.srcDirs=['../../../kwc-standalone-frontend/src/main/resources','../../../kwc-adapter-bluemap/src/main/resources','../../../kwc-adapter-squaremap/src/main/resources','../../../kwc-adapter-dynmap/src/main/resources','../../../kwc-adapter-liveatlas/src/main/resources','../../../kwc-adapter-unmined/src/main/resources','../../../kwc-adapter-overviewer/src/main/resources','../../../kwc-platform-bukkit/src/main/resources','build/generated/resources']
+dependencies {
+    implementation minecraft.dependency('net.minecraftforge:forge:1.21.5-55.1.0')
+    implementation 'org.xerial:sqlite-jdbc:3.53.2.0'
+    implementation 'org.yaml:snakeyaml:2.4'
+    jarJar 'org.xerial:sqlite-jdbc:3.53.2.0'
+    jarJar 'org.yaml:snakeyaml:2.4'
+}
+def metadata=tasks.register('generateModMetadata',Copy) { from('../../src/common/templates'); into(layout.buildDirectory.dir('generated/resources')); expand(minecraft_version:'1.21.5',minecraft_next:'1.22',forge_version:'55.1.0',loader_major:'55') }
+processResources.dependsOn(metadata)
+tasks.withType(JavaCompile).configureEach { options.release=21; options.encoding='UTF-8' }
+tasks.named('jar', Jar).configure {
+    archiveFileName = "KOKOTO-WebChat-5.0.0-Forge-1.21.5-slim.jar"
+    from('../../../LICENSE') { rename { 'LICENSE_KOKOTO-WebChat' } }
+}
+tasks.named('jarJar').configure {
+    archiveFileName = "KOKOTO-WebChat-5.0.0-Forge-1.21.5.jar"
+}
+tasks.named('build').configure { dependsOn tasks.named('jarJar') }

@@ -1,0 +1,1321 @@
+# =============================================================================
+# Core
+# =============================================================================
+
+# KOKOTO WebChat 5.0.0 configuration
+
+# Automatic configuration migration mode. The bundled config.yml is the only migration template.
+# During a version migration, KOKOTO WebChat starts from the latest bundled default config and overlays
+# the values from the existing config.yml. Old comments, ordering, spacing, and indentation are discarded.
+# Existing configured values are preserved; changed bundled defaults are reported for manual review rather
+# than silently replacing an operator value. The migrated file is marked <version>_auto_migration.
+# While that marker remains, startup/reload rebuilds from the latest same-version bundled config and overlays
+# the current values again, so newly added settings and all bundled comments/layout stay current.
+# config-reference-<version>.yml is an administrator-readable copy of the complete bundled default config;
+# it is not used as the migration template. Older generated reference/migration files are removed automatically.
+# If config-version is an exact plugin version, that config is fixed and same-version migration does not rewrite it.
+# When a fixed older-version config must be upgraded, the original config.yml is backed up before reconstruction.
+config-version: "5.0.0"
+
+# Master switch for KOKOTO WebChat.
+# New generated configs default to false so the plugin creates config.yml first
+# without starting web/chat services or cleanup tasks. /kchat reload remains available.
+# Existing configs that do not have this key are treated as enabled for upgrade compatibility.
+enabled: false
+
+# Check Modrinth for a newer stable release and notify the console and eligible in-game administrators.
+# In-game notices are shown to OPs and players with kwc.update.notify.
+# Checks run after startup and on the built-in schedule; an eligible administrator login can refresh stale release state.
+# KWC checks the KOKOTO WebChat Modrinth project first. During the 5.0.0 rename transition,
+# it falls back to the existing BlueMapWebChat Modrinth project when the new project is not available yet.
+# Notices use the download pages that belong to the source that answered successfully.
+# HTTP/API failures are logged to the server console. Timing and release channel use built-in defaults.
+update-check:
+  enabled: true
+
+
+# =============================================================================
+# Network and web hosting
+# =============================================================================
+
+#
+# URL / HTTP / HTTPS quick guide
+# ───────────────────────
+# 1) Direct HTTP, no proxy
+#    - Leave http.host as 0.0.0.0.
+#    - Open the plugin API directly: http://<server-host>:8899/api
+#    - Standalone page, when enabled: http://<server-host>:8899/
+#    - Leave map adapter api-base-url values and frontend.standalone.api-base-url empty. Direct map pages then use this browser host with KWC :8899/api.
+#
+# 2) HTTPS with Caddy/Nginx on the same domain as BlueMap
+#    - Set http.host to 127.0.0.1 so the plugin listens locally.
+#    - Proxy /chat and /chat/* to http://127.0.0.1:8899 and strip the /chat prefix.
+#    - http.public-prefix defaults to /chat, so the public standalone URL is /chat and the public API URL is /chat/api.
+#    - Standalone is served at /chat and the API at /chat/api.
+#      frontend.standalone.api-base-url can normally stay empty.
+#
+# Alternate same-domain layout:
+#    - To publish standalone KWC at / and BlueMap at /chat/, set http.public-prefix to "".
+#    - Route /chat and /chat/* to BlueMap :8100 with the /chat prefix stripped, then route all remaining paths to KWC :8899.
+#    - Keep frontend.standalone.path: "/" and adapter/frontend api-base-url values empty.
+#
+# 3) HTTPS with a separate API domain
+#    - Set adapters.bluemap.api-base-url to the full public API URL, for example
+#      https://api.example.com/chat/api.
+#    - Set http.cors-origin to the public BlueMap/chat origin, for example
+#      https://map.example.com. Do not keep "*" when using credentials/cookies through a proxy.
+#
+# URL setting rule of thumb:
+# - http.public-prefix is the public reverse-proxy prefix. It is not registered as an internal HTTP route.
+# - adapters.bluemap/squaremap/dynmap/pl3xmap.api-base-url are optional adapter-specific overrides.
+# - frontend.standalone.api-base-url normally stays empty. Standalone uses
+#   http.public-prefix + http.path-prefix when accessed through the reverse proxy.
+# - upload.public-base-url and emoji.public-base-url normally stay empty so they
+#   follow the canonical public API base automatically. With the default reverse
+#   proxy this resolves to /chat/api/uploads and /chat/api/emojis.
+#   Set an explicit value only when files are intentionally served from another
+#   public URL. A shared API base such as "/chat/api" is also accepted; KWC
+#   appends /uploads or /emojis automatically.
+
+http:
+  # Direct HTTP default. Use "127.0.0.1" when reverse-proxying with HTTPS.
+  host: "0.0.0.0"
+  port: 8899
+  # Internal API route on the KWC HTTP server.
+  path-prefix: "/api"
+  # External reverse-proxy prefix. This is never added to the internal route.
+  # With the bundled Caddy/Nginx examples: /chat -> / and /chat/api -> /api.
+  public-prefix: "/chat"
+  # Direct HTTP / personal use default. For HTTPS proxy, set this to your domain,
+  # for example: "https://map.example.com"
+  cors-origin: "*"
+  # Only trust X-Forwarded-For from these reverse proxy IPs/CIDRs.
+  # Empty = ignore client-supplied X-Forwarded-For and use the direct socket IP.
+  # Keep [] for direct HTTP. When Caddy/Nginx runs on the same host, use block style:
+  # trusted-proxies:
+  #   - "127.0.0.1"
+  #   - "::1"
+  trusted-proxies: []
+  # Debug helper. When true, logs socket IP, X-Forwarded-For and resolved client IP
+  # to the server console and logs/latest.log.
+  # Use temporarily when checking reverse proxy/trusted-proxies behavior.
+  log-client-ip-resolution: false
+
+frontend:
+  standalone:
+    # Serve a standalone chat page from the plugin HTTP server.
+    # Direct HTTP example: http://<server-host>:8899/
+    # Same-domain HTTPS proxy example: https://<domain>/chat
+    enabled: true
+    # Internal standalone route. The external reverse-proxy URL is http.public-prefix.
+    path: "/"
+    # App name used by the standalone page/PWA. If this is changed after mobile installation, reinstall the Home Screen web app.
+    app-name: "KOKOTO WebChat"
+    app-short-name: "KWC"
+    # API base used by the standalone page.
+    # Empty = auto.
+    # - Direct HTTP: current origin + http.path-prefix, e.g. http://host:8899/api.
+    # - Reverse proxy: http.public-prefix + http.path-prefix, e.g. /chat/api.
+    # Explicit override values are also supported:
+    # - Absolute browser path: "/chat/api" is used as-is.
+    # - Relative path: "chat/api" becomes http.cors-origin + "/chat/api" when
+    #   http.cors-origin is a real origin; otherwise it becomes "/chat/api".
+    # - Full URL: "https://map.example.com/chat/api" is used as-is.
+    api-base-url: ""
+
+adapters:
+  bluemap:
+    # Optional map integration. Standalone is the default frontend.
+    enabled: false
+    # Bukkit: copies assets into the configured/common BlueMap web root.
+    # Fabric/NeoForge BlueMap mod: copies assets into BlueMapAPI WebApp.getWebRoot().
+    auto-install: true
+    # Bukkit filesystem integration only. Fabric/NeoForge register JS/CSS through
+    # BlueMapAPI and do not edit webapp.conf.
+    auto-patch-webapp-conf: true
+    # Optional API override used by the BlueMap embedded addon.
+    # Empty = direct HTTP uses http.port (default :8899)/api; HTTPS uses http.public-prefix + http.path-prefix.
+    # If a router maps a different external KWC port (for example public :8900 -> internal :8899),
+    # the browser cannot infer that NAT mapping; set this to the public URL such as "http://PUBLIC_IP:8900/api".
+    # Same-domain override example: "/chat/api"
+    # Separate API domain example: "https://api.example.com/chat/api"
+    # This override affects the BlueMap embedded frontend only. Upload/emoji
+    # public URLs normally follow the canonical public API base independently.
+    api-base-url: ""
+
+    # Bukkit/filesystem path overrides. Normally leave these as-is; Bukkit also tries
+    # common BlueMap paths automatically. Fabric/NeoForge BlueMap-mod integration
+    # gets the web root from BlueMapAPI and ignores these two path overrides.
+    bluemap-web-root: "bluemap/web"
+    bluemap-webapp-conf: "plugins/BlueMap/webapp.conf"
+    addon-path: "addons/kokoto-web-chat"
+
+  squaremap:
+    # Enable automatic integration when an existing squaremap web directory is detected.
+    # No squaremap directory is created when squaremap is not installed.
+    enabled: false
+    auto-install: true
+    # squaremap regenerates its static web files when web-directory.auto-update is enabled.
+    # KWC therefore re-checks and restores its marked index.html block on startup/reload.
+    auto-patch-index: true
+    # Public API base used by the squaremap embedded KWC frontend.
+    # Empty = HTTPS uses http.public-prefix + http.path-prefix; direct HTTP uses http.port (default :8899)/api.
+    # If router port forwarding changes the external KWC port, set the public URL explicitly,
+    # for example "http://PUBLIC_IP:8900/api" for public :8900 -> internal :8899.
+    api-base-url: ""
+    # Optional explicit squaremap web root. Empty = detect from common squaremap config paths
+    # and settings.web-directory.path. Example: "plugins/squaremap/web".
+    web-root: ""
+    # Asset directory relative to squaremap's web root.
+    addon-path: "kokoto-web-chat"
+
+  dynmap:
+    # Optional Dynmap embedded frontend. KWC does not use Dynmap's own webchat transport.
+    enabled: false
+    # Copy KWC assets into Dynmap's configured webpath.
+    auto-install: true
+    # Add/remove only the marked KWC block in Dynmap index.html. Dynmap may regenerate
+    # web files when update-webpath-files is enabled, so KWC re-checks this on startup/reload.
+    auto-patch-index: true
+    # Public API base used by the Dynmap embedded KWC frontend.
+    # Empty = HTTPS uses http.public-prefix + http.path-prefix; direct HTTP uses http.port (default :8899)/api.
+    # If router port forwarding changes the external KWC port, set the public URL explicitly,
+    # for example "http://PUBLIC_IP:8900/api" for public :8900 -> internal :8899.
+    api-base-url: ""
+    # Optional explicit Dynmap web root. Empty = read webpath from common Dynmap
+    # configuration.txt locations and fall back to common web directories.
+    # For an externally copied Dynmap web site, point this at the actual shared/mounted web root.
+    web-root: ""
+    # Asset directory relative to Dynmap's web root.
+    addon-path: "kokoto-web-chat"
+
+  pl3xmap:
+    # Optional Pl3xMap embedded frontend. Current Pl3xMap v3 supports Bukkit/Paper-family servers and Fabric; no official NeoForge Pl3xMap target is currently claimed.
+    enabled: false
+    # Copy KWC assets into Pl3xMap's settings.web-directory.path web root.
+    auto-install: true
+    # Add/remove only the marked KWC block in Pl3xMap index.html. Pl3xMap can overwrite
+    # generated website files when settings.web-directory.read-only is false, so KWC
+    # re-checks and restores its block on startup/reload.
+    auto-patch-index: true
+    # Public API base used by the Pl3xMap embedded KWC frontend.
+    # Empty = HTTPS uses http.public-prefix + http.path-prefix; direct HTTP uses http.port (default :8899)/api.
+    # If router port forwarding changes the external KWC port, set the public URL explicitly,
+    # for example "http://PUBLIC_IP:8900/api" for public :8900 -> internal :8899.
+    api-base-url: ""
+    # Optional explicit Pl3xMap web root. Empty = read settings.web-directory.path from
+    # common Pl3xMap config.yml locations (with legacy settings.yml fallback) and common web directories.
+    web-root: ""
+    # Asset directory relative to Pl3xMap's web root.
+    addon-path: "kokoto-web-chat"
+
+
+  liveatlas:
+    # Optional LiveAtlas embedded frontend. LiveAtlas is a static map frontend and can
+    # display Dynmap, squaremap, Pl3xMap, Overviewer, or multiple configured servers.
+    enabled: false
+    # Copy KWC assets into an already-existing LiveAtlas web root.
+    auto-install: true
+    # Add/remove only the marked KWC block in LiveAtlas index.html. LiveAtlas updates
+    # can replace index.html, so run /kchat reload after updating the LiveAtlas files.
+    auto-patch-index: true
+    # Public API base used by the LiveAtlas embedded KWC frontend.
+    # Empty = HTTPS uses http.public-prefix + http.path-prefix; direct HTTP uses http.port (default :8899)/api.
+    # For a different public/NAT port or API host, set the actual public URL explicitly.
+    api-base-url: ""
+    # Optional explicit LiveAtlas web root. Empty = detect common local web roots only
+    # when index.html contains LiveAtlas markers such as window.liveAtlasConfig.
+    # For an external Caddy/nginx site, point this at the shared/mounted LiveAtlas directory.
+    web-root: ""
+    # Asset directory relative to the LiveAtlas web root.
+    addon-path: "kokoto-web-chat"
+
+  unmined:
+    # Optional uNmINeD static-web export integration. uNmINeD is an external map
+    # generator, not a server plugin, so KWC only patches an already-exported site.
+    enabled: false
+    # Copy KWC assets into the detected/configured uNmINeD web root.
+    auto-install: true
+    # Add/remove only the marked KWC block in the uNmINeD HTML entry point. Re-exporting
+    # the site can replace index.html, so run /kchat reload after each web export.
+    auto-patch-index: true
+    # Public API base used by the uNmINeD embedded KWC frontend.
+    # Empty = HTTPS uses http.public-prefix + http.path-prefix; direct HTTP uses http.port (default :8899)/api.
+    # For a different public/NAT port or API host, set the actual public URL explicitly.
+    api-base-url: ""
+    # Optional explicit uNmINeD export root. Empty = check only a small set of conventional
+    # local paths and require uNmINeD markers in index.html (legacy unmined.index.html is accepted).
+    # For an arbitrary Caddy/nginx document root, point this at the shared/mounted export directory.
+    web-root: ""
+    # Asset directory relative to the uNmINeD export root.
+    addon-path: "kokoto-web-chat"
+
+  overviewer:
+    # Optional Minecraft Overviewer static-web map integration. Overviewer is an external
+    # renderer, not a server plugin, so KWC only patches an already-rendered output directory.
+    enabled: false
+    # Copy KWC assets into the detected/configured Overviewer output directory.
+    auto-install: true
+    # Add/remove only the marked KWC block in Overviewer's generated index.html. A later
+    # Overviewer render or --update-web-assets can replace it, so run /kchat reload afterward.
+    auto-patch-index: true
+    # Public API base used by the Overviewer embedded KWC frontend.
+    # Empty = HTTPS uses http.public-prefix + http.path-prefix; direct HTTP uses http.port (default :8899)/api.
+    # For a different public/NAT port or API host, set the actual public URL explicitly.
+    api-base-url: ""
+    # Optional explicit Overviewer outputdir. Empty = check only a small set of conventional
+    # local paths and require Overviewer-specific index/assets before patching.
+    # For an arbitrary Caddy/nginx document root, point this at the shared/mounted output directory.
+    web-root: ""
+    # Asset directory relative to the Overviewer output directory.
+    addon-path: "kokoto-web-chat"
+
+# =============================================================================
+# Public chat and message features
+# =============================================================================
+
+chat:
+  # History storage backend.
+  # sqlite = recommended persistent storage for long-lived chat history and search.
+  # jsonl = legacy single-file persistence using history-file.
+  # memory = keep only in-memory history for the current server session.
+  history-storage: "sqlite"
+  # Shared by memory/jsonl/sqlite. 0 = unlimited by count.
+  history-size: 0
+  # Shared by memory/jsonl/sqlite. 0 = unlimited by age.
+  history-retention-days: 5
+  # JSONL history file. Relative paths are stored under the plugin data folder.
+  history-file: "history.jsonl"
+  # SQLite DB file. Relative paths are stored under the plugin data folder.
+  history-sqlite-file: "history.db"
+  # Import history-file into SQLite once when the DB is empty.
+  history-sqlite-migrate-jsonl: true
+  # Messages fetched per history request. 0 = server default page limit.
+  history-page-size: 80
+
+  # 0 = unlimited. max-url-message-length also uses 0 = unlimited.
+  max-message-length: 120
+  max-url-message-length: 2048
+
+  # Format used when web messages are relayed into Minecraft chat.
+  # Supports Minecraft legacy color codes with & in the configured template only.
+  # User message text is not color-translated.
+  # web-user/web-admin placeholders: {server}, {server_id}, {player}, {message}
+  # web-guest placeholders: {server}, {server_id}, {guest}, {message}
+  # When server relay is enabled and an installed legacy format does not contain
+  # {server} or {server_id}, KWC automatically prepends [server-name].
+  web-user-to-game-format: "[Web] {player}: {message}"
+  web-guest-to-game-format: "[Web Guest] {guest}: {message}"
+  web-admin-to-game-format: "[Web Admin] {player}: {message}"
+
+  broadcast-web-chat-to-web: true
+  broadcast-ingame-chat-to-web: true
+  send-web-chat-to-game: true
+  clickable-urls-in-game: true
+
+
+  # Linked web-user sender names in Minecraft chat are clickable. Clicking only the sender name
+  # suggests `/kchat dm <real Minecraft account name> ` in the chat input.
+  # The message body separately suggests `/kchat reply <messageId> ` when reply.game-click is enabled.
+  # This click action works independently of the optional hover setting below.
+  # When player-display.mode is display-name or custom-name, optionally show the real linked
+  # Minecraft account name when hovering over a web-chat sender name in in-game chat.
+  # Hover is only added when the displayed name differs from the real account name.
+  # Uses Spigot/Bungee chat components, so it works on Spigot/Paper-compatible servers and is not Paper-only.
+  # text supports Minecraft legacy color codes with &, \n for line breaks, and placeholders:
+  # {display} = displayed sender name, {real} = real Minecraft account name,
+  # {uuid} = linked Minecraft UUID, {source} = message source such as web/guest/admin.
+  game-name-hover:
+    enabled: false
+    text: "&f{real}"
+
+# Colon-delimited text/control tokens processed before messages are stored or relayed.
+# Alias names are intentionally English-only defaults; replace or add aliases in any language.
+# Write aliases without surrounding colons; alias "enter" is typed as :enter:
+# Unknown tokens are left untouched, so normal custom/image emoji tokens keep working.
+# YAML list values accept both inline [a, b] and block "- a" forms. Use normal ASCII spaces only for indentation.
+# In Minecraft output, real CR/LF input still follows the existing single-line flattening rules.
+# Only newline/blank-line breaks created by these configured tokens are preserved as game line breaks.
+message-tokens:
+  enabled: true
+  # 0 = unlimited. Limits only successful message-token replacements, not emoji tokens.
+  max-replacements-per-message: 24
+  newline:
+    # Inserts one new line. Change or add aliases freely; for example, add "next" to use :next:
+    aliases:
+      - enter
+      - newline
+      - nextline
+      - linebreak
+      - br
+  blank-line:
+    # Inserts one empty line between surrounding text.
+    aliases:
+      - blankline
+      - emptyline
+      - paragraphbreak
+  tab:
+    # Inserts spaces rather than a literal tab control character.
+    aliases:
+      - tab
+      - indent
+    spaces: 4
+  # Optional printable-text substitutions. Replacements cannot contain control characters/newlines.
+  # The map key is only an administrator label; aliases are the actual :token: names.
+  custom: {}
+  # Example printable custom substitutions (replace the custom: {} line above with this block):
+  # custom:
+  #   separator:
+  #     aliases: [separator, divider]
+  #     replacement: "────────────"
+  #   bullet:
+  #     aliases:
+  #       - bullet
+  #     replacement: "• "
+  #   arrow:
+  #     aliases:
+  #       - arrow
+  #     replacement: "→ "
+
+
+search:
+  # Enable the web message search button and /history/search API.
+  enabled: true
+  # Number of search results returned by the web UI and /history/search API.
+  # This is the only search result count limit. There is no separate internal maximum.
+  # Setting this to 2000 returns up to 2000 results; setting it to 10 returns up to 10.
+  # Very large values such as 10000 or 100000 are accepted, but can make searches slow,
+  # increase response size, and add significant CPU, memory, and database load.
+  # Recommended: 50-200 for normal use. Raise only when you need large admin searches.
+  result-limit: 50
+
+announcements:
+  broadcast-to-web-chat: true
+  # Built-in announcement events are sent with an i18n key.
+  # The message below is kept as fallback/custom text; the web UI translates it when a matching lang key exists.
+  # Common placeholders: {server}, {event}
+  # Player events: {player}, {name}, {real_player}, {real_name}, {uuid}, {world}
+  # Extra event placeholders:
+  # - death: {message}, {killer}
+  # - advancement: {advancement}, {advancement_key}
+  # - world-change: {from_world}, {to_world}, {world}
+  # - gamemode-change: {from_gamemode}, {to_gamemode}, {gamemode}
+  # - level-change: {old_level}, {new_level}, {level}
+  # - web-login/web-logout: {name}, {player}
+
+  minecraft-join:
+    enabled: true
+    message: "🟢 {player} joined the server."
+  minecraft-quit:
+    enabled: true
+    message: "🔴 {player} left the server."
+  first-join:
+    enabled: true
+    message: "✨ {player} joined the server for the first time."
+  death:
+    enabled: true
+    message: "☠ {message}"
+  advancement:
+    enabled: true
+    message: "🏆 {player} completed the advancement [{advancement}]."
+  server-start:
+    enabled: true
+    message: "🟢 Server started."
+  server-stop:
+    enabled: true
+    message: "🔴 Server is stopping."
+
+  world-change:
+    enabled: false
+    message: "🌍 {player} moved to {to_world}."
+  gamemode-change:
+    enabled: false
+    message: "🎮 {player} changed game mode to {to_gamemode}."
+  level-change:
+    enabled: false
+    message: "⭐ {player} changed level from {old_level} to {new_level}."
+  bed-enter:
+    enabled: false
+    message: "💤 {player} entered a bed."
+  web-login:
+    enabled: false
+    message: "🌐 {name} logged in to web chat."
+  web-logout:
+    enabled: false
+    message: "🌐 {name} logged out of web chat."
+
+reply:
+  # Clicking the body of a KWC-rendered Minecraft message suggests
+  # /kchat reply <messageId> in the chat input. Sender-name clicks remain DM actions.
+  game-click:
+    enabled: true
+    # Replaces the normal local Minecraft chat line with an equivalent clickable
+    # component so game-origin messages can also be replied to. Disable this if a
+    # chat-format plugin requires exclusive ownership of the final chat renderer.
+    local-game-chat: true
+
+  # Format used for a public reply sent from /kchat reply <messageId> <message>.
+  # Placeholders: {server}, {server_id}, {player}, {message}.
+  game-command-format: "&8[&dReply&8] &f{player}&7: &f{message}"
+
+  # Show the original message preview in Minecraft chat when a web/guest message is a reply.
+  # It is sent as a separate line before the actual web message so URLs in both lines stay clickable.
+  game-preview:
+    enabled: true
+    # Supports Minecraft color codes with &.
+    # Placeholders: {sender}, {preview}, {id}
+    format: "&7{sender}: {preview}"
+    # Maximum displayed preview length before appending …
+    # 0 = no truncation.
+    max-length: 120
+
+  # Label/prefix used for the actual web message line when relaying a reply to Minecraft.
+  # Supports Minecraft color codes with &.
+  # With the default web formats this changes "[Web] Player: message" into "↪ [Reply] Player: message".
+  # The first bracketed source label near the start of the rendered relay line is replaced.
+  # If no bracketed source label is found, this text is prepended.
+  # Placeholders: {sender}, {preview}, {id}
+  game-prefix:
+    enabled: true
+    text: "↪ [Reply] "
+
+# Pinned messages are stored separately from normal chat history.
+# They are shown in a compact top bar and opened in a popup.
+pinned:
+  enabled: true
+  # 0 = unlimited pins.
+  max-pins: 20
+  # Show pinned messages to visitors who are not logged in.
+  # false = pinned messages are only returned/displayed after web login.
+  show-to-logged-out: true
+  # Keep uploaded files / external cached media referenced by pinned messages
+  # even when normal upload/cache retention cleanup runs.
+  preserve-uploads: true
+
+
+# =============================================================================
+# Private messaging and server relay
+# =============================================================================
+
+direct-message:
+  # Thread-style 1:1 direct messages.
+  # Only players that have joined or linked at least once and have a stored UUID/name can be selected.
+  # An unqualified name resolves only on the current server. Cross-server targets must carry
+  # an explicit server-scoped identity from name@server-id or the web UI's remote-player metadata.
+  # Remote identity is server ID + player UUID; cross-server delivery/read receipts use server-relay.
+  # Messages use the private DM store and this feature is disabled by default because it stores private messages.
+  enabled: false
+
+  # auto = follow chat.history-storage when it is jsonl, otherwise use sqlite.
+  # sqlite = recommended database storage.
+  # jsonl = append-only JSONL file storage, useful when chat history also uses JSONL.
+  storage: "auto"
+
+  # 0 = no time limit. A positive value is shown next to the DM window title and
+  # physically removes old DM messages after that many days.
+  retention-days: 0
+
+  # 0 = unlimited by count. When set, only the newest N messages are kept per 1:1 thread.
+  max-messages-per-thread: 0
+
+  # 0 = unlimited. Recommended: 300-1000.
+  max-message-length: 500
+
+  # Allow sending DMs from the web UI.
+  allow-web-send: true
+  # Allow sending DMs from /kchat dm in game.
+  allow-game-send: true
+
+  # Copy successful-looking player whisper commands such as /w, /msg, /tell,
+  # /whisper, /m, /pm and /message into the KWC 1:1 DM thread. This does not
+  # resend the whisper in Minecraft; it only mirrors it to the private web inbox.
+  capture-game-whispers: true
+
+  # Optional administrator DM content audit. Disabled by default because this grants
+  # access to private message bodies. Access requires both this switch and membership
+  # in private-chat-super-admins. The web view is read-only and each read is recorded
+  # through the audit logger without copying message bodies into the audit log.
+  admin-audit:
+    enabled: false
+
+  # Notify players about unread DMs when they join.
+  notify-on-login: true
+  # Notify online players immediately when a new DM arrives.
+  notify-on-message: true
+  # Show unread DM count badge in the web UI.
+  web-unread-badge: true
+
+  # Ask before hiding a DM message from the web message box.
+  confirm-hide: true
+
+  # JSONL file for private 1:1 message threads when storage is jsonl. Relative paths are stored under the plugin data folder.
+  jsonl-file: "direct-messages.jsonl"
+  # SQLite file for private 1:1 message threads when storage is sqlite. Relative paths are stored under the plugin data folder.
+  sqlite-file: "direct-messages.db"
+
+# Group chat rooms are stored locally on this KOKOTO WebChat server.
+# The web UI tracks send failure/retry state and per-message unread-recipient counts.
+# This is disabled by default because it stores multi-user private messages.
+# Enable only after reviewing retention, room limits, password policy, and optional administrator audit access.
+group-chat:
+  enabled: false
+
+  # Allow sending group messages from the web UI.
+  allow-web-send: true
+  # Allow public rooms to appear in the room list. Private rooms are invite-only.
+  allow-public-rooms: true
+  # Allow room passwords. Passwords are stored as PBKDF2 hashes, never as plain text.
+  allow-room-passwords: true
+
+  # Ask before leaving a room or hiding a group message in the web UI.
+  confirm-leave: true
+  confirm-hide: true
+
+  # Optional administrator group-chat content audit. Disabled by default because this grants
+  # access to group message bodies. Access requires both this switch and membership
+  # in private-chat-super-admins. The web view is read-only and each page read is
+  # recorded through the audit logger without copying message bodies into the log.
+  admin-audit:
+    enabled: false
+
+  # 0 = no time limit. A positive value is shown next to the group chat title and
+  # physically removes old group messages after that many days.
+  retention-days: 30
+  # 0 = unlimited by count. When set, only the newest N messages are kept per room.
+  max-messages-per-room: 1000
+  # 0 = unlimited. Recommended: 300-1000.
+  max-message-length: 500
+
+  # Safety limits for room creation and membership. 0 = unlimited.
+  max-rooms-per-user: 20
+  max-members-per-room: 50
+  max-room-name-length: 32
+  invite-expire-hours: 72
+
+  # SQLite file for group chat rooms/messages. Relative paths are stored under the plugin data folder.
+  sqlite-file: "group-messages.db"
+
+# Optional server-to-server relay for public chat and cross-server 1:1 DMs.
+# KOKOTO WebChat exchanges signed HTTP POST requests with configured KWC or legacy BMWC peers.
+# Configure a stable unique server-id on every server and use the same shared-secret on both sides,
+# or set a per-peer secret. Peer URL is the remote server's actual API base URL.
+# Public chat uses /relay/receive; private DM delivery and read acknowledgements use
+# /relay/dm/receive and /relay/dm/read. The correct endpoint is appended automatically.
+# For more than two servers, full-mesh and hub topologies are supported. relayId de-duplication
+# and hop limits prevent loops, and multi-hop DM success is returned only after final storage confirmation.
+server-relay:
+  enabled: false
+  server-id: "server-1"
+  server-name: "Server 1"
+  # Generate a long random value and use the same value on connected peers.
+  shared-secret: ""
+  connect-timeout-seconds: 5
+  request-timeout-seconds: 10
+  max-clock-skew-seconds: 60
+  dedupe-seconds: 300
+  max-hops: 8
+  # true = messages received from one peer may be forwarded to other peers (hub/chain topology).
+  # false = public chat is delivered only across directly configured peer links. Cross-server DMs are unaffected.
+  forward-received-public-chat: true
+
+  sources:
+    game: true
+    web: true
+    guest: true
+    # Disabled by default to avoid DiscordSRV bridge loops across servers.
+    discord: false
+    # Join/quit/death/server announcements are disabled by default.
+    system: false
+
+  # Public-relay delivery destinations. These switches do not disable private DM relay handling.
+  delivery:
+    web: true
+    game: true
+
+  # Available placeholders: {server}, {server_id}, {source}, {sender},
+  # {real_sender}, {uuid}, {role}, {message}.
+  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
+
+  # `peers` does not create a persistent or reciprocal connection/session.
+  # Each enabled entry is an HTTP relay destination for messages sent by this server.
+  # The same id/secret entry is also used to authenticate relay requests received from that server.
+  # A receiver that does not list the sender id rejects that request with HTTP 403 unknown_peer before applying it.
+  # A receiver with server-relay.enabled: false returns HTTP 404 relay_disabled. The sender immediately suppresses
+  # further outbound relay to that peer until the local relay is reloaded/restarted; no periodic probe is sent.
+  # After 3 consecutive unknown_peer responses or transport failures (for example connection refused/timeout),
+  # the sender puts that destination into a 60-second backoff. Messages for that destination are skipped during the interval;
+  # there is no periodic probe. The first actual relay message after 60 seconds retries automatically. A failed retry starts a
+  # new 60-second interval; a successful connection clears the transport-failure streak and a successful relay response clears backoff.
+  # For two-way relay, configure matching entries on both servers.
+  # Keep the remote server's actual public prefix; migration does not rewrite peer URLs.
+  # The URL may point to the API root or an existing relay endpoint; KOKOTO WebChat normalizes it
+  # and appends the correct public-chat, DM-delivery, or DM-read endpoint automatically.
+  # - id: "server-2"
+  #   url: "http://10.0.0.2:8899/api"
+  #   # Empty = use server-relay.shared-secret.
+  #   secret: ""
+  #   enabled: true
+  peers: []
+
+
+# =============================================================================
+# Accounts, permissions, and moderation
+# =============================================================================
+
+# Player name shown for Minecraft-origin messages and announcements.
+# name = real Minecraft username, display-name = Bukkit displayName used by nickname plugins,
+# custom-name = customName first, then displayName.
+# When a display/custom nickname differs from the real Minecraft username,
+# web chat sends the real username too so the UI can show it on hover/click.
+# strip-colors: true removes legacy Minecraft color codes from stored/displayed names.
+# strip-colors: false keeps &/§ color codes for web sender-name rendering.
+# Discord output still strips raw Minecraft color codes before sending.
+player-display:
+  mode: "name"
+  strip-colors: true
+
+# Guest mode is enabled by default for direct HTTP personal use.
+# Spam controls below are intentionally conservative:
+# - first message requires math captcha
+# - captcha pass expires after 2 hours
+# - guests are rate-limited by cooldown and per-minute count
+# - guest file upload is disabled by default
+guest:
+  enabled: true
+  allow-custom-name: true
+  name-prefix: "Guest-"
+  cooldown-seconds: 6
+  max-messages-per-minute: 50
+  # Protects real usernames and known display/custom names. Spoof comparison always
+  # strips Minecraft color/format codes, even when player-display.strip-colors is false.
+  block-player-name-spoofing: true
+  blocked-names:
+    - "admin"
+    - "administrator"
+    - "server"
+    - "op"
+    - "console"
+    - "moderator"
+    - "owner"
+
+captcha:
+  # "math" enables a simple math challenge for guests. Use "off" to disable.
+  mode: "math"
+  expire-seconds: 120
+  # false = once solved, guest can chat until pass-valid-minutes expires.
+  # true = require captcha on every guest message.
+  require-on-each-message: false
+  pass-valid-minutes: 120
+
+auth:
+  # Keep auth enabled even in guest mode so players can link with /kchat auth
+  # and optionally set a web password later.
+  enabled: true
+  link-code-length: 6
+  link-code-expire-seconds: 180
+  # Web-side link code issue rate limit per remote IP. 0 disables each limit.
+  link-code-cooldown-seconds: 3
+  link-code-max-per-minute: 10
+  password-login: true
+  # 0 = unlimited for USER/MODERATOR web sessions.
+  remember-session-days: 30
+  auto-admin-from-permission: true
+  admin-permission: "kwc.admin"
+
+security:
+  # Password login brute-force protection.
+  # 0 disables the failure limit.
+  login-fail-limit: 5
+  # Failed attempts are counted within this time window.
+  login-fail-window-seconds: 300
+  # 0 disables lockout even when failures are counted.
+  login-lock-seconds: 600
+  # Server-Sent Events (/stream) connection limits. 0 disables each limit.
+  max-sse-connections-per-ip: 5
+  max-sse-connections-total: 200
+
+admin:
+  allow-local-admin-accounts: true
+  # 0 = unlimited for ADMIN web sessions.
+  admin-session-expire-hours: 12
+  # Empty = no IP restriction. Use block style when restricting by IP/CIDR:
+  # allow-admin-login-from:
+  #   - "127.0.0.1"
+  #   - "10.0.0.0/8"
+  allow-admin-login-from: []
+
+# Users allowed to see private-message/group-room metadata for moderation/accounting.
+# With direct-message.admin-audit.enabled, these users may open DM bodies; with
+# group-chat.admin-audit.enabled, they may open group-chat bodies. Both audit views
+# are read-only and every page read is written to the audit log.
+# Use exact Minecraft names or UUIDs. Empty = no private-chat super administrators.
+private-chat-super-admins: []
+
+# Administrative audit log. This is not shown in the web UI.
+# Files are appended by date under plugins/KOKOTO-WebChat/audit by default.
+audit:
+  enabled: true
+  directory: "audit"
+
+moderation:
+  enabled: true
+  allow-web-admin-panel: true
+  allow-moderator-message-delete: true
+  allow-moderator-guest-mute: true
+  default-mute-minutes: 60
+
+# Shared content filtering for Minecraft/web public chat and KWC private chats.
+# The same loader-neutral filter engine is used for every enabled scope.
+# Registered KWC emoji tokens are protected from block/filter matching. Text that
+# merely looks like an emoji token (for example :unregistered:) remains ordinary
+# filterable text.
+# Bundled starter filter lists are initialized once in filter-lists/ when
+# .kwc-defaults-initialized is absent (ko-KR.txt, en-US.txt, ja-JP.txt, zh-CN.txt).
+# Existing/disabled files are never overwritten, and deleting a list after that
+# one-time initialization is respected. Each list defaults to block; Web Admin can
+# switch an individual list between block and filtering (mask) without editing this file.
+content-filter:
+  enabled: false
+  scopes:
+    public: true
+    group: true
+    # Private 1:1 conversations are opt-in because they are not public chat.
+    dm: false
+  block:
+    # false = only explain that the message cannot be sent.
+    # true = also expose the configured word that matched.
+    show-matched-word: true
+  mask:
+    text: "***"
+  anti-evasion:
+    # Unicode compatibility/canonical normalization handles full-width, decorative,
+    # and canonically equivalent forms. Compact matching keeps Unicode letters, marks,
+    # and numbers rather than a Korean/ASCII-only character list.
+    unicode-normalization: true
+    compact-match: true
+    # Interleave matching catches inserted characters such as 욕1설.
+    interleave-match: true
+    interleave-max-gap: 2
+    interleave-unlimited-gap: false
+    collapse-repeats: false
+    repeat-limit: 1
+  # Custom rules are for cases that need more than a bulk TXT list.
+  # action: block = reject the whole message; mask = replace only the matched span
+  # with mask.text; replace = use replacements/mappings below.
+  # replacement-mode: first always uses the first shared candidate; random chooses
+  # one shared candidate per match. mappings is per-word N:N replacement and wins
+  # over the shared candidate list. A mappings key automatically becomes a match word,
+  # so it does not need to be repeated under words.
+  #
+  # Example 1 - block:
+  #   - id: "block-advertising"
+  #     enabled: true
+  #     action: "block"
+  #     words: ["advertisement", "scam-link"]
+  #
+  # Example 2 - mask matched text only:
+  #   - id: "mask-words"
+  #     enabled: true
+  #     action: "mask"
+  #     words: ["word1", "word2"]
+  #
+  # Example 3 - shared + per-word replacement:
+  #   - id: "soften-words"
+  #     enabled: true
+  #     action: "replace"
+  #     words: ["word1", "word2"]
+  #     replacements: ["soft expression", "another expression"]
+  #     replacement-mode: "first"
+  #     mappings:
+  #       "word2": "specific expression"
+  #
+  # Anti-evasion examples with defaults: compact-match catches separator insertion
+  # such as "word-1" when its compact form matches; interleave-match catches retained
+  # inserted letters/numbers within interleave-max-gap. Hangul jamo-only rules such
+  # as "ㅅㅂ" stay jamo shorthand rules; complete Hangul words compare by syllable.
+  # Use Web Admin > Filter > Test after editing. Test does not send a chat message and
+  # works even while content-filter.enabled is false.
+  rules: []
+
+# Optional web command panel. Disabled by default because it runs console commands.
+# By default only pre-approved presets are exposed to the web UI; allow-all enables arbitrary command input.
+commands:
+  enabled: false
+  # false = only presets below can be executed. true = users at min-role can run any console command.
+  # Keep this false unless the web UI is strongly protected.
+  allow-all: false
+  # Minimum web role allowed to run commands. Supported values: USER, MODERATOR, ADMIN.
+  min-role: "ADMIN"
+  show-button: true
+  # false = commands can only be run from the command button/modal.
+  # true = entering /command in the chat input can execute a command when allow-all is true.
+  run-from-chat-input: false
+  # Only used when run-from-chat-input is true. Shows an inline run/preview panel for /commands.
+  show-when-input-starts-with-slash: true
+  require-confirm: true
+  # Maximum length for direct commands when allow-all is true.
+  # 0 = unlimited. Positive values are used directly; no hard upper cap is applied.
+  max-length: 0
+  broadcast-result-to-web-chat: false
+  presets:
+    # - id: day
+    #   label: Set day
+    #   description: Set the current world time to day.
+    #   command: "time set day"
+    #   confirm: true
+    # - id: weather-clear
+    #   label: Clear weather
+    #   command: "weather clear"
+    #   confirm: true
+
+
+# =============================================================================
+# Web interface and notifications
+# =============================================================================
+
+ui:
+  # Default UI language. Supported values: en-US, ko-KR, ja-JP, zh-CN.
+  # Users can still override this per browser from Chat settings when user-preferences-control is true.
+  language: "en-US"
+  # Fallback language used when a translation key is missing. Supported values: en-US, ko-KR, ja-JP, zh-CN.
+  language-fallback: "en-US"
+  # Time zone used for chat timestamps. Supported values: local, UTC, or an IANA time zone such as Asia/Seoul.
+  # local = browser/device time zone. Invalid values fall back to local in the web UI.
+  time-zone: "local"
+  # Default theme. Supported values: system, dark, light, high-contrast.
+  # When sync-bluemap-theme is true, the embedded BlueMap addon can follow BlueMap's current theme.
+  theme: "system"
+  sync-bluemap-theme: true
+  # Window opacity. Allowed range: 0.20-1.00.
+  opacity: 0.92
+
+  linkify-urls: true
+  image-preview-enabled: true
+  # 0 = unlimited. Use image-preview-enabled/upload.preview-* to disable previews.
+  image-preview-max-per-message: 3
+  # Recommended: 640-720. 0 = unlimited; unlimited or very large previews can cause visible scroll jumps
+  # with virtual scrolling when images, GIFs, videos, or iframes finish loading.
+  image-preview-max-height: 720
+  google-drive-image-preview: false
+  # Google Drive image preview mode.
+  # thumbnail = use Google thumbnail URLs; uc = use legacy uc/export style URLs.
+  google-drive-preview-mode: "thumbnail"
+
+  # When guest access is disabled, hide public chat content/input while leaving login controls available.
+  hide-chat-for-guests-when-guest-disabled: true
+
+  resizable: true
+  remember-window-size: true
+  default-width: 372
+  default-height: 462
+  min-width: 280
+  min-height: 240
+  # 0 = no configured maximum, still bounded by the browser viewport when embedded.
+  max-width: 640
+  max-height: 720
+
+  font-size: 13
+  message-font-size: 13
+  input-font-size: 13
+  # Empty = follow the selected theme. Set a hex color such as "#ffffff" to override chat message text.
+  text-color: ""
+  # Empty = follow the selected theme. Set a hex color to override UI labels such as role/source/time,
+  # input placeholders, command/upload buttons, pinned-message labels, and other small UI text/glyphs.
+  ui-text-color: ""
+  # Text shadow helps keep text readable on very dark/bright custom colors or map backgrounds.
+  # Supported modes: none, auto, dark, light, custom.
+  # auto = dark shadow for bright text and light shadow for dark text.
+  text-shadow-mode: "auto"
+  # Used only when text-shadow-mode is custom. The chat settings UI edits this with
+  # a color picker and sliders for X offset, Y offset, blur, and opacity.
+  # Stored as standard CSS text-shadow syntax. Example: "0 1px 2px rgba(0, 0, 0, 0.85)"
+  text-shadow-custom: "0 1px 2px rgba(0, 0, 0, 0.85)"
+  # Empty = follow the selected theme. Set a hex color such as "#1e1e24" to override all chat input backgrounds.
+  input-background-color: ""
+  button-font-size: 12
+  badge-font-size: 10
+  # CSS font-family used by default. Empty = built-in default.
+  # Local installed fonts are resolved on each user's browser/device, not on the Minecraft server.
+  # Examples: '"Malgun Gothic", sans-serif', '"Noto Sans KR", sans-serif'.
+  font-family: ""
+  user-preferences-control: true
+
+  # Logged-in users can save visual chat settings to their KWC account instead of
+  # configuring every browser separately. Window position/size, minimized state, and
+  # Web Push subscriptions stay device-local.
+  user-profiles:
+    enabled: true
+    # Maximum saved profiles per account. 0 disables server-side profiles. Allowed: 0-20.
+    max-profiles: 5
+    # Allow profile JSON download/upload. Imported files are strict-schema validated;
+    # user-edited values are accepted when they remain inside the supported ranges.
+    allow-import-export: true
+
+  # Opens a separate browser Picture-in-Picture chat instance.
+  # Browser UI such as the URL/close controls cannot be hidden.
+  # Keep this disabled unless you explicitly want the duplicate window.
+  # This single flag controls both the PIP button and PIP execution.
+  picture-in-picture:
+    enabled: false
+
+  # Font choices shown in the per-browser Chat settings modal.
+  # Empty string means browser/system default.
+  # Add installed local font families here if you want them in the dropdown.
+  # Users can also type an installed font name directly in Chat settings.
+  user-font-options:
+    - ""
+    - "system-ui, sans-serif"
+    - "Arial, sans-serif"
+    - "Verdana, sans-serif"
+    - "Georgia, serif"
+    - "monospace"
+
+  virtual-scroll:
+    enabled: true
+    # Extra screens rendered above/below viewport. 0 = no overscan.
+    overscan-screens: 0.75
+    # Minimum rendered messages. 0 = no minimum beyond viewport calculation.
+    min-rendered-messages: 30
+    # All message contents use the same virtual-scroll lifecycle. Images, videos,
+    # audio, link previews and iframes do not receive separate retention rules.
+
+  history-preload:
+    # How far from the top/bottom to start loading more history, in viewport screens.
+    # Allowed range: 0.0-5.0.
+    screens: 0.70
+    # Minimum pixel threshold for history preload. Allowed range: 0-1000.
+    min-px: 200
+
+  # Distance from the bottom that still counts as following the latest messages. Allowed range: 2-300.
+  auto-follow-bottom-threshold-px: 80
+  # After direct user scrolling, wait this many ms before automatic scroll handling. Allowed range: 50-1000.
+  scroll-interaction-idle-ms: 160
+
+  resume-refresh:
+    enabled: true
+    # Minimum seconds between resume refreshes. Allowed range: 1-300.
+    min-interval-seconds: 5
+    skip-unchanged: true
+
+# Notification defaults and server-side allow limits shared by browser notifications
+# and mobile/background Web Push. Users still choose the same notification options
+# once in Chat settings; these values only define what the server allows by default.
+notifications:
+  enabled: true
+  # true = notify only when the tab/window is hidden, minimized, or not focused.
+  # This only affects browser notifications while a page is open.
+  only-when-hidden: true
+  notify-normal-chat: true
+  notify-dm: true
+  notify-group-chat: true
+  notify-mentions: true
+  notify-replies: true
+  # true = allow users to receive server notifications. Users can still choose all,
+  # join/leave only, or off in Chat settings.
+  notify-system: true
+  notify-keywords: true
+  show-message-preview: true
+
+# Mobile/background Web Push transport settings.
+# Requirements: HTTPS or localhost, browser notification permission, service worker support,
+# and push support in the browser. iOS/iPadOS does not support ordinary browser-tab
+# Web Push; only try it from the standalone Home Screen web app, and treat unsupported
+# iOS behavior as a platform limitation.
+# If VAPID keys are empty and notifications.enabled is true, the plugin generates
+# persistent keys in plugins/KOKOTO-WebChat/web-push-vapid.properties.
+# subject is VAPID contact information. Use a real mailto: or https: URI that can identify
+# the server operator, for example "mailto:admin@example.com" or "https://map.example.com".
+# Do not use arbitrary text here; some push services may reject or distrust it.
+# Browser/OS warnings such as "may be spam" are controlled by the browser/device and cannot
+# be disabled by this plugin. Use a stable HTTPS domain and avoid excessive/test notifications.
+web-push:
+  vapid-public-key: ""
+  vapid-private-key: ""
+  subject: "mailto:admin@example.com"
+  # Default notification title for test/server/background push messages.
+  # Empty = use frontend.standalone.app-name.
+  notification-title: ""
+  subscriptions-file: "web-push-subscriptions.jsonl"
+  # Web Push TTL in seconds. Allowed range: 30-86400.
+  ttl-seconds: 300
+
+# Optional web font serving. Files are read from plugins/KOKOTO-WebChat/fonts
+# by default and served through the KOKOTO WebChat HTTP API.
+web-fonts:
+  enabled: false
+  directory: "fonts"
+  items: []
+  # Item fields:
+  # - family: CSS font-family name exposed to the web UI
+  # - file: relative font file path under web-fonts.directory; allowed extensions: woff2, woff, ttf, otf
+  # - weight: 100-900, default 400
+  # - style: normal, italic, or oblique
+  # Example:
+  # items:
+  #   - family: "Pretendard"
+  #     file: "Pretendard.woff2"
+  #     weight: 400
+  #     style: "normal"
+
+
+# =============================================================================
+# External integrations
+# =============================================================================
+
+discordsrv:
+  enabled: false
+  channel: "global"
+  web-to-discord: true
+  # Select who owns Minecraft -> Discord game chat relay.
+  # discordsrv = DiscordSRV sends the message; KWC only augments that native post
+  #              with the local server label and registered web-emoji URLs.
+  # kwc        = KWC sends the message directly using game-relay-format.
+  # When using kwc, disable DiscordSRV's normal Minecraft chat relay to avoid duplicates.
+  game-relay-mode: "discordsrv"
+  discord-to-web: true
+  ignore-bot-messages: true
+  suppress-game-echo: true
+  suppress-game-echo-seconds: 5
+  send-web-user-chat-to-discord: true
+  send-web-guest-chat-to-discord: false
+  send-web-admin-chat-to-discord: true
+  # Discord cannot render BM Web Chat custom emoji tokens such as :pack/name: directly.
+  # When enabled, BM Web Chat appends matching public emoji image URLs to web -> Discord messages
+  # so Discord can show them as normal image/link previews.
+  # Requires an externally reachable public API/emoji URL, usually through adapters.bluemap.api-base-url,
+  # frontend.standalone.api-base-url, emoji.public-base-url, or http.cors-origin.
+  append-web-emoji-links: true
+  # Append matching KWC registered web-emoji image URLs for game -> Discord messages.
+  # In game-relay-mode=discordsrv, KWC scans the :emoji: token text in DiscordSRV's actual
+  # Discord post and runs it through the same token-to-link path used by web -> Discord.
+  # Minecraft glyph/rendered text is never used as the Discord emoji conversion source.
+  # In game-relay-mode=kwc, KWC applies that same token-to-link path to its direct Discord post.
+  append-game-emoji-links: true
+  # Maximum emoji image URLs appended per Discord message.
+  # 0 = do not append emoji image URLs.
+  max-emoji-links-per-message: 4
+  # Optional reply relay for web -> Discord messages.
+  # Disabled by default because Discord already has its own reply UI, and duplicating
+  # the replied message preview can look like an unexpected extra/comment line.
+  reply-relay:
+    enabled: false
+    prefix-enabled: true
+    preview-enabled: true
+    preview-max-length: 120
+  # Discord relay format placeholders: {server}, {server_id}, {sender}, {name}, {role}, {source}, {message}, {channel}
+  # While server relay is enabled, existing custom formats without {server}/{server_id}
+  # are automatically prefixed with [server-name] so old config files stay distinguishable.
+  web-to-discord-format: "[{server}] [Web] {sender}: {message}"
+  game-relay-format: "[{server}] {sender}: {message}"
+  discord-to-web-sender-format: "Discord:{sender}"
+  discord-to-web-message-format: "{message}"
+
+# Administrator-only keyword alerts. This reuses DiscordSRV; it does not create
+# per-user Discord identities or require users to link Discord accounts.
+admin-alerts:
+  discord:
+    enabled: false
+    # DiscordSRV logical channel name selected from its Channels mapping.
+    # Web Admin shows the logical name only; a raw Discord channel ID is accepted
+    # only as an ID-only fallback when no logical mapping is available.
+    # Empty = reuse discordsrv.channel.
+    channel: ""
+    sources:
+      public-chat: true
+      relay-chat: false
+      dm: false
+      group-chat: false
+    # none, here, everyone
+    mention: "none"
+    case-sensitive: false
+    # Comma or newline separated. Web Admin edits this value directly.
+    keywords: ""
+
+
+# =============================================================================
+# Uploads, previews, and emoji
+# =============================================================================
+
+upload:
+  enabled: true
+  # Guest uploads are disabled by default to reduce spam and storage abuse.
+  allow-guest-upload: false
+  allow-user-upload: true
+  allow-moderator-upload: true
+  allow-admin-upload: true
+  cooldown-seconds: 5
+  # 0 = unlimited for max-* upload limits.
+  max-uploads-per-minute: 4
+  max-file-size-mb: 20
+  # Total storage quota for files inside upload.directory.
+  # 0 = unlimited. When exceeded, the oldest unreferenced uploads are deleted first.
+  # If the quota still cannot fit the new file, the upload is rejected.
+  max-total-size-mb: 0
+  max-files-per-message: 3
+  directory: "uploads"
+  # random = timestamp/random storage name (default, avoids exposing the original name).
+  # original = preserve a sanitized Unicode original filename; collisions become -2, -3, ...
+  filename-mode: "random"
+  # Public URL base for uploaded files.
+  # Recommended: keep empty. Empty means active public API base + /uploads.
+  # - Direct HTTP with all URL fields empty: http://host:8899/api/uploads
+  # - HTTPS reverse proxy with http.public-prefix "/chat": /chat/api/uploads
+  # Explicit values are supported for compatibility:
+  # - Absolute browser path: "/chat/api/uploads" is used as-is.
+  # - API base path: "/chat/api" appends /uploads automatically.
+  # - Relative path: "chat/api/uploads" becomes http.cors-origin + "/chat/api/uploads"
+  #   when http.cors-origin is a real origin; otherwise it becomes "/chat/api/uploads".
+  # - Full URL: "https://map.example.com/chat/api/uploads" is used as-is.
+  public-base-url: ""
+  # Delete unreferenced uploaded files older than this many days.
+  # 0 = disable age-based upload cleanup. Default: 5.
+  retention-days: 5
+  allowed-extensions:
+    - png
+    - jpg
+    - jpeg
+    - gif
+    - webp
+    - mp4
+    - webm
+    - mp3
+    - m4a
+    - ogg
+    - wav
+    - flac
+
+  clipboard-upload-enabled: true
+  # Clipboard upload behavior.
+  # insert = insert uploaded file URL into the current input; send = send immediately.
+  clipboard-upload-send-mode: "insert"
+  # Default file extension for pasted image blobs when the browser does not provide a filename.
+  clipboard-image-default-extension: "png"
+
+  preview-images: true
+  preview-videos: true
+  preview-audio: true
+
+preview:
+  youtube-embed-enabled: true
+  youtube-click-to-load: true
+  media-click-to-load: true
+  youtube-nocookie: true
+  youtube-remember-expanded: true
+  youtube-autoplay-on-open: false
+  # 0 = unlimited YouTube embeds per message. Use youtube-embed-enabled: false to disable.
+  youtube-max-embeds-per-message: 1
+  # Social post embeds.
+  # - YouTube Shorts are handled by the normal YouTube preview, use a vertical player, and loop.
+  # - TikTok uses the official player/v1 iframe with description/music info hidden to avoid inner scrollbars.
+  # - X/Twitter uses the official widgets.js renderer.
+  # TikTok and X/Twitter are off by default because they load third-party content in users' browsers.
+  social-embeds:
+    enabled: true
+    click-to-load: true
+    # 0 = unlimited social embeds per message.
+    max-embeds-per-message: 2
+    tiktok:
+      enabled: false
+    x:
+      enabled: false
+      # X/Twitter embed theme. Supported values: auto, light, dark.
+      theme: "auto"
+      dnt: true
+      hide-media: false
+      hide-thread: true
+
+  # External media cache is mainly used for expiring Discord CDN attachment URLs.
+  external-media-cache-enabled: true
+  cache-discord-cdn: true
+  external-media-cache-directory: "uploads/external-media-cache"
+  # 0 = unlimited per external cached media file.
+  external-media-cache-max-size-mb: 20
+  # Delete unreferenced external media cache files older than this many days.
+  # 0 = disable age-based external media cache cleanup. Default: 5.
+  external-media-cache-retention-days: 5
+  external-media-cache-timeout-seconds: 6
+
+emoji:
+  # Server-managed custom emojis. Put single files in plugins/KOKOTO-WebChat/emojis,
+  # or put files in subfolders to create packs. Supported image files can include GIFs.
+  enabled: true
+  show-button: true
+  directory: "emojis"
+  # Public URL base for custom emoji files.
+  # Recommended: keep empty. Empty means active public API base + /emojis.
+  # - Direct HTTP with all URL fields empty: http://host:8899/api/emojis
+  # - HTTPS reverse proxy with http.public-prefix "/chat": /chat/api/emojis
+  # Explicit values are supported for compatibility:
+  # - Absolute browser path: "/chat/api/emojis" is used as-is.
+  # - API base path: "/chat/api" appends /emojis automatically.
+  # - Relative path: "chat/api/emojis" becomes http.cors-origin + "/chat/api/emojis"
+  #   when http.cors-origin is a real origin; otherwise it becomes "/chat/api/emojis".
+  # - Full URL: "https://map.example.com/chat/api/emojis" is used as-is.
+  public-base-url: ""
+  # Per-emoji file size limit. Files larger than this are not listed or served.
+  max-file-size-kb: 512
+  # Total emoji storage limit. Uploads beyond this limit are rejected.
+  # The public emoji catalog also stops listing files beyond this limit.
+  # 0 = unlimited total size.
+  max-total-size-mb: 64
+  # Show current emoji storage usage in the admin emoji manager.
+  show-storage-usage: true
+  # Show the maximum total emoji storage limit in the admin emoji manager.
+  show-storage-limit: true
+  # Display size in web chat messages. GIFs keep animation in the browser.
+  # Allowed range: 16-1024. Very large values may make chat rows extremely tall.
+  render-size-px: 32
+  # Display size inside the emoji picker. This does not change message rendering size.
+  # Allowed range: 24-1024. The picker minimum height follows this size.
+  picker-size-px: 44
+  # 0 = unlimited. Positive value limits how many custom emoji tokens can be sent in one message.
+  # Tokens may include pack paths and spaces, for example :default/wave: or :pack 1/name:.
+  message-token-limit: 12
+  # Token inserted by the emoji picker.
+  # short  = :pack/name:
+  # legacy = :emoji:pack/name:
+  # Both formats are accepted when rendering/parsing messages.
+  token-format: "short"
+  allowed-extensions:
+    - png
+    - jpg
+    - jpeg
+    - gif
+    - webp
+  game-link:
+    enabled: false
+    # Web -> game emoji handling.
+    # false = preserve the original token text, e.g. :pack/name: or :emoji:pack/name:.
+    #         Use this when ImageEmojis or another game-side emoji plugin renders tokens.
+    # true  = convert known BM Web Chat custom emoji tokens for servers that do not
+    #         use a game-side emoji plugin.
+    #
+    # Modes when enabled=true:
+    # - link:  keep a text label and append a short image URL, e.g. :pack/name: https://.../e/<id>
+    # - label: replace with label-format only, without appending an image URL
+    # - preserve: force token-preserving behavior even when enabled=true
+    mode: "link"
+    # Public API base used for the in-game short links.
+    # Leave empty to infer from adapters.bluemap.api-base-url, frontend.standalone.api-base-url,
+    # or http.cors-origin + http.path-prefix.
+    # For HTTPS reverse proxy, setting this explicitly is recommended, for example:
+    # public-api-base-url: "https://map.example.com/chat/api"
+    public-api-base-url: ""
+    # Placeholders: {id}, {name}, {pack}
+    # Use ":{id}:" for packed tokens such as :default/wave:.
+    # Use ":{name}:" only if your game-side emoji plugin uses flat names.
+    label-format: ":{id}:"
+    # 0 = unlimited. Prevents very long in-game lines when many emoji are sent.
+    max-links-per-message: 4
+    # ImageEmojis-Bero 1.9.0 compatibility guide: docs/IMAGEEMOJIS_BERO_1_9_0_EN.md
+    # With ImageEmojis/ImageEmojis-Bero, KWC resolves the receiving server's runtime
+    # glyph before adding reply and URL click events. Unresolved known tokens fall back to
+    # one plain Bukkit line so another game-side emoji renderer can still process them.
+    # Prefer this pack when a flat token such as :wave: matches multiple packs.
+    # Example: "default" or "global"
+    default-pack: ""
+    # Optional explicit aliases for web/game token compatibility.
+    # Example:
+    # aliases:
+    #   wave: "default/wave"
+    aliases: {}

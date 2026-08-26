@@ -23,16 +23,16 @@ sudo certbot --nginx -d map.example.com
 sudo certbot renew --dry-run
 ```
 
-5. Edit `bluemapwebchat.conf`, replace `map.example.com`, and copy it if you manage the server block manually:
+5. Edit `kokoto-webchat.conf`, replace `map.example.com`, and copy it if you manage the server block manually:
 
 ```bash
-sudo cp bluemapwebchat.conf /etc/nginx/sites-available/bluemapwebchat.conf
-sudo ln -sf /etc/nginx/sites-available/bluemapwebchat.conf /etc/nginx/sites-enabled/bluemapwebchat.conf
+sudo cp kokoto-webchat.conf /etc/nginx/sites-available/kchat.conf
+sudo ln -sf /etc/nginx/sites-available/kchat.conf /etc/nginx/sites-enabled/kchat.conf
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-6. Apply `BlueMapWebChat-config-overrides.yml` values to `plugins/BlueMapWebChat/config.yml`.
-7. Run `/bmchat reload` or restart the Minecraft server.
+6. Apply `KOKOTO-WebChat-config-overrides.yml` values to `plugins/KOKOTO-WebChat/config.yml`.
+7. Run `/kchat reload` or restart the Minecraft server.
 
 See `docs/NGINX_HTTPS_EN.md` for the full guide.

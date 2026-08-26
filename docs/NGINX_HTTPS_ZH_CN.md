@@ -1,6 +1,6 @@
-# BlueMapWebChat nginx HTTPS 配置指南
+# KOKOTO WebChat nginx HTTPS 配置指南
 
-本指南说明如何让 BlueMap 和 BlueMapWebChat 继续作为本地 HTTP 服务运行，并通过 nginx 以 HTTPS 对外提供服务。
+本指南说明如何让 BlueMap 和 KOKOTO WebChat 继续作为本地 HTTP 服务运行，并通过 nginx 以 HTTPS 对外提供服务。
 
 ## 推荐结构
 
@@ -9,12 +9,32 @@
   ↓ HTTPS
 nginx :443
   ├─ /           -> BlueMap Web 服务器，通常为 127.0.0.1:8100
-  └─ /bmwc/*     -> BlueMapWebChat API 和独立页面，通常为 127.0.0.1:8899
-      /bmwc/api  -> 内部 /api
-      /bmwc/chat -> 内部 /chat
+  └─ /chat/*      -> KOKOTO WebChat API 和独立页面，通常为 127.0.0.1:8899
+      /chat/api  -> 内部 /api
+      /chat -> 内部 /
 ```
 
-浏览器应使用同一个公开 origin，例如 `https://map.example.com/`、`https://map.example.com/bmwc/api/config`、`https://map.example.com/bmwc/chat`。
+浏览器应使用同一个公开 origin，例如 `https://map.example.com/`、`https://map.example.com/chat/api/config`、`https://map.example.com/chat`。
+
+## 从 BMWC 迁移到 KWC 时的 HTTPS 路径变化
+
+BlueMapWebChat 的标准 HTTPS 配置通常将公开 `/bmwc/api` 代理到内部 `:8899/api`，并将公开 `/bmwc/chat` 代理到内部 standalone `/chat`。KOKOTO WebChat 5.0.0 不再沿用该布局。迁移时，BMWC 的标准公开路径值会规范化为 KWC 新的自动值。
+
+```text
+BMWC
+  BlueMap:     https://map.example.com/
+  Standalone:  https://map.example.com/bmwc/chat
+  API:         https://map.example.com/bmwc/api
+
+KWC 5.0.0
+  BlueMap:     https://map.example.com/
+  Standalone:  https://map.example.com/chat
+  API:         https://map.example.com/chat/api
+```
+
+对于标准 BMWC 值，迁移会使用 `adapters.bluemap.api-base-url: ""`、`frontend.standalone.api-base-url: ""` 等自动值，standalone 内部路径使用 `frontend.standalone.path: "/"`，公开前缀使用 `http.public-prefix: "/chat"`。标准 `/bmwc/api/uploads`、`/bmwc/api/emojis` 也会规范化为空的自动值。用户自行设置的自定义外部 URL 不会被任意改写。
+
+**转换插件配置不会自动修改现有的 Caddy/nginx 配置。** 请删除或替换 BMWC 的 `/bmwc/api`、`/bmwc/chat` 代理规则，并改用本文中的 `/chat` 前缀剥离方式。nginx 应将 `/chat/` location 代理到 `:8899/`，从而在内部请求中去掉公开的 `/chat` 前缀。
 
 ## 1. 安装 nginx 和 Certbot
 
@@ -53,7 +73,7 @@ sudo certbot renew --dry-run
 
 ## 2. nginx 配置示例
 
-复制 `examples/nginx/bluemapwebchat.conf`，并替换域名和证书路径。
+复制 `examples/nginx/kokoto-webchat.conf`，并替换域名和证书路径。
 
 ```nginx
 server {
@@ -69,8 +89,9 @@ server {
     ssl_certificate     /etc/letsencrypt/live/map.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/map.example.com/privkey.pem;
 
-    location /bmwc/ {
-        proxy_pass http://127.0.0.1:8899/;
+    location ~ ^/kchat(?:/|$) {
+        rewrite ^/kchat(?:/(.*))?$ /$1 break;
+        proxy_pass http://127.0.0.1:8899;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -95,44 +116,66 @@ server {
 }
 ```
 
-`proxy_pass http://127.0.0.1:8899/;` 末尾的斜杠是有意设置的。它会去掉 `/bmwc/` 前缀，使 `/bmwc/api/config` 转发为 `/api/config`，`/bmwc/chat` 转发为 `/chat`。
+`rewrite` 会去掉公开的 `/kchat` 前缀，使 `/chat/api/config` 转发为 `/api/config`，`/chat` 转发为 `/`。
 
 `proxy_buffering off` 对 SSE(Server-Sent Events) 很重要。没有它时，聊天更新或重连可能会被 nginx 缓冲而延迟。
 
 如果不让 Certbot 自动修改 nginx，而是手动管理 server block:
 
 ```bash
-sudo cp examples/nginx/bluemapwebchat.conf /etc/nginx/sites-available/bluemapwebchat.conf
-sudo ln -sf /etc/nginx/sites-available/bluemapwebchat.conf /etc/nginx/sites-enabled/bluemapwebchat.conf
+sudo cp examples/nginx/kokoto-webchat.conf /etc/nginx/sites-available/kchat.conf
+sudo ln -sf /etc/nginx/sites-available/kchat.conf /etc/nginx/sites-enabled/kchat.conf
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-## 3. BlueMapWebChat config.yml
+### 反向布局：KWC 位于 `/`，BlueMap 位于 `/chat/`
+
+```nginx
+location = /chat {
+    return 308 /chat/;
+}
+
+location /chat/ {
+    proxy_pass http://127.0.0.1:8100/;
+}
+
+location / {
+    proxy_pass http://127.0.0.1:8899;
+    proxy_buffering off;
+}
+```
+
+使用 `http.public-prefix: ""` 并保持 `frontend.standalone.path: "/"`。KWC 位于 `/`，API 位于 `/api`，BlueMap 位于 `/chat/`。
+
+
+## 3. KOKOTO WebChat config.yml
 
 ```yaml
 http:
   host: "127.0.0.1"
   port: 8899
   path-prefix: "/api"
+  public-prefix: "/chat"
   cors-origin: "https://map.example.com"
 
-web-addon:
-  api-base-url: "/bmwc/api"
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
+    api-base-url: ""
 
-
-standalone-web:
-  enabled: true
-  path: "/chat"
-  # 可选。可以与 web-addon.api-base-url 使用相同值。
-  api-base-url: "/bmwc/api"
+adapters:
+  bluemap:
+    enabled: true
+    api-base-url: ""
 
 upload:
-  # 推荐留空。需要时也可使用 "/bmwc/api" 或 "/bmwc/api/uploads"。
+  # 推荐留空。需要时也可使用 "/chat/api" 或 "/chat/api/uploads"。
   public-base-url: ""
 
 emoji:
-  # 推荐留空。需要时也可使用 "/bmwc/api" 或 "/bmwc/api/emojis"。
+  # 推荐留空。需要时也可使用 "/chat/api" 或 "/chat/api/emojis"。
   public-base-url: ""
 
 ui:
@@ -150,7 +193,7 @@ ui:
 阻止从互联网访问: 8100/tcp, 8899/tcp
 ```
 
-如果 nginx 和 Minecraft 在同一台主机上，建议将 BlueMapWebChat API 只绑定到 `127.0.0.1`。
+如果 nginx 和 Minecraft 在同一台主机上，建议将 KOKOTO WebChat API 只绑定到 `127.0.0.1`。
 
 ## 5. 应用步骤
 
@@ -159,17 +202,17 @@ ui:
 3. 安装 nginx 和 Certbot。
 4. 使用 `sudo certbot --nginx -d map.example.com` 申请证书，或手动放置证书。
 5. 应用 nginx 配置并确认 `sudo nginx -t` 成功。
-6. 将 `web-addon.api-base-url` 设为 `/bmwc/api`。
-7. 通过 `https://map.example.com/bmwc/chat` 打开独立页面时，`standalone-web.api-base-url` 可以留空，也可以设置为与 `web-addon.api-base-url` 相同的 `/bmwc/api`。
-8. 上传/表情公开 URL 通常留空。如需旧式显式配置，`upload.public-base-url` 可使用 `/bmwc/api` 或 `/bmwc/api/uploads`，`emoji.public-base-url` 可使用 `/bmwc/api` 或 `/bmwc/api/emojis`。
-9. 执行 `/bmchat reload` 或重启服务器以重新生成 Web addon 文件。
-10. 如果 BlueMap 未自动刷新 Web 资源，请执行 `/bluemap reload`。
-11. 在浏览器中打开 `https://map.example.com/` 或 `https://map.example.com/bmwc/chat`。
+6. 除非有意使用独立的公开 API URL，否则 adapter/standalone 的 `api-base-url` 保持为空。
+7. standalone 通过 `https://map.example.com/chat` 打开；API override 为空时会根据 `http.public-prefix + http.path-prefix` 使用 `/chat/api`。
+8. 上传/表情公开 URL 通常留空。如需旧式显式配置，`upload.public-base-url` 可使用 `/chat/api` 或 `/chat/api/uploads`，`emoji.public-base-url` 可使用 `/chat/api` 或 `/chat/api/emojis`。
+9. 执行 `/kchat reload` 或重启服务器以重新生成 Web addon 文件。
+10. `/kchat reload` 会在更新 BlueMap adapter 后自动请求 `bluemap reload light`。自动执行失败时请手动运行 `/bluemap reload light`。
+11. 在浏览器中打开 `https://map.example.com/` 或 `https://map.example.com/chat`。
 
 ## 6. HTTP 页面 + HTTPS API 注意事项
 
-只让聊天 API 使用 HTTPS，而 BlueMap 页面仍通过 HTTP 提供，并不是完整的安全边界。公开服务器应将 BlueMap 和 BlueMapWebChat 都放在同一个 HTTPS origin 下。
+只让聊天 API 使用 HTTPS，而 BlueMap 页面仍通过 HTTP 提供，并不是完整的安全边界。公开服务器应将 BlueMap 和 KOKOTO WebChat 都放在同一个 HTTPS origin 下。
 
 ### URL 设置解析规则
 
-`web-addon.api-base-url` 是 HTTPS 公开 API 路径的基准。除非需要兼容覆盖，`standalone-web.api-base-url`、`upload.public-base-url`、`emoji.public-base-url` 通常留空。standalone 留空会使用 `web-addon.api-base-url`；upload/emoji 留空会分别追加 `/uploads` 和 `/emojis`。`/bmwc/api` 这类绝对浏览器路径会原样使用。不带前导 `/` 的相对值会在 `http.cors-origin` 为实际 origin 时基于该 origin 解析。完整 `https://...` URL 原样使用。
+HTTPS 公开 API 的基准是 `http.public-prefix + http.path-prefix`，默认值为 `/chat/api`。adapter 与 standalone 的 `api-base-url` 是彼此独立的可选 override，通常保持为空。upload/emoji 留空时会基于统一公开 API 分别追加 `/uploads`、`/emojis`。绝对路径、相对值和完整 `https://...` URL 仅在需要独立公开 URL 时使用。

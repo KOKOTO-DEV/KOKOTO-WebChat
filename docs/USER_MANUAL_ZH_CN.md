@@ -1,10 +1,13 @@
-# BlueMapWebChat 4.7.0 完整用户与运维手册
+# KOKOTO WebChat 5.0.0 完整用户与运维手册
 
-本文从普通用户和服务器管理员两个角度说明 BlueMapWebChat 4.7.0 的全部功能。逐项配置说明请参阅 `CONFIGURATION_ZH_CN.md`，服务器中继请参阅 `SERVER_RELAY_ZH_CN.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS_ZH_CN.md` 与 `NGINX_HTTPS_ZH_CN.md`。
+> **5.0.0 运维：** Web Admin **Filter** 管理公共/群组/可选 DM 的 block/mask/replace 规则与测试，**Settings** 管理 guest/CAPTCHA、会话、moderation、upload、filter 的安全实时设置。游戏侧使用 `/kchat filter` / `/kchat settings`。会话期限变更按创建时间重算现有目标会话，且不会复活已经过期的会话。`upload.filename-mode: original` 为新上传保留安全的 Unicode 原名并在重名时自动编号。
+
+
+本文从普通用户和服务器管理员两个角度说明 KOKOTO WebChat 5.0.0 的全部功能。逐项配置说明请参阅 `CONFIGURATION_ZH_CN.md`，服务器中继请参阅 `SERVER_RELAY_ZH_CN.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS_ZH_CN.md` 与 `NGINX_HTTPS_ZH_CN.md`。
 
 ## 1. 插件概述
 
-BlueMapWebChat 用于把 Bukkit/Paper/Spigot 兼容 Minecraft 服务器的聊天连接到浏览器。
+KOKOTO WebChat 用于把 Minecraft 服务器聊天连接到浏览器。5.0.0 提供 Bukkit/Paper/Spigot，以及 Fabric 1.18.2～26.2、NeoForge 1.20.2～26.2、Forge 1.18.2～26.2 exact-target 构建。
 
 支持：
 
@@ -16,118 +19,188 @@ BlueMapWebChat 用于把 Bukkit/Paper/Spigot 兼容 Minecraft 服务器的聊天
 - DiscordSRV 集成
 - 多个 Minecraft 服务器之间的公开聊天中继
 
-默认 HTTP 端口为 `8899`，API 路径前缀为 `/api`，standalone 路径为 `/chat`。
+默认 HTTP 端口为 `8899`，API 路径前缀为 `/api`，standalone 内部路径为 `/`，默认反向代理将其公开为 `/chat`。
 
 ## 2. 环境要求
 
 必需：
 
-- Bukkit/Paper/Spigot 兼容服务器
-- 安装插件 JAR 的权限
+- 支持平台：Bukkit/Paper/Spigot **1.18～26.2**、Fabric exact-target **1.18.2～26.2**、NeoForge exact-target **1.20.2～26.2**、Forge exact-target **1.18.2～26.2**
+- 所选 Minecraft/server target 要求的 Java。Bukkit 构建以 Java 17 为目标。Fabric/NeoForge/Forge exact-target 构建脚本会按 Minecraft target 选择 JDK 17/21/25；26.x 使用 Java 25。
+- Bukkit 系可向 `plugins/` 安装 JAR，Fabric/NeoForge/Forge 可向 `mods/` 安装平台 JAR 的权限
 
 可选集成：
 
 - BlueMap
 - DiscordSRV
-- ImageEmojis-Bero 1.9.0
+- ImageEmojis-Bero 1.9.x
 - Caddy 或 Nginx
 
 公网部署时不要直接公开 `8899`，建议绑定到 `127.0.0.1:8899`，再通过 HTTPS 反向代理发布。
 
 ## 3. 安装与首次启用
 
-1. 将 JAR 放入 `plugins/`。
+1. Bukkit/Paper/Spigot 将对应 JAR 放入 `plugins/`；Fabric/NeoForge/Forge 将对应平台 JAR 放入 `mods/`。
 2. 启动服务器一次。
-3. 确认生成 `plugins/BlueMapWebChat/config.yml`。
+3. 确认 `<KWC data dir>/config.yml`。`<KWC data dir>` 在 Bukkit 系为 `plugins/KOKOTO-WebChat`，在 Fabric/NeoForge/Forge 为 `config/KOKOTO-WebChat`。
 4. 新配置默认使用 `enabled: false`。
 5. 检查 URL、存储方式、保留期限、认证和上传限制。
 6. 配置需要的功能后设置 `enabled: true`。
-7. 重启服务器或执行 `/bmchat reload`。
+7. 重启服务器或执行 `/kchat reload`。
 
 ```yaml
-config-version: "4.7.0"
+config-version: "5.0.0"
 enabled: false
 ```
 
-禁用时不会启动 Web 服务、聊天转发和清理任务，但管理员仍可使用 `/bmchat reload`。
+禁用时不会启动 Web 服务、聊天转发和清理任务，但管理员仍可使用 `/kchat reload`。
 
 ## 4. 配置迁移
 
-更新时不会自动覆盖现有设置值。startup/reload 时会把已知顶层配置块按 4.7.0 bundled 默认顺序重新排列，同时保留各块的当前文本、设置值和用户自定义注释；默认中不存在的顶层块会按原顺序保留在最后。
+现有配置值会被保留，但 active migration 不继承旧 config 文本。KWC 以当前内置 `config.yml` 创建新的模板，再覆盖现有管理员值；旧注释、顺序、空白和缩进会被丢弃，使用最新内置注释/布局。
 
-当 `config-version` 缺失或与当前插件版本不同，会生成：
+当前版本的完整 reference 始终写入：
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.7.0.yml
+<KWC data dir>/config-reference-5.0.0.yml
 ```
 
-插件还会生成 `plugins/BlueMapWebChat/config-reference-4.7.0.yml`。它是当前 JAR 完整默认配置的原样副本，并保留全部注释。旧配置或没有版本标记的配置应与这个完整 reference 比较，而 migration fragment 用作需要审核的精简差异列表。migration 文件末尾还会以注释形式附上当前配置与 reference 的文本 diff，但不会输出相同的行。每个差异按文件名、单独一行的 `Line` 或 `Lines`、实际不同内容的顺序显示。差异源行只在行首直接加 `#`，因此会原样保留 YAML 自身的缩进；仅 reference 中存在的块还会另行显示其在当前 config 中的插入位置。
+它是 JAR 内置 `config.yml` 的**原样副本，包括注释和字符串 scalar 的规范双引号格式**，仅供管理员查看完整默认设置，不作为 migration 模板。`/kchat reload` 会在停止 live service 之前验证 YAML；无效 YAML 会保留之前正在运行的配置。
+
+当 `config-version` 缺失或与运行版本不同时，KWC 会对真实 `config.yml` 执行一次 migration：
+
+- 使用最新内置 `config.yml` 作为新文件模板。
+- 把现有管理员设置值覆盖到该模板上。
+- 不继承旧注释、顺序、空白和缩进。
+- 若旧 marker 不带 `*_auto_migration`，真实版本升级前会完整备份原 `config.yml`。
+- 已存在设置的内置默认值若在新版本发生变化，不会静默覆盖，而是保留为审核项目。
+- 真实文件会标记为 `config-version: "5.0.0_auto_migration"`。
+
+随后生成：
+
+```text
+<KWC data dir>/config-migration-5.0.0.yml
+```
+
+它不再是让管理员复制缺失设置的 fragment，而是**审核报告**。其中记录自动插入数量、仍需管理员判断的默认值变化、最终确认用的精确版本标记，以及 current-vs-reference 文本 diff。由于缺失设置和注释已经放进真实 config 的正确位置，不会再作为大块 reference-only 内容堆在 diff 顶部。
 
 判定规则：
 
-| 实际 `config.yml` 状态 | 行为 |
+| 真实 `config.yml` 状态 | 行为 |
 |---|---|
-| 缺少 `config-version` | 即使其他差异为 0，也生成只包含目标版本标记的迁移文件 |
-| `config-version` 与插件版本不同 | 生成或更新包含缺失/变化设置及目标版本标记的迁移文件 |
-| `config-version` 与插件版本一致 | 视为已审核，跳过 migration 比较/报告生成并删除旧 migration 提示，但完整 reference 文件仍保持为当前版本 |
+| `config-version` 缺失或为旧/其他版本 | 执行 migration，写入 `5.0.0_auto_migration` 并生成 migration/审核报告 |
+| `config-version: "5.0.0_auto_migration"` | 启用自动 migration；每次 startup/reload 都从最新内置 `config.yml` 重建并覆盖当前值，然后刷新 report/diff |
+| `config-version: "5.0.0"` | 停止当前版本的自动 migration；跳过同版本 migration/backfill，并删除旧 migration 提示 |
 
-文件包含可复制的实际 YAML：
-
-- 当前配置缺少的新设置
-- 当前值仍等于旧默认值、但新版本默认值已经变化的设置
-- 最终审核标记对应的目标 `config-version`
-
-即使没有其他配置差异，也会为了配置版本管理生成包含 `config-version` 的文件。数量、旧值和新值说明只使用 `#` 注释。实际 `config.yml` 不会自动修改。
-
-确认并合并后设置：
+该 marker 表示**是否启用自动 migration，而不是审核状态**。
 
 ```yaml
-config-version: "4.7.0"
+# 即使已经审核，也继续自动 migration
+config-version: "5.0.0_auto_migration"
+
+# 停止同版本自动 migration
+config-version: "5.0.0"
 ```
 
-版本一致后将跳过后续比较。
-
+以后发生真正的插件版本升级时，会再次进入新版本的 `_auto_migration` 状态。
 ## 5. 部署模式
 
 ### 5.1 BlueMap 插件面板
 
 ```yaml
-web-addon:
-  auto-install: true
-  auto-patch-webapp-conf: true
-standalone-web:
-  enabled: false
+adapters:
+  bluemap:
+    auto-install: true
+    auto-patch-webapp-conf: true
+frontend:
+  standalone:
+    enabled: false
 ```
 
-Web 资源未更新时执行：
+在 Bukkit 上，KWC 更新 BlueMap web directory 与 `webapp.conf`。在 Fabric/NeoForge + BlueMap 5.21+ 环境中，KWC 使用 BlueMapAPI 2.8.0 获取 web root 并通过 API 注册 script/style，不修改 `webapp.conf`。启用 BlueMap 集成时，`/kchat reload` 会自动请求 `bluemap reload light`，随后在 BlueMap API 的下一次 `onEnable` 中按新 KWC 配置重新注册。
 
-```text
-/bluemap reload
-```
+### 5.2 Pl3xMap 内嵌模式
 
-### 5.2 仅 standalone
+在安装了 Pl3xMap 的 Bukkit/Paper 系或 Fabric 服务器上：
 
 ```yaml
-web-addon:
-  auto-install: false
-  auto-patch-webapp-conf: false
-standalone-web:
-  enabled: true
-  path: "/chat"
+adapters:
+  pl3xmap:
+    enabled: true
+    api-base-url: ""
+```
+
+KWC 会读取当前 Pl3xMap `config.yml` 中的 `settings.web-directory.path`（`settings.yml` 仅作为旧版/分支 fallback），只管理 Pl3xMap Web 根目录里的 KWC 专用 `kokoto-web-chat` 资源与 `index.html` 的 KWC 标记区块。Pl3xMap 重新生成网页文件后，可执行 `/kchat reload` 重新检查。当前 Pl3xMap 26.2 发布目标是 Bukkit/Paper 系和 Fabric/Quilt，不包含 NeoForge。直接 HTTP 下，空 `api-base-url` 会使用 KWC `:8899/api`；如果 NAT 改变了外部 KWC 端口，请显式填写实际公开 API URL。
+
+### 5.3 LiveAtlas 内嵌模式
+
+LiveAtlas 是可显示 Dynmap、squaremap、Pl3xMap、Overviewer 或多个服务器的静态前端。在 Bukkit/Fabric/NeoForge/Forge 上可这样启用：
+
+```yaml
+adapters:
+  liveatlas:
+    enabled: true
+    api-base-url: ""
+    web-root: ""
+```
+
+`web-root` 为空时，只自动识别 `index.html` 中包含 `window.liveAtlasConfig` 等 LiveAtlas 标记的目录。若 Caddy/nginx 从独立目录提供 LiveAtlas，请把服务器可见的共享/挂载路径填入 `web-root`。KWC 只管理 `kokoto-web-chat/` 与带标记的 index 区块。LiveAtlas 文件更新后执行 `/kchat reload` 即可重新插入。同一个实际 Web 根目录不要同时指定 LiveAtlas 与后端专用 KWC adapter。
+
+### 5.4 uNmINeD 静态 Web 导出
+
+uNmINeD 不是运行在 Minecraft 服务器中的插件，而是生成自包含的静态 Web 地图。先导出地图，再让 KWC 指向该目录：
+
+```yaml
+adapters:
+  unmined:
+    enabled: true
+    api-base-url: ""
+    web-root: "/srv/www/unmined"
+```
+
+当前 uNmINeD 导出使用 `index.html`，旧版可能使用 `unmined.index.html`。KWC 只会在确认 uNmINeD 标记后修改对应文件，仅管理 `kokoto-web-chat/` 与带标记的区块，不会改动地图 tile 或库文件。再次用 uNmINeD 导出可能替换 HTML 或 KWC 专用目录，因此导出后执行 `/kchat reload`。若地图由另一台主机提供，必须把导出目录共享/挂载给 Minecraft 服务器以便修改。
+
+### 5.5 Minecraft Overviewer 静态 Web 地图
+
+Minecraft Overviewer 会把基于 Leaflet 的静态 Web 地图渲染到配置的 `outputdir`。先生成地图，再让 KWC 指向该目录：
+
+```yaml
+adapters:
+  overviewer:
+    enabled: true
+    api-base-url: ""
+    web-root: "/srv/www/overviewer"
+```
+
+KWC 只会修改能确认 Overviewer 专用生成标记/资源的 `index.html`，仅管理自身 `kokoto-web-chat/` 目录和标记区块，不会改动 Overviewer 地图 tile、配置或 Leaflet 资源。之后 Overviewer 渲染或 `--update-web-assets` 可能重新生成 HTML，因此应执行 `/kchat reload`。若在其他主机渲染/提供地图，必须把输出目录共享/挂载给 Minecraft 服务器以便修改。若自行维护长期自定义模板，也可以独立使用 Overviewer 的 `customwebassets` 选项。
+
+### 5.6 仅 standalone
+
+```yaml
+adapters:
+  bluemap:
+    auto-install: false
+    auto-patch-webapp-conf: false
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
 ```
 
 ```text
-http://server.example.com:8899/chat
+http://server.example.com:8899/
 ```
 
-### 5.3 两种模式同时使用
+### 5.7 两种模式同时使用
 
 ```yaml
-web-addon:
-  auto-install: true
-  auto-patch-webapp-conf: true
-standalone-web:
-  enabled: true
+adapters:
+  bluemap:
+    auto-install: true
+    auto-patch-webapp-conf: true
+frontend:
+  standalone:
+    enabled: true
 ```
 
 两个页面共享账号、历史、通知和服务端配置。
@@ -142,8 +215,9 @@ http:
   port: 8899
   path-prefix: "/api"
   cors-origin: "*"
-web-addon:
-  api-base-url: ""
+adapters:
+  bluemap:
+    api-base-url: ""
 ```
 
 同域 HTTPS 反向代理：
@@ -153,26 +227,30 @@ http:
   host: "127.0.0.1"
   port: 8899
   path-prefix: "/api"
+  public-prefix: "/chat"
   cors-origin: "https://map.example.com"
   trusted-proxies:
     - "127.0.0.1"
     - "::1"
-web-addon:
-  api-base-url: "/bmwc/api"
-standalone-web:
-  enabled: true
-  api-base-url: ""
+adapters:
+  bluemap:
+    enabled: true
+    api-base-url: ""
+frontend:
+  standalone:
+    enabled: true
+    api-base-url: ""
 ```
 
 公开路径示例：
 
 ```text
 https://map.example.com/
-https://map.example.com/bmwc/api
-https://map.example.com/bmwc/chat
+https://map.example.com/chat/api
+https://map.example.com/chat
 ```
 
-通常保持 `standalone-web.api-base-url`、`upload.public-base-url` 与 `emoji.public-base-url` 为空，让它们自动跟随当前公开 API 地址。
+通常保持 `frontend.standalone.api-base-url`、`upload.public-base-url` 与 `emoji.public-base-url` 为空，让它们自动跟随当前公开 API 地址。
 
 仅信任 `http.trusted-proxies` 中代理发送的 `X-Forwarded-For`。
 
@@ -184,6 +262,40 @@ http:
 ```
 
 确认后请关闭。
+
+#### 反向布局：standalone 位于 `/`，BlueMap 位于 `/chat/`
+
+也可以使用与默认布局相反的方式。内部 standalone 路径仍保持 `/`，设置 `http.public-prefix: ""`，仅将 `/chat/` 去掉前缀后转发到 BlueMap，其余路径全部转发到 KWC。
+
+```yaml
+http:
+  host: "127.0.0.1"
+  port: 8899
+  path-prefix: "/api"
+  public-prefix: ""
+
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
+    api-base-url: ""
+
+adapters:
+  bluemap:
+    enabled: true
+    api-base-url: ""
+```
+
+公开路径：
+
+```text
+https://map.example.com/       KWC standalone
+https://map.example.com/api    KWC API
+https://map.example.com/chat/  BlueMap
+```
+
+不要把 `frontend.standalone.path` 改为 `/chat`。外部路径由 reverse proxy 与 `http.public-prefix` 决定。
+
 
 ## 7. Web UI 基本结构
 
@@ -200,7 +312,7 @@ http:
 - 通知设置
 - 管理和审核面板
 
-用户界面偏好保存在浏览器 localStorage 中。面板支持移动、调整大小和记忆尺寸，浏览器本地通知收件箱可查看最近需要通知的事件。
+从 5.0.0 开始，登录用户的视觉设置可保存为多个 KWC 账号配置，只有访客继续使用浏览器本地 preset。窗口位置/尺寸、最小化状态、最后选择的配置 ID 和 Web Push 注册仍保存在 localStorage/设备本地。登录用户的通知类型与关键词提醒按账号共享，而不是按浏览器保存。浏览器本地通知收件箱仍可查看最近需要通知的事件。
 
 ```yaml
 ui:
@@ -255,13 +367,15 @@ chat:
 
 ### 8.5 消息令牌
 
-BlueMapWebChat 4.7.0 可以在消息保存或中继前替换管理员配置的 `:alias:` 令牌。内置 alias 只提供英文默认值，管理员可以改成或追加任意语言的 alias。
+KOKOTO WebChat 5.0.0 可以在消息保存或中继前替换管理员配置的 `:alias:` 令牌。内置 alias 只提供英文默认值，管理员可以改成或追加任意语言的 alias。
 
 - `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 换行 1 次
 - `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 留 1 个空行
 - `:tab:`, `:indent:` → 配置数量的空格（默认 4）
 
 未知令牌保持原样，因此不会破坏 ImageEmojis/自定义表情令牌。不会解释 `:\n:` 这类反斜杠 escape。`custom` 可添加仅包含可打印文本的替换。Minecraft 中普通 CR/LF 仍按原有规则压成单行，只有 `newline`/`blank-line` alias 产生的换行会在最终游戏投递时作为明确的多条聊天行发送。服务器中继的游戏显示也要求接收端具备相同的 4.7.0 token-line 支持。
+
+YAML 列表设置同时支持 inline（`aliases: [bullet, arrow]`）和 block（`aliases:` 下一行使用 `- bullet`）形式。缩进只能使用普通 ASCII 空格，不能使用 tab 或全角空格。无效配置会在 `/kchat reload` 停止在线服务之前被拒绝，因此当前运行配置和 UI 语言会继续保持。
 
 ```yaml
 message-tokens:
@@ -316,13 +430,13 @@ search:
 Web 页面生成代码后，在游戏中执行：
 
 ```text
-/bmchat auth <code>
+/kchat auth <code>
 ```
 
 权限：
 
 ```text
-bluemapwebchat.auth
+kwc.auth
 ```
 
 ```yaml
@@ -337,7 +451,8 @@ auth:
 设置 Web 密码：
 
 ```text
-/bmchat password <newPassword>
+/kchat password <newPassword>
+/kchat status
 ```
 
 ```yaml
@@ -353,22 +468,22 @@ auth:
 ```yaml
 auth:
   auto-admin-from-permission: true
-  admin-permission: "bluemapwebchat.admin"
+  admin-permission: "kwc.admin"
 ```
 
 本地管理员账号：
 
 ```text
-/bmchat admin create <id>
-/bmchat admin password <id> <password>
-/bmchat admin role <id> <user|moderator|admin>
+/kchat admin create <id>
+/kchat admin password <id> <password>
+/kchat admin role <id> <user|moderator|admin>
 ```
 
 会话管理：
 
 ```text
-/bmchat sessions
-/bmchat revoke <username>
+/kchat sessions
+/kchat revoke <username>
 ```
 
 ## 11. 登录与连接安全
@@ -418,11 +533,11 @@ captcha:
 游客/IP 禁言命令：
 
 ```text
-/bmchat guest mute guest <name> [minutes] [reason]
-/bmchat guest mute ip <address> [minutes] [reason]
-/bmchat guest unmute guest <name>
-/bmchat guest unmute ip <address>
-/bmchat guest list
+/kchat guest mute guest <name> [minutes] [reason]
+/kchat guest mute ip <address> [minutes] [reason]
+/kchat guest unmute guest <name>
+/kchat guest unmute ip <address>
+/kchat guest list
 ```
 
 ## 13. 玩家名称、悬停和点击
@@ -449,8 +564,8 @@ chat:
 点击名称：
 
 - 同服务器游戏玩家：`/w <realName> `
-- Web 发送者：`/bmchat dm <realName> `
-- 其他服务器游戏玩家：`/bmchat dm <realName>@<server-id> `
+- Web 发送者：`/kchat dm <realName> `
+- 其他服务器游戏玩家：`/kchat dm <realName>@<server-id> `
 
 ## 14. 公开消息回复
 
@@ -472,16 +587,16 @@ reply:
 点击非 URL 正文会建议：
 
 ```text
-/bmchat reply <messageId> 
+/kchat reply <messageId> 
 ```
 
 发送：
 
 ```text
-/bmchat reply <messageId> <message>
+/kchat reply <messageId> <message>
 ```
 
-权限：`bluemapwebchat.reply`
+权限：`kwc.reply`
 
 URL 部分保留打开链接动作。与聊天格式插件冲突时可设置 `local-game-chat: false`。
 
@@ -510,21 +625,21 @@ DM 对象按 UUID 识别。除了本服加入记录和已关联账号之外，�
 命令：
 
 ```text
-/bmchat dm
-/bmchat dm list [pageSize]
-/bmchat dm unread [pageSize]
-/bmchat dm list next
-/bmchat dm list prev
-/bmchat dm <player> <message>
-/bmchat dm read <player> [pageSize]
-/bmchat dm next
-/bmchat dm prev
-/bmchat dm hide <messageId>
+/kchat dm
+/kchat dm list [pageSize]
+/kchat dm unread [pageSize]
+/kchat dm list next
+/kchat dm list prev
+/kchat dm <player> <message>
+/kchat dm read <player> [pageSize]
+/kchat dm next
+/kchat dm prev
+/kchat dm hide <messageId>
 ```
 
-权限：`bluemapwebchat.dm`
+权限：`kwc.dm`
 
-`capture-game-whispers: true` 会把 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 的内容复制到 BMChat 私信线程，但不会替代同服务器原本的 Minecraft 私聊。向其他服务器发送时使用 `名称@server-id`，这些别名会转换成 `/bmchat dm 名称@server-id <消息>` 并通过签名的跨服务器 DM relay 发送。未指定服务器的 `/bmchat dm <名称>` 只会解析当前服务器上的玩家。由于 `/r`、`/reply` 不包含目标并依赖现有私聊插件的最近联系人状态，因此不会被拦截。
+`capture-game-whispers: true` 会把 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 的内容复制到 KWC 私信线程，但不会替代同服务器原本的 Minecraft 私聊。向其他服务器发送时使用 `名称@server-id`，这些别名会转换成 `/kchat dm 名称@server-id <消息>` 并通过签名的跨服务器 DM relay 发送。未指定服务器的 `/kchat dm <名称>` 只会解析当前服务器上的玩家。由于 `/r`、`/reply` 不包含目标并依赖现有私聊插件的最近联系人状态，因此不会被拦截。
 
 ### 15.2 发送与已读状态
 
@@ -553,18 +668,18 @@ Web 支持公开/私有房间、以 PBKDF2 哈希保存的可选密码、邀请�
 群聊的每一条消息都会显示该消息的接收者已读状态。数字表示**在消息发送时已经加入房间、当前仍是成员且尚未阅读该消息的接收者人数**。消息发送者不是接收者，因此不计入人数。未读接收者为 0 时显示 `✓`。正常投递完成本身不显示状态文字。
 
 ```text
-/bmchat group
-/bmchat group list
-/bmchat group rooms
-/bmchat group <room|id> <message>
-/bmchat group send <room|id> <message>
-/bmchat group read <room|id> [pageSize]
-/bmchat group next
-/bmchat group prev
-/bmchat gc ...
+/kchat group
+/kchat group list
+/kchat group rooms
+/kchat group <room|id> <message>
+/kchat group send <room|id> <message>
+/kchat group read <room|id> [pageSize]
+/kchat group next
+/kchat group prev
+/kchat gc ...
 ```
 
-权限：`bluemapwebchat.group`
+权限：`kwc.group`
 
 ## 17. 系统与事件公告
 
@@ -614,6 +729,8 @@ upload:
 默认支持 PNG/JPG/JPEG/GIF/WEBP、MP4/WEBM、MP3/M4A/OGG/WAV/FLAC。
 
 `max-total-size-mb: 0` 表示不限总量。剪贴板模式为 `insert` 或 `send`。
+
+即使使用 `filename-mode: original`，剪贴板上传也会优先采用 `clipboardData.files` 提供的长文件名。当 Windows/Chromium 的其他剪贴板条目返回 `202608~1.JPG` 这类 DOS 8.3 别名时，只要能够取得长文件名，KWC 就会使用原来的长文件名。如果浏览器只公开 8.3 别名，则不会把这个误导性的别名当作原文件名保存，而会改用 `clipboard-...` 形式的文件名。
 
 ## 20. 媒体预览
 
@@ -672,7 +789,7 @@ emoji:
 ```
 
 ```text
-plugins/BlueMapWebChat/emojis/default/wave.png
+<KWC data dir>/emojis/default/wave.png
 :default/wave:
 :emoji:default/wave:
 ```
@@ -687,14 +804,14 @@ emoji:
     enabled: false
 ```
 
-BMChat 自行转换时可使用 `preserve`、`label`、`link` 模式。
+KWC 自行转换时可使用 `preserve`、`label`、`link` 模式。
 
-## 22. ImageEmojis-Bero 1.9.0
+## 22. ImageEmojis-Bero 1.9.x
 
 推荐配置：
 
 ```yaml
-emojisFolder: "/BlueMapWebChat/emojis"
+emojisFolder: "/KOKOTO-WebChat/emojis"
 templateFormat: ":<emoji>:"
 replaceInCommands: true
 ```
@@ -705,7 +822,7 @@ replaceInCommands: true
 imageemojis.use
 ```
 
-`replaceInCommands` 用于 `/bmchat reply`、`/bmchat dm` 和 `/bmchat group` 中的 token 转换。中继环境中所有服务器需要相同 pack 和文件名。
+`replaceInCommands` 用于 `/kchat reply`、`/kchat dm` 和 `/kchat group` 中的 token 转换。中继环境中所有服务器需要相同 pack 和文件名。
 
 ```text
 /emojis reload
@@ -715,6 +832,23 @@ imageemojis.use
 详情请参阅 `IMAGEEMOJIS_BERO_1_9_0_ZH_CN.md`。
 
 ## 23. 浏览器通知与 Web Push
+
+从 5.0.0 开始，登录用户的关键词与通知类型设置保存在账号数据中，并在不同浏览器/设备之间共享。Windows、移动端等显示环境可以分别保存多个账号 UI 配置；窗口位置、尺寸、最小化状态和 Web Push endpoint 仍保留为设备本地状态。Web Admin 可限制配置数量并控制是否允许 JSON 导入/导出。同一设备已有有效 KWC Web Push 订阅时，实时页面不会再次弹出重复的系统 Notification，但应用内通知记录仍保留。
+
+
+服务器端视觉配置由以下设置控制：
+
+```yaml
+ui:
+  user-profiles:
+    enabled: true
+    max-profiles: 5
+    allow-import-export: true
+```
+
+`max-profiles` 允许 0-20。配置导入/导出仅包含视觉设置，不包含会话、身份、Push 或设备窗口数据。
+
+
 
 ```yaml
 notifications:
@@ -727,7 +861,6 @@ notifications:
   notify-replies: true
   notify-system: true
   notify-keywords: true
-  notify-own-messages: true
   show-message-preview: true
 ```
 
@@ -745,9 +878,10 @@ VAPID 为空时插件会生成持久密钥。iOS/iPadOS 通常需要从主屏幕
 ## 24. PWA 与 PIP
 
 ```yaml
-standalone-web:
-  app-name: "Web Chat"
-  app-short-name: "Web Chat"
+frontend:
+  standalone:
+    app-name: "Web Chat"
+    app-short-name: "Web Chat"
 ui:
   picture-in-picture:
     enabled: false
@@ -757,12 +891,36 @@ ui:
 
 ## 25. DiscordSRV 集成
 
+5.0.0 的管理员 Discord 关键词提醒不会把检测或格式策略交给 DiscordSRV。关键词匹配、来源选择、mention、去重与提醒内容由 KWC 负责，仅复用 DiscordSRV 已认证的 JDA 连接和 Channels 映射。Web Admin 的提醒频道下拉框只显示 DiscordSRV 的逻辑频道名；只有在 ID-only 配置中才把频道 ID 作为 fallback。来自 Discord 的消息不会再次进入管理员关键词提醒。
+
+管理员提醒策略示例：
+
+```yaml
+admin-alerts:
+  discord:
+    enabled: false
+    channel: ""
+    sources:
+      public-chat: true
+      relay-chat: false
+      dm: false
+      group-chat: false
+    mention: "none"
+    case-sensitive: false
+    keywords: ""
+```
+
+`channel: ""` 复用 `discordsrv.channel`；Web Admin 通常选择/保存 DiscordSRV 的逻辑频道名。
+
+
+
+
 ```yaml
 discordsrv:
   enabled: true
   channel: "global"
   web-to-discord: true
-  game-to-discord: false
+  game-relay-mode: "discordsrv"
   discord-to-web: true
   ignore-bot-messages: true
   suppress-game-echo: true
@@ -770,10 +928,10 @@ discordsrv:
   append-web-emoji-links: true
   append-game-emoji-links: true
   web-to-discord-format: "[{server}] [Web] {sender}: {message}"
-  game-to-discord-format: "[{server}] {sender}: {message}"
+  game-relay-format: "[{server}] {sender}: {message}"
 ```
 
-DiscordSRV 已发送普通游戏聊天时，保持 `game-to-discord: false`。
+DiscordSRV 已发送普通游戏聊天时，保持 `game-relay-mode: "discordsrv"`。
 
 多个服务器共享频道时：
 
@@ -784,6 +942,8 @@ DiscordSRV 已发送普通游戏聊天时，保持 `game-to-discord: false`。
 可通过 `discordsrv.reply-relay` 启用回复预览。
 
 ## 26. 多服务器聊天中继
+
+`peers` 不是持久连接/会话列表，而是本服务器发送消息的 HTTP 目标列表。同一条目的 `id` / `secret` 也用于入站请求认证；双向中继需要两端分别配置对方。
 
 ```yaml
 server-relay:
@@ -796,6 +956,7 @@ server-relay:
   max-clock-skew-seconds: 60
   dedupe-seconds: 300
   max-hops: 8
+  forward-received-public-chat: true
   sources:
     game: true
     web: true
@@ -808,15 +969,17 @@ server-relay:
   game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
   peers:
     - id: "server2"
-      url: "https://server2.example.com/bmwc/api"
+      url: "https://server2.example.com/chat/api"
       secret: ""
       enabled: true
 ```
 
+`forward-received-public-chat` 控制 peer 收到公共聊天后是否继续转发给其他 peer。`true` 支持 hub/chain 拓扑，`false` 将公共聊天限制为直接 peer 链路。跨服务器 DM 与已读回执路由不受影响。
+
 实际 URL：
 
 ```text
-https://server2.example.com/bmwc/api/relay/receive
+https://server2.example.com/chat/api/relay/receive
 ```
 
 接收端 `peers[].id` 必须等于发送端 `server-id`。Peer secret 优先于 shared secret。没有持久离线队列。
@@ -828,6 +991,8 @@ Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
 错误：
 
 - 403 `unknown_peer`
+
+同一目标在没有成功响应的情况下 3 次返回 `403 unknown_peer` 后，KWC 会把该目标置于 60 秒 backoff。此期间产生的该目标 relay 消息会直接跳过，不发送周期性 probe。60 秒后出现的第一条实际 relay 消息会自动重试；如果仍失败，则从该失败时刻重新等待 60 秒，成功响应则立即恢复正常发送并清零计数。接收端会在应用请求前拒绝未知发送方。连接被拒绝、超时等 transport failure 也使用相同的 3 次/60 秒 backoff，因此离线 peer 不会对每条转发消息都重复产生警告。
 - 401 `bad_signature`
 - 401 `expired_request`
 - 404 `relay_disabled`
@@ -946,8 +1111,6 @@ ui:
     enabled: true
     overscan-screens: 0.75
     min-rendered-messages: 30
-    preserve-visible-media: false
-    preserve-playing-media: true
   history-preload:
     screens: 0.7
     min-px: 200
@@ -960,82 +1123,84 @@ ui:
   resume-refresh:
     enabled: true
     min-interval-seconds: 5
-    skip-while-media-active: true
     skip-unchanged: true
 ```
+
+公共聊天的虚拟滚动不区分内容类型：图片、视频、音频、链接预览、YouTube 和其他 iframe 都使用相同的消息范围与高度跟踪规则。
 
 ## 31. 命令完整列表
 
 用户：
 
 ```text
-/bmchat auth <code>
-/bmchat password <newPassword>
-/bmchat dm
-/bmchat dm list [pageSize]
-/bmchat dm unread [pageSize]
-/bmchat dm <player> <message>
-/bmchat dm read <player> [pageSize]
-/bmchat dm next
-/bmchat dm prev
-/bmchat dm hide <messageId>
-/bmchat reply <messageId> <message>
-/bmchat group list
-/bmchat group <room> <message>
-/bmchat group send <room> <message>
-/bmchat group read <room> [pageSize]
-/bmchat group next
-/bmchat group prev
+/kchat auth <code>
+/kchat password <newPassword>
+/kchat status
+/kchat dm
+/kchat dm list [pageSize]
+/kchat dm unread [pageSize]
+/kchat dm <player> <message>
+/kchat dm read <player> [pageSize]
+/kchat dm next
+/kchat dm prev
+/kchat dm hide <messageId>
+/kchat reply <messageId> <message>
+/kchat group list
+/kchat group <room> <message>
+/kchat group send <room> <message>
+/kchat group read <room> [pageSize]
+/kchat group next
+/kchat group prev
 ```
 
 管理员：
 
 ```text
-/bmchat reload
-/bmchat admin create <id>
-/bmchat admin password <id> <password>
-/bmchat admin role <id> <user|moderator|admin>
-/bmchat guest mute <guest|ip> <value> [minutes] [reason]
-/bmchat guest unmute <guest|ip> <value>
-/bmchat guest list
-/bmchat sessions
-/bmchat revoke <username>
+/kchat reload
+/kchat admin create <id>
+/kchat admin password <id> <password>
+/kchat admin role <id> <user|moderator|admin>
+/kchat guest mute <guest|ip> <value> [minutes] [reason]
+/kchat guest unmute <guest|ip> <value>
+/kchat guest list
+/kchat sessions
+/kchat revoke <username>
 ```
 
-别名：`/bmc`、`/bluemapchat`，群聊可用 `/bmchat gc`。
+别名：`/kc`；群聊还可使用 `/kchat gc`。
 
 ## 32. 权限
 
 ```text
-bluemapwebchat.auth
-bluemapwebchat.webchat
-bluemapwebchat.dm
-bluemapwebchat.reply
-bluemapwebchat.group
-bluemapwebchat.admin
-bluemapwebchat.update.notify
+kwc.auth
+kwc.webchat
+kwc.dm
+kwc.reply
+kwc.group
+kwc.admin
+kwc.update.notify
 ```
 
-用户功能权限默认允许，`bluemapwebchat.admin` 与 `bluemapwebchat.update.notify` 默认仅 OP。
+用户功能权限默认允许，`kwc.admin` 与 `kwc.update.notify` 默认仅 OP。
 
 ## 33. 数据文件与备份
 
 ```text
-plugins/BlueMapWebChat/config.yml
-plugins/BlueMapWebChat/history.db
-plugins/BlueMapWebChat/direct-messages.db
-plugins/BlueMapWebChat/group-messages.db
-plugins/BlueMapWebChat/web-push-subscriptions.jsonl
-plugins/BlueMapWebChat/emojis/
-plugins/BlueMapWebChat/uploads/
-plugins/BlueMapWebChat/audit/
+<KWC data dir>/config.yml
+<KWC data dir>/history.db
+<KWC data dir>/direct-messages.db
+<KWC data dir>/group-messages.db
+<KWC data dir>/web-push-subscriptions.jsonl
+<KWC data dir>/emojis/
+<KWC data dir>/uploads/
+<KWC data dir>/audit/
 ```
 
 建议备份配置、数据库/JSONL、Emoji、需要保留的上传文件、Push 订阅和 VAPID 密钥。SQLite 最好在正常停服后复制。
 
 ## 34. Reload 与重启
 
-通常可由 `/bmchat reload` 应用：
+通常可由 `/kchat reload` 应用：
 
 - 大多数配置变更
 - HTTP 服务与中继重建
@@ -1047,7 +1212,7 @@ plugins/BlueMapWebChat/audit/
 - Java 代码变化
 - 插件加载顺序变化
 
-仅 BlueMap 资源未更新时可执行 `/bluemap reload`。
+`/kchat reload` 会自动请求 `bluemap reload light`。如果资源仍未更新或自动执行失败，请手动运行 `/bluemap reload light`。
 
 ## 35. 快速故障排查
 
@@ -1064,7 +1229,7 @@ BlueMap 没有聊天按钮：
 - auto-install/auto-patch
 - BlueMap 路径
 - 日志
-- `/bluemap reload`
+- `/kchat reload` 通常会自动执行 `bluemap reload light`；仅在需要时手动执行 `/bluemap reload light`。
 - 浏览器缓存
 
 登录失败：
@@ -1112,7 +1277,7 @@ Discord 前缀重复：
 
 - 所有服务器版本一致
 - 其他插件是否再次转发
-- DiscordSRV 已转发时设置 game-to-discord false
+- DiscordSRV 已转发时设置 game-relay-mode discordsrv
 
 Web Push：
 
@@ -1125,8 +1290,9 @@ Web Push：
 ## 36. 相关文档
 
 - `CONFIGURATION_ZH_CN.md`
+- `UPGRADE_5_0_0_ZH_CN.md`: 4.7.0→5.0.0 Core 拆分/reload 安全升级
+- `UPGRADE_4_7_0_ZH_CN.md`: 4.6.3→4.7.0 功能升级
 - `SERVER_RELAY_ZH_CN.md`
-- `UPGRADE_4_6_4_ZH_CN.md`: 4.6.3→4.7.0 升级
 - `UPGRADE_4_6_3_ZH_CN.md`: 4.6.2→4.6.3 升级
 - `UPGRADE_4_6_2_ZH_CN.md`: 4.6.1→4.6.2 升级
 - `UPGRADE_4_6_1_ZH_CN.md`: 4.6.0→4.6.1 升级
@@ -1144,3 +1310,8 @@ Web Push：
 
 需要设置 `group-chat.admin-audit.enabled: true`，并把准确的 Minecraft 名或 UUID 列入 `private-chat-super-admins`；两个条件都必须满足。符合条件的管理员即使不是房间成员，也可以从管理员房间元数据列表中只读打开群聊正文。审计视图不会加入房间、更新已读/未读状态、发送/上传/隐藏消息或修改成员关系。每次分页读取都会记录为 `admin.group-audit-read`，消息正文不会复制到审计日志。
 
+
+
+## SimpleNicks-Bero 集成
+
+Bukkit/Paper 系列使用 `player-display.mode: "display-name"` 可显示 [SimpleNicks-Bero](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) 写入的 Bukkit display name，真实 linked username/UUID 仍作为 KWC identity。详见 `SIMPLENICKS_BERO_ZH_CN.md`；一般运维参考 [上游 SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks)。

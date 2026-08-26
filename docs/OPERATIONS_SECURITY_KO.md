@@ -4,7 +4,7 @@
 
 ## 권장 공개 구성
 
-공개 서버에서는 BlueMapWebChat HTTP 서버를 직접 외부에 열기보다 Caddy/Nginx 뒤에 두는 구성을 권장합니다.
+공개 서버에서는 KOKOTO WebChat HTTP 서버를 직접 외부에 열기보다 Caddy/Nginx 뒤에 두는 구성을 권장합니다.
 
 ```yaml
 http:
@@ -25,7 +25,7 @@ http:
 `http.log-client-ip-resolution: true`를 켜면 서버 콘솔과 Minecraft 서버 로그에 다음 형식의 로그가 출력됩니다.
 
 ```text
-[BlueMapWebChat] Client IP resolved: socket=127.0.0.1, trustedProxy=true, xForwardedFor=203.0.113.10, result=203.0.113.10, path=/api/config
+[KOKOTO WebChat] Client IP resolved: socket=127.0.0.1, trustedProxy=true, xForwardedFor=203.0.113.10, result=203.0.113.10, path=/api/config
 ```
 
 확인 위치:

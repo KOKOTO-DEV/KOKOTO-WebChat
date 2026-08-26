@@ -1,0 +1,44 @@
+name: KOKOTO-WebChat
+version: 5.0.0
+main: dev.kokoto.webchat.KokotoWebChatPlugin
+api-version: '1.18'
+authors: [KOKOTO]
+description: Cross-platform Minecraft web chat with standalone frontend and optional map adapters.
+softdepend: [DiscordSRV, squaremap, dynmap, Pl3xMap]
+loadbefore: [ImageEmojis]
+commands:
+  kchat:
+    description: KOKOTO WebChat command
+    usage: /kchat <auth|password|status|dm|reply|group|reload|admin|guest|sessions|revoke|filter|settings>
+    aliases: [kc]
+permissions:
+  kwc.auth:
+    description: Allows linking a web account to a Minecraft account.
+    default: true
+  kwc.webchat:
+    description: Allows using authenticated web chat.
+    default: true
+  kwc.admin:
+    description: Allows administrating KOKOTO WebChat.
+    default: op
+    children:
+      kwc.admin.filter: true
+      kwc.admin.settings: true
+  kwc.admin.filter:
+    description: Allows managing KOKOTO WebChat content-filter rules and scopes.
+    default: op
+  kwc.admin.settings:
+    description: Allows changing supported live KOKOTO WebChat settings.
+    default: op
+  kwc.update.notify:
+    description: Shows KOKOTO WebChat update notices when an administrator joins.
+    default: op
+  kwc.dm:
+    description: Allows sending and reading KOKOTO WebChat direct messages.
+    default: true
+  kwc.reply:
+    description: Allows replying to public KWC messages from Minecraft.
+    default: true
+  kwc.group:
+    description: Allows sending and reading KOKOTO WebChat group messages.
+    default: true

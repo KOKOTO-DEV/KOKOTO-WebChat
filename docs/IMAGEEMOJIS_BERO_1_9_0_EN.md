@@ -1,86 +1,106 @@
-# ImageEmojis-Bero 1.9.0 compatibility
+# ImageEmojis-Bero integration (1.9.x)
 
-BlueMapWebChat 4.7.0 includes an optional compatibility path for [ImageEmojis-Bero 1.9.0](https://github.com/KOKOTO-DEV/ImageEmojis-Bero). The integration is reflection-based and does not add a hard dependency, so BlueMapWebChat still starts when ImageEmojis-Bero is not installed.
+KOKOTO WebChat 5.0.0 includes an optional **Bukkit/Paper-family** integration for [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero). The current compatibility path is tested against the 1.9.x Bero line (including 1.9.2) and is reflection-based, so ImageEmojis-Bero is not a hard dependency and KWC still starts when it is absent.
 
-## Supported behavior
+For general installation, commands, permissions, resource-pack generation, and ImageEmojis operation, use the [upstream ImageEmojis documentation](https://github.com/MrQuackDuck/ImageEmojis). This page only documents the settings and deployment details that matter when ImageEmojis-Bero is used together with KWC.
 
-- Web, game-reply, DM, and server-relay messages preserve canonical emoji tokens in BMChat history and relay payloads.
-- Before BMChat builds clickable Minecraft components, it reads the receiving server's active ImageEmojis-Bero emoji repository and converts known tokens to that server's current resource-pack glyph.
-- Sender-name actions, `/bmchat reply`, clickable URLs, and rendered ImageEmojis glyphs can coexist in one Minecraft chat line.
-- Both `:pack/name:` and legacy `:emoji:pack/name:` BMChat forms are accepted. ImageEmojis-Bero's normal `templateFormat: ":<emoji>:"` produces `:pack/name:` because its emoji name includes the pack path.
-- If a known token cannot be resolved through the runtime repository, BMChat uses its plain Bukkit broadcast fallback so ImageEmojis-Bero's `BroadcastMessageEvent` listener can still process the token. That fallback line cannot carry BMChat click or hover metadata.
+## Recommended KWC + ImageEmojis-Bero settings
 
-## Recommended shared emoji directory
-
-To use the same assets in the web UI and Minecraft resource pack, point ImageEmojis-Bero at BlueMapWebChat's emoji directory:
+A typical integration uses the KWC emoji directory as ImageEmojis-Bero's source directory:
 
 ```yaml
 # plugins/ImageEmojis-Bero/config.yml
-emojisFolder: "/BlueMapWebChat/emojis"
-templateFormat: ":<emoji>:"
+# Public host name or public IP that Minecraft clients can reach.
+serverIp: yourdomain
+
+# ImageEmojis-Bero starts its resource-pack HTTP server on this port.
+webServerPort: 5000
+
+# Share the same emoji asset tree with KWC.
+emojisFolder: /KOKOTO-WebChat/emojis
+
+# Choose NONE / OPTIONAL / REQUIRED according to your server policy.
+enforcementPolicy: REQUIRED
+
+# Important when emoji tokens may appear in /msg, /tell, /kchat reply, /kchat dm, etc.
 replaceInCommands: true
+
+# Keep KWC and ImageEmojis-Bero on the same canonical token style.
+templateFormat: ':<emoji>:'
 ```
 
-With ImageEmojis-Bero 1.9.0's path handling, this resolves under the server `plugins` directory:
+Other ImageEmojis-Bero settings such as `replaceInAnvils`, `replaceOnSigns`, `replaceInCommandBlocks`, `replaceInBooks`, `suggestionMode`, `mergeWithServerResourcePack`, and `extendedUnicodeRange` are normal ImageEmojis operating choices rather than KWC requirements. In particular, `extendedUnicodeRange` changes ImageEmojis' generated code range and should be treated according to the plugin's own migration warning.
 
-```text
-plugins/BlueMapWebChat/emojis/<pack>/<name>.png
-```
+## Shared emoji directory
 
-ImageEmojis-Bero loads one pack-directory level and PNG files. BlueMapWebChat can retain GIF/JPG/JPEG/WEBP originals for the web UI and creates same-folder PNG sidecars for the game plugin.
-
-## BlueMapWebChat settings
-
-Token preservation is recommended:
+With the Bero path handling, this setting:
 
 ```yaml
-emoji:
-  game-link:
-    enabled: false
-    default-pack: ""
-    aliases: {}
-
-reply:
-  game-click:
-    enabled: true
-    local-game-chat: true
+emojisFolder: /KOKOTO-WebChat/emojis
 ```
 
-`emoji.game-link.enabled: false` keeps token text canonical instead of adding BMChat image links to Minecraft. Use `default-pack` or `aliases` only when a flat token such as `:wave:` must map to a packed BMChat ID such as `default/wave`.
+resolves below the server `plugins` directory:
 
-## Permissions and command processing
+```text
+plugins/KOKOTO-WebChat/emojis/<pack>/<name>.png
+```
 
-Players need `imageemojis.use` to see and use ImageEmojis-Bero emojis. Keep `replaceInCommands: true` when players may enter emoji tokens in `/bmchat reply`, `/bmchat dm`, `/w`, `/msg`, or similar commands. BMChat retains the original token for web/history/relay while using ImageEmojis-Bero's processed command body for immediate game output.
+This lets KWC's web emoji catalog and ImageEmojis-Bero's generated Minecraft resource pack use the same pack/name layout. ImageEmojis-Bero consumes PNG assets for the game resource pack; KWC may also retain web-oriented source formats such as GIF/JPG/JPEG/WEBP and use PNG sidecars where required.
+
+## Resource-pack HTTP port / firewall
+
+`serverIp` and `webServerPort` belong to **ImageEmojis-Bero's resource-pack HTTP server**, not KWC's web server. ImageEmojis-Bero builds a client-facing resource-pack URL from that host and port, so every Minecraft client that receives the pack must be able to reach them.
+
+For the example above:
+
+```text
+serverIp: yourdomain
+webServerPort: 5000
+```
+
+players must be able to reach `yourdomain:5000` over TCP. Depending on the host, that can require:
+
+- an OS/firewall allow rule for TCP 5000;
+- router/NAT port forwarding from the public address to the Minecraft server machine;
+- DNS for `yourdomain` pointing to the reachable public address.
+
+Do **not** assume that exposing KWC's `/chat` web endpoint automatically exposes the ImageEmojis resource-pack server. They are separate HTTP services unless you deliberately route them together outside the plugins.
+
+## KWC behavior
+
+- KWC keeps canonical emoji token text in web/history/relay data instead of forwarding another server's private-use glyph.
+- Before Bukkit/Paper-family KWC sends an interactive Minecraft chat component, it can read ImageEmojis-Bero's active runtime emoji repository and replace a known token with that receiving server's current resource-pack glyph.
+- `:pack/name:` and legacy `:emoji:pack/name:` forms are recognized. With `templateFormat: ':<emoji>:'` and pack-qualified emoji names, ImageEmojis-Bero normally produces `:pack/name:`.
+- Sender/reply actions, clickable URLs, and ImageEmojis glyphs can coexist in the same KWC game message.
+- If runtime symbol lookup is unavailable, KWC can fall back to token/plain broadcast behavior rather than making ImageEmojis-Bero a startup dependency.
+
+The server-side runtime-symbol integration is a **Bukkit/Paper-family integration**. KWC's Fabric/NeoForge/Forge builds do not claim the Bukkit ImageEmojis plugin API. The optional ImageEmojis client picker is a separate client-side component and does not change this server-integration boundary.
+
+## Permissions and commands
+
+Players normally need `imageemojis.use` to use/see ImageEmojis-Bero emojis. Keep `replaceInCommands: true` when emoji tokens may be entered in commands such as `/msg`, `/tell`, `/kchat reply`, or `/kchat dm`.
 
 ## Reload sequence
 
-After adding, replacing, or renaming emoji files:
+After adding/replacing emoji assets:
 
-1. Run `/emojis reload` to rebuild the ImageEmojis-Bero resource pack.
-2. Have online players run `/emojis update`, or reconnect.
-3. Allow up to about five seconds for BMChat's runtime token-to-glyph cache to refresh. A BMChat reload is not normally required for an emoji-file-only change.
+1. Run `/emojis reload` so ImageEmojis-Bero regenerates the resource pack.
+2. Have online players run `/emojis update`, or reconnect so the current pack is downloaded.
+3. Allow KWC's short runtime emoji lookup cache to refresh. A KWC reload is normally unnecessary for an emoji-file-only change.
 
 ## Multi-server relay
 
-BMChat relays canonical token text, not another server's private-use glyph. Every receiving server that should render the emoji must run ImageEmojis-Bero 1.9.0 and contain the same pack/name entry. This avoids sending a glyph whose resource-pack mapping is different on another server.
-
-If emoji sets intentionally differ, unresolved remote tokens remain text or use the plain broadcast fallback on the receiving server.
-
-## DiscordSRV
-
-ImageEmojis-Bero can translate matching templates to Discord emoji names, while BMChat can append public image-preview links with `discordsrv.append-web-emoji-links` and `discordsrv.append-game-emoji-links`. Choose the desired presentation and avoid enabling overlapping output solely to obtain the same preview twice.
-
-When several Minecraft servers share one Discord channel, BMChat only lets the origin server enhance the native DiscordSRV game message. Relay peers do not re-send the public message to Discord and do not add another server label or emoji link.
+Relay transports canonical token text; it does not copy PNG files or resource packs between servers. Every receiving server that should render an emoji must have the corresponding pack/name asset and a compatible ImageEmojis-Bero setup. This prevents a private-use glyph generated on one server from being interpreted with another server's mapping.
 
 ## Troubleshooting
 
-- **Token remains visible in Minecraft:** verify the same `<pack>/<name>.png` exists, run `/emojis reload`, confirm the player has `imageemojis.use`, and wait for the short BMChat runtime cache refresh.
-- **Web emoji works but game emoji does not:** confirm the ImageEmojis-Bero resource pack was accepted and updated by the player.
-- **Game emoji works but web shows a token:** confirm the corresponding file exists under `plugins/BlueMapWebChat/emojis` with the same pack/name.
-- **Emoji in `/bmchat reply` or `/bmchat dm` does not convert:** keep `replaceInCommands: true`.
-- **Remote-server emoji does not render:** synchronize the emoji PNG and pack/name on every receiving server; relay transport alone does not copy resource-pack files.
-- **Clickable URL becomes a reply action:** use the current 4.7.0 source, where URL segments retain `OPEN_URL` precedence and only non-URL text receives the reply suggestion.
+- **Web emoji works but the game shows a token:** verify the matching PNG, `imageemojis.use`, resource-pack acceptance, `/emojis reload`, and `/emojis update`/reconnect.
+- **Game emoji works but the web shows a token:** verify the same pack/name exists under `plugins/KOKOTO-WebChat/emojis`.
+- **Resource pack does not download:** test that the client can reach the configured `serverIp:webServerPort`; check TCP firewall/NAT rules separately from the KWC web port.
+- **Emoji in `/kchat reply`, `/kchat dm`, `/msg`, or `/tell` is not replaced:** keep `replaceInCommands: true`.
+- **Remote-server emoji stays text:** synchronize the corresponding asset to that receiving server; relay does not synchronize resource-pack files.
 
-## Compatibility boundary
+## Project references
 
-The 4.7.0 integration expects the ImageEmojis-Bero 1.9.0 runtime repository shape exposed by `getEmojiRepository().getEmojis()` and emoji model accessors such as `getName()`, `getTemplate()`, and `getAsUtf8Symbol()`. If a future ImageEmojis-Bero release changes those runtime methods, BMChat continues without a hard failure but may fall back to token/plain-broadcast handling until compatibility is updated.
+- KWC-tested fork: [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)
+- Original plugin / general operation: [ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)

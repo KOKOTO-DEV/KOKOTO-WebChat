@@ -1,0 +1,22 @@
+package dev.kokoto.webchat;
+
+/**
+ * Platform boundary for the core relay engine. The relay protocol, HTTP transport,
+ * authentication, routing and deduplication stay in core; the platform supplies
+ * configuration, persistence checks and delivery callbacks.
+ */
+public interface RelayHost {
+    RelaySettings relaySettings();
+    String defaultServerName();
+    void info(String message);
+    void warn(String message);
+
+    boolean hasPublicMessage(String relayId);
+    boolean acceptPublicMessage(ChatMessage message);
+
+    boolean hasDirectRelayId(String relayId);
+    boolean acceptDirectMessage(RelayDirectMessage message);
+
+    RelayReadApplyResult applyDirectMessageRead(String messageRelayId);
+    void publishDirectMessageUpdate(String localUserUuid, String remoteUserUuid, String threadId);
+}

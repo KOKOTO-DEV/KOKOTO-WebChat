@@ -1,10 +1,13 @@
-# BlueMapWebChat 4.7.0 통합 사용·운영 매뉴얼
+# KOKOTO WebChat 5.0.0 통합 사용·운영 매뉴얼
 
-이 문서는 BlueMapWebChat 4.7.0의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION_KO.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY_KO.md`, HTTPS 구성은 `CADDY_HTTPS_KO.md`와 `NGINX_HTTPS_KO.md`를 함께 참고하세요.
+> **5.0.0 운영 기능:** Web Admin **Filter**에서 공개/그룹/선택형 DM의 차단·마스킹·순화어 규칙과 테스트를 관리하고, **Settings**에서 게스트/CAPTCHA, 세션, moderation, upload, filter의 실시간 안전 설정을 관리합니다. 게임에서는 `/kchat filter`, `/kchat settings`를 사용합니다. 세션 기간 변경은 이미 만료된 세션을 부활시키지 않고 기존 대상 세션을 생성 시각 기준으로 재계산합니다. `upload.filename-mode: original`은 새 업로드의 안전한 Unicode 원본명을 보존하고 중복 접미사를 붙입니다.
+
+
+이 문서는 KOKOTO WebChat 5.0.0의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION_KO.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY_KO.md`, HTTPS 구성은 `CADDY_HTTPS_KO.md`와 `NGINX_HTTPS_KO.md`를 함께 참고하세요.
 
 ## 1. 플러그인 개요
 
-BlueMapWebChat은 Minecraft Bukkit/Paper/Spigot 계열 서버의 게임 채팅을 웹 브라우저에 연결하는 플러그인입니다.
+KOKOTO WebChat은 Minecraft 서버의 게임 채팅을 웹 브라우저에 연결하는 서버측 웹 채팅입니다. 5.0.0은 Bukkit/Paper/Spigot과 Fabric 1.18.2~26.2, NeoForge 1.20.2~26.2, Forge 1.18.2~26.2 exact-target 빌드를 제공합니다.
 
 지원 형태:
 
@@ -16,134 +19,198 @@ BlueMapWebChat은 Minecraft Bukkit/Paper/Spigot 계열 서버의 게임 채팅�
 - DiscordSRV 연동
 - 여러 Minecraft 서버 사이의 공개 채팅 릴레이
 
-기본 HTTP 포트는 `8899`, API 기본 경로는 `/api`, standalone 기본 경로는 `/chat`입니다.
+기본 HTTP 포트는 `8899`, API 기본 경로는 `/api`, standalone 내부 기본 경로는 `/`이며 기본 리버스 프록시에서는 `/chat`으로 공개됩니다.
 
 ## 2. 요구사항과 권장 환경
 
 필수:
 
-- Java 21 이상을 사용하는 Bukkit/Paper/Spigot 호환 서버
-- 플러그인 JAR을 넣을 수 있는 서버 관리 권한
+- 지원 서버 플랫폼: Bukkit/Paper/Spigot **1.18~26.2**, Fabric exact-target **1.18.2~26.2**, NeoForge exact-target **1.20.2~26.2**, 또는 Forge exact-target **1.18.2~26.2**
+- 해당 Minecraft/서버 버전이 요구하는 Java. Bukkit 산출물은 Java 17 대상입니다. Fabric/NeoForge/Forge exact-target 빌드 스크립트는 대상 Minecraft 버전에 맞춰 JDK 17/21/25를 선택하며, 26.x는 Java 25를 사용합니다.
+- Bukkit 계열은 `plugins/`, Fabric/NeoForge/Forge는 `mods/`에 플랫폼 JAR을 넣을 수 있는 서버 관리 권한
 
 선택:
 
 - BlueMap: 지도 안에 채팅 패널을 표시할 때
 - DiscordSRV: Discord 채널과 채팅을 연동할 때
-- ImageEmojis-Bero 1.9.0: 게임에서 BMChat 이모지 토큰을 실제 이모지 glyph로 표시할 때
+- ImageEmojis-Bero 1.9.x: 게임에서 KWC 이모지 토큰을 실제 이모지 glyph로 표시할 때
 - Caddy 또는 Nginx: 공개 HTTPS 운영 시
 
 공개 서버에서는 플러그인의 HTTP 포트 `8899`를 인터넷에 직접 공개하지 말고 `127.0.0.1:8899`로 제한한 뒤 HTTPS 리버스 프록시를 사용하는 구성을 권장합니다.
 
 ## 3. 설치와 최초 활성화
 
-1. 빌드된 JAR을 서버의 `plugins/` 폴더에 넣습니다.
+1. Bukkit/Paper/Spigot은 해당 JAR을 `plugins/`에, Fabric/NeoForge/Forge는 해당 플랫폼 JAR을 `mods/`에 넣습니다.
 2. 서버를 한 번 시작합니다.
-3. `plugins/BlueMapWebChat/config.yml`이 생성되었는지 확인합니다.
+3. `<KWC data dir>/config.yml`을 확인합니다. `<KWC data dir>`는 Bukkit 계열에서 `plugins/KOKOTO-WebChat`, Fabric/NeoForge/Forge에서 `config/KOKOTO-WebChat`입니다.
 4. 새 설정의 `enabled` 기본값은 `false`입니다.
 5. URL, 저장 방식, 보관 기간, 인증, 업로드 제한을 확인합니다.
 6. 사용할 기능을 설정한 뒤 `enabled: true`로 변경합니다.
-7. 서버를 재시작하거나 `/bmchat reload`를 실행합니다.
+7. 서버를 재시작하거나 `/kchat reload`를 실행합니다.
 
 기본 안전 설정:
 
 ```yaml
-config-version: "4.7.0"
+config-version: "5.0.0"
 enabled: false
 ```
 
-`enabled: false`일 때는 웹 서버, 채팅 전달, 정리 작업이 시작되지 않습니다. 설정을 다시 읽기 위한 `/bmchat reload`는 관리자에게 계속 허용됩니다.
+`enabled: false`일 때는 웹 서버, 채팅 전달, 정리 작업이 시작되지 않습니다. 설정을 다시 읽기 위한 `/kchat reload`는 관리자에게 계속 허용됩니다.
 
 ## 4. 설정 업그레이드와 마이그레이션 파일
 
-기존 설정값은 업데이트 시 자동으로 덮어쓰지 않습니다. startup/reload 시 알려진 최상위 설정 블록을 4.7.0 기본 순서에 맞춰 재정렬하지만 각 블록의 현재 내용·설정값·사용자 지정 주석은 보존하며, 기본에 없는 최상위 블록은 마지막에 기존 순서대로 유지합니다.
+기존 설정값은 보존하지만 기존 설정 파일의 주석/레이아웃을 이어 붙이는 방식은 사용하지 않습니다. migration이 활성화되면 실행 중 플러그인의 최신 번들 `config.yml`을 새 뼈대로 만들고 기존 사용자 설정값만 그 위에 덮어씁니다. 따라서 이전 주석·순서·공백·들여쓰기는 버리고 최신 번들 주석과 레이아웃으로 통일합니다.
 
-실행 중인 플러그인 버전과 `config-version`이 다르거나 설정에 버전이 없으면 다음 파일이 생성됩니다.
+현재 버전의 전체 기준 파일은 항상 다음 위치에 생성됩니다.
 
 ```text
-plugins/BlueMapWebChat/config-migration-4.7.0.yml
+<KWC data dir>/config-reference-5.0.0.yml
 ```
 
-플러그인은 `plugins/BlueMapWebChat/config-reference-4.7.0.yml`도 생성합니다. 이 파일은 현재 JAR의 완전한 기본 config를 주석까지 그대로 복사한 기준 파일입니다. 오래된 설정이나 `config-version`이 없는 설정은 이 파일과 전체 구조를 비교하고, migration fragment는 실제 반영할 차이 목록으로 사용하세요. migration 파일 하단에는 현재 설정과 reference의 텍스트 diff를 주석으로 추가하되 동일한 줄은 출력하지 않습니다. 각 차이는 파일명, 별도 줄의 `Line` 또는 `Lines`, 실제로 다른 내용 순서로 표시합니다. 실제 차이 줄은 원본 YAML 들여쓰기를 그대로 유지하도록 줄 앞에 `#`만 직접 붙이며, reference 전용 블록은 현재 config에 넣을 위치도 따로 표시합니다.
+이 파일은 JAR에 포함된 기본 `config.yml`을 **주석과 문자열 큰따옴표 표기까지 그대로** 복사한 관리자 확인용 파일이며 migration 템플릿으로 사용하지 않습니다. `/kchat reload`는 실제 서비스를 중지하기 전에 YAML을 검증하므로 잘못된 YAML이면 기존 실행 설정을 유지합니다.
+
+`config-version`이 없거나 실행 버전과 다르면 KWC가 실제 `config.yml`에 대해 한 번의 마이그레이션을 수행합니다.
+
+- 최신 번들 `config.yml`을 새 파일의 뼈대로 사용합니다.
+- 기존 사용자 설정값을 그 위에 덮어씁니다.
+- 구버전 주석·순서·공백·들여쓰기는 가져오지 않습니다.
+- 이전 `config-version`에 `_auto_migration`이 없었다면 실제 버전 업그레이드 전에 기존 `config.yml`을 통째로 백업합니다.
+- 이미 존재하는 설정의 기본값이 새 버전에서 바뀐 경우에는 자동 덮어쓰지 않고 검토 대상으로 남깁니다.
+- 실제 파일의 표식을 `config-version: "5.0.0_auto_migration"`로 바꿉니다.
+
+그 다음 다음 파일을 생성합니다.
+
+```text
+<KWC data dir>/config-migration-5.0.0.yml
+```
+
+이 파일은 더 이상 누락 설정을 복사해 넣는 fragment가 아니라 **검토 보고서**입니다. 이전 버전의 생성된 `config-reference-*`, `config-migration-*`, `config-upgrade-*` 파일은 자동 정리하고 현재 버전 파일만 유지합니다. 자동 삽입된 설정 수, 사용자가 판단해야 하는 기본값 변경, 최종 확인용 정확한 버전 표식, current-vs-reference 텍스트 diff를 기록합니다. 누락 설정과 주석은 이미 실제 config의 적절한 위치에 들어가므로 diff 최상단에 거대한 reference-only 블록으로 몰리지 않습니다.
 
 판정 기준:
 
 | 실제 `config.yml` 상태 | 동작 |
 |---|---|
-| `config-version` 없음 | 다른 차이가 0개여도 대상 버전 표식이 든 마이그레이션 파일 생성 |
-| `config-version`이 플러그인 버전과 다름 | 누락·변경 설정과 대상 버전 표식이 든 마이그레이션 파일 생성·갱신 |
-| `config-version`이 플러그인 버전과 같음 | 검토 완료로 간주해 migration 비교/보고서 생성을 생략하고 오래된 migration 안내는 제거하지만, 전체 reference 파일은 계속 최신 상태로 유지 |
+| `config-version` 없음 또는 이전/다른 버전 | migration을 수행하고 `5.0.0_auto_migration`으로 표시한 뒤 migration/검토 보고서 생성 |
+| `config-version: "5.0.0_auto_migration"` | 자동 migration 사용. startup/reload마다 최신 같은 버전 번들 `config.yml`을 새 뼈대로 만들고 현재 값을 덮어쓴 뒤 migration report/diff 갱신 |
+| `config-version: "5.0.0"` | 현재 버전의 자동 migration 중지. 같은 버전 migration/backfill을 건너뛰고 오래된 migration 안내 제거 |
 
-이 파일에는 다음 항목이 실제 YAML 설정 구조로 기록됩니다.
-
-- 기존 설정에 없는 신규 설정
-- 기존 값이 이전 기본값 그대로이며 새 버전에서 기본값이 변경된 설정
-- 최종 검토 표식인 대상 `config-version`
-
-다른 설정 차이가 없어도 설정 버전 관리를 위해 `config-version`이 포함된 파일을 생성합니다.
-
-설명, 개수, 이전값은 `#` 주석으로만 표시됩니다. 실제 `config.yml`은 수정되지 않습니다.
-
-적용 절차:
-
-1. 마이그레이션 파일을 엽니다.
-2. 필요한 설정 블록을 기존 `config.yml`의 같은 위치에 병합합니다.
-3. 서버별 값과 사용자 지정값을 조정합니다.
-4. 검토가 끝나면 실제 `config.yml`에 다음 값을 넣습니다.
+이 표식은 **검토 여부가 아니라 자동 migration 사용 여부**를 뜻합니다.
 
 ```yaml
-config-version: "4.7.0"
+# 설정을 이미 확인했더라도 자동 migration을 계속 사용
+config-version: "5.0.0_auto_migration"
+
+# 같은 버전 자동 migration 중지
+config-version: "5.0.0"
 ```
 
-버전이 일치하면 이후 비교를 생략합니다.
-
+이후 실제 플러그인 버전 업그레이드가 발생하면 새 버전의 `_auto_migration` 상태로 다시 들어갑니다.
 ## 5. 운영 방식 선택
 
 ### 5.1 BlueMap 애드온
 
 ```yaml
-web-addon:
-  auto-install: true
-  auto-patch-webapp-conf: true
+adapters:
+  bluemap:
+    auto-install: true
+    auto-patch-webapp-conf: true
 
-standalone-web:
-  enabled: false
+frontend:
+  standalone:
+    enabled: false
 ```
 
-플러그인은 웹 자산을 BlueMap 웹 디렉터리에 설치하고 `plugins/BlueMap/webapp.conf`를 수정합니다. 웹 자산이 갱신되지 않으면 다음을 실행합니다.
+Bukkit에서는 KWC가 BlueMap 웹 디렉터리에 자산을 설치하고 `plugins/BlueMap/webapp.conf`를 수정합니다. Fabric/NeoForge 26.1.2/26.2 및 Forge 26.1.2/26.2에서 BlueMap 5.21+ 모드를 사용할 때는 BlueMapAPI 2.8.0으로 설정된 web root를 얻고 script/style을 등록하므로 `webapp.conf`를 수정하지 않습니다. BlueMap 연동이 활성 상태라면 `/kchat reload`가 `bluemap reload light`를 자동 요청하고, 다음 BlueMap API `onEnable`에서 새 KWC 설정으로 다시 등록합니다.
 
-```text
-/bluemap reload
-```
+### 5.2 Pl3xMap 지도 내장 모드
 
-### 5.2 standalone 전용
+Pl3xMap이 설치된 Bukkit/Paper 계열 또는 Fabric 서버에서는 다음처럼 켭니다.
 
 ```yaml
-web-addon:
-  auto-install: false
-  auto-patch-webapp-conf: false
+adapters:
+  pl3xmap:
+    enabled: true
+    api-base-url: ""
+```
 
-standalone-web:
-  enabled: true
-  path: "/chat"
+KWC는 현재 Pl3xMap `config.yml`의 `settings.web-directory.path`를 읽고(`settings.yml`은 구형/포크용 fallback), Pl3xMap 웹루트 안에 KWC 전용 `kokoto-web-chat` 자산과 `index.html`의 KWC 마커 블록만 관리합니다. Pl3xMap이 웹 파일을 다시 생성한 경우 `/kchat reload`로 다시 삽입할 수 있습니다. 현재 Pl3xMap 26.2 배포 대상은 Bukkit/Paper 계열과 Fabric/Quilt이며 NeoForge는 아닙니다. 직접 HTTP에서는 `api-base-url: ""`이면 KWC `:8899/api`를 자동 사용하며, 공유기 NAT가 외부 KWC 포트를 바꾸면 실제 공개 API URL을 직접 지정합니다.
+
+
+### 5.3 LiveAtlas 지도 내장 모드
+
+LiveAtlas는 Dynmap, squaremap, Pl3xMap, Overviewer 또는 여러 서버를 표시할 수 있는 정적 프론트엔드입니다. Bukkit/Fabric/NeoForge/Forge에서 다음처럼 켭니다.
+
+```yaml
+adapters:
+  liveatlas:
+    enabled: true
+    api-base-url: ""
+    web-root: ""
+```
+
+`web-root`를 비우면 `window.liveAtlasConfig` 같은 LiveAtlas 표식이 있는 `index.html`만 자동 인식합니다. Caddy/nginx가 별도 디렉터리의 LiveAtlas를 서비스하면 서버에서 볼 수 있는 공유/마운트 경로를 `web-root`에 지정합니다. KWC는 `kokoto-web-chat/`과 표시된 index 블록만 관리하며, LiveAtlas 파일을 교체한 뒤 `/kchat reload`로 다시 삽입할 수 있습니다. 같은 실제 웹루트에 LiveAtlas adapter와 backend 전용 adapter를 동시에 지정하지 않습니다.
+
+### 5.4 uNmINeD 정적 웹 내보내기
+
+uNmINeD는 Minecraft 서버 안에서 동작하는 플러그인이 아니라 자체 완결된 정적 웹 지도를 생성합니다. 먼저 지도를 내보낸 뒤 KWC가 그 디렉터리를 보게 합니다.
+
+```yaml
+adapters:
+  unmined:
+    enabled: true
+    api-base-url: ""
+    web-root: "/srv/www/unmined"
+```
+
+현재 uNmINeD 내보내기는 `index.html`을 사용하고 구형 내보내기는 `unmined.index.html`일 수 있습니다. KWC는 어느 파일이든 uNmINeD 표식을 확인한 경우에만 수정하고, `kokoto-web-chat/`과 표시된 블록만 관리하며 지도 타일/라이브러리 파일은 건드리지 않습니다. uNmINeD로 다시 내보내면 HTML 또는 KWC 전용 디렉터리가 교체될 수 있으므로 이후 `/kchat reload`를 실행합니다. 다른 호스트에서 서비스한다면 Minecraft 서버가 수정할 수 있도록 내보내기 디렉터리를 공유/마운트해야 합니다.
+
+### 5.5 Minecraft Overviewer 정적 웹 지도
+
+Minecraft Overviewer는 설정된 `outputdir`에 Leaflet 기반 정적 웹 지도를 렌더링합니다. 먼저 지도를 생성한 뒤 KWC가 그 디렉터리를 보게 합니다.
+
+```yaml
+adapters:
+  overviewer:
+    enabled: true
+    api-base-url: ""
+    web-root: "/srv/www/overviewer"
+```
+
+KWC는 Overviewer 전용 생성 표식/파일을 확인한 `index.html`만 수정하고, 자체 `kokoto-web-chat/` 디렉터리와 마커 블록만 관리하며 Overviewer 타일/설정/Leaflet 파일은 건드리지 않습니다. 이후 Overviewer 렌더 또는 `--update-web-assets`가 HTML을 다시 만들 수 있으므로 `/kchat reload`를 실행합니다. 다른 호스트에서 렌더/서비스한다면 Minecraft 서버가 수정할 수 있도록 출력 디렉터리를 공유/마운트해야 합니다. 자체 지속형 템플릿을 관리한다면 Overviewer의 `customwebassets` 옵션을 별도로 사용할 수 있습니다.
+
+### 5.6 standalone 전용
+
+```yaml
+adapters:
+  bluemap:
+    auto-install: false
+    auto-patch-webapp-conf: false
+
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
 ```
 
 직접 HTTP 예시:
 
 ```text
-http://server.example.com:8899/chat
+http://server.example.com:8899/
 ```
 
-### 5.3 두 형태 동시 사용
+### 5.7 두 형태 동시 사용
 
 BlueMap 안의 패널과 standalone 페이지는 같은 계정, 기록, 알림 및 설정을 공유합니다.
 
 ```yaml
-web-addon:
-  auto-install: true
-  auto-patch-webapp-conf: true
+adapters:
+  bluemap:
+    auto-install: true
+    auto-patch-webapp-conf: true
 
-standalone-web:
-  enabled: true
+frontend:
+  standalone:
+    enabled: true
 ```
 
 ## 6. HTTP, HTTPS와 공개 URL
@@ -159,8 +226,9 @@ http:
   path-prefix: "/api"
   cors-origin: "*"
 
-web-addon:
-  api-base-url: ""
+adapters:
+  bluemap:
+    api-base-url: ""
 ```
 
 ### 6.2 같은 도메인의 HTTPS 리버스 프록시
@@ -170,28 +238,67 @@ http:
   host: "127.0.0.1"
   port: 8899
   path-prefix: "/api"
+  public-prefix: "/chat"
   cors-origin: "https://map.example.com"
   trusted-proxies:
     - "127.0.0.1"
     - "::1"
 
-web-addon:
-  api-base-url: "/bmwc/api"
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
+    api-base-url: ""
 
-standalone-web:
-  enabled: true
-  api-base-url: ""
+adapters:
+  bluemap:
+    enabled: true
+    api-base-url: ""
 ```
 
 공개 경로 예시:
 
 ```text
 https://map.example.com/          BlueMap
-https://map.example.com/bmwc/api  BMChat API
-https://map.example.com/bmwc/chat standalone 페이지
+https://map.example.com/chat/api  KWC API
+https://map.example.com/chat standalone 페이지
 ```
 
-`standalone-web.api-base-url`, `upload.public-base-url`, `emoji.public-base-url`은 보통 비워둡니다. 비어 있으면 활성 API 기본 주소를 자동으로 사용합니다.
+`frontend.standalone.api-base-url`, `upload.public-base-url`, `emoji.public-base-url`은 보통 비워둡니다. 비어 있으면 활성 API 기본 주소를 자동으로 사용합니다.
+
+#### 반대 배치: standalone은 `/`, BlueMap은 `/chat/`
+
+기본 배치와 반대로 사용할 수도 있습니다. 내부 standalone 경로는 계속 `/`로 두고 `http.public-prefix: ""`로 설정한 뒤, `/chat/`만 prefix를 제거해서 BlueMap으로 보내고 나머지 경로는 KWC로 보냅니다.
+
+```yaml
+http:
+  host: "127.0.0.1"
+  port: 8899
+  path-prefix: "/api"
+  public-prefix: ""
+
+frontend:
+  standalone:
+    enabled: true
+    path: "/"
+    api-base-url: ""
+
+adapters:
+  bluemap:
+    enabled: true
+    api-base-url: ""
+```
+
+공개 경로는 다음과 같습니다.
+
+```text
+https://map.example.com/       KWC standalone
+https://map.example.com/api    KWC API
+https://map.example.com/chat/  BlueMap
+```
+
+`frontend.standalone.path`를 `/chat`으로 바꾸지 않습니다. 외부 배치는 리버스 프록시와 `http.public-prefix`가 결정합니다.
+
 
 ### 6.3 프록시 IP 신뢰
 
@@ -221,7 +328,7 @@ http:
 - 알림 설정
 - 관리자 패널
 
-사용자 UI 설정은 브라우저의 localStorage에 저장됩니다. 같은 계정이어도 브라우저나 기기가 다르면 테마, 폰트, 알림 필터가 다를 수 있습니다. 패널은 이동·크기 조절이 가능하고 설정에 따라 크기를 기억합니다. 브라우저 로컬 알림함에서는 최근 알림 대상 이벤트를 다시 확인할 수 있습니다.
+5.0.0부터 로그인 사용자의 시각 UI 설정은 여러 개의 KWC 계정 프로필로 저장할 수 있고, 게스트만 브라우저 로컬 프리셋을 사용합니다. 창 위치·크기·최소화 상태, 마지막 선택 프로필 ID, Web Push 등록은 localStorage/기기 상태로 남습니다. 로그인 사용자의 알림 종류와 키워드 알림은 브라우저별이 아니라 계정 공통입니다. 브라우저 로컬 알림함에서는 최근 알림 대상 이벤트를 다시 확인할 수 있습니다.
 
 기본 UI 설정:
 
@@ -294,13 +401,15 @@ chat:
 
 ### 8.5 메시지 토큰
 
-BlueMapWebChat 4.7.0은 메시지를 저장하거나 릴레이하기 전에 관리자가 설정한 `:alias:` 토큰을 치환할 수 있습니다. 기본 alias는 영어만 제공하며 관리자가 원하는 언어의 alias로 바꾸거나 추가할 수 있습니다.
+KOKOTO WebChat 5.0.0은 메시지를 저장하거나 릴레이하기 전에 관리자가 설정한 `:alias:` 토큰을 치환할 수 있습니다. 기본 alias는 영어만 제공하며 관리자가 원하는 언어의 alias로 바꾸거나 추가할 수 있습니다.
 
 - `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 다음 줄
 - `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 빈 줄 1개
 - `:tab:`, `:indent:` → 설정된 수의 공백(기본 4칸)
 
 알 수 없는 토큰은 그대로 유지하므로 ImageEmojis/커스텀 이모지 토큰과 충돌하지 않습니다. `:\n:` 같은 백슬래시 escape는 해석하지 않습니다. `custom`에는 출력 가능한 일반 문자 치환을 추가할 수 있습니다. Minecraft에서는 일반 CR/LF 입력은 기존처럼 한 줄로 평탄화하고, `newline`/`blank-line` alias가 만든 줄바꿈만 최종 게임 출력에서 명시적인 여러 채팅 줄로 보냅니다. 서버간 릴레이의 게임 출력도 같은 4.7.0 token-line 처리가 수신 서버에 있어야 합니다.
+
+YAML 리스트 설정은 inline(`aliases: [bullet, arrow]`)과 block(`aliases:` 다음 줄의 `- bullet`) 형식을 모두 사용할 수 있습니다. 들여쓰기는 일반 ASCII 공백만 사용해야 하며 tab과 전각 공백은 사용할 수 없습니다. 잘못된 설정은 `/kchat reload`가 서비스를 중지하기 전에 거부하므로 기존 실행 설정과 UI 언어가 그대로 유지됩니다.
 
 ```yaml
 message-tokens:
@@ -369,13 +478,13 @@ search:
 웹 UI에서 연동 코드를 발급한 뒤 게임에서 실행합니다.
 
 ```text
-/bmchat auth <code>
+/kchat auth <code>
 ```
 
 필요 권한:
 
 ```text
-bluemapwebchat.auth
+kwc.auth
 ```
 
 관련 설정:
@@ -394,7 +503,8 @@ auth:
 게임에서 웹 로그인 비밀번호를 설정합니다.
 
 ```text
-/bmchat password <newPassword>
+/kchat password <newPassword>
+/kchat status
 ```
 
 ```yaml
@@ -419,7 +529,7 @@ auth:
 ```yaml
 auth:
   auto-admin-from-permission: true
-  admin-permission: "bluemapwebchat.admin"
+  admin-permission: "kwc.admin"
 ```
 
 ### 10.4 로컬 관리자 계정
@@ -434,16 +544,16 @@ admin:
 명령어:
 
 ```text
-/bmchat admin create <id>
-/bmchat admin password <id> <password>
-/bmchat admin role <id> <user|moderator|admin>
+/kchat admin create <id>
+/kchat admin password <id> <password>
+/kchat admin role <id> <user|moderator|admin>
 ```
 
 ### 10.5 세션 관리
 
 ```text
-/bmchat sessions
-/bmchat revoke <username>
+/kchat sessions
+/kchat revoke <username>
 ```
 
 `revoke`는 해당 사용자의 활성 웹 세션을 폐기하고 연결된 브라우저에 인증 만료를 알립니다.
@@ -503,11 +613,11 @@ captcha:
 게스트/IP 뮤트:
 
 ```text
-/bmchat guest mute guest <name> [minutes] [reason]
-/bmchat guest mute ip <address> [minutes] [reason]
-/bmchat guest unmute guest <name>
-/bmchat guest unmute ip <address>
-/bmchat guest list
+/kchat guest mute guest <name> [minutes] [reason]
+/kchat guest mute ip <address> [minutes] [reason]
+/kchat guest unmute guest <name>
+/kchat guest unmute ip <address>
+/kchat guest list
 ```
 
 ## 13. 플레이어 이름 표시, hover와 클릭
@@ -543,8 +653,8 @@ chat:
 이름 클릭:
 
 - 같은 서버 게임 플레이어: `/w <실제이름> `
-- 웹 사용자: `/bmchat dm <실제이름> `
-- 다른 서버 게임 플레이어: `/bmchat dm <실제이름>@<server-id> `
+- 웹 사용자: `/kchat dm <실제이름> `
+- 다른 서버 게임 플레이어: `/kchat dm <실제이름>@<server-id> `
 
 ## 14. 공개 메시지 댓글
 
@@ -566,19 +676,19 @@ reply:
 메시지의 URL이 아닌 본문을 클릭하면 다음 명령이 자동완성됩니다.
 
 ```text
-/bmchat reply <messageId> 
+/kchat reply <messageId> 
 ```
 
 전송:
 
 ```text
-/bmchat reply <messageId> <message>
+/kchat reply <messageId> <message>
 ```
 
 필요 권한:
 
 ```text
-bluemapwebchat.reply
+kwc.reply
 ```
 
 `local-game-chat: true`는 일반 로컬 게임 채팅도 클릭 가능한 컴포넌트로 다시 출력합니다. 채팅 포맷 플러그인과 충돌하면 `false`로 변경하세요. 이 값을 꺼도 웹→게임과 서버 릴레이 메시지의 댓글 기능은 유지됩니다.
@@ -610,33 +720,33 @@ direct-message:
 게임 명령어:
 
 ```text
-/bmchat dm
-/bmchat dm list [pageSize]
-/bmchat dm unread [pageSize]
-/bmchat dm list next
-/bmchat dm list prev
-/bmchat dm <player> <message>
-/bmchat dm read <player> [pageSize]
-/bmchat dm next
-/bmchat dm prev
-/bmchat dm hide <messageId>
+/kchat dm
+/kchat dm list [pageSize]
+/kchat dm unread [pageSize]
+/kchat dm list next
+/kchat dm list prev
+/kchat dm <player> <message>
+/kchat dm read <player> [pageSize]
+/kchat dm next
+/kchat dm prev
+/kchat dm hide <messageId>
 ```
 
 필요 권한:
 
 ```text
-bluemapwebchat.dm
+kwc.dm
 ```
 
 ### 15.1 게임 귓속말 복제
 
-`capture-game-whispers: true`이면 다음 명령의 내용을 같은 BMChat DM 스레드에도 저장합니다.
+`capture-game-whispers: true`이면 다음 명령의 내용을 같은 KWC DM 스레드에도 저장합니다.
 
 ```text
 /w /msg /tell /whisper /m /pm /message /t
 ```
 
-같은 서버의 일반 Minecraft 귓속말은 대체하지 않고 기록만 복제합니다. 송신자와 수신자 모두 웹 DM에서 볼 수 있습니다. 타 서버 대상은 `이름@server-id`로 지정하며, 위 별칭들은 `/bmchat dm 이름@server-id <메시지>`로 변환되어 서명된 서버 간 DM 릴레이로 전송됩니다. 서버를 지정하지 않은 `/bmchat dm <이름>`은 현재 서버 사용자만 대상으로 합니다. 대상이 없는 `/r`, `/reply`는 기존 귓속말 플러그인의 최근 상대 상태와 충돌할 수 있으므로 가로채지 않습니다.
+같은 서버의 일반 Minecraft 귓속말은 대체하지 않고 기록만 복제합니다. 송신자와 수신자 모두 웹 DM에서 볼 수 있습니다. 타 서버 대상은 `이름@server-id`로 지정하며, 위 별칭들은 `/kchat dm 이름@server-id <메시지>`로 변환되어 서명된 서버 간 DM 릴레이로 전송됩니다. 서버를 지정하지 않은 `/kchat dm <이름>`은 현재 서버 사용자만 대상으로 합니다. 대상이 없는 `/r`, `/reply`는 기존 귓속말 플러그인의 최근 상대 상태와 충돌할 수 있으므로 가로채지 않습니다.
 
 ### 15.2 전송 및 읽음 상태
 
@@ -679,26 +789,26 @@ group-chat:
 그룹채팅의 모든 메시지에는 해당 메시지의 수신자 읽음 상태를 표시합니다. 숫자는 **메시지 전송 시점에 이미 방에 있었고 현재도 멤버인 수신자 중 아직 읽지 않은 사람 수**이며, 메시지를 보낸 사람은 수신자가 아니므로 계산 대상에 포함되지 않습니다. 미확인 수신자가 0명이면 숫자 대신 `✓`를 표시합니다. 정상 전송 완료 자체는 별도 문구로 표시하지 않습니다.
 
 ```text
-/bmchat group
-/bmchat group list
-/bmchat group rooms
-/bmchat group <room|id> <message>
-/bmchat group send <room|id> <message>
-/bmchat group read <room|id> [pageSize]
-/bmchat group next
-/bmchat group prev
+/kchat group
+/kchat group list
+/kchat group rooms
+/kchat group <room|id> <message>
+/kchat group send <room|id> <message>
+/kchat group read <room|id> [pageSize]
+/kchat group next
+/kchat group prev
 ```
 
 별칭:
 
 ```text
-/bmchat gc ...
+/kchat gc ...
 ```
 
 필요 권한:
 
 ```text
-bluemapwebchat.group
+kwc.group
 ```
 
 ## 17. 시스템·이벤트 알림
@@ -779,6 +889,8 @@ upload:
 - `insert`: URL을 입력창에 삽입
 - `send`: 업로드 후 즉시 전송
 
+`filename-mode: original`에서도 클립보드 업로드는 `clipboardData.files`에서 얻은 긴 파일명을 우선합니다. Windows/Chromium이 다른 클립보드 항목에서 `202608~1.JPG` 같은 DOS 8.3 별칭을 주더라도 긴 이름을 얻을 수 있으면 원래 긴 이름을 사용합니다. 브라우저가 8.3 별칭만 제공하는 경우에는 그 잘못된 별칭을 원본명으로 보존하지 않고 `clipboard-...` 형식의 이름으로 대체합니다.
+
 자세한 보안 기준은 `UPLOAD_SECURITY_KO.md`를 참고하세요.
 
 ## 20. 미디어와 링크 미리보기
@@ -853,8 +965,8 @@ emoji:
 폴더 예시:
 
 ```text
-plugins/BlueMapWebChat/emojis/default/wave.png
-plugins/BlueMapWebChat/emojis/reaction/happy.gif
+<KWC data dir>/emojis/default/wave.png
+<KWC data dir>/emojis/reaction/happy.gif
 ```
 
 토큰:
@@ -881,7 +993,7 @@ emoji:
 
 `false`는 웹→게임 토큰을 그대로 보존합니다. ImageEmojis-Bero 같은 게임 플러그인을 사용할 때 권장됩니다.
 
-BMChat 자체 변환을 사용할 때:
+KWC 자체 변환을 사용할 때:
 
 ```yaml
 emoji:
@@ -898,12 +1010,12 @@ emoji:
 - `label`: 라벨만 출력
 - `link`: 라벨과 짧은 이미지 URL 출력
 
-## 22. ImageEmojis-Bero 1.9.0 연동
+## 22. ImageEmojis-Bero 1.9.x 연동
 
 권장 ImageEmojis-Bero 설정:
 
 ```yaml
-emojisFolder: "/BlueMapWebChat/emojis"
+emojisFolder: "/KOKOTO-WebChat/emojis"
 templateFormat: ":<emoji>:"
 replaceInCommands: true
 ```
@@ -914,9 +1026,9 @@ replaceInCommands: true
 imageemojis.use
 ```
 
-`replaceInCommands: true`는 `/bmchat reply`, `/bmchat dm`, `/bmchat group` 안의 토큰을 게임 glyph로 변환하는 데 필요합니다.
+`replaceInCommands: true`는 `/kchat reply`, `/kchat dm`, `/kchat group` 안의 토큰을 게임 glyph로 변환하는 데 필요합니다.
 
-서버 릴레이 환경에서는 각 서버에 동일한 팩 이름과 파일 이름을 배치해야 합니다. BMChat은 웹 기록과 릴레이에는 원본 토큰을 보존하고 게임 출력 시 수신 서버의 runtime token→glyph 매핑을 사용합니다.
+서버 릴레이 환경에서는 각 서버에 동일한 팩 이름과 파일 이름을 배치해야 합니다. KWC은 웹 기록과 릴레이에는 원본 토큰을 보존하고 게임 출력 시 수신 서버의 runtime token→glyph 매핑을 사용합니다.
 
 이모지 변경 후 권장 순서:
 
@@ -929,6 +1041,23 @@ imageemojis.use
 
 ## 23. 브라우저 알림과 Web Push
 
+로그인 사용자의 키워드/알림 종류 설정은 5.0.0부터 계정 데이터에 저장되어 다른 브라우저와 기기에서도 공유됩니다. Windows/모바일처럼 시각 설정이 다른 경우에는 사용자별 UI 프로필을 여러 개 저장할 수 있으며, 창 위치·크기·최소화 상태와 Web Push endpoint는 기기 로컬 상태로 유지됩니다. 프로필 최대 개수와 JSON import/export 허용 여부는 Web Admin에서 관리합니다. 동일 기기에 Web Push 구독이 활성화되어 있으면 라이브 페이지의 OS Notification을 한 번 더 띄우지 않아 중복 알림을 막습니다.
+
+
+서버측 시각 프로필은 다음 설정으로 제어합니다.
+
+```yaml
+ui:
+  user-profiles:
+    enabled: true
+    max-profiles: 5
+    allow-import-export: true
+```
+
+`max-profiles`는 0-20입니다. 프로필 가져오기/내보내기는 시각 설정만 대상으로 하며 세션/신원/Push/기기 창 데이터는 포함하지 않습니다.
+
+
+
 ```yaml
 notifications:
   enabled: true
@@ -940,7 +1069,6 @@ notifications:
   notify-replies: true
   notify-system: true
   notify-keywords: true
-  notify-own-messages: true
   show-message-preview: true
 ```
 
@@ -969,9 +1097,10 @@ VAPID 키가 비어 있으면 플러그인이 지속 키 파일을 생성합니�
 standalone 앱 이름:
 
 ```yaml
-standalone-web:
-  app-name: "Web Chat"
-  app-short-name: "Web Chat"
+frontend:
+  standalone:
+    app-name: "Web Chat"
+    app-short-name: "Web Chat"
 ```
 
 홈 화면 설치 후 이름을 변경했다면 웹앱을 다시 설치해야 반영될 수 있습니다.
@@ -988,12 +1117,36 @@ ui:
 
 ## 25. DiscordSRV 연동
 
+5.0.0의 관리자 Discord 키워드 알림은 DiscordSRV에 감지/포맷 정책을 맡기지 않습니다. KWC가 키워드·대상 소스·멘션·중복 제거·알림 내용을 결정하고 DiscordSRV의 인증된 JDA 연결과 Channels 매핑만 재사용합니다. Web Admin의 `Discord 알림 채널`은 DiscordSRV에 등록된 논리 채널명만 선택 항목으로 표시하며, 논리명이 없는 ID-only 구성에서만 채널 ID를 fallback으로 사용합니다. Discord에서 들어온 메시지는 관리자 키워드 알림 대상으로 다시 검사하지 않습니다.
+
+관리자 알림 정책 예시는 다음과 같습니다.
+
+```yaml
+admin-alerts:
+  discord:
+    enabled: false
+    channel: ""
+    sources:
+      public-chat: true
+      relay-chat: false
+      dm: false
+      group-chat: false
+    mention: "none"
+    case-sensitive: false
+    keywords: ""
+```
+
+`channel: ""`은 `discordsrv.channel`을 재사용하며 Web Admin에서는 보통 DiscordSRV 논리 채널명을 선택/저장합니다.
+
+
+
+
 ```yaml
 discordsrv:
   enabled: true
   channel: "global"
   web-to-discord: true
-  game-to-discord: false
+  game-relay-mode: "discordsrv"
   discord-to-web: true
   ignore-bot-messages: true
   suppress-game-echo: true
@@ -1005,12 +1158,12 @@ discordsrv:
   append-game-emoji-links: true
   max-emoji-links-per-message: 4
   web-to-discord-format: "[{server}] [Web] {sender}: {message}"
-  game-to-discord-format: "[{server}] {sender}: {message}"
+  game-relay-format: "[{server}] {sender}: {message}"
   discord-to-web-sender-format: "Discord:{sender}"
   discord-to-web-message-format: "{message}"
 ```
 
-DiscordSRV가 일반 게임 채팅을 이미 Discord로 전달한다면 BMChat의 `game-to-discord`는 `false`로 유지해 중복을 막습니다.
+DiscordSRV가 일반 게임 채팅을 이미 Discord로 전달한다면 KWC의 `game-relay-mode`는 `discordsrv`로 유지해 중복을 막습니다.
 
 공용 Discord 채널을 여러 서버가 사용할 때:
 
@@ -1031,6 +1184,8 @@ discordsrv:
 
 ## 26. 여러 서버 채팅 릴레이
 
+`peers`는 상시 연결 세션이 아니라 이 서버가 메시지를 보낼 HTTP 대상 목록입니다. 같은 항목의 `id`/`secret`은 수신 요청 인증에도 사용되며, 양방향 송수신은 양쪽 서버에 서로를 등록해야 합니다.
+
 서버마다 고유한 `server-id`를 사용합니다.
 
 ```yaml
@@ -1044,6 +1199,7 @@ server-relay:
   max-clock-skew-seconds: 60
   dedupe-seconds: 300
   max-hops: 8
+  forward-received-public-chat: true
   sources:
     game: true
     web: true
@@ -1056,15 +1212,17 @@ server-relay:
   game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
   peers:
     - id: "server2"
-      url: "https://server2.example.com/bmwc/api"
+      url: "https://server2.example.com/chat/api"
       secret: ""
       enabled: true
 ```
 
+`forward-received-public-chat`은 피어가 받은 공개 채팅을 다른 피어로 다시 전달할지 정합니다. `true`는 허브/체인 구성을 지원하고, `false`는 공개 채팅을 직접 피어 연결로 제한합니다. 서버 간 DM과 읽음 확인 라우팅은 그대로 유지됩니다.
+
 실제 요청 경로:
 
 ```text
-https://server2.example.com/bmwc/api/relay/receive
+https://server2.example.com/chat/api/relay/receive
 ```
 
 핵심 규칙:
@@ -1089,6 +1247,8 @@ Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
 오류:
 
 - `403 unknown_peer`: 받는 서버에 발신 서버 ID가 활성 피어로 없음
+
+같은 목적지에서 정상 응답 없이 `403 unknown_peer`가 3회 발생하면 KWC는 해당 목적지를 60초 backoff 상태로 전환합니다. 그 60초 동안 발생한 해당 목적지 메시지는 송신하지 않고 무시하며 별도의 주기 확인 요청도 보내지 않습니다. 60초가 지난 뒤 처음 발생한 실제 릴레이 메시지로 다시 송신을 시도하고, 실패하면 그 실패 시점부터 다시 60초를 기다리며 성공하면 즉시 정상 송신 상태로 복귀합니다. 수신 서버는 알 수 없는 발신자의 직접 요청을 적용하기 전에 거부합니다. 연결 거부, timeout 같은 transport 실패도 같은 3회/60초 backoff를 사용하므로 오프라인 피어 때문에 포워딩 메시지마다 경고가 반복되지 않습니다.
 - `401 bad_signature`: 비밀키 또는 요청 서명 불일치
 - `401 expired_request`: 서버 시간 차이
 - `404 relay_disabled`: 받는 서버 릴레이가 꺼짐 또는 프록시 경로 오류
@@ -1183,7 +1343,7 @@ audit:
   directory: "audit"
 ```
 
-관리 동작은 기본적으로 `plugins/BlueMapWebChat/audit` 아래 날짜별 로그에 추가됩니다. 웹 UI에는 표시되지 않습니다.
+관리 동작은 기본적으로 `<KWC data dir>/audit` 아래 날짜별 로그에 추가됩니다. 웹 UI에는 표시되지 않습니다.
 
 ## 29. 웹 폰트와 표시 조정
 
@@ -1236,14 +1396,12 @@ ui:
     enabled: true
     overscan-screens: 0.75
     min-rendered-messages: 30
-    preserve-visible-media: false
-    preserve-playing-media: true
   history-preload:
     screens: 0.7
     min-px: 200
 ```
 
-긴 채팅 기록에서는 가상 스크롤이 브라우저 렌더링 부하를 줄입니다. 미디어를 많이 유지하면 메모리 사용이 증가할 수 있습니다.
+긴 채팅 기록에서는 가상 스크롤이 브라우저 렌더링 부하를 줄입니다. 현재 메시지 범위와 작은 화면 보호 범위만 DOM에 유지하며, 이미지·영상·iframe 같은 하위 콘텐츠에 별도 보존 범위를 두지 않습니다.
 
 복귀 새로고침:
 
@@ -1252,93 +1410,92 @@ ui:
   resume-refresh:
     enabled: true
     min-interval-seconds: 5
-    skip-while-media-active: true
     skip-unchanged: true
 ```
 
-모바일에서 앱으로 돌아왔을 때 누락 메시지를 갱신하되 재생 중 미디어를 방해하지 않도록 합니다.
+모바일/백그라운드 상태에서 돌아왔을 때 누락 메시지를 갱신합니다. 공개 채팅 가상 스크롤은 콘텐츠 종류를 구분하지 않으며 이미지, 영상, 오디오, 링크 미리보기, YouTube/기타 iframe 모두 같은 메시지 범위/높이 추적 규칙을 사용합니다.
 
 ## 31. 주요 명령어 전체 목록
 
 사용자:
 
 ```text
-/bmchat auth <code>
-/bmchat password <newPassword>
-/bmchat dm
-/bmchat dm list [pageSize]
-/bmchat dm unread [pageSize]
-/bmchat dm <player> <message>
-/bmchat dm read <player> [pageSize]
-/bmchat dm next
-/bmchat dm prev
-/bmchat dm hide <messageId>
-/bmchat reply <messageId> <message>
-/bmchat group list
-/bmchat group <room> <message>
-/bmchat group send <room> <message>
-/bmchat group read <room> [pageSize]
-/bmchat group next
-/bmchat group prev
+/kchat auth <code>
+/kchat password <newPassword>
+/kchat status
+/kchat dm
+/kchat dm list [pageSize]
+/kchat dm unread [pageSize]
+/kchat dm <player> <message>
+/kchat dm read <player> [pageSize]
+/kchat dm next
+/kchat dm prev
+/kchat dm hide <messageId>
+/kchat reply <messageId> <message>
+/kchat group list
+/kchat group <room> <message>
+/kchat group send <room> <message>
+/kchat group read <room> [pageSize]
+/kchat group next
+/kchat group prev
 ```
 
 관리자:
 
 ```text
-/bmchat reload
-/bmchat admin create <id>
-/bmchat admin password <id> <password>
-/bmchat admin role <id> <user|moderator|admin>
-/bmchat guest mute <guest|ip> <value> [minutes] [reason]
-/bmchat guest unmute <guest|ip> <value>
-/bmchat guest list
-/bmchat sessions
-/bmchat revoke <username>
+/kchat reload
+/kchat admin create <id>
+/kchat admin password <id> <password>
+/kchat admin role <id> <user|moderator|admin>
+/kchat guest mute <guest|ip> <value> [minutes] [reason]
+/kchat guest unmute <guest|ip> <value>
+/kchat guest list
+/kchat sessions
+/kchat revoke <username>
 ```
 
 명령 별칭:
 
 ```text
-/bmc
-/bluemapchat
+/kc
 ```
 
 그룹 별칭:
 
 ```text
-/bmchat gc
+/kchat gc
 ```
 
 ## 32. 권한 전체 목록
 
 ```text
-bluemapwebchat.auth      웹 계정 연동
-bluemapwebchat.webchat   인증된 웹 채팅 사용
-bluemapwebchat.dm        DM 송수신 및 조회
-bluemapwebchat.reply     게임에서 공개 댓글 작성
-bluemapwebchat.group     그룹 채팅 사용
-bluemapwebchat.admin     플러그인 관리
-bluemapwebchat.update.notify  업데이트 알림 수신(OP 기본)
+kwc.auth      웹 계정 연동
+kwc.webchat   인증된 웹 채팅 사용
+kwc.dm        DM 송수신 및 조회
+kwc.reply     게임에서 공개 댓글 작성
+kwc.group     그룹 채팅 사용
+kwc.admin     플러그인 관리
+kwc.update.notify  업데이트 알림 수신(OP 기본)
 ```
 
 기본값:
 
 - 사용자 기능 권한은 기본 허용
-- `bluemapwebchat.admin`, `bluemapwebchat.update.notify`는 OP 기본
+- `kwc.admin`, `kwc.update.notify`는 OP 기본
 
 ## 33. 데이터 파일과 백업
 
 주요 파일:
 
 ```text
-plugins/BlueMapWebChat/config.yml
-plugins/BlueMapWebChat/history.db
-plugins/BlueMapWebChat/direct-messages.db
-plugins/BlueMapWebChat/group-messages.db
-plugins/BlueMapWebChat/web-push-subscriptions.jsonl
-plugins/BlueMapWebChat/emojis/
-plugins/BlueMapWebChat/uploads/
-plugins/BlueMapWebChat/audit/
+<KWC data dir>/config.yml
+<KWC data dir>/history.db
+<KWC data dir>/direct-messages.db
+<KWC data dir>/group-messages.db
+<KWC data dir>/web-push-subscriptions.jsonl
+<KWC data dir>/emojis/
+<KWC data dir>/uploads/
+<KWC data dir>/audit/
 ```
 
 설정에 따라 이름은 달라질 수 있습니다.
@@ -1355,7 +1512,7 @@ SQLite 파일은 서버를 정상 종료한 뒤 복사하는 것이 가장 안�
 
 ## 34. reload와 재시작 구분
 
-`/bmchat reload`로 적용 가능한 것:
+`/kchat reload`로 적용 가능한 것:
 
 - 대부분의 `config.yml` 변경
 - HTTP 서비스와 서버 릴레이 재생성
@@ -1368,7 +1525,7 @@ SQLite 파일은 서버를 정상 종료한 뒤 복사하는 것이 가장 안�
 - 다른 플러그인의 로드 순서 변경
 - 환경에 따라 포트 점유나 웹 서버 자원 잠금이 남은 경우
 
-BlueMap 웹 자산만 갱신되지 않으면 `/bluemap reload`를 추가로 사용합니다.
+`/kchat reload`가 `bluemap reload light`를 자동 요청합니다. 그래도 자산이 갱신되지 않거나 자동 실행에 실패한 경우 `/bluemap reload light`를 수동으로 실행합니다.
 
 ## 35. 문제 해결 빠른 표
 
@@ -1378,15 +1535,15 @@ BlueMap 웹 자산만 갱신되지 않으면 `/bluemap reload`를 추가로 사�
 - `http.host`, `http.port` 확인
 - 포트 충돌 확인
 - 프록시 upstream이 `127.0.0.1:8899`인지 확인
-- standalone이 필요하면 `standalone-web.enabled: true` 확인
+- standalone이 필요하면 `frontend.standalone.enabled: true` 확인
 
 ### BlueMap 안에 버튼이 없음
 
-- `web-addon.auto-install: true`
-- `web-addon.auto-patch-webapp-conf: true`
+- `adapters.bluemap.auto-install: true`
+- `adapters.bluemap.auto-patch-webapp-conf: true`
 - BlueMap 경로 설정 확인
 - 서버 로그의 설치/패치 메시지 확인
-- `/bluemap reload`
+- `/kchat reload`은 보통 `bluemap reload light`를 자동 실행하며, 필요한 경우에만 `/bluemap reload light`를 수동 실행
 - 브라우저 캐시 새로고침
 
 ### 로그인 실패
@@ -1419,7 +1576,7 @@ BlueMap 웹 자산만 갱신되지 않으면 `/bluemap reload`를 추가로 사�
 
 ### 이모지 토큰이 그대로 보임
 
-- BMChat 이모지 파일 존재 확인
+- KWC 이모지 파일 존재 확인
 - ImageEmojis-Bero의 공용 폴더와 권한 확인
 - `replaceInCommands: true`
 - `/emojis reload`, `/emojis update`
@@ -1428,7 +1585,7 @@ BlueMap 웹 자산만 갱신되지 않으면 `/bluemap reload`를 추가로 사�
 ### 서버 릴레이 403
 
 - 받는 서버의 `peers[].id`와 보내는 서버의 `server-id` 비교
-- 받는 서버에서도 `/bmchat reload`
+- 받는 서버에서도 `/kchat reload`
 - 활성 피어 로그 확인
 
 ### 서버 릴레이 401
@@ -1441,7 +1598,7 @@ BlueMap 웹 자산만 갱신되지 않으면 `/bluemap reload`를 추가로 사�
 
 - 모든 서버가 같은 수정 버전인지 확인
 - 릴레이 수신 메시지를 별도 Discord 플러그인이 다시 보내는지 확인
-- DiscordSRV가 게임 채팅을 전달하면 `game-to-discord: false`
+- DiscordSRV가 게임 채팅을 전달하면 `game-relay-mode: "discordsrv"`
 
 ### Web Push가 안 됨
 
@@ -1455,7 +1612,8 @@ BlueMap 웹 자산만 갱신되지 않으면 `/bluemap reload`를 추가로 사�
 
 - `CONFIGURATION_KO.md`: 설정별 상세 설명
 - `SERVER_RELAY_KO.md`: 릴레이 토폴로지, 인증과 오류
-- `UPGRADE_4_6_4_KO.md`: 4.6.3→4.7.0 업그레이드
+- `UPGRADE_5_0_0_KO.md`: 4.7.0→5.0.0 코어 분리/reload 안전 업그레이드
+- `UPGRADE_4_7_0_KO.md`: 4.6.3→4.7.0 기능 업그레이드
 - `UPGRADE_4_6_3_KO.md`: 4.6.2→4.6.3 업그레이드
 - `UPGRADE_4_6_2_KO.md`: 4.6.1→4.6.2 업그레이드
 - `UPGRADE_4_6_1_KO.md`: 4.6.0→4.6.1 업그레이드
@@ -1473,3 +1631,8 @@ BlueMap 웹 자산만 갱신되지 않으면 `/bluemap reload`를 추가로 사�
 
 `group-chat.admin-audit.enabled: true`를 설정하고 정확한 마인크래프트 이름 또는 UUID를 `private-chat-super-admins`에 등록해야 하며 두 조건이 모두 필요합니다. 조건을 만족한 관리자는 해당 방의 멤버가 아니어도 관리자 그룹 메타데이터 목록에서 본문을 읽기 전용으로 열 수 있습니다. 감사 화면은 방에 참여하지 않고 읽음/미확인 수를 변경하지 않으며 메시지 전송·업로드·숨김·멤버 변경도 제공하지 않습니다. 각 페이지 열람은 `admin.group-audit-read`로 기록되고 메시지 본문은 감사 로그에 복사하지 않습니다.
 
+
+
+## SimpleNicks-Bero 연동
+
+Bukkit/Paper 계열에서는 `player-display.mode: "display-name"`으로 [SimpleNicks-Bero](https://github.com/KOKOTO-DEV/SimpleNicks-Bero)가 Bukkit display name에 적용한 닉네임을 표시할 수 있습니다. 실제 연결 username/UUID는 KWC identity로 별도 유지됩니다. `SIMPLENICKS_BERO_KO.md`를 참고하고, 일반 설치·운영은 [원본 SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks)를 따르세요.
