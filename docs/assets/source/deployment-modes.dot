@@ -1,0 +1,26 @@
+digraph G {
+
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=TB;
+  user [label="Browser", fillcolor="#E0F2FE"];
+  subgraph cluster_a { label="A. Map-integrated"; color="#CBD5E1"; style="rounded";
+    map [label="BlueMap / squaremap / Dynmap / Pl3xMap / LiveAtlas / uNmINeD / Overviewer", fillcolor="#DCFCE7"];
+    kwca [label="KWC API + web assets", fillcolor="#DBEAFE"];
+    map -> kwca [dir=both];
+  }
+  subgraph cluster_b { label="B. Standalone frontend"; color="#CBD5E1"; style="rounded";
+    front [label="Standalone KWC frontend", fillcolor="#ECFEFF"];
+    api [label="KWC API", fillcolor="#DBEAFE"];
+    front -> api [dir=both];
+  }
+  subgraph cluster_c { label="C. Reverse-proxy HTTPS"; color="#CBD5E1"; style="rounded";
+    rp [label="Caddy / NGINX", fillcolor="#FEF3C7"];
+    backend [label="Map + KWC backend(s)", fillcolor="#DBEAFE"];
+    rp -> backend [dir=both];
+  }
+  user -> map; user -> front; user -> rp;
+
+}

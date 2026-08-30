@@ -35,12 +35,23 @@ en-US, ko-KR, ja-JP, zh-CN
 
 ゲーム側へ送るチャット形式は `config.yml` で設定します。
 
+```yaml
+chat:
+  web-user-to-game-format: "[Web] {player}: {message}"
+  web-guest-to-game-format: "[Web Guest] {guest}: {message}"
+```
 
 ## システムメッセージ
 
 組み込みのサーバー announcement と Web コマンド結果メッセージは i18n キー付きで送信されます。Web UI は、言語ファイルに該当キーがある場合、閲覧者が選択した言語で表示します。`config.yml` の `announcements.*.message` はカスタム/フォールバック文として保持されるため、翻訳キーがない場合やサーバー固有の文言が必要な場合も利用できます。
 
 折りたたまれた固定メッセージも、通常メッセージと同じチャットフォントとメッセージ文字サイズ設定に従います。
+
+## 設定コメントの言語
+
+`ui.language` は、KOKOTO WebChat が `config.yml` のコメント/レイアウトを再構築し、`config-reference-5.1.0.yml` と migration/Difference の案内文を書き出す際の表示言語にも使用されます。内蔵の設定表示テンプレートは `en-US`、`ko-KR`、`ja-JP`、`zh-CN` です。既存の解析済み運用値を選択したテンプレートへ上書きするため、この4言語を切り替えてもコメント/レイアウトだけが変わり、実際の設定値は保持されます。
+
+追加した Web UI 言語ファイルも引き続き利用できます。`ui.language` が `fr-FR` のようなカスタム/未対応 locale を指定した場合、Web UI はその言語ファイルを使用できますが、config/reference/migration の表示言語は内蔵英語 (`en-US`) テンプレートへフォールバックします。Difference 判定はコメント、空白、引用形式、キー順、行番号ではなく、解析済み YAML の設定 path と値だけを比較します。
 
 ## 新しい言語を追加する
 

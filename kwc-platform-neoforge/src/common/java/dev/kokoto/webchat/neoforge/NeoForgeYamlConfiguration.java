@@ -1,5 +1,6 @@
 package dev.kokoto.webchat.neoforge;
 
+import dev.kokoto.webchat.RelayConfigShapeValidator;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 
@@ -37,7 +38,10 @@ public final class NeoForgeYamlConfiguration extends NeoForgeYamlSection {
             Object loaded = new Yaml().load(reader);
             if (loaded == null) return empty();
             if (!(loaded instanceof Map<?, ?> map)) throw new IOException("YAML root must be a mapping");
-            return new NeoForgeYamlConfiguration(normalizeMap(map));
+            NeoForgeYamlConfiguration config = new NeoForgeYamlConfiguration(normalizeMap(map));
+            String relayShapeProblem = RelayConfigShapeValidator.problem(config.get("server-relay.groups"));
+            if (!relayShapeProblem.isBlank()) throw new IOException(relayShapeProblem);
+            return config;
         } catch (IOException ex) {
             throw ex;
         } catch (Exception ex) {

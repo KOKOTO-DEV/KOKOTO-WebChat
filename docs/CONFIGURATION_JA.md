@@ -48,11 +48,13 @@ Web Admin には **Filter** と **Settings** タブがあります。Filter で�
 
 ## 設定 version と migration fragment
 
-`config-version` は自動 migration の動作を選ぶ marker です。migration の**唯一の template は実行中 plugin に bundled された `config.yml`**です。`config-reference-<plugin-version>.yml` は管理者が全 default 設定を確認するための bundled config の完全コピーであり、migration source には使用しません。
+`config-version` は自動 migration の動作を選ぶ marker です。再構築には `ui.language` が選択した **現行 version の bundled 表示 template** を使用します。`en-US` は `config.yml`、`ko-KR`/`ja-JP`/`zh-CN` は各 bundled localized template を使用します。`config-reference-<plugin-version>.yml` は選択 template から生成する管理者向け default reference であり、migration input には使用しません。default 値の意味比較は canonical English `config.yml` を基準にし、4つの内蔵 template は解析値が完全一致する必要があります。
 
-`config-version` がない、または別 version の場合、KWC は既存の設定値を読み取り、最新 bundled `config.yml` から新しい file を作成して既存値を overlay します。以前の marker が `*_auto_migration` でなければ、operator が一度固定した設定とみなし、再構築前に元の `config.yml` 全体を backup します。古い comment・順序・空白・indent は引き継がず、最新 bundled comment/layout を使用し、operator の値だけを保持します。削除済み設定は再追加しません。結果は `<plugin-version>_auto_migration` になります。この marker が残る間は startup/reload ごとに同じ bundled-default rebuild を行い、新しい設定と最新 comment/layout を自動反映します。正確な `<plugin-version>` は現在 version の config を固定した状態で、同一 version の startup/reload は `config.yml` を書き換えません。
+`config-version` がない、または別 version の場合、KWC は既存の設定値を読み取り、最新 bundled `config.yml` から新しい file を作成して既存値を overlay します。以前の marker が `*_auto_migration` でなければ、operator が一度固定した設定とみなし、再構築前に元の `config.yml` 全体を backup します。古い comment・順序・空白・indent は引き継がず、最新 bundled comment/layout を使用し、operator の値だけを保持します。削除済み設定は再追加しません。結果は `<plugin-version>_auto_migration` になります。この marker が残る間は startup/reload ごとに同じ bundled-default rebuild を行い、新しい設定と最新 comment/layout を自動反映します。正確な `<plugin-version>` は同一 version の自動 **設定** 再構築を無効にします。ただし固定状態でも `ui.language` の表示言語が変わった場合は、全 parsed operator values を overlay して保持したまま、選択した内蔵 template からコメント/レイアウトだけを再構築できます。
 
 `config-migration-<plugin-version>.yml` は review/diff report です。旧 version の生成済み `config-reference-*`、`config-migration-*`、`config-upgrade-*` は自動削除され、実 version upgrade の default 差分判定に必要な JAR 内部 `config-baselines/*` のみ保持されます。
+5.1.0 では `ui.language` は Web UI だけでなく、KWC が `config.yml` を再構築するときのコメント/表示言語、`config-reference-5.1.0.yml`、migration/difference report の言語も選択します。Bundled template は `en-US`, `ko-KR`, `ja-JP`, `zh-CN` で、言語を切り替えても comments/layout のみが変わり、Relay group/secret/peer を含む既存の parsed operator values は overlay して保持されます。Difference 判定は comments、空白、indent、quote style、line number、key order ではなく parsed YAML setting path + value を比較します。
+
 ## 全体有効化スイッチ
 
 新規生成された config は最上位の `enabled: false` から始まります。この状態では KOKOTO WebChat は config の生成/読み込みのみを行い、/kchat reload は引き続き使用できますが、Web/チャットサービス、リスナー、Discord 連携、DM ストア、アドオン設置、アップロード/絵文字初期化、クリーンアップ処理を開始しません。既存 config にこのキーがない場合は、アップグレード互換性のため有効として扱います。保存方式、保持期間、アップロード、プレビュー、認証、公開設定を確認してから `enabled: true` に変更してください。
@@ -64,8 +66,7 @@ update-check:
   enabled: true
 ```
 
-有効にすると、KOKOTO WebChat は Bukkit、Fabric、NeoForge、Forge のすべてでバックグラウンドから Modrinth の最新 stable release を確認します。KWC の `kokoto-webchat` project を優先し、移行期間中は旧 `bluemapwebchat` project へ fallback します。OP または `kwc.update.notify` 権限を持つ player がログインすると、レート制限付きで再確認するため、新しい release の検出が定期確認結果だけに依存しません。5.0.0 の CurseForge 通知リンクは、新 KWC listing が実際に公開されるまでは既存 BMWC bridge page を使用します。確認間隔、release channel、join 通知 delay は内蔵 default のままです。確認失敗で server 起動は停止せず、warning log に記録されます。
-
+有効にすると、KOKOTO WebChat は Bukkit、Fabric、NeoForge、Forge のすべてでバックグラウンドから Modrinth の最新 stable release を確認します。現在のプロジェクト URL 移行期間では canonical KWC `kokoto-webchat` を先に照会し、利用できない場合は既存 `bluemapwebchat` へ fallback します。BMWC も移行完了までは実際の update source として使用するため、新しい版があれば通常の通知を表示し、両方の取得に失敗した場合だけ警告します。OP または `kwc.update.notify` 権限を持つ player がログインすると、レート制限付きで再確認するため、新しい release の検出が定期確認結果だけに依存しません。
 ## 配置モード
 
 ### BlueMap アドオン
@@ -140,7 +141,7 @@ emoji:
 
 ## チャット履歴保存
 
-チャット履歴は `chat.history-storage` で `memory`、`jsonl`、`sqlite` のいずれかを選びます。`chat.history-size` と `chat.history-retention-days` は 3 つのモードで共通です。`0` は件数/期間の制限なしを意味します。新規生成された config は最上位の `enabled: false` から始まるため、これらの値を確認して `enabled: true` にするまでクリーンアップ処理は実行されません。サーバー方針として古いチャットの自動削除が必要な場合は、`30` や `90` などの正の保持日数を設定してください。アップロードと外部メディアキャッシュの保持設定も同じ考え方です。`chat.history-file` は JSONL のみ、`chat.history-sqlite-file` は SQLite のみで使われます。
+チャット履歴は `chat.history-storage` で `memory`、`jsonl`、`sqlite` のいずれかを選びます。`chat.history-size` と `chat.history-retention-days` は 3 つのモードで共通です。`0` は件数/期間の制限なしを意味します。新規生成された config は最上位の `enabled: false` から始まるため、これらの値を確認して `enabled: true` にするまでクリーンアップ処理は実行されません。サーバー方針として古いチャットの自動削除が必要な場合は、`30` や `90` などの正の保持日数を設定してください。アップロードと外部メディアキャッシュの保持設定も同じ考え方です。`chat.history-file` は JSONL のみ、`chat.history-sqlite-file` は SQLite のみで使われます。`chat.history-sqlite-migrate-jsonl: true` で SQLite DB が空なら、既存の `chat.history-file` を 1 回だけインポートします。手動編集、大規模クリーンアップ、移行前には `history.db` を通常の方法でバックアップしてください。
 
 ## メッセージトークン
 
@@ -174,9 +175,11 @@ message-tokens:
 
 ```yaml
 message-tokens:
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br, next]
   custom:
     separator:
-      aliases: [separator, divider]
+      aliases: [separator, divider, line]
       replacement: "────────────"
 ```
 
@@ -194,35 +197,72 @@ direct-message:
     enabled: false
 ```
 
+`direct-message.enabled` を有効にすると、連携済みまたは以前に認識されたプレイヤー同士で保存型 1:1 thread を使用できます。A→B と B→A は同じ UUID pair の会話として保存されます。保存方式、保持期間、メッセージ件数制限、通知オプションは現在の既定 config 設定に従います。
+
 `group-chat.admin-audit.enabled` は 4.6.3 で追加された独立した default-off の group content access switch です。有効化しても account が `private-chat-super-admins` に指定されている必要があります。管理者 view は read-only で room membership を必要とせず、room 参加や read state 更新も行いません。各 page read は body を audit log にコピーせず `admin.group-audit-read` として記録されます。
 
-`direct-message.admin-audit.enabled` は default off の別 content-access switch です。有効でも `private-chat-super-admins` に指定された account だけが read-only audit view で DM body を開けます。page read は audit log に記録されますが body 自体は log にコピーされません。通常 ADMIN/MODERATOR role は自動対象ではありません。
+`direct-message.admin-audit.enabled` は独立した default-off の DM body audit switch です。有効でも `private-chat-super-admins` に明示された account だけが read-only audit view で DM body を開けます。監査 view では送信、Reply、非表示、既読更新はできず、各 page read は本文をコピーせず audit log に記録されます。
 
 `capture-game-whispers` は、キャンセルされていない `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` を送信者と受信者の KWC DM スレッドへ複製します。Minecraft whisper 自体を再送・置換しません。Bukkit は任意の whisper plugin の最終成功結果を共通 API で提供しないため、既知 player 宛ての正しい形式の command を記録基準にします。
 
-## 0 が無制限/最大値なしを意味する項目
+## 重要な 0 値の意味
 
-- `chat.history-size`
-- `chat.history-retention-days`
-- `chat.history-page-size`
-- `chat.max-message-length`
-- `chat.max-url-message-length`
-- `upload.max-uploads-per-minute`
-- `upload.max-file-size-mb`
-- `upload.max-files-per-message`
-- `ui.image-preview-max-per-message`
-- `ui.image-preview-max-height`
-- `ui.max-width`
-- `ui.max-height`
-- `preview.youtube-max-embeds-per-message`
-- `preview.social-embeds.max-embeds-per-message`
-- `preview.external-media-cache-max-size-mb`
-- `pinned.max-pins`
-- `pinned.show-to-logged-out`
-- `commands.max-length`
-- `direct-message.retention-days`
-- `direct-message.max-messages-per-thread`
-- `direct-message.max-message-length`
+`0` の意味はすべての設定で共通ではありません。以下は現在の 5.1.0 loader/runtime の実動作に基づき、実際の説明が異なる設定を推測で「無制限」と解釈してはいけません。
+
+- `chat.history-size`: 件数基準で保持する公開チャット履歴の最大行数で、期間保持ポリシーと併用されます。 0 は件数制限をなくします。
+- `chat.history-retention-days`: 公開チャット履歴の期間保持日数です。 0 は期間による期限切れを無効にします。
+- `chat.history-page-size`: 履歴ページ 1 回で要求する既定メッセージ数です。0 の場合 memory/JSONL 履歴には明示的なページ制限を設けませんが、SQLite は内蔵のクエリ安全上限 500 件を適用します。
+- `chat.max-message-length`: KWC が受け付ける通常公開チャットメッセージの最大長です。 0 はこの長さ制限をなくします。
+- `chat.max-url-message-length`: URL を含む公開チャットメッセージの最大長です。正数の場合、正数の通常メッセージ上限以上になるよう補正されます。 0 はこの長さ制限をなくします。
+- `message-tokens.max-replacements-per-message`: 1 メッセージで実行する token 置換の最大回数で、置換処理量を抑えます。 0 は件数制限をなくします。
+- `reply.game-preview.max-length`: Minecraft Reply 引用プレビューに表示する元文の最大長です。 0 はプレビューの切り詰めを行いません。
+- `pinned.max-pins`: 同時にピン留め状態で保持できる公開メッセージの最大件数です。 0 は件数制限をなくします。
+- `direct-message.retention-days`: 保存済み DM メッセージの期間保持日数です。 0 は期間による期限切れを無効にします。
+- `direct-message.max-messages-per-thread`: 各 DM thread で件数基準に保持する最大メッセージ数です。 0 は件数制限をなくします。
+- `direct-message.max-message-length`: Web/ゲームから送信できる DM メッセージの最大長です。 0 はこの長さ制限をなくします。
+- `group-chat.retention-days`: 保存済みグループルームメッセージの期間保持日数です。 0 は期間による期限切れを無効にします。
+- `group-chat.max-messages-per-room`: 各グループルームで件数基準に保持する最大メッセージ数です。 0 は件数制限をなくします。
+- `group-chat.max-message-length`: グループルームで受け付けるメッセージの最大長です。 0 はこの長さ制限をなくします。
+- `group-chat.max-rooms-per-user`: ルーム管理判定で 1 ユーザーが所有/参加できるグループルームの最大数です。 0 は件数制限をなくします。
+- `group-chat.max-members-per-room`: 1 グループルームに許可する最大メンバー数です。 0 は件数制限をなくします。
+- `group-chat.invite-expire-hours`: グループルーム招待の有効時間(時間)です。0 は無制限ではありません。 runtime の最小値は 1 で、それ未満は最小値へ補正します。
+- `guest.cooldown-seconds`: 同じ resolved client identity/IP からゲストメッセージを連続送信する際の最小間隔(秒)です。0 はこの cooldown 制限要素を無効にします。
+- `guest.max-messages-per-minute`: 同じ resolved client identity/IP に適用する 1 分あたりゲストメッセージ制限です。0 はこの 1 分あたり制限要素を無効にします。
+- `captcha.expire-seconds`: 発行した captcha 問題の有効時間(秒)です。この値は clamp されないため、0/負数は新規問題を即時または実質即時に失効させます。
+- `captcha.pass-valid-minutes`: メッセージ毎 captcha が無効な場合に、一度成功した captcha 状態を再利用できる時間(分)です。 runtime の最小値は 1 で、それ未満は最小値へ補正します。
+- `auth.link-code-cooldown-seconds`: 同じ client/user がアカウント連携コード発行を繰り返す際の最小間隔(秒)です。 0 はこの制限要素を無効にします。
+- `auth.link-code-max-per-minute`: 発行 rate limiter で 1 分あたり許可するアカウント連携コード最大発行回数です。 0 はこの制限要素を無効にします。
+- `auth.remember-session-days`: 通常 USER/MODERATOR Web セッションの有効期間(日)です。0 以下は expiry timestamp を設定しません。
+- `security.login-fail-limit`: 設定済み失敗集計窓内で IP ベース一時ロックを発生させるログイン失敗回数です。 0 はこの制限要素を無効にします。
+- `security.login-lock-seconds`: ログイン失敗上限超過後に IP ベースログインロックを維持する時間(秒)です。 0 はこの制限要素を無効にします。
+- `security.max-sse-connections-per-ip`: resolved client IP 1 つあたり許可する同時 /stream SSE 接続の最大数です。リバースプロキシ使用時は全 client が proxy IP に見えないよう http.trusted-proxies を正しく設定します。 0 はこの制限要素を無効にします。
+- `security.max-sse-connections-total`: KWC サーバー全体で許可する同時 /stream SSE 接続の最大数です。 0 はこの制限要素を無効にします。
+- `admin.admin-session-expire-hours`: ADMIN Web セッションの有効期間(時間)です。0 以下は管理者セッションに expiry timestamp を設定しません。
+- `moderation.default-mute-minutes`: 期間省略時の mute 既定時間(分)です。0 以下は永久 mute で、config 専用設定です。
+- `commands.max-length`: Web command 実行で受け付ける command text の最大長です。 0 はこの長さ制限をなくします。
+- `ui.image-preview-max-per-message`: 1 メッセージからレンダリングする inline 画像プレビューの最大件数です。 0 は件数制限をなくします。
+- `ui.image-preview-max-height`: 画像プレビューに設定する高さ上限(px)です。正数でもチャット viewport の安全上限が併用され、0 はこの明示的 px 上限だけを外して自動 viewport 上限を使うため、完全な無制限ではありません。
+- `ui.max-width`: 設定上の KWC panel 最大幅(px)です。 0 は設定上の最大値だけをなくし、ブラウザー/viewport の制約は残る場合があります。
+- `ui.max-height`: 設定上の KWC panel 最大高さ(px)です。 0 は設定上の最大値だけをなくし、ブラウザー/viewport の制約は残る場合があります。
+- `ui.user-profiles.max-profiles`: アカウントごとにサーバー保存する preference profile の最大数です。 runtime 範囲は 0-20 で、範囲外は境界値へ補正します。 0 はサーバー保存プロファイル機能を無効にします。
+- `ui.virtual-scroll.overscan-screens`: virtual-scroll 可視範囲の上下に追加レンダリングする viewport screen 距離です。 0 も有効な最小動作値です。
+- `ui.virtual-scroll.min-rendered-messages`: viewport 計算上もっと少なくてよい場合でもレンダリング状態で保持する最小メッセージ行数です。 0 も有効な最小動作値です。
+- `discordsrv.max-emoji-links-per-message`: Discord メッセージ 1 件に追加する custom-emoji 画像 URL の最大数です。emoji.game-link.max-links-per-message と異なり、この設定では 0 は無効化を意味します。 0 は Discord への emoji 画像 URL 追加を無効にします。
+- `discordsrv.reply-relay.preview-max-length`: Discord Reply preview に含める Reply 対象元文の最大長です。 0 はプレビューの切り詰めを行いません。
+- `upload.cooldown-seconds`: 同じ resolved client IP のアップロード試行間に要求する最小間隔(秒)です。 0 はこの制限要素を無効にします。
+- `upload.max-uploads-per-minute`: resolved client IP 1 つに適用する 1 分あたりアップロード試行上限です。 0 はこの制限要素を無効にします。
+- `upload.max-file-size-mb`: アップロードファイル 1 個に許可する最大サイズ(MiB)です。 0 はこのサイズ/容量制限をなくします。
+- `upload.max-total-size-mb`: upload.directory 全体の保存 quota(MiB)です。超過時は最古の未参照アップロードから削除し、それでも空きを確保できなければ新規アップロードを拒否します。 0 はこのサイズ/容量制限をなくします。
+- `upload.max-files-per-message`: composer アップロード 1 回で選択/添付できる最大ファイル数です。 0 は件数制限をなくします。
+- `upload.retention-days`: 保持中のメッセージ/pin から参照されなくなったアップロードファイルだけを、この日数より古い場合に削除します。 0 は期間ベースの整理を無効にします。
+- `preview.youtube-max-embeds-per-message`: 1 メッセージからレンダリングする YouTube embed の最大数です。 0 は件数制限をなくします。
+- `preview.social-embeds.max-embeds-per-message`: 1 メッセージからレンダリングする対応 social embed の最大数です。 0 は件数制限をなくします。
+- `preview.external-media-cache-max-size-mb`: KWC が fetch/cache する外部 media オブジェクト 1 個の最大サイズ(MiB)です。 0 はこのサイズ/容量制限をなくします。
+- `preview.external-media-cache-retention-days`: 未参照 external-media cache ファイルを削除する期間基準日数です。 0 は期間ベースの整理を無効にします。
+- `emoji.max-file-size-kb`: custom emoji ファイル 1 個のサイズ上限(KiB)で、超過ファイルは利用経路に応じ管理 catalog 処理で拒否/除外されます。 0 はこのサイズ/容量制限をなくします。
+- `emoji.max-total-size-mb`: 管理 emoji ファイル全体の storage/catalog quota(MiB)です。quota 超過アップロードを拒否し、catalog scan も設定総量を超えるファイルを公開しません。 0 はこのサイズ/容量制限をなくします。
+- `emoji.message-token-limit`: 1 メッセージで受け付ける custom emoji token の最大数です。token は canonical pack/name パスを含められます。 0 は件数制限をなくします。
+- `emoji.game-link.max-links-per-message`: link mode でゲームメッセージ 1 件に追加する emoji 画像リンク最大数です。 0 は件数制限をなくします。
 
 ## ゲストチャット制限
 
@@ -263,6 +303,9 @@ reply:
 ```
 
 URL 以外の本文クリックは `/kchat reply <messageId> ` を入力候補にし、URL 部分はリンクを開く動作を優先します。`local-game-chat` は通常のローカルゲームチャットもクリック可能にします。他の chat-format plugin が最終描画を独占する場合は無効にしてください。同じサーバーのゲーム送信者名は `/w <実名> `、連携済み Web 送信者と別サーバーのゲーム送信者名は `/kchat dm <実名> ` を候補にします。
+`reply.game-click.enabled` が有効な場合、KWC が描画した URL 以外のメッセージ本文をクリックすると `/kchat reply <messageId> ` が準備され、`/kchat reply <messageId> <message>` は Web Reply と同じ `replyTo` metadata を持つ公開メッセージを作成します。
+DM/group message も同じ game click model を使います。conversation label は既存の `/kchat dm ...` / `/kchat group ...` を準備し、本文は internal private reply target を準備します。送信前に DM participant / current group membership を再確認するため、internal ID 自体は権限 token ではありません。
+
 
 ゲーム返信では、入力されたカスタム絵文字 token を Web 履歴とサーバーリレー用に保持し、送信元サーバーの Minecraft 表示にはゲーム側絵文字 plugin が処理した command body を再利用します。処理済み glyph がなく `emoji.game-link.mode` が `preserve` の場合、認識済み token は互換性のため通常の Bukkit chat 行として出力されます。この fallback 行には KWC の click/hover metadata は付きません。
 
@@ -272,22 +315,18 @@ URL 以外の本文クリックは `/kchat reply <messageId> ` を入力候補�
 
 ## サーバーリレー設定
 
-`peers` は接続セッション一覧ではなく、このサーバーがリレーメッセージを送る HTTP 宛先一覧です。同じ `id` / `secret` は相手サーバーから受信した要求の認証にも使用されます。双方向で使用する場合は両側に相手の項目を登録してください。
-
-サーバー 1:
+KOKOTO WebChat 5.1.0 は **Relay Protocol v2** を使用します。relay group 自体が trust boundary であり、その group のすべての peer relation は 1 つの group `shared-secret` を共有します。peer entry は `id`, `url`, `enabled` のみで、`peers[].secret` はありません。
 
 ```yaml
 server-relay:
   enabled: true
-  server-id: "server1"
-  server-name: "サーバー 1"
-  shared-secret: "両方のサーバーで同じ長いランダム秘密鍵"
+  server-id: "server-1"
+  server-name: "Server 1"
   connect-timeout-seconds: 5
   request-timeout-seconds: 10
   max-clock-skew-seconds: 60
   dedupe-seconds: 300
   max-hops: 8
-  forward-received-public-chat: true
   sources:
     game: true
     web: true
@@ -298,60 +337,24 @@ server-relay:
     web: true
     game: true
   game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-  peers:
-    - id: "server3"
-      url: "https://server3.example.com/chat/api"
-      secret: ""
-      enabled: true
+  groups:
+    - id: "main"
+      shared-secret: ""
+      forwarding:
+        enabled: false
+      peers:
+        - id: "server-2"
+          url: "https://server2.example.com/api"
+          enabled: true
 ```
 
-サーバー 3 側では `server-id: "server3"` とし、`peers` に `id: "server1"` とサーバー 1 の公開 API URL を登録します。受信側の peer ID は送信側の `server-id` と正確に一致し、各サーバー ID は一意でなければなりません。
+初回設定では 1 台のサーバーで `shared-secret: ""` のまま起動/リロードし、`config.yml` に生成された値を同じ **group** の他サーバーへコピーする方法を推奨します。既存の空でない secret は保持され、32 文字未満の手動値は自動置換せず invalid になります。両サーバーは同じ group で相互に peer 登録し、同一の生成/コピー secret を使用します。同じ peer ID を複数の local group に登録することはできず、重複登録は無効化されます。direct relay は各 `/relay/v2/message` request を group secret により独立して認証・暗号化します。`/relay/v2/handshake` は状態を保持しない診断用 identity/health probe で、routing 状態を作成・制御しません。
 
-## HTTPS / リバースプロキシ
+Relay v2 は `/relay/v2/message` で public chat と cross-server 1:1 DM/read receipt を運びます。payload は directional HKDF-SHA256 key と AES-256-GCM により hop-by-hop で保護されます。direct 1-hop HTTP も payload を暗号化・認証した状態で利用できますが警告が出て、forwarding には使用できません。forwarding は同一 group 内で peer 単位に判定され、http:// peer はその peer を通る forwarding だけ除外されます。同じ group の他の https:// peer は引き続き利用できます。
 
-`url` は相手サーバーで外部から到達できる KWC API base です。`/relay/receive` は自動追加されます。
+5.0.0 → 5.1.0 の初回 migration では旧 flat relay から group を**推測しません**。旧 trust key/peer/forwarding は廃止し、`server-relay.enabled` を `false` に reset して、operator が v2 group を明示的に定義してから再度有効化します。
 
-```text
-設定: https://server3.example.com/chat/api
-要求: https://server3.example.com/chat/api/relay/receive
-```
-
-公開 HTTPS ルートは `/relay/receive` の POST を含む API パス全体を内部 KWC HTTP リスナーへ転送してください。HTTPS 経由なら 8899 を外部公開する必要はありません。プロキシは `X-BMWC-Relay-Version`, `X-BMWC-Relay-From`, `X-BMWC-Relay-Timestamp`, `X-BMWC-Relay-Signature` を保持する必要があります。自己署名証明書は Java trust store へ登録しないと TLS 検証で失敗します。
-
-## 秘密鍵
-
-- `shared-secret` は全 peer の既定キーです。
-- `peers[].secret` はその接続だけのキーで、共通キーより優先されます。
-- 2 サーバーなら同じ長い `shared-secret` を両方に設定し、peer の `secret` は空にできます。
-- peer キーも共通キーもない peer は無効として除外されます。
-
-## 複数サーバーとループ防止
-
-フルメッシュでは全サーバーが互いを登録します。ハブ構成では leaf が hub のみを登録して hub が全 leaf を登録し、`forward-received-public-chat: true` の場合は受信した公開チャットを他の peer へ再転送します。`false` の場合、公開チャットは直接 peer 間だけで配信されます。この設定は DM のマルチホップ配送・既読通知には影響しません。relay ID の重複排除、発信元抑止、直前 peer 除外、`max-hops` により循環構成でも無限ループを防ぎます。停止中の peer へ後から再送する永続オフラインキューはありません。
-
-## reload と診断
-
-`/kchat reload` は以前の relay を閉じ、現在の設定で作り直します。常時接続ではなくメッセージごとの HTTP(S) 要求なので、別の再接続操作はありません。
-
-```text
-Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
-```
-
-`activePeers` が設定数より少ない場合、重複 ID、自己 ID、空/不正 URL、未対応 scheme、秘密鍵不足などの理由が警告に表示されます。
-
-## HTTP エラー
-
-- `403 unknown_peer`: 受信側の有効 peer に送信側 `server-id` がありません。
-- `401 bad_signature`: 実効秘密鍵が異なるか、プロキシが本文/ヘッダーを変更しました。
-- `401 expired_request`: サーバー時刻差が `max-clock-skew-seconds` を超えています。
-- `404 relay_disabled`: 受信側で無効、またはプロキシ先のパス/インスタンスが違います。
-- `426 unsupported_protocol`: relay protocol の互換性がありません。
-
-受信側の peer 一覧や秘密鍵を変えた場合は受信側でも `/kchat reload` を実行してください。
-
-## 表示
-
-Web では別サーバーのメッセージだけ `originServerId` 由来の固定色サーバーバッジを表示し、現在のサーバー自身のバッジは省略します。Web→ゲームでは別サーバー由来の古い形式に `{server}` / `{server_id}` がなければ `[server-name]` を自動付与します。Discord は共有外部チャンネルのためサーバー表示を維持します。DiscordSRV ループとイベント重複を避けるため `sources.discord` と `sources.system` は既定で無効です。
+詳細は `docs/SERVER_RELAY_JA.md` を参照してください。
 
 ## Discord 連携オプション
 
@@ -364,6 +367,9 @@ discordsrv:
   append-game-emoji-links: true
   reply-relay:
     enabled: false
+    prefix-enabled: true
+    preview-enabled: true
+    preview-max-length: 120
 ```
 
 format は `{server}`, `{server_id}`, `{sender}`, `{name}`, `{role}`, `{source}`, `{message}`, `{channel}` に対応します。relay 有効時、古い format に server placeholder がなければ `[server-name]` を自動付与します。同じ Discord チャンネルを複数サーバーで共有する場合、実際のローカル Minecraft チャットを検知した発信元サーバーの KWC だけが DiscordSRV の通常ゲーム転送にサーバー名と絵文字リンクを追加し、他サーバーは編集しません。受信側 peer は relay メッセージを Discord へ再送しないため、発信元サーバーの Discord 連携が無効または失敗した場合に別サーバーが代送する relay-only fallback はありません。DiscordSRV が通常ゲームチャットを送る場合は `game-relay-mode: "discordsrv"` を使用します。KWC から直接送信する場合は `kwc` を使用し、DiscordSRV 側の通常ゲームチャット中継を無効にして重複を防ぎます。
@@ -419,23 +425,23 @@ player-display:
 
 ## カスタム絵文字とゲーム側絵文字プラグイン
 
-KOKOTO WebChat はカスタム絵文字を `plugins/KOKOTO-WebChat/emojis` 以下に保存します。サブフォルダーは絵文字パックとして扱われます。
+KOKOTO WebChat はカスタム絵文字を `plugins/KOKOTO-WebChat/emojis` 以下に保存します。サブフォルダーは絵文字パックとして扱われます。5.1.0 以降、pack directory 名と emoji filename stem は同じ token-safe 規則で正規化され、空白/使用不可文字は削除、既存の不正名は起動時に一括変更、衝突時は数値 suffix が付きます。最終パスは `:pack/name:` token と一致します。
 
 既定では `emoji.game-link.enabled` が `false` のため、Web→ゲームメッセージの `:pack/name:` や `:emoji:pack/name:` のようなカスタム絵文字トークンは変更されません。ImageEmojis などのゲーム側絵文字プラグインが Minecraft チャット内でトークンを描画する場合は、この既定値を使用してください。
 
 `emoji.game-link.enabled` が `true` の場合、`emoji.game-link.mode` は `preserve`、`link`、`label` をサポートします。
 
 - `preserve`: game-link が有効でもトークン保持動作を強制します。
-- `link`: `label-format` テキストと短い BM Web Chat 画像リンクを送信します。
+- `link`: `label-format` テキストと短い KOKOTO WebChat 画像リンクを送信します。
 - `label`: `label-format` テキストのみを送信します。
 
 `emoji.game-link.*` は Web→Minecraft チャットのみに影響します。`discordsrv` モードの Game→Discord では、DiscordSRV が実際に Discord へ投稿したゲームメッセージ内の `:emoji:` token を Web→Discord と同じ KWC token→link 処理へ渡します。LOWEST 段階のゲームチャット記録は共有 Discord チャンネルで発信元サーバーを判定するためだけに使い、Minecraft 用 glyph やゲーム表示文字列を Discord 絵文字変換の入力には使いません。Discord の画像プレビューリンクは、Web→Discord 用の `discordsrv.append-web-emoji-links` と Game→Discord 用の `discordsrv.append-game-emoji-links` で分けて制御します。
 
-BM Web Chat は Web 履歴とリレー payload に正規の絵文字 token を保持します。ImageEmojis または ImageEmojis-Bero が有効な場合、公開されている runtime 絵文字 repository を reflection で読み取り、クリック可能な Minecraft component を作成する前に受信サーバーの有効な glyph へ token を変換します。hard dependency の追加や resource pack の解析は行いません。
+KOKOTO WebChat は Web 履歴とリレー payload に正規の絵文字 token を保持します。ImageEmojis または ImageEmojis-Bero が有効な場合、公開されている runtime 絵文字 repository を reflection で読み取り、クリック可能な Minecraft component を作成する前に受信サーバーの有効な glyph へ token を変換します。hard dependency の追加や resource pack の解析は行いません。
 
 interactive chat では ImageEmojis glyph を先に挿入してから sender・reply・URL の click event を構築するため、絵文字表示とクリック可能な URL が同時に動作します。受信サーバーで解決できない既知 token のみ、別のゲーム側 renderer 向けに単一の plain Bukkit fallback を使用します。この fallback には KWC の click/hover metadata を付けられません。
 
-`default-pack` と `aliases` は、flat なゲーム側トークンを BM Web Chat の pack/name id に対応付けるために使います。例:
+`default-pack` と `aliases` は、flat なゲーム側トークンを KOKOTO WebChat の pack/name id に対応付けるために使います。例:
 
 ```yaml
 emoji:
@@ -470,7 +476,7 @@ commands:
 
 ## メディアプレビューの高さとスクロール安定性
 
-`ui.image-preview-max-height` は画像、GIF、動画、iframe 系プレビューの表示高さを制限します。推奨範囲は `640-720` で、デフォルトは `720` です。
+`ui.image-preview-max-height` は画像、GIF、動画、iframe 系プレビューの表示高さを制限します。推奨範囲は `640-720` で、デフォルトは `720` です。 `ui.image-preview-max-height` が `0` の場合、明示的な px 上限だけが外れ、自動 viewport ベースの安全上限は引き続き適用されるため、完全な高さ無制限ではありません。
 
 ```yaml
 ui:
@@ -610,19 +616,23 @@ ui:
 
 ## メッセージ検索
 
-保存履歴が有効な場合、チャットパネル右上のフローティング領域の虫眼鏡ボタンと `/history/search` API でメッセージ本文と送信者を検索できます。検索オプションでは日付/時刻範囲、送信者、ソース、システム/イベントの含有を指定できます。検索結果はスクロール可能な一覧で表示され、チャットのテーマとフォント設定に従います。検索結果をクリックすると、既存の周辺履歴読み込みで該当メッセージへ移動します。i18n キー付きのシステム／イベントメッセージは、可能な場合は要求された Web UI 言語で検索・表示されます。 検索は `search.enabled` で有効/無効を切り替えられ、`search.result-limit` だけで Web UI の結果数と `/history/search` API の上限を制御します。別の内部最大値はなく、2000 に設定すれば最大 2000 件、10 に設定すれば最大 10 件を返します。10000 や 100000 のような非常に大きい値も受け付けますが、検索速度の低下、応答サイズの増加、CPU・メモリ・DB 負荷の増加につながる可能性があります。既定値は 50 で、通常利用では 50〜200 を推奨します。`config-version: "5.0.0_auto_migration"` の場合、不足している検索設定は startup/reload 時に自動挿入されます。正確な `config-version: "5.0.0"` で同一 version の自動 migration を停止した場合のみ、不足 key を手動で追加するか `_auto_migration` を再度有効にしてください。
+保存履歴が有効な場合、チャットパネル右上のフローティング領域の虫眼鏡ボタンと `/history/search` API でメッセージ本文と送信者を検索できます。検索オプションでは日付/時刻範囲、送信者、ソース、システム/イベントの含有を指定できます。検索結果はスクロール可能な一覧で表示され、チャットのテーマとフォント設定に従います。検索結果をクリックすると、既存の周辺履歴読み込みで該当メッセージへ移動します。i18n キー付きのシステム／イベントメッセージは、可能な場合は要求された Web UI 言語で検索・表示されます。 検索は `search.enabled` で有効/無効を切り替えられ、`search.result-limit` だけで Web UI の結果数と `/history/search` API の上限を制御します。別の内部最大値はなく、2000 に設定すれば最大 2000 件、10 に設定すれば最大 10 件を返します。10000 や 100000 のような非常に大きい値も受け付けますが、検索速度の低下、応答サイズの増加、CPU・メモリ・DB 負荷の増加につながる可能性があります。既定値は 50 で、通常利用では 50〜200 を推奨します。`config-version: "5.1.0_auto_migration"` の場合、不足している検索設定は startup/reload 時に自動挿入されます。正確な `config-version: "5.1.0"` で同一 version の自動 migration を停止した場合のみ、不足 key を手動で追加するか `_auto_migration` を再度有効にしてください。
 
 ## グループチャット
 
 `group-chat.enabled` はWebグループチャット機能を有効にします。公開/非公開ルーム、ハッシュ保存される任意パスワード、招待、退出、ルームの非表示/再表示、ルーム設定、未読追跡、ユーザー別メッセージ非表示、メンバーのキック/ban/ban解除、所有者移譲に対応します。グループメッセージは `group-chat.sqlite-file`（既定値 `group-messages.db`）に保存されます。`group-chat.retention-days: 0` は期間整理なし、正の値は古いグループメッセージを物理削除します。
 
+ルームの入退室通知はグローバルな `config.yml` switch ではなく **ルーム単位の DB 設定**です。Room settings から有効/無効を切り替え、`group_rooms.membership_events_enabled` に保存します。既存 DB に列を追加するときは既定で有効になります。実際に membership が変化した場合だけ event を保存し、グループチャット画面を閉じても退出にはなりません。
+
 
 ## 非公開チャットメタデータ・スーパー管理者
 
-`private-chat-super-admins: []` には管理/容量確認用に DM/group metadata を閲覧できる exact UUID または Minecraft name を指定します。metadata view は participant/title、message count、storage size、retention state と管理操作を表示します。DM body は `direct-message.admin-audit.enabled: true`、group-chat body は `group-chat.admin-audit.enabled: true` の場合だけ read-only で開け、どちらも各 page read が audit log に記録されます。
+`private-chat-super-admins: []` には管理/容量確認用に DM/group metadata を閲覧できる exact UUID または Minecraft name を指定します。metadata view は participant/title、message count、storage size、retention state と管理操作を表示します。DM body は `direct-message.admin-audit.enabled: true`、group-chat body は `group-chat.admin-audit.enabled: true` の場合だけ開け、どちらも `private-chat-super-admins` に指定された account が必要です。両 audit view は read-only で各 page read は audit log に記録されます。
 
 
 `frontend.standalone.app-name` と `frontend.standalone.app-short-name` は standalone ページ/PWA 名を制御します。モバイルでホーム画面 Web アプリとして追加済みの場合、変更後は再追加してください。`web-push.notification-title` はテスト/システム/バックグラウンド Push の既定タイトルを制御します。空の場合は `frontend.standalone.app-name` を使用します。
+
+旧 config に `BlueMapWebChat` または `BM WebChat` という生成済み表示名が残っている場合は legacy default として扱い、現在の fallback 名を使用します。
 
 ### Dynmap アダプター
 
@@ -642,3 +652,6 @@ ui:
 `adapters.overviewer` は既存の Minecraft Overviewer static Web map 出力へ KWC を埋め込みます。Overviewer は server plugin ではなく外部 renderer のため、Bukkit/Fabric/NeoForge/Forge で Overviewer runtime 依存なしに同じ filesystem adapter を利用できます。KWC は `Minecraft-Overviewer` generator metadata、`overviewerConfig.js`、`overviewer.js`、`overviewer.css` など Overviewer 固有の marker/asset を確認できる既存 `index.html` だけを対象にし、一般の Leaflet page は変更しません。任意の出力先や Caddy/nginx document root では server から見える共有/マウント済み Overviewer `outputdir` を `web-root` に指定します。Overviewer render または `--update-web-assets` により `index.html` が再生成される場合があるため、その後 `/kchat reload` を実行してください。独自 template を維持する場合は Overviewer の `customwebassets` をそのまま利用でき、KWC Stage 1 は Overviewer の Python 設定を編集しません。
 
 > **IP / ルーターポート転送:** map adapter の direct HTTP 自動判定は、外部から到達する KWC port が `http.port`（既定 8899）と同じであることを前提にします。public `8900` → server `8899` のように外部 port を変換する場合、ブラウザーは NAT 変換を推測できないため、その map adapter の `api-base-url` を `http://PUBLIC_IP:8900/api` のように明示してください。転送された port で standalone を直接開く場合は current origin を使うため `api-base-url: ""` のままで構いません。
+## 繰り返す運用エラーのログ
+
+KWC は HTTP status ごとに個別のログ例外を増やすのではなく、繰り返し発生する運用 HTTP/ネットワーク障害に共通の console policy を使用します。同じ operation/target の初回障害は直ちに記録し、同一状態の繰り返しは抑制して後の summary で省略回数を示します。障害状態が変われば新しい状態を直ちに記録し、繰り返しが抑制された後に復旧すれば recovery summary を 1 回記録します。Relay verification/HTTP transport、update source lookup、運用 API の rate/server failure などの反復 transport 系に適用し、通常の入力 validation/authentication response は server console error に昇格しません。実際の retry/backoff は各機能が独立して決定し、log suppression とは別です。

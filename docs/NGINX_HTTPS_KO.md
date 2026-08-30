@@ -1,5 +1,8 @@
 # KOKOTO WebChat nginx HTTPS 구성 가이드
 
+
+![KWC 리버스 프록시 배포 구성](assets/deployment-modes.svg)
+
 이 가이드는 BlueMap과 KOKOTO WebChat을 로컬 HTTP 서비스로 유지하고, nginx를 통해 HTTPS로 공개하는 방법을 설명합니다.
 
 ## 권장 구조
@@ -218,3 +221,10 @@ BlueMap 페이지를 HTTP로 제공하고 채팅 API만 HTTPS로 사용하는 �
 ### URL 설정 해석 규칙
 
 HTTPS 공개 API의 기준은 `http.public-prefix + http.path-prefix`이며 기본값은 `/chat/api`입니다. adapter와 standalone의 `api-base-url`은 서로 독립적인 선택 override이고 보통 비워둡니다. upload/emoji를 비워두면 공통 공개 API에 각각 `/uploads`, `/emojis`를 붙입니다. 절대 경로, 상대값, 전체 `https://...` URL은 별도 공개 URL이 필요할 때만 사용합니다.
+
+## 공식 참조 문서
+
+- [NGINX `ngx_http_proxy_module`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html)
+- [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
+
+KWC 고유의 path-prefix, trusted-proxy, SSE, 업로드, 인증 동작은 외부 문서가 아니라 KWC 5.1.0 소스와 설정을 기준으로 합니다.

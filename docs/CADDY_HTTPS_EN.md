@@ -1,5 +1,8 @@
 # KOKOTO WebChat Caddy HTTPS setup guide
 
+
+![KWC reverse-proxy deployment](assets/deployment-modes.svg)
+
 This guide keeps BlueMap and KOKOTO WebChat running as local HTTP services, then exposes them through Caddy over HTTPS.
 
 ## Recommended layout
@@ -26,7 +29,7 @@ The internal services can stay on their original HTTP ports.
 
 ## HTTPS path changes when migrating from BMWC to KWC
 
-The standard BlueMapWebChat HTTPS layout usually proxied public `/bmwc/api` to internal `:8899/api` and public `/bmwc/chat` to the internal standalone `/chat`. KOKOTO WebChat 5.0.0 does not keep that layout. During migration, standard BMWC public-path values are normalized to KWC's new automatic values.
+The standard BlueMapWebChat HTTPS layout usually proxied public `/bmwc/api` to internal `:8899/api` and public `/bmwc/chat` to the internal standalone `/chat`. KOKOTO WebChat 5.0.0 and later do not keep that layout. During migration, standard BMWC public-path values are normalized to KWC's new automatic values.
 
 ```text
 BMWC
@@ -34,7 +37,7 @@ BMWC
   Standalone:  https://map.example.com/bmwc/chat
   API:         https://map.example.com/bmwc/api
 
-KWC 5.0.0
+KWC 5.0.0 and later
   BlueMap:     https://map.example.com/
   Standalone:  https://map.example.com/chat
   API:         https://map.example.com/chat/api
@@ -193,7 +196,7 @@ ui:
 
 Replace `map.example.com` with your real domain.
 
-Keep media preview max-height enabled for scroll stability. Recommended: `640-720`. `0` means unlimited and can cause scroll jumps in media-heavy virtual scrolling.
+Keep media preview max-height enabled for scroll stability. Recommended: `640-720`. `0` removes the explicit pixel cap, but the browser still applies the viewport-based safety cap; it is therefore not a completely unlimited display height.
 
 ## 4. BlueMap
 
@@ -234,3 +237,11 @@ If you use nginx instead of Caddy, see `docs/NGINX_HTTPS_EN.md` and `examples/ng
 ### URL setting resolution
 
 `http.public-prefix + http.path-prefix` defines the canonical HTTPS public API path (`/chat/api` by default). Adapter and standalone `api-base-url` values are optional independent overrides and normally stay empty. Empty upload/emoji settings follow the canonical public API and append `/uploads` and `/emojis`. Absolute browser paths, relative values, and full `https://...` URLs are only needed for intentional overrides.
+
+## Official references
+
+- [Caddy `reverse_proxy`](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+- [Caddy reverse-proxy quick start](https://caddyserver.com/docs/quick-starts/reverse-proxy)
+- [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
+
+KWC-specific path-prefix, trusted-proxy, SSE, upload and authentication behavior is defined by the KWC 5.1.0 source/configuration rather than by these external references.

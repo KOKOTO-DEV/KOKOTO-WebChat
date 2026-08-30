@@ -1,21 +1,33 @@
-# KOKOTO WebChat 5.0.0 发布检查清单
+# KOKOTO WebChat 5.1.0 发布检查清单
 
-- [ ] 5.0.0 metadata、artifact、config reference 一致。
-- [ ] 4.7.0→5.0.0 migration、`5.0.0_auto_migration` 与停止同版本 backfill 的行为正确。
-- [ ] en-US/ko-KR/ja-JP/zh-CN key set 完全相同且没有空翻译。
-- [ ] smoke test 覆盖 login/guest/public chat/reply/pin/search/filter/DM/group/upload/clipboard/profile/Push/admin Discord alert/relay/map adapters。
-- [ ] original filename 下长文件名可用，Windows DOS 8.3 clipboard 别名不会生成损坏链接。
-- [ ] Bearer auth、一次性 SSE ticket、管理员 IP 限制、body limit、Web Push SSRF、Discord mention/CDN、防注入 profile import 均正常。
-- [ ] `update-check.enabled` 在 Bukkit/Fabric/NeoForge/Forge 上均为实际功能，并确认 KWC 优先/BMWC fallback 查询与 `kwc.update.notify` 登录提醒。
-- [ ] Bukkit JDK17、Fabric 16 exact-target、NeoForge 12 exact-target、Forge 16 exact-target 均使用对应的 JDK 17/21/25 build 成功。
-- [ ] `validate-release-windows.bat` 输出 `FINAL RELEASE BUILD PASS`、45 个 deployable JAR 和 SHA256SUMS。
-- [ ] README/Upgrade/Configuration/User Manual/Wiki/Modrinth/CurseForge 与最终 5.0.0 一致，不再包含“以后再重命名”的开发阶段文字。
-- [ ] AI assistance disclosure 放在 README/description/`AI_USAGE.md`，不作为功能 changelog 项目。
-- [ ] 先在旧 BMWC listing 发布 5.0.0，让 4.7.0 update checker 能发现 bridge release。
-- [ ] 5.0.0 更新提醒中的 CurseForge 链接在新 KWC CurseForge listing 真正上线前继续使用现有 BMWC bridge 页面。
-- [ ] 如果无法无缝重命名为同一项目，保留 BMWC 页面作为停止维护/迁移公告并引导至新 KWC listing。
-- [ ] Modrinth 使用一个项目并为各版本标记正确 loader；CurseForge 先在现有 Bukkit Plugins 项目发布 Bukkit bridge，再确认 project class 对 Fabric/NeoForge/Forge 文件的兼容性。
-- [ ] GitHub 优先将 `BlueMapWebChat` rename 为 `KOKOTO-WebChat`，rename 后更新 local remote。
+## 源码 / 配置 / 多语言
+- [ ] Root/Bukkit/Fabric/NeoForge/Forge 的 metadata 与产物名称全部为 `5.1.0`。
+- [ ] `config.yml`、`config-baselines/config-5.1.0.yml`、`distribution/config-reference-5.1.0.yml` 完全逐字节一致。
+- [ ] 5.0.0 → 5.1.0 migration 会写入 `5.1.0_auto_migration`，保留仍受支持的运维配置值、删除 retired 设置，不推断 Relay v1 的 trust/topology，而是重建为禁用的 Relay v2 以便显式重新配置；精确的 `5.1.0` 会停止同版本设置重构。
+- [ ] en-US/ko-KR/ja-JP/zh-CN 的键集合与 placeholder 完全一致。
+- [ ] `inner.js` 与全部 8 个 frontend wrapper 均通过语法检查和 embedded JS/CSS 一致性检查。
 
-- [ ] 使用 ImageEmojis-Bero 时确认共用 `plugins/KOKOTO-WebChat/emojis`、`serverIp:webServerPort` 客户端可达性、资源包 reload/update 及 game↔web token 渲染。
-- [ ] 使用 SimpleNicks-Bero 时确认 `player-display.mode: "display-name"` 显示昵称，同时 KWC account/UUID identity 仍对应真实用户。
+## 功能 smoke test
+- [ ] 游戏↔Web 公共聊天、Reply、URL、自定义表情、置顶、搜索、message token、content filter 均正常。
+- [ ] 现有不合法的 emoji pack/item 名会迁移为 canonical 名；新建 pack/item upload 使用同一规则；同一 pack 内的冲突使用数字 suffix 解决。
+- [ ] Emoji picker 不自动添加空格，只插入准确 token；配置的 newline alias 在纯表情连续行中保持紧凑，而 blank-line alias 仍生成真正空行。
+- [ ] Web Reply 保留完整原文，并正确、可读地呈现 URL 与自定义表情。
+- [ ] 游戏内 DM/group 名称点击会准备现有命令，消息正文点击会准备 Reply，URL 片段仍执行打开 URL。
+- [ ] 被篡改的 `dm-...`/`group-...` Reply target，若发送者不是实际 DM 参与者或当前 group member，必须被拒绝。
+
+## Relay / 安全
+- [ ] 可选的 signed `/relay/v2/handshake` identity/health probe 在双方以相同 group ID 与 group shared secret 互相登记时成功；probe 不创建 route 状态，direct relay 会逐请求独立认证。
+- [ ] 单边 peer 配置在两个方向上都不可用。
+- [ ] `server-relay.forwarding.enabled` 默认值为 `false`。
+- [ ] 启用 forwarding 后，也只有 inbound/outbound 两个 forwarding hop 都为 HTTPS 时才允许转发；HTTP forwarding 必须被阻止。
+- [ ] 直接 HTTP peer 保持单跳兼容，同时明确输出多语言 WARNING/警告。
+- [ ] KWC 内置 HTTP listener 绑定到非 loopback 地址时会输出 HTTP 暴露警告。
+- [ ] 公共 relay 与跨服务器 1:1 DM/read receipt 正常，group chat 保持本地功能，不进行服务器间 relay。
+
+## 分发 / 构建
+- [ ] Modrinth updater 在地址迁移期间优先查询 `kokoto-webchat`、回退到 `bluemapwebchat`，并只在两个来源都失败时警告。
+- [ ] CurseForge URL 指向 `bukkit-plugins/kokoto-webchat`。
+- [ ] Windows path preflight 已应用于完整 validator 以及 Fabric/NeoForge/Forge 的全部 build-all/build-target 入口。
+- [ ] Bukkit 使用 JDK 17；Fabric 16 / NeoForge 12 / Forge 16 个 exact target 按目标使用选定的 JDK 17/21/25 构建。
+- [ ] `validate-release-windows.bat` 生成 `FINAL RELEASE BUILD PASS`、45 个可部署 JAR 与 SHA256SUMS。
+- [ ] 最终 acceptance 不使用 `--fast`；可采用 sequential 或 `--parallel` 的 clean 调度，但不得把缓存/部分构建视为 `FINAL RELEASE BUILD PASS`。

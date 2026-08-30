@@ -19,13 +19,28 @@ import java.util.Objects;
 /**
  * Loader-neutral configuration migration used by Bukkit, Fabric, NeoForge and Forge.
  *
- * The bundled config.yml is the only migration template. Existing operator values
- * are overlaid on that fresh template; generated config-reference files are
- * administrator-readable copies only and are never used as migration input.
+ * Migration reconstruction uses the bundled presentation template selected from
+ * ui.language (English config.yml or the built-in KO/JA/ZH templates). Existing
+ * operator values are overlaid on that fresh template. Canonical English defaults
+ * remain the semantic comparison baseline; generated config-reference files are
+ * administrator-readable presentation copies only and are never migration input.
  */
 public final class PortableConfigMigration {
     private static final DateTimeFormatter BACKUP_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
-    private static final String RETIRED_SETTING = "ui.show-login-only-when-hidden";
+    private static final java.util.Set<String> RETIRED_SETTINGS = java.util.Set.of(
+            "ui.show-login-only-when-hidden",
+            "ui.virtual-scroll.preserve-visible-media",
+            "ui.virtual-scroll.preserve-playing-media",
+            "ui.resume-refresh.skip-while-media-active",
+            "notifications.notify-own-messages",
+            "server-relay.forward-received-public-chat"
+    );
+    private static final String CONFIG_LANGUAGE_MARKER = "# KWC config-comment-language: ";
+    private static final Map<String, String> CONFIG_TEMPLATE_RESOURCES = Map.of(
+            "ko-KR", "config-templates/config-ko-KR.yml",
+            "ja-JP", "config-templates/config-ja-JP.yml",
+            "zh-CN", "config-templates/config-zh-CN.yml"
+    );
 
     private static final Map<String, String> BASELINE_RESOURCES = Map.of(
             "4.5.5", "config-baselines/config-4.5.5.yml",
@@ -35,7 +50,8 @@ public final class PortableConfigMigration {
             "4.6.3", "config-baselines/config-4.6.3.yml",
             "4.6.4", "config-baselines/config-4.6.4.yml",
             "4.7.0", "config-baselines/config-4.7.0.yml",
-            "5.0.0", "config-baselines/config-5.0.0.yml"
+            "5.0.0", "config-baselines/config-5.0.0.yml",
+            "5.1.0", "config-baselines/config-5.1.0.yml"
     );
 
     private PortableConfigMigration() {}
@@ -78,38 +94,56 @@ public final class PortableConfigMigration {
 
         cleanupOldGeneratedMigrationFiles(dataDirectory, target);
 
-        byte[] bundledBytes = resourceBytes(opener, "config.yml");
-        writeReference(referencePath, bundledBytes);
-        String bundledText = new String(bundledBytes, StandardCharsets.UTF_8);
-
-        // Exact <version> is a fixed operator config, so do not refresh comments, order,
-        // indentation or retired keys before deciding whether migration is active.
+        // Parse the operator config before selecting a presentation template. ui.language
+        // controls comments/layout/reference/report language; the parsed setting values are
+        // always overlaid back onto the selected template and therefore remain authoritative.
         Map<String,Object> actual = loadSnapshot(loader, Files.newInputStream(configPath));
         String declared = safe(string(actual.get("config-version")));
+        String configLanguage = normalizeConfigLanguage(actual.get("ui.language"));
+        String templateResource = configTemplateResource(configLanguage);
+        byte[] templateBytes = resourceBytes(opener, templateResource);
+        String templateText = new String(templateBytes, StandardCharsets.UTF_8);
+        writeReference(referencePath, templateBytes);
 
-        if (target.equals(declared)) {
-            boolean removed = Files.deleteIfExists(reportPath) | Files.deleteIfExists(legacyGuidePath);
-            if (info != null) info.log(removed
-                    ? "Config version " + target + " has automatic migration disabled. Stale migration files were removed."
-                    : "Config version " + target + " has automatic migration disabled. Migration comparison was skipped.");
-            return new Result(false, false, 0);
-        }
-
+        // Defaults are compared from the canonical English config. Every localized template
+        // is required by validation to contain the exact same parsed values.
         Map<String,Object> currentDefaults = loadSnapshot(loader, opener.open("config.yml"));
         String beforeText = Files.readString(configPath, StandardCharsets.UTF_8);
+        String renderedLanguage = detectConfigCommentLanguage(beforeText);
+
+        if (target.equals(declared)) {
+            boolean languageChanged = !configLanguage.equals(renderedLanguage);
+            if (languageChanged) {
+                rebuildPhysical(configPath, templateText, actual, target, false);
+            }
+            boolean removed = Files.deleteIfExists(reportPath) | Files.deleteIfExists(legacyGuidePath);
+            if (info != null) {
+                String prefix = "Config version " + target + " has automatic migration disabled.";
+                if (languageChanged) {
+                    info.log(prefix + " Rebuilt comments/layout for ui.language=" + configLanguage
+                            + " while preserving every parsed setting value.");
+                } else {
+                    info.log(removed
+                            ? prefix + " Stale migration files were removed."
+                            : prefix + " Migration comparison was skipped.");
+                }
+            }
+            return new Result(languageChanged, false, 0);
+        }
 
         if (autoVersion.equals(declared)) {
             MigrationDiff before = compare(actual, currentDefaults, currentDefaults);
             List<String> newlyInserted = new ArrayList<>(before.missingSettings.keySet());
-            migratePhysical(configPath, bundledText, actual, autoVersion);
+            rebuildPhysical(configPath, templateText, actual, autoVersion, false);
             String afterText = Files.readString(configPath, StandardCharsets.UTF_8);
             Map<String,Object> refreshed = loadSnapshot(loader, Files.newInputStream(configPath));
             MigrationDiff current = compare(refreshed, currentDefaults, currentDefaults);
-            writeReport(reportPath, referencePath, configPath, target, autoVersion,
-                    target + " (same-version automatic migration)", current, newlyInserted.size(), refreshed, currentDefaults);
+            writeReport(reportPath, configPath, referencePath, target, autoVersion,
+                    target + " (same-version automatic migration)", current, newlyInserted.size(),
+                    refreshed, currentDefaults, configLanguage);
             Files.deleteIfExists(legacyGuidePath);
             if (info != null) info.log("Config automatic migration is enabled: config-version=\"" + autoVersion
-                    + "\". Rebuilt from the current bundled config and overlaid existing values; newly inserted settings=" + newlyInserted.size()
+                    + "\". Rebuilt from the " + configLanguage + " bundled config template and overlaid existing values; newly inserted settings=" + newlyInserted.size()
                     + ". Existing configured values were preserved. Set config-version to \"" + target
                     + "\" only if same-version automatic migration should be disabled.");
             return new Result(!afterText.equals(beforeText), true, newlyInserted.size());
@@ -124,37 +158,78 @@ public final class PortableConfigMigration {
             Path backup = backupFixedConfig(configPath, target);
             if (info != null) info.log("Backed up fixed config before version migration: " + backup.getFileName());
         }
-        migratePhysical(configPath, bundledText, actual, autoVersion);
+        boolean resetRelayV2 = "5.1.0".equals(target) && !declared.startsWith("5.1.0");
+        rebuildPhysical(configPath, templateText, actual, autoVersion, resetRelayV2);
         Map<String,Object> migrated = loadSnapshot(loader, Files.newInputStream(configPath));
         if (!autoVersion.equals(safe(string(migrated.get("config-version"))))) {
             throw new IllegalStateException("migration marker was not persisted");
         }
         MigrationDiff after = compare(migrated, previousDefaults, currentDefaults);
         Files.deleteIfExists(legacyGuidePath);
-        writeReport(reportPath, referencePath, configPath, target, declared, baselineVersion, after,
-                before.missingSettings.size(), migrated, currentDefaults);
+        writeReport(reportPath, configPath, referencePath, target, declared, baselineVersion, after,
+                before.missingSettings.size(), migrated, currentDefaults, configLanguage);
         if (info != null) info.log("Config migration completed: detected=" + (declared.isBlank() ? "not set" : declared)
                 + ", target=" + target + ", baseline=" + (baselineVersion.isBlank() ? "not available" : baselineVersion)
+                + ", template-language=" + configLanguage
                 + ", auto-inserted=" + before.missingSettings.size() + ", changed-default-review=" + after.changedDefaults.size()
                 + "; leave config-version as \"" + autoVersion + "\" to keep automatic migration, or set it to \""
                 + target + "\" to disable same-version automatic migration.");
         return new Result(true, true, before.missingSettings.size());
     }
 
-    private static void migratePhysical(Path configPath,
-                                        String bundledText,
+    private static void rebuildPhysical(Path configPath,
+                                        String templateText,
                                         Map<String,Object> actual,
-                                        String autoVersion) throws Exception {
-        // Reconstruct from the current bundled default every time migration is active.
-        // Old comments/layout are intentionally discarded; only operator values survive.
-        Files.writeString(configPath, bundledText, StandardCharsets.UTF_8,
+                                        String resultingVersion,
+                                        boolean resetRelayV2) throws Exception {
+        // Reconstruct comments/layout from the selected current template. Existing parsed
+        // operator values are the overlay and remain authoritative across language changes.
+        Files.writeString(configPath, templateText, StandardCharsets.UTF_8,
                 StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
         LinkedHashMap<String,Object> overlay = new LinkedHashMap<>();
         if (actual != null) overlay.putAll(actual);
         overlay.remove("config-version");
-        overlay.remove(RETIRED_SETTING);
+        RETIRED_SETTINGS.forEach(overlay::remove);
+        if (resetRelayV2) {
+            // Relay v1 and relay v2 do not share a safely inferable trust topology.
+            // Do not guess groups from old flat peers/secrets: force relay off and let
+            // the operator explicitly define v2 groups before enabling it again.
+            overlay.remove("server-relay.enabled");
+            overlay.remove("server-relay.shared-secret");
+            overlay.remove("server-relay.peers");
+            overlay.remove("server-relay.forwarding.enabled");
+            overlay.remove("server-relay.forwarding");
+            overlay.remove("server-relay.groups");
+            overlay.keySet().removeIf(path -> path.startsWith("server-relay.groups."));
+        }
         if (!overlay.isEmpty()) ConfigTextEditor.setValues(configPath, overlay);
-        ConfigTextEditor.setScalar(configPath, "config-version", autoVersion);
+        ConfigTextEditor.setScalar(configPath, "config-version", resultingVersion);
+    }
+
+    private static String configTemplateResource(String language) {
+        return CONFIG_TEMPLATE_RESOURCES.getOrDefault(normalizeConfigLanguage(language), "config.yml");
+    }
+
+    private static String normalizeConfigLanguage(Object value) {
+        String raw = safe(string(value)).replace('_', '-').toLowerCase();
+        if (raw.equals("ko") || raw.equals("ko-kr")) return "ko-KR";
+        if (raw.equals("ja") || raw.equals("ja-jp")) return "ja-JP";
+        if (raw.equals("zh") || raw.equals("zh-cn") || raw.equals("zh-hans") || raw.equals("zh-hans-cn")) return "zh-CN";
+        return "en-US";
+    }
+
+    private static String detectConfigCommentLanguage(String text) {
+        if (text != null) {
+            int checked = 0;
+            for (String line : text.split("\\R", -1)) {
+                if (++checked > 80) break;
+                String trimmed = line.trim();
+                if (!trimmed.startsWith(CONFIG_LANGUAGE_MARKER)) continue;
+                return normalizeConfigLanguage(trimmed.substring(CONFIG_LANGUAGE_MARKER.length()));
+            }
+        }
+        // All 5.1.0 configs before localized templates were introduced used English comments.
+        return "en-US";
     }
 
     private static Path backupFixedConfig(Path configPath, String targetVersion) throws Exception {
@@ -281,54 +356,99 @@ public final class PortableConfigMigration {
     }
 
     private static void writeReport(Path reportPath,
-                                    Path referencePath,
                                     Path configPath,
+                                    Path referencePath,
                                     String targetVersion,
                                     String declaredVersion,
                                     String baselineVersion,
                                     MigrationDiff diff,
                                     int autoInsertedSettings,
                                     Map<String,Object> currentValues,
-                                    Map<String,Object> bundledDefaults) throws Exception {
-        String detected = safe(declaredVersion).isBlank() ? "not set" : safe(declaredVersion);
-        String baseline = safe(baselineVersion).isBlank() ? "not available" : safe(baselineVersion);
+                                    Map<String,Object> bundledDefaults,
+                                    String language) throws Exception {
+        String lang = normalizeConfigLanguage(language);
+        String detected = safe(declaredVersion).isBlank()
+                ? localized(lang, "not set", "설정되지 않음", "未設定", "未设置")
+                : safe(declaredVersion);
+        String baseline = safe(baselineVersion).isBlank()
+                ? localized(lang, "not available", "사용할 수 없음", "利用不可", "不可用")
+                : safe(baselineVersion);
         StringBuilder header = new StringBuilder();
-        header.append("# KOKOTO WebChat configuration migration report\n");
-        header.append("# Migration reconstructs config.yml from the current bundled default and overlays the existing configured values.\n");
-        header.append("# Existing configured values are preserved. Old comments/order/whitespace/indentation are discarded and replaced by the current bundled config layout.\n");
-        header.append("# config-reference-<version>.yml is only the administrator-readable exact bundled default copy; it is not the migration template.\n");
-        header.append("# The migrated config is marked <version>_auto_migration. While this marker remains, startup/reload repeats the bundled-default rebuild with current values overlaid.\n");
-        header.append("# This marker is an automatic-migration preference, not a review-status marker: it may remain after the operator has reviewed the configuration.\n");
-        header.append("# To disable same-version automatic migration, change config-version to the exact plugin version.\n");
-        header.append("# Existing operator values are preserved; the current setting-value review is regenerated from the current state.\n");
-        header.append("# For the complete current default configuration with every bundled comment, compare against ").append(referencePath.getFileName()).append(".\n");
-        header.append("# Detected config version: ").append(commentValue(detected)).append("\n");
-        header.append("# Target plugin version: ").append(commentValue(targetVersion)).append("\n");
-        header.append("# Comparison baseline: ").append(commentValue(baseline)).append("\n");
-        header.append("# Settings supplied by the new bundled default in this migration: ").append(autoInsertedSettings).append("\n");
-        header.append("# Missing settings still unresolved: ").append(diff.missingSettings.size()).append("\n");
-        header.append("# Changed defaults requiring manual review: ").append(diff.changedDefaults.size()).append("\n");
-        header.append("# Automatic migration: ENABLED\n");
+        header.append(localized(lang,
+                "# KOKOTO WebChat configuration migration report\n",
+                "# KOKOTO WebChat 설정 마이그레이션 보고서\n",
+                "# KOKOTO WebChat 設定マイグレーションレポート\n",
+                "# KOKOTO WebChat 配置迁移报告\n"));
+        header.append(localized(lang,
+                "# Migration reconstructs config.yml from the current language template and overlays the existing parsed setting values.\n",
+                "# 마이그레이션은 현재 언어 템플릿으로 config.yml의 주석/레이아웃을 재구성한 뒤 기존에 파싱된 설정값을 덮어씁니다.\n",
+                "# マイグレーションは現在の言語テンプレートで config.yml のコメント/レイアウトを再構成し、既存の解析済み設定値を上書きします。\n",
+                "# 迁移会使用当前语言模板重建 config.yml 的注释/布局，再覆盖现有已解析的设置值。\n"));
+        header.append(localized(lang,
+                "# Existing configured values are preserved; comments/order/whitespace/indentation come from the selected current template.\n",
+                "# 기존 설정값은 보존되며 주석/순서/공백/들여쓰기는 선택된 최신 언어 템플릿을 따릅니다.\n",
+                "# 既存の設定値は保持され、コメント/順序/空白/インデントは選択された最新言語テンプレートに従います。\n",
+                "# 现有设置值会被保留；注释/顺序/空白/缩进来自所选的当前语言模板。\n"));
+        header.append(localized(lang,
+                "# config-reference-<version>.yml is the administrator-readable current default in the same ui.language; it is not migration input.\n",
+                "# config-reference-<version>.yml은 ui.language와 같은 언어의 관리자용 최신 기본 설정 사본이며 마이그레이션 입력으로 사용하지 않습니다.\n",
+                "# config-reference-<version>.yml は ui.language と同じ言語の管理者向け最新デフォルト設定であり、マイグレーション入力には使用しません。\n",
+                "# config-reference-<version>.yml 是与 ui.language 相同语言的管理员可读当前默认配置，不作为迁移输入。\n"));
+        header.append(localized(lang,
+                "# The migrated config is marked <version>_auto_migration; while present, startup/reload repeats the current-template rebuild with values overlaid.\n",
+                "# 마이그레이션된 config는 <version>_auto_migration으로 표시되며, 이 값이 유지되는 동안 시작/리로드 때 최신 템플릿 재구성과 값 보존을 반복합니다.\n",
+                "# 移行後の config は <version>_auto_migration と表示され、この値がある間は起動/リロード時に最新テンプレート再構成と値の上書きを繰り返します。\n",
+                "# 迁移后的 config 标记为 <version>_auto_migration；保留该标记时，每次启动/重载都会用当前模板重建并覆盖保留值。\n"));
+        header.append(localized(lang,
+                "# This marker controls automatic migration; it is not a review-status marker. Set config-version to the exact plugin version to disable same-version automatic migration.\n",
+                "# 이 표시는 자동 마이그레이션 동작을 제어하며 검토 완료 여부 표시는 아닙니다. 같은 버전 자동 재구성을 끄려면 config-version을 정확한 플러그인 버전으로 설정합니다.\n",
+                "# このマーカーは自動マイグレーションを制御するもので、レビュー状態ではありません。同一バージョンの自動再構成を止めるには config-version を正確なプラグインバージョンにします。\n",
+                "# 此标记控制自动迁移，并非审核状态。要禁用同版本自动重建，请将 config-version 设置为精确的插件版本。\n"));
+        header.append(localized(lang,
+                "# The setting-value comparison below is semantic: comments, layout, quotes, line positions and key order do not affect Difference results.\n",
+                "# 아래 설정값 비교는 의미 기반입니다. 주석, 레이아웃, 따옴표, 줄 위치, 키 순서는 Difference 판정에 영향을 주지 않습니다.\n",
+                "# 以下の設定値比較は意味ベースです。コメント、レイアウト、引用符、行位置、キー順は Difference 判定に影響しません。\n",
+                "# 下方设置值比较采用语义判定；注释、布局、引号、行位置和键顺序不会影响 Difference 结果。\n"));
+        header.append(localized(lang, "# Detected config version: ", "# 감지된 config 버전: ", "# 検出した config バージョン: ", "# 检测到的 config 版本: ")).append(commentValue(detected)).append("\n");
+        header.append(localized(lang, "# Target plugin version: ", "# 대상 플러그인 버전: ", "# 対象プラグインバージョン: ", "# 目标插件版本: ")).append(commentValue(targetVersion)).append("\n");
+        header.append(localized(lang, "# Comparison baseline: ", "# 비교 기준: ", "# 比較基準: ", "# 比较基线: ")).append(commentValue(baseline)).append("\n");
+        header.append(localized(lang, "# Config comment language: ", "# 설정 주석 언어: ", "# 設定コメント言語: ", "# 配置注释语言: ")).append(lang).append("\n");
+        header.append(localized(lang, "# Settings supplied by the new bundled default in this migration: ", "# 이번 마이그레이션에서 새 기본값이 추가한 설정 수: ", "# 今回のマイグレーションで新しいデフォルトから追加された設定数: ", "# 本次迁移由新默认配置补充的设置数: ")).append(autoInsertedSettings).append("\n");
+        header.append(localized(lang, "# Missing settings still unresolved: ", "# 아직 해결되지 않은 누락 설정 수: ", "# 未解決の不足設定数: ", "# 仍未解决的缺失设置数: ")).append(diff.missingSettings.size()).append("\n");
+        header.append(localized(lang, "# Changed defaults requiring manual review: ", "# 수동 확인이 필요한 기본값 변경 수: ", "# 手動確認が必要なデフォルト変更数: ", "# 需要手动确认的默认值变更数: ")).append(diff.changedDefaults.size()).append("\n");
+        header.append(localized(lang, "# Automatic migration: ENABLED\n", "# 자동 마이그레이션: 활성화\n", "# 自動マイグレーション: 有効\n", "# 自动迁移: 已启用\n"));
         if (!diff.changedDefaults.isEmpty()) {
-            header.append("#\n# Changed bundled defaults included in the fragment:\n");
+            header.append(localized(lang,
+                    "#\n# Changed bundled defaults included in the fragment:\n",
+                    "#\n# 아래 조각에 포함된 변경된 번들 기본값:\n",
+                    "#\n# 下のフラグメントに含まれる変更済みバンドルデフォルト:\n",
+                    "#\n# 下方片段中包含的已变更内置默认值:\n"));
             for (Map<String,Object> item : diff.changedDefaults) {
                 header.append("# - ").append(commentValue(item.get("path"))).append("\n");
-                header.append("#   configured and previous default: ").append(commentValue(item.get("previous-default"))).append("\n");
-                header.append("#   new bundled default: ").append(commentValue(item.get("current-default"))).append("\n");
+                header.append(localized(lang, "#   configured and previous default: ", "#   현재 설정값 및 이전 기본값: ", "#   現在の設定値および以前のデフォルト: ", "#   当前设置值及旧默认值: ")).append(commentValue(item.get("previous-default"))).append("\n");
+                header.append(localized(lang, "#   new bundled default: ", "#   새 번들 기본값: ", "#   新しいバンドルデフォルト: ", "#   新内置默认值: ")).append(commentValue(item.get("current-default"))).append("\n");
             }
         }
         if (!diff.missingSettings.isEmpty()) {
-            header.append("#\n# Missing settings still unresolved (normally this should be empty after automatic insertion):\n");
+            header.append(localized(lang,
+                    "#\n# Missing settings still unresolved (normally empty after automatic insertion):\n",
+                    "#\n# 아직 해결되지 않은 누락 설정(자동 삽입 후에는 보통 비어 있어야 함):\n",
+                    "#\n# 未解決の不足設定（自動挿入後は通常空です）:\n",
+                    "#\n# 仍未解决的缺失设置（自动补充后通常应为空）:\n"));
             for (String path : diff.missingSettings.keySet()) header.append("# - ").append(commentValue(path)).append("\n");
         }
-        header.append("#\n# The config-version entry below is the automatic-migration stop marker.\n");
-        header.append("# Apply this exact value only if you want to disable further same-version automatic migration.\n");
-        header.append("# Otherwise leave config.yml as ").append(targetVersion).append("_auto_migration.\n\n");
+        header.append(localized(lang,
+                "#\n# The config-version entry below is the automatic-migration stop marker. Use the exact version only to disable further same-version automatic migration.\n",
+                "#\n# 아래 config-version 항목은 자동 마이그레이션 중지 표시입니다. 같은 버전 자동 마이그레이션을 끌 때만 정확한 버전값을 사용하세요.\n",
+                "#\n# 下の config-version は自動マイグレーション停止マーカーです。同一バージョンの自動マイグレーションを止める場合だけ正確なバージョンを使用してください。\n",
+                "#\n# 下方 config-version 是自动迁移停止标记。仅在要禁用后续同版本自动迁移时使用精确版本值。\n"));
+        header.append(localized(lang, "# Otherwise leave config.yml as ", "# 그 외에는 config.yml을 ", "# それ以外は config.yml を ", "# 否则请将 config.yml 保持为 "))
+                .append(targetVersion).append("_auto_migration.\n\n");
 
         String fragment = reportFragment(diff.changedDefaults, targetVersion);
         String body = header + fragment;
         if (!body.endsWith("\n")) body += "\n";
-        body += "\n" + buildSemanticSettingDiff(configPath, referencePath, currentValues, bundledDefaults);
+        body += "\n" + buildSemanticSettingDiff(configPath, referencePath, currentValues, bundledDefaults, lang);
         Files.createDirectories(reportPath.getParent());
         Files.writeString(reportPath, body, StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
@@ -351,7 +471,9 @@ public final class PortableConfigMigration {
     private static String buildSemanticSettingDiff(Path configPath,
                                                    Path referencePath,
                                                    Map<String,Object> currentValues,
-                                                   Map<String,Object> bundledDefaults) throws Exception {
+                                                   Map<String,Object> bundledDefaults,
+                                                   String language) {
+        String lang = normalizeConfigLanguage(language);
         Map<String,Object> current = normalizeFlat(currentValues == null ? Map.of() : currentValues);
         Map<String,Object> defaults = normalizeFlat(bundledDefaults == null ? Map.of() : bundledDefaults);
         LinkedHashSet<String> paths = new LinkedHashSet<>();
@@ -360,6 +482,9 @@ public final class PortableConfigMigration {
 
         ArrayList<String> changedPaths = new ArrayList<>();
         for (String path : paths) {
+            // config-version is the migration mode/stop marker, not an operator setting
+            // difference. Excluding it keeps the report focused on actual configured values.
+            if ("config-version".equals(path) || RETIRED_SETTINGS.contains(path)) continue;
             boolean inCurrent = current.containsKey(path);
             boolean inDefault = defaults.containsKey(path);
             if (inCurrent != inDefault || !valuesEqual(current.get(path), defaults.get(path))) changedPaths.add(path);
@@ -368,40 +493,205 @@ public final class PortableConfigMigration {
         String referenceName = commentValue(referencePath.getFileName());
         StringBuilder out = new StringBuilder();
         out.append("# =============================================================================\n");
-        out.append("# Current config.yml vs ").append(referenceName).append(" setting diff\n");
+        out.append(localized(lang,
+                "# " + referenceName + " -> current config.yml parsed setting diff\n",
+                "# " + referenceName + " → 현재 config.yml 파싱 설정값 차이\n",
+                "# " + referenceName + " → 現在の config.yml 解析済み設定値差分\n",
+                "# " + referenceName + " → 当前 config.yml 已解析设置值差异\n"));
         out.append("# =============================================================================\n");
-        out.append("# Comparison is YAML-setting based, not whole-file text based.\n");
-        out.append("# Comments, blank lines, indentation, quoting style, and shifted line positions are ignored.\n");
-        out.append("# Only settings whose effective values differ from the bundled default are shown.\n");
-        out.append("# Line numbers are looked up independently in each file after migration.\n");
-        if (changedPaths.isEmpty()) return out.append("# No setting-value differences found.\n").toString();
+        out.append(localized(lang,
+                "# Comparison uses parsed YAML path/value pairs only. Comments, blank lines, indentation, quoting, line positions and key order are ignored.\n",
+                "# 비교에는 파싱된 YAML path/value만 사용합니다. 주석, 빈 줄, 들여쓰기, 따옴표, 줄 위치, 키 순서는 무시합니다.\n",
+                "# 比較には解析済み YAML の path/value だけを使用します。コメント、空行、インデント、引用符、行位置、キー順は無視します。\n",
+                "# 比较仅使用已解析的 YAML path/value。注释、空行、缩进、引号、行位置和键顺序都会被忽略。\n"));
+        out.append(localized(lang,
+                "# Each difference shows only the YAML value block for that setting. Explanatory comments stay in config.yml/reference and are not duplicated here. Structured list/map settings stay multi-line YAML.\n",
+                "# 각 차이는 해당 설정의 YAML 값 블록만 표시합니다. 설명 주석은 config.yml/reference에 그대로 두고 여기에는 중복하지 않습니다. list/map 구조는 여러 줄 YAML을 유지합니다.\n",
+                "# 各差分にはその設定の YAML 値ブロックだけを表示します。説明コメントは config.yml/reference 側に残し、ここでは重複表示しません。list/map 構造は複数行 YAML を維持します。\n",
+                "# 每个差异只显示该设置的 YAML 值块。说明注释保留在 config.yml/reference 中，不在此重复；list/map 结构保持多行 YAML。\n"));
+        if (changedPaths.isEmpty()) return out.append(localized(lang,
+                "# No setting-value differences found.\n",
+                "# 설정값 차이가 없습니다.\n",
+                "# 設定値の差異はありません。\n",
+                "# 未发现设置值差异。\n")).toString();
 
-        Map<String,ConfigTextEditor.ValueBlock> currentBlocks = ConfigTextEditor.readValueBlocks(configPath, changedPaths);
-        Map<String,ConfigTextEditor.ValueBlock> referenceBlocks = ConfigTextEditor.readValueBlocks(referencePath, changedPaths);
+        Map<String, ConfigTextEditor.SettingBlock> currentBlocks;
+        Map<String, ConfigTextEditor.SettingBlock> defaultBlocks;
+        try {
+            currentBlocks = ConfigTextEditor.readSettingBlocks(configPath, changedPaths);
+        } catch (Exception ignored) {
+            currentBlocks = Map.of();
+        }
+        try {
+            defaultBlocks = ConfigTextEditor.readSettingBlocks(referencePath, changedPaths);
+        } catch (Exception ignored) {
+            defaultBlocks = Map.of();
+        }
+
         int block = 0;
         for (String path : changedPaths) {
-            ConfigTextEditor.ValueBlock left = currentBlocks.get(path);
-            ConfigTextEditor.ValueBlock right = referenceBlocks.get(path);
             block++;
-            out.append("# Difference ").append(block).append("\n# Setting: ").append(commentValue(path)).append("\n#\n");
-            if (left != null) appendValueBlock(out, "-", "Current config.yml", left);
-            else out.append("# - Current config.yml\n# Missing setting\n");
+            out.append(localized(lang, "# Difference ", "# 차이 ", "# 差分 ", "# 差异 ")).append(block).append("\n");
+            out.append(localized(lang, "# Setting: ", "# 설정: ", "# 設定: ", "# 设置: ")).append(commentValue(path)).append("\n#\n");
+            if (defaults.containsKey(path)) {
+                out.append("# - ").append(referenceName).append("\n");
+                appendCommentedYamlValueBlock(out, defaultBlocks.get(path), defaults.get(path));
+            } else {
+                out.append("# - ").append(referenceName).append("\n").append(localized(lang,
+                        "# <not present in bundled defaults; operator/custom setting>\n",
+                        "# <번들 기본값에 없음; 운영자/사용자 정의 설정>\n",
+                        "# <バンドルデフォルトに存在しない運用者/カスタム設定>\n",
+                        "# <内置默认配置中不存在；管理员/自定义设置>\n"));
+            }
             out.append("#\n");
-            if (right != null) appendValueBlock(out, "+", referenceName, right);
-            else out.append("# + ").append(referenceName).append("\n# Setting is not present in the bundled default (operator/custom setting).\n");
+            if (current.containsKey(path)) {
+                out.append("# + config.yml\n");
+                appendCommentedYamlValueBlock(out, currentBlocks.get(path), current.get(path));
+            } else {
+                out.append("# + config.yml\n").append(localized(lang, "# <missing>\n", "# <누락>\n", "# <不足>\n", "# <缺失>\n"));
+            }
             out.append("#\n#\n#\n");
         }
         return out.toString();
     }
 
-    private static void appendValueBlock(StringBuilder out,
-                                         String marker,
-                                         String fileName,
-                                         ConfigTextEditor.ValueBlock block) {
-        out.append("# ").append(marker).append(" ").append(fileName).append("\n");
-        if (block.startLine() == block.endLine()) out.append("# Line ").append(block.startLine()).append("\n");
-        else out.append("# Lines ").append(block.startLine()).append("-").append(block.endLine()).append("\n");
-        for (String line : block.lines()) out.append("#").append(line == null ? "" : line).append("\n");
+    private static void appendCommentedYamlValueBlock(StringBuilder out, ConfigTextEditor.SettingBlock block, Object fallbackValue) {
+        if (block != null && block.lines() != null && !block.lines().isEmpty()) {
+            boolean emitted = false;
+            for (String line : block.lines()) {
+                if (line == null) continue;
+                String trimmed = line.trim();
+                // The migration report is a value diff, not a second copy of the
+                // configuration manual. Attached explanatory comments remain in the
+                // real config/reference files and are intentionally omitted here.
+                if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
+                out.append("# ").append(line).append("\n");
+                emitted = true;
+            }
+            if (emitted) return;
+        }
+        // Fallback is used only when the physical value block cannot be located. Keep
+        // structured values readable even then instead of reverting to one-line JSON.
+        for (String line : yamlValueLines(fallbackValue)) out.append("# ").append(line).append("\n");
+    }
+
+    private static List<String> yamlValueLines(Object value) {
+        Object normalized = normalizeValue(value);
+        if (normalized == null || normalized instanceof Boolean || normalized instanceof Number || normalized instanceof String) {
+            return List.of(serializedValue(normalized));
+        }
+        ArrayList<String> lines = new ArrayList<>();
+        renderYamlValue(lines, 0, normalized);
+        return lines.isEmpty() ? List.of(serializedValue(normalized)) : lines;
+    }
+
+    private static void renderYamlValue(List<String> out, int indent, Object value) {
+        String prefix = " ".repeat(Math.max(0, indent));
+        if (value instanceof List<?> list) {
+            if (list.isEmpty()) { out.add(prefix + "[]"); return; }
+            for (Object item : list) {
+                if (item instanceof Map<?,?> map) {
+                    if (map.isEmpty()) { out.add(prefix + "- {}"); continue; }
+                    boolean first = true;
+                    for (Map.Entry<?,?> entry : map.entrySet()) {
+                        String key = String.valueOf(entry.getKey());
+                        Object child = entry.getValue();
+                        String head = first ? prefix + "- " : prefix + "  ";
+                        if (child instanceof Map<?,?> || child instanceof List<?>) {
+                            if ((child instanceof Map<?,?> m && m.isEmpty()) || (child instanceof List<?> l && l.isEmpty())) {
+                                out.add(head + key + ": " + serializedValue(child));
+                            } else {
+                                out.add(head + key + ":");
+                                renderYamlValue(out, indent + 4, child);
+                            }
+                        } else {
+                            out.add(head + key + ": " + serializedValue(child));
+                        }
+                        first = false;
+                    }
+                } else if (item instanceof List<?>) {
+                    out.add(prefix + "-");
+                    renderYamlValue(out, indent + 2, item);
+                } else {
+                    out.add(prefix + "- " + serializedValue(item));
+                }
+            }
+            return;
+        }
+        if (value instanceof Map<?,?> map) {
+            if (map.isEmpty()) { out.add(prefix + "{}"); return; }
+            for (Map.Entry<?,?> entry : map.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                Object child = entry.getValue();
+                if (child instanceof Map<?,?> || child instanceof List<?>) {
+                    if ((child instanceof Map<?,?> m && m.isEmpty()) || (child instanceof List<?> l && l.isEmpty())) {
+                        out.add(prefix + key + ": " + serializedValue(child));
+                    } else {
+                        out.add(prefix + key + ":");
+                        renderYamlValue(out, indent + 2, child);
+                    }
+                } else {
+                    out.add(prefix + key + ": " + serializedValue(child));
+                }
+            }
+            return;
+        }
+        out.add(prefix + serializedValue(value));
+    }
+
+    private static String serializedValue(Object value) {
+        Object normalized = normalizeValue(value);
+        if (normalized == null) return "null";
+        if (normalized instanceof Boolean || normalized instanceof Number) return String.valueOf(normalized);
+        if (normalized instanceof String text) return quoteFlowString(text);
+        if (normalized instanceof List<?> list) {
+            StringBuilder out = new StringBuilder("[");
+            for (int i = 0; i < list.size(); i++) {
+                if (i > 0) out.append(", ");
+                out.append(serializedValue(list.get(i)));
+            }
+            return out.append(']').toString();
+        }
+        if (normalized instanceof Map<?,?> map) {
+            StringBuilder out = new StringBuilder("{");
+            boolean first = true;
+            for (Map.Entry<?,?> entry : map.entrySet()) {
+                if (!first) out.append(", ");
+                first = false;
+                out.append(quoteFlowString(String.valueOf(entry.getKey()))).append(": ").append(serializedValue(entry.getValue()));
+            }
+            return out.append('}').toString();
+        }
+        return quoteFlowString(String.valueOf(normalized));
+    }
+
+    private static String quoteFlowString(String value) {
+        String text = String.valueOf(value == null ? "" : value);
+        StringBuilder out = new StringBuilder("\"");
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            switch (ch) {
+                case '\\' -> out.append("\\\\");
+                case '"' -> out.append("\\\"");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default -> {
+                    if (ch < 0x20) out.append(String.format("\\u%04x", (int)ch));
+                    else out.append(ch);
+                }
+            }
+        }
+        return out.append('"').toString();
+    }
+
+    private static String localized(String language, String en, String ko, String ja, String zh) {
+        return switch (normalizeConfigLanguage(language)) {
+            case "ko-KR" -> ko;
+            case "ja-JP" -> ja;
+            case "zh-CN" -> zh;
+            default -> en;
+        };
     }
 
     private record MigrationDiff(LinkedHashMap<String,Object> missingSettings,List<Map<String,Object>> changedDefaults){}

@@ -1,6 +1,20 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 for %%I in ("%~dp0..") do set "KWC_ROOT=%%~fI"
+
+if /I "%~1"=="--fast" (
+  set "KWC_SKIP_CLEAN=1"
+  if defined KWC_GRADLE_ARGS (set "KWC_GRADLE_ARGS=--build-cache !KWC_GRADLE_ARGS!") else set "KWC_GRADLE_ARGS=--build-cache"
+) else if not "%~1"=="" (
+  echo Usage: build-all.bat [--fast] 1>&2
+  exit /b 2
+)
+
+if not defined KWC_PATH_PREFLIGHT_DONE (
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%KWC_ROOT%\check-build-path.ps1" -Root "%KWC_ROOT%"
+  if errorlevel 1 exit /b 1
+  set "KWC_PATH_PREFLIGHT_DONE=1"
+)
 if defined KWC_GRADLE_USER_HOME (
   set "GRADLE_USER_HOME=%KWC_GRADLE_USER_HOME%"
 ) else if not defined GRADLE_USER_HOME (
@@ -22,13 +36,16 @@ if errorlevel 1 exit /b 1
 
 echo.
 echo [KWC Forge] Building all exact targets...
+
+set /a KWC_DONE=0
+set /a KWC_TOTAL=16
 for %%M in (1.18.2 1.19.2 1.19.4 1.20.1 1.20.2 1.20.4 1.20.6 1.21.1 1.21.3 1.21.4 1.21.5 1.21.8 1.21.10 1.21.11 26.1.2 26.2) do (
   call "%~dp0build-target.bat" %%M
   if errorlevel 1 exit /b 1
+  set /a KWC_DONE+=1
+  echo [KWC Forge] Progress: !KWC_DONE!/!KWC_TOTAL! completed.
 )
-
-echo.
-echo [KWC Forge] ALL TARGETS BUILT SUCCESSFULLY.
+echo [KWC Forge] ALL 16 TARGETS BUILT SUCCESSFULLY.
 exit /b 0
 
 :checkJdk

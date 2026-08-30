@@ -1,0 +1,25 @@
+digraph G {
+
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=TB;
+  ui [label="Web / game client\nselect Reply", fillcolor="#E0F2FE"];
+  api [label="Server receives reply target ID", fillcolor="#FEF3C7"];
+  auth [shape=diamond,label="DM: target is in same thread?\nGroup: target is in same room\nand sender is a current member?", fillcolor="#FEF3C7"];
+  reject [label="Reject\nreply_target_not_found / permission error", fillcolor="#FEE2E2"];
+  canonical [label="Load original stored message\nderive canonical sender + preview", fillcolor="#DCFCE7"];
+  store [label="Persist reply metadata\nlocal reply ID + sender + preview\nDM also stores stable relay ID", fillcolor="#DCFCE7"];
+  remote [label="Cross-server DM envelope\nreplyToRelayId + sender/preview snapshot\n(no foreign local DB ID)", fillcolor="#FCE7F3"];
+  resolve [label="Destination resolves stable relay ID\nto its own local message ID when available", fillcolor="#DCFCE7"];
+  render [label="Render quote + jump to original\nwhen a local target is available", fillcolor="#E0F2FE"];
+  ui -> api -> auth;
+  auth -> reject [label="no"];
+  auth -> canonical [label="yes"];
+  canonical -> store;
+  store -> render [label="local"];
+  store -> remote [label="cross-server DM"];
+  remote -> resolve -> render;
+
+}

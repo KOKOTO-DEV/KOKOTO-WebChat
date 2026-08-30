@@ -24,7 +24,7 @@ https://map.example.com/chat
 
 ## BMWC から KWC へ移行する際の HTTPS path 変更
 
-BlueMapWebChat の標準 HTTPS 構成では、通常 public `/bmwc/api` を内部 `:8899/api` へ、public `/bmwc/chat` を内部 standalone `/chat` へ proxy していました。KOKOTO WebChat 5.0.0 はこの構成をそのまま使用しません。migration 時に BMWC の標準 public path 値は KWC の新しい自動値へ正規化されます。
+BlueMapWebChat の標準 HTTPS 構成では、通常 public `/bmwc/api` を内部 `:8899/api` へ、public `/bmwc/chat` を内部 standalone `/chat` へ proxy していました。KOKOTO WebChat 5.0.0 以降はこの構成をそのまま使用しません。migration 時に BMWC の標準 public path 値は KWC の新しい自動値へ正規化されます。
 
 ```text
 BMWC
@@ -32,7 +32,7 @@ BMWC
   Standalone:  https://map.example.com/bmwc/chat
   API:         https://map.example.com/bmwc/api
 
-KWC 5.0.0
+KWC 5.0.0 以降
   BlueMap:     https://map.example.com/
   Standalone:  https://map.example.com/chat
   API:         https://map.example.com/chat/api
@@ -126,6 +126,34 @@ map.example.com {
 `http.public-prefix: ""`、`frontend.standalone.path: "/"` とし、adapter/frontend の `api-base-url` は通常空のままにします。公開 URL は KWC `/`、KWC API `/api`、BlueMap `/chat/` です。
 
 
+### BlueMap + squaremap + standalone を1つのドメインで使用
+
+3つの frontend をすべて有効にする場合、1つの map を `/` に置き、もう1つの map には別 prefix を割り当てます。例えば squaremap が `127.0.0.1:8080`、BlueMap が `127.0.0.1:8100`、KWC が `127.0.0.1:8899` の場合:
+
+```caddyfile
+map.example.com {
+  encode zstd gzip
+
+  @chat path /chat /chat/*
+  handle @chat {
+    uri strip_prefix /chat
+    reverse_proxy 127.0.0.1:8899
+  }
+
+  @bluemap path /bluemap /bluemap/*
+  handle @bluemap {
+    uri strip_prefix /bluemap
+    reverse_proxy 127.0.0.1:8100
+  }
+
+  handle {
+    reverse_proxy 127.0.0.1:8080
+  }
+}
+```
+
+この構成では squaremap が `/`、BlueMap が `/bluemap/`、standalone KWC が `/chat`、KWC API が `/chat/api` になります。BlueMap を root にする場合は root map と prefix 付き map handler を入れ替えてください。
+
 ## 3. KOKOTO WebChat config.yml
 
 ```yaml
@@ -161,9 +189,13 @@ ui:
 
 `map.example.com` は実際のドメインに置き換えてください。
 
-スクロールの安定性のため、メディアプレビューの max-height 制限は有効にしておくことを推奨します。推奨値は `640-720` です。`0` は無制限で、メディアが多い virtual scroll ではスクロール位置が跳ねる場合があります。
+スクロールの安定性のため、メディアプレビューの max-height 制限は有効にしておくことを推奨します。推奨値は `640-720` です。`0` は明示的なピクセル上限だけを解除し、ブラウザーの viewport 基準の安全上限は引き続き適用されるため、完全な無制限高さではありません。
 
-## 4. ファイアウォール推奨設定
+## 4. BlueMap
+
+BlueMap は既存の Web port（一般的には `8100`）をそのまま使用できます。公開環境では Internet に Caddy の `80/tcp` と `443/tcp` だけを公開し、BlueMap と KOKOTO WebChat の内部 port は外部へ直接公開しない構成を推奨します。
+
+## 5. ファイアウォール推奨設定
 
 ```text
 インターネットから許可: 80/tcp, 443/tcp
@@ -172,7 +204,7 @@ ui:
 
 Caddy と Minecraft が同じホストにある場合、KOKOTO WebChat API は `127.0.0.1` のみに bind するのがおすすめです。
 
-## 5. 適用手順
+## 6. 適用手順
 
 1. ドメインの A/AAAA レコードをサーバー IP に向けます。
 2. ファイアウォールで `80/tcp` と `443/tcp` を許可します。
@@ -185,7 +217,7 @@ Caddy と Minecraft が同じホストにある場合、KOKOTO WebChat API は `
 9. `/kchat reload` は BlueMap adapter 更新後に `bluemap reload light` を自動要求します。自動実行に失敗した場合は `/bluemap reload light` を手動実行してください。
 10. ブラウザーで `https://map.example.com/` または `https://map.example.com/chat` を開きます。
 
-## 6. HTTP ページ + HTTPS API の注意
+## 7. HTTP ページ + HTTPS API の注意
 
 BlueMap ページを HTTP のまま配信し、チャット API だけ HTTPS にする構成は完全なセキュリティ境界ではありません。公開サーバーでは BlueMap と KOKOTO WebChat の両方を同じ HTTPS origin で配信してください。
 
@@ -196,3 +228,11 @@ nginx を使う場合は `docs/NGINX_HTTPS_JA.md` と `examples/nginx/kokoto-web
 ### URL 設定の解決規則
 
 HTTPS 公開 API の基準は `http.public-prefix + http.path-prefix` で、既定値は `/chat/api` です。adapter と standalone の `api-base-url` は独立した任意の override で、通常は空のままにします。upload/emoji が空なら共通の公開 API に `/uploads`、`/emojis` を追加します。絶対パス、相対値、完全な `https://...` URL は別の公開 URL が必要な場合にだけ使います。
+
+## 公式参照資料
+
+- [Caddy `reverse_proxy`](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+- [Caddy reverse-proxy quick start](https://caddyserver.com/docs/quick-starts/reverse-proxy)
+- [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
+
+KWC 固有の path-prefix、trusted proxy、SSE、upload、authentication の動作は、これらの外部資料ではなく KWC 5.1.0 のソースと設定を基準にしてください。

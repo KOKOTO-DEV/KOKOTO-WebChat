@@ -1,13 +1,13 @@
-# KOKOTO WebChat 5.0.0 Complete User and Operations Manual
+# KOKOTO WebChat 5.1.0 Complete User and Operations Manual
 
-> **5.0.0 operations:** Web Admin **Filter** manages shared public/group/optional-DM block/mask/replace rules and no-send testing; **Settings** exposes live-safe guest/CAPTCHA, session, moderation, upload, and filter values. `/kchat filter` and `/kchat settings` provide game-side controls. Session lifetime changes recalculate existing affected sessions from their creation time without resurrecting already-expired sessions. `upload.filename-mode: original` preserves safe Unicode original names for new uploads with collision suffixes.
+> **5.1.0 operations:** Web Admin **Filter** manages shared public/group/optional-DM block/mask/replace rules and no-send testing; **Settings** exposes only the supported live-safe guest/CAPTCHA, session, profile, administrator-alert, upload, and content-filter values. The five moderation policy switches remain `config.yml`-only and are not exposed by Web Admin. `/kchat filter` and `/kchat settings` provide game-side controls. Session lifetime changes recalculate existing affected sessions from their creation time without resurrecting already-expired sessions. `upload.filename-mode: original` preserves safe Unicode original names for new uploads with collision suffixes.
 
 
-This manual describes all KOKOTO WebChat 5.0.0 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION_EN.md`. For relay protocol details, see `SERVER_RELAY_EN.md`. For HTTPS deployment, also see `CADDY_HTTPS_EN.md` and `NGINX_HTTPS_EN.md`.
+This manual describes all KOKOTO WebChat 5.1.0 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION_EN.md`. For relay protocol details, see `SERVER_RELAY_EN.md`. For HTTPS deployment, also see `CADDY_HTTPS_EN.md` and `NGINX_HTTPS_EN.md`.
 
 ## 1. Overview
 
-KOKOTO WebChat connects Minecraft server chat to a browser-based chat interface. Version 5.0.0 provides Bukkit/Paper/Spigot plus exact-target Fabric 1.18.2–26.2, NeoForge 1.20.2–26.2, and Forge 1.18.2–26.2 builds.
+KOKOTO WebChat connects Minecraft server chat to a browser-based chat interface. Version 5.1.0 provides Bukkit/Paper/Spigot plus exact-target Fabric 1.18.2–26.2, NeoForge 1.20.2–26.2, and Forge 1.18.2–26.2 builds.
 
 Supported deployment and feature areas:
 
@@ -29,7 +29,7 @@ Required:
 - A Java runtime supported by that Minecraft/server target. The Bukkit artifact is compiled for Java 17. Fabric/NeoForge/Forge exact-target helpers select JDK 17, 21, or 25 according to the Minecraft target; 26.x targets use Java 25.
 - Permission to install the platform JAR in `plugins/` (Bukkit family) or `mods/` (Fabric/NeoForge/Forge)
 
-KOKOTO WebChat 5.0.0 declares `api-version: '1.18'` and compiles against `spigot-api:1.18.2-R0.1-SNAPSHOT`. Minecraft 1.17 and older are not claimed by this release.
+KOKOTO WebChat 5.1.0 declares `api-version: '1.18'` and compiles against `spigot-api:1.18.2-R0.1-SNAPSHOT`. Minecraft 1.17 and older are not claimed by this release.
 
 Optional integrations:
 
@@ -53,7 +53,7 @@ For public servers, do not expose port `8899` directly to the Internet. Bind KOK
 Safe initial state:
 
 ```yaml
-config-version: "5.0.0"
+config-version: "5.1.0"
 enabled: false
 ```
 
@@ -61,15 +61,17 @@ While disabled, the web service, chat forwarding, and cleanup tasks do not start
 
 ## 4. Configuration Upgrade and Migration Fragment
 
+![Configuration language/migration flow](assets/config-language-migration.gif)
+
 KOKOTO WebChat preserves existing configured values by rebuilding an active-migration config from the current bundled `config.yml` and overlaying those values. Old comments/order/whitespace/indentation are discarded; current bundled comments and layout are authoritative.
 
 The complete current reference is always written as:
 
 ```text
-<KWC data dir>/config-reference-5.0.0.yml
+<KWC data dir>/config-reference-5.1.0.yml
 ```
 
-It is an exact administrator-readable copy of the bundled `config.yml`, including comments and canonical double-quoted string scalars. It is not the migration template. `/kchat reload` validates YAML before any live service is stopped; invalid YAML leaves the previous running configuration active.
+It is an administrator-readable copy of the current default rendered in the same built-in language selected by `ui.language` (`en-US`, `ko-KR`, `ja-JP`, or `zh-CN`). Unsupported/custom UI languages use the English configuration presentation. The reference is never migration input. `/kchat reload` validates YAML before any live service is stopped; invalid YAML leaves the previous running configuration active.
 
 When `config-version` is missing or differs from the running plugin version, KWC performs one migration pass on the real `config.yml`:
 
@@ -78,37 +80,39 @@ When `config-version` is missing or differs from the running plugin version, KWC
 - Old comments, ordering, whitespace, indentation, and duplicate textual copies are not carried forward.
 - If the old version marker is not `*_auto_migration`, the original `config.yml` is backed up before a real version upgrade.
 - Existing defaults that changed in the new version are **not** silently replaced; they stay review items.
-- The real file is marked `config-version: "5.0.0_auto_migration"`.
+- The real file is marked `config-version: "5.1.0_auto_migration"`.
 
 KWC then writes:
 
 ```text
-<KWC data dir>/config-migration-5.0.0.yml
+<KWC data dir>/config-migration-5.1.0.yml
 ```
 
-This is a **review report**, not a copy/paste file for missing settings. It records the automatic insertion count, changed defaults that still need an operator decision, the exact final confirmation marker, and a comment-only current-vs-reference text diff. Because missing settings and their bundled comments are already inserted into the real config, they no longer appear as a large reference-only block at the top of the diff.
+This is a **review report**, not a copy/paste file for missing settings. It records the automatic insertion count, changed defaults that still need an operator decision, the exact final confirmation marker, and a semantic current-vs-reference setting diff. Difference blocks compare parsed YAML path/value pairs; comments, blank lines, indentation, quoting style, line positions, and key order are ignored. Each Difference block prints only that setting's YAML value block without duplicating its explanatory comments, while list/map values remain multi-line. Because missing settings and their bundled comments are already inserted into the real config, they no longer appear as a large reference-only block at the top of the diff.
 
 Decision rules:
 
 | Physical `config.yml` state | Behavior |
 |---|---|
-| `config-version` missing or older/different | Perform the migration, write `5.0.0_auto_migration`, and generate/update the migration report |
-| `config-version: "5.0.0_auto_migration"` | Automatic migration enabled; rebuild from the latest same-version bundled `config.yml`, overlay current values, and refresh the migration report/diff |
-| `config-version: "5.0.0"` | Automatic migration disabled for the current version; skip same-version migration/backfill and remove stale same-version migration guidance |
+| `config-version` missing or older/different | Perform the migration, write `5.1.0_auto_migration`, and generate/update the migration report |
+| `config-version: "5.1.0_auto_migration"` | Automatic migration enabled; rebuild from the latest same-version bundled `config.yml`, overlay current values, and refresh the migration report/diff |
+| `config-version: "5.1.0"` | Automatic migration disabled for the current version; skip same-version migration/backfill and remove stale same-version migration guidance |
 
 The marker controls migration behavior rather than review status:
 
 ```yaml
 # Keep same-version automatic migration enabled, even after you have reviewed the config
-config-version: "5.0.0_auto_migration"
+config-version: "5.1.0_auto_migration"
 
 # Disable same-version automatic migration
-config-version: "5.0.0"
+config-version: "5.1.0"
 ```
 
 A later real plugin-version upgrade enters the new version's `_auto_migration` state again.
 
 ## 5. Choose a Deployment Mode
+
+![KWC deployment modes](assets/deployment-modes.svg)
 
 ### 5.1 BlueMap Addon
 
@@ -141,7 +145,7 @@ KWC reads `settings.web-directory.path` from Pl3xMap's current `config.yml` (wit
 
 ### 5.3 LiveAtlas embedded mode
 
-LiveAtlas is a static frontend that can display Dynmap, squaremap, Pl3xMap, Overviewer, or multiple servers. On Bukkit, Fabric, or NeoForge:
+LiveAtlas is a static frontend that can display Dynmap, squaremap, Pl3xMap, Overviewer, or multiple servers. On Bukkit, Fabric, NeoForge, or Forge:
 
 ```yaml
 adapters:
@@ -405,7 +409,7 @@ Normal text and URL-oriented messages can use different limits. `0` means unlimi
 
 ### 8.5 Message Tokens
 
-KOKOTO WebChat 5.0.0 can replace administrator-configured `:alias:` tokens before messages are stored or relayed. The built-in alias names are English-only defaults, but aliases can be replaced or extended in any language.
+KOKOTO WebChat 5.1.0 can replace administrator-configured `:alias:` tokens before messages are stored or relayed. The built-in alias names are English-only defaults, but aliases can be replaced or extended in any language.
 
 Default controls:
 
@@ -568,8 +572,8 @@ security:
   login-fail-limit: 5
   login-fail-window-seconds: 300
   login-lock-seconds: 600
-  max-sse-connections-per-ip: 5
-  max-sse-connections-total: 200
+  max-sse-connections-per-ip: 10
+  max-sse-connections-total: 500
 ```
 
 These settings provide temporary login lockout and per-IP/total SSE connection limits. A value of `0` disables the corresponding limit.
@@ -694,6 +698,13 @@ URLs keep their open-link action. Only non-URL message parts suggest the reply c
 
 ## 15. Direct Messages
 
+![DM/group Reply validation flow](assets/private-reply-flow.svg)
+
+In Minecraft, DM history/live notifications are interactive: click the DM participant name to place the existing `/kchat dm <player> ` command in the input box, and click the message body to place `/kchat reply dm-<internal-id> `. The internal ID is server-side only; KWC verifies that the player is actually a participant before sending. URL portions keep their normal open-URL action. When the stored DM is a Reply, live receive/send echo and history use the same configured `reply.game-preview` / `reply.game-prefix` presentation as public chat. A DM sent from the Web is also echoed to the linked sender's Minecraft chat when that player is online.
+
+On the Web, selecting Reply on a DM stores a real relationship to the original message. KWC validates that the target is in the same thread, stores a canonical sender/preview snapshot, displays the reference, and can jump to the local original. The metadata survives restart. Cross-server replies use a stable relay message ID instead of another server’s local numeric database ID.
+
+
 DM is disabled by default.
 
 ```yaml
@@ -750,6 +761,13 @@ KOKOTO WebChat does not replace a normal same-server Minecraft whisper. It recor
 Normal successful delivery is not labeled. `Sending` appears only while a local send request is pending, and `Failed · Retry` appears only when delivery cannot be confirmed. These compact states are displayed beside the message timestamp. Read status is shown beside the timestamp for every DM message: `Unread` means the single recipient has not read the message yet, and `✓` means the recipient has read it. Group chat remains count-based. For cross-server DMs, the recipient server returns the read acknowledgement through the authenticated relay so the same status is reflected on the message origin. The latest acknowledgement is idempotent and is re-sent when the conversation is viewed, allowing a transient relay or HTTP failure to repair on a later view.
 
 ## 16. Group Chat
+
+In Minecraft, group messages are interactive: click the group/sender area to place the existing `/kchat group <room> ` command in the input box, and click the message body to prepare a private reply target for that group message. KWC re-checks current group membership before sending, and URL portions keep their open-URL action. Reply-bearing group messages use the same configured `reply.game-preview` / `reply.game-prefix` presentation as public chat for live receive/send echo and history.
+
+On the Web, group Reply is stored as metadata as well. KWC only accepts a target from the same room while the sender is a current member, derives the sender/preview from the stored original, preserves it across restart, and lets the browser jump to the local original when available.
+
+Each room has a **member join/leave notices** option in Room settings. When enabled, actual membership changes are persisted as `member_join` / `member_leave` events and are visible in group history and as live game notices to online members. Joining or accepting an invite creates an entry event; leaving, being kicked, or being banned creates an exit event. Closing the group-chat window, switching rooms, or hiding a room does **not** leave the room and creates no exit event. These membership events are informational and cannot be used as Reply targets.
+
 
 ```yaml
 group-chat:
@@ -1159,79 +1177,34 @@ discordsrv:
     preview-max-length: 120
 ```
 
-## 26. Multi-Server Public Chat Relay
+## 26. Multi-Server Relay
 
-`peers` is not a persistent connection/session list. It defines the HTTP destinations this server sends relay messages to; the same `id`/`secret` entries are used for incoming authentication. Configure both sides for two-way relay.
+KOKOTO WebChat 5.1.0 uses **Relay Protocol v2** for public chat and cross-server 1:1 DM/read receipts. Group-chat rooms remain local.
 
-Every server needs a unique `server-id`.
+Relay v2 is configured as `groups -> peers`. Each group has one shared secret, and its peer entries contain only server ID, API URL and enabled state. For first setup, use `shared-secret: ""` on one server, start/reload KWC, then copy the generated value from that server's `config.yml` to the other servers in the same group. Existing non-empty secrets are never regenerated; a non-empty manual secret shorter than 32 characters remains invalid. Both servers must list each other in the same group, and the same peer ID cannot be registered in multiple local groups.
 
 ```yaml
 server-relay:
   enabled: true
   server-id: "server1"
-  server-name: "Server1"
-  shared-secret: "a-long-shared-secret"
-  connect-timeout-seconds: 5
-  request-timeout-seconds: 10
-  max-clock-skew-seconds: 60
-  dedupe-seconds: 300
-  max-hops: 8
-  forward-received-public-chat: true
-  sources:
-    game: true
-    web: true
-    guest: true
-    discord: false
-    system: false
-  delivery:
-    web: true
-    game: true
-  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-  peers:
-    - id: "server2"
-      url: "https://server2.example.com/chat/api"
-      secret: ""
-      enabled: true
+  groups:
+    - id: "main"
+      shared-secret: ""
+      forwarding:
+        enabled: false
+      peers:
+        - id: "server2"
+          url: "https://server2.example.com/chat/api"
+          enabled: true
 ```
 
-`forward-received-public-chat` controls public-chat fan-out after a peer receives a message. `true` supports hub/chain topologies; `false` restricts public chat to direct peer links. Cross-server DMs and read receipts keep their existing routing behavior.
+Direct relay uses 5.0.0-style request-by-request operation: `/relay/v2/message` independently authenticates and carries AES-256-GCM encrypted payloads using directional keys derived with HKDF-SHA256. `/relay/v2/handshake` is a stateless diagnostic identity/health probe only and never controls direct routing. Direct HTTP is allowed with a warning. Forwarding is same-group and peer-specific: an http:// peer is excluded only from forwarding through that peer, while other https:// peers remain eligible.
 
-Actual request URL:
+Relay v2 is hop-by-hop authenticated encryption, not E2EE. A forwarding server is a trusted participant that decrypts and re-encrypts the payload for the next hop. If a group secret is exposed, rotate that secret on every member of the group.
 
-```text
-https://server2.example.com/chat/api/relay/receive
-```
+The first 5.0.0 → 5.1.0 migration disables relay instead of guessing groups from the old flat topology. Define v2 groups explicitly, then set `server-relay.enabled: true` and run `/kchat reload`.
 
-Rules:
-
-- The receiving `peers[].id` must equal the sender's `server-id`
-- Shared-secret deployments use the same secret on connected servers
-- A non-empty peer secret overrides the shared secret
-- Requests are rejected when server clocks differ beyond the configured skew
-- There is no persistent offline delivery queue
-
-Display behavior:
-
-- Local-origin messages omit a server label
-- Remote-origin messages show a colored web badge and a game `[server-name]` label
-
-Expected log:
-
-```text
-Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
-```
-
-Errors:
-
-- `403 unknown_peer`: sender ID is not an active peer on the receiver
-
-After 3 `403 unknown_peer` responses without an intervening success from the same destination, KWC places that destination in a 60-second backoff. Relay messages for that destination are skipped during the interval and no periodic probe is sent. The first actual relay message after 60 seconds retries automatically; another failure starts a new 60-second interval from that failure, while a successful response immediately restores normal delivery. The receiver rejects an unknown sender before applying the direct request. Connection-refused, timeout, and similar transport failures use the same 3-strike/60-second backoff so an offline peer does not produce a warning for every forwarded message.
-- `401 bad_signature`: secret/signature mismatch
-- `401 expired_request`: server clock skew
-- `404 relay_disabled`: relay disabled or reverse proxy points to the wrong path/instance
-- `426 unsupported_protocol`: incompatible relay protocol version
-
-See `SERVER_RELAY_EN.md` for topologies and troubleshooting.
+See `docs/SERVER_RELAY_EN.md` for the full protocol and operational reference.
 
 ## 27. Web Console Command Panel
 
@@ -1249,6 +1222,8 @@ commands:
   max-length: 0
   broadcast-result-to-web-chat: false
 ```
+
+When `broadcast-result-to-web-chat: true`, the execution notice is posted to public web chat and delivered to online Minecraft players. Existing console/audit logging is unchanged and is not duplicated by this player delivery path.
 
 `allow-all: true` allows arbitrary console commands from a web account and is highly sensitive. Do not enable it without HTTPS, administrator IP restrictions, strong credentials, and a restrictive minimum role. Prefer configured presets.
 
@@ -1284,6 +1259,8 @@ moderation:
   default-mute-minutes: 60
 ```
 
+These five `moderation.*` policy keys are **config.yml-only**. They are intentionally not exposed as editable settings in Web Admin; change them in `config.yml` and reload KWC. They govern whether the web moderation surface is available and what moderators may do.
+
 ### 28.1 Private-Chat Metadata Super Administrators
 
 ```yaml
@@ -1292,17 +1269,9 @@ private-chat-super-admins:
   - "00000000-0000-0000-0000-000000000000"
 ```
 
-The metadata view shows room/thread titles and participants, message counts, approximate storage usage, retention state, cleanup previews, and metadata-management actions.
+The metadata view can show DM/group titles and participants, message counts, approximate storage usage, retention state, cleanup previews, locks/exclusions, and other metadata-management actions.
 
-To allow read-only DM content review, enable the separate switch:
-
-```yaml
-direct-message:
-  admin-audit:
-    enabled: true
-```
-
-Only accounts that satisfy both `private-chat-super-admins` and this switch can open an administrator DM thread. Normal ADMIN/MODERATOR roles are not enough. The audit view cannot send messages, hide participant messages, or mark them read. Every page load writes an `admin.dm-audit-read` record to the audit log without copying message bodies into the log.
+`direct-message.admin-audit.enabled` is a default-off, read-only DM body-audit switch. It grants content access only to exact accounts also listed in `private-chat-super-admins`. The audit view cannot send, reply, hide messages, or change read state, and each page read is logged as `admin.dm-audit-read`. `group-chat.admin-audit.enabled` remains an independent read-only group-body audit switch.
 
 ### 28.2 Audit Log
 
@@ -1545,15 +1514,17 @@ Requires a server restart:
 
 ### Relay Returns 403
 
-- Compare receiver `peers[].id` with sender `server-id`
-- Reload the receiving server too
-- Check the active-peer log
+- Confirm both servers list each other in the same relay group
+- Confirm the peer ID exactly matches the remote `server-id`
+- Direct relay authenticates each request independently; confirm reciprocal same-group peer configuration and the same shared secret. For forwarding, the incoming configured peer and selected next-hop peer must both use HTTPS
+- Reload both sides after changing relay configuration
 
 ### Relay Returns 401
 
-- Compare the actual effective secrets
-- Confirm the proxy does not modify body or HMAC headers
-- Check server clock synchronization
+- Compare the group IDs and group shared secrets on both servers
+- Confirm both sides use the exact same group secret. For first setup, generate it from an empty value on one server and copy it to the others; non-empty manual secrets must be at least 32 characters
+- Confirm the proxy does not modify signed relay headers/body
+- Check server clock synchronization and replay/nonce diagnostics
 
 ### Discord Prefixes Are Duplicated
 
@@ -1597,3 +1568,7 @@ Set `group-chat.admin-audit.enabled: true` and list the exact Minecraft name or 
 ## SimpleNicks-Bero integration
 
 On Bukkit/Paper-family servers, use `player-display.mode: "display-name"` to show the nickname rendered by [SimpleNicks-Bero](https://github.com/KOKOTO-DEV/SimpleNicks-Bero). The linked username/UUID remains KWC's real account identity. See `SIMPLENICKS_BERO_EN.md`; use [upstream SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks) for normal plugin installation and operation.
+
+## References
+
+See [REFERENCES.md](REFERENCES.md) for primary protocol and official integration references.

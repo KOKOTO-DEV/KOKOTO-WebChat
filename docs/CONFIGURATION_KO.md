@@ -60,11 +60,13 @@ Web Admin에는 **Filter**와 **Settings** 탭이 추가됩니다. Filter에서�
 
 ## 설정 버전과 마이그레이션 설정 조각
 
-`config-version`은 자동 migration 동작을 선택하는 표식입니다. migration의 **유일한 템플릿은 실행 중인 플러그인에 번들된 `config.yml`**입니다. `config-reference-<plugin-version>.yml`은 관리자가 전체 기본 설정을 확인하도록 번들 기본 config를 그대로 복사한 파일일 뿐이며, migration 원본으로 사용하지 않습니다.
+`config-version`은 자동 migration 동작을 선택하는 표식입니다. 재구성에는 `ui.language`가 선택한 **현재 버전의 번들 표시 템플릿**을 사용합니다. `en-US`는 `config.yml`, `ko-KR`/`ja-JP`/`zh-CN`은 각각의 번들 지역화 템플릿을 사용합니다. `config-reference-<plugin-version>.yml`은 선택된 템플릿으로 렌더링한 관리자용 기본 설정이며 migration 입력으로 사용하지 않습니다. 기본값의 의미 비교는 canonical 영문 `config.yml`을 기준으로 하고 네 내장 템플릿은 파싱된 값이 완전히 같아야 합니다.
 
-`config-version`이 없거나 다른 버전이면 기존 설정값을 읽은 뒤 새 번들 기본 `config.yml`을 만들고 그 위에 기존 사용자 값을 덮어씁니다. 이전 표식에 `*_auto_migration`이 없었다면 사용자가 한 번 고정한 설정으로 보고 재구성 전에 기존 `config.yml` 전체를 백업합니다. 기존 주석·순서·공백·들여쓰기는 가져오지 않고 최신 번들 주석/레이아웃을 사용하며, 사용자 설정값은 보존합니다. 제거된 설정은 다시 복사하지 않습니다. 결과는 `<plugin-version>_auto_migration`으로 표시합니다. 이 표식이 남아 있으면 startup/reload마다 같은 방식으로 최신 번들 기본 config를 다시 뼈대로 만들고 현재 값을 덮어써서 새 설정과 최신 주석/레이아웃을 자동 반영합니다. 정확한 `<plugin-version>`은 현재 버전 설정을 고정했다는 뜻이므로 같은 버전 startup/reload에서는 `config.yml`을 수정하지 않습니다.
+`config-version`이 없거나 다른 버전이면 기존 설정값을 읽은 뒤 새 번들 기본 `config.yml`을 만들고 그 위에 기존 사용자 값을 덮어씁니다. 이전 표식에 `*_auto_migration`이 없었다면 사용자가 한 번 고정한 설정으로 보고 재구성 전에 기존 `config.yml` 전체를 백업합니다. 기존 주석·순서·공백·들여쓰기는 가져오지 않고 최신 번들 주석/레이아웃을 사용하며, 사용자 설정값은 보존합니다. 제거된 설정은 다시 복사하지 않습니다. 결과는 `<plugin-version>_auto_migration`으로 표시합니다. 이 표식이 남아 있으면 startup/reload마다 같은 방식으로 최신 번들 기본 config를 다시 뼈대로 만들고 현재 값을 덮어써서 새 설정과 최신 주석/레이아웃을 자동 반영합니다. 정확한 `<plugin-version>`은 같은 버전의 자동 **설정** 재구성을 끕니다. 단, 고정 상태에서도 `ui.language` 표시 언어가 바뀌면 실제 설정값을 모두 overlay해 보존한 채 선택된 내장 템플릿으로 주석/레이아웃만 다시 구성할 수 있습니다.
 
 `config-migration-<plugin-version>.yml`은 검토/diff 보고서입니다. 이전 버전의 `config-reference-*`, `config-migration-*`, `config-upgrade-*` 생성 파일은 자동 삭제합니다. 실제 버전 업그레이드의 기본값 변경 판정에 필요한 JAR 내부 `config-baselines/*`만 유지합니다.
+5.1.0에서는 `ui.language`가 Web UI뿐 아니라 KWC가 `config.yml`을 재구성할 때 사용할 주석/표현 언어, `config-reference-5.1.0.yml`, migration/difference 보고서 언어도 선택합니다. 번들 template은 `en-US`, `ko-KR`, `ja-JP`, `zh-CN`이며 언어를 바꿔도 주석/레이아웃만 바뀌고 Relay group/secret/peer를 포함한 기존의 파싱된 운영 설정값은 그대로 overlay해 보존합니다. Difference 판정은 주석, 공백, 들여쓰기, 따옴표 방식, 줄번호, 키 순서가 아니라 파싱된 YAML setting path와 value만 비교합니다.
+
 ## 전체 활성화 스위치
 
 새로 생성된 config는 최상단 `enabled: false` 상태입니다. 이 상태에서는 KOKOTO WebChat이 config를 생성/로드하기만 하고 `/kchat reload`만 계속 사용할 수 있으며, 웹/채팅 서비스, 리스너, Discord 연동, DM 저장소, 애드온 설치, 업로드/이모지 초기화, 정리 작업을 시작하지 않습니다. 기존 config에 이 키가 없으면 업그레이드 호환성을 위해 활성 상태로 처리합니다. 저장 방식, 보관 기간, 업로드, 미리보기, 인증, 외부 공개 설정을 확인한 뒤 `enabled: true`로 변경하세요.
@@ -76,8 +78,7 @@ update-check:
   enabled: true
 ```
 
-활성화하면 KOKOTO WebChat이 Bukkit, Fabric, NeoForge, Forge 모두에서 백그라운드로 Modrinth의 최신 정식 버전을 확인합니다. KWC `kokoto-webchat` 프로젝트를 먼저 조회하고 배포 전환 기간에는 기존 `bluemapwebchat` 프로젝트로 fallback합니다. OP 또는 `kwc.update.notify` 권한 보유자가 로그인하면 제한된 주기로 다시 확인하므로 새 릴리스 감지가 정기 확인 결과에만 의존하지 않습니다. 5.0.0의 CurseForge 알림 링크는 새 KWC listing이 실제 활성화되기 전까지 기존 BMWC bridge 페이지를 사용합니다. 확인 주기, 릴리스 채널, 접속 알림 지연은 내부 기본값으로 유지합니다. 업데이트 조회 실패는 서버 시작을 막지 않으며 경고 로그로 기록됩니다.
-
+활성화하면 KOKOTO WebChat이 Bukkit, Fabric, NeoForge, Forge 모두에서 백그라운드로 Modrinth의 최신 정식 버전을 확인합니다. 현재 프로젝트 주소 전환 기간에는 canonical KWC `kokoto-webchat`을 먼저 조회하고 사용할 수 없으면 기존 `bluemapwebchat`으로 fallback합니다. BMWC도 전환 완료 전까지 실제 업데이트 소스로 사용하므로 더 최신 버전이 있으면 정상 알림을 표시하며, 두 소스가 모두 실패한 경우에만 경고합니다. OP 또는 `kwc.update.notify` 권한 보유자가 로그인하면 제한된 주기로 다시 확인하므로 새 릴리스 감지가 정기 확인 결과에만 의존하지 않습니다.
 ## 배포 모드
 
 ### BlueMap 애드온
@@ -160,7 +161,7 @@ emoji:
 
 ## 채팅 기록 저장
 
-채팅 기록 보관은 `chat.history-storage`로 `memory`, `jsonl`, `sqlite` 중 하나를 고르고, `chat.history-size`와 `chat.history-retention-days`를 세 모드가 공통으로 사용합니다. `0`은 각각 개수/기간 제한 없음입니다. 새로 생성된 config는 최상단 `enabled: false` 상태이므로, 이 값들을 검토하고 `enabled: true`로 바꾸기 전까지 정리 작업이 실행되지 않습니다. 서버 정책상 자동 정리가 필요하면 `30`, `90` 같은 양수 보관일을 설정하세요. 업로드와 외부 미디어 캐시 보관 설정도 같은 방식으로 동작합니다. `chat.history-file`은 JSONL에서만, `chat.history-sqlite-file`은 SQLite에서만 사용됩니다.
+채팅 기록 보관은 `chat.history-storage`로 `memory`, `jsonl`, `sqlite` 중 하나를 고르고, `chat.history-size`와 `chat.history-retention-days`를 세 모드가 공통으로 사용합니다. `0`은 각각 개수/기간 제한 없음입니다. 새로 생성된 config는 최상단 `enabled: false` 상태이므로, 이 값들을 검토하고 `enabled: true`로 바꾸기 전까지 정리 작업이 실행되지 않습니다. 서버 정책상 자동 정리가 필요하면 `30`, `90` 같은 양수 보관일을 설정하세요. 업로드와 외부 미디어 캐시 보관 설정도 같은 방식으로 동작합니다. `chat.history-file`은 JSONL에서만, `chat.history-sqlite-file`은 SQLite에서만 사용됩니다. `chat.history-sqlite-migrate-jsonl: true`이고 SQLite DB가 비어 있으면 기존 `chat.history-file`을 한 번 가져옵니다. 수동 편집, 대규모 정리, 마이그레이션 전에는 `history.db`를 정상적으로 백업하세요.
 
 
 ## 메시지 토큰
@@ -195,9 +196,11 @@ message-tokens:
 
 ```yaml
 message-tokens:
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br, next]
   custom:
     separator:
-      aliases: [separator, divider]
+      aliases: [separator, divider, line]
       replacement: "────────────"
 ```
 
@@ -219,7 +222,7 @@ direct-message:
 
 `group-chat.admin-audit.enabled`는 4.6.3에서 추가된 별도의 기본 OFF 그룹 본문 접근 스위치입니다. 이 값을 켜도 계정이 `private-chat-super-admins`에 함께 지정되어 있어야 합니다. 관리자 화면은 읽기 전용이며 방 참여 권한이 없어도 열 수 있지만 실제로 방에 참여하지 않고 읽음 상태도 변경하지 않습니다. 각 페이지 열람은 본문을 감사 로그에 복사하지 않은 채 `admin.group-audit-read`로 기록됩니다.
 
-`direct-message.admin-audit.enabled`는 기본값이 꺼진 별도 본문 접근 스위치입니다. 이 값을 켜도 `private-chat-super-admins`에 함께 지정된 계정만 DM 본문을 읽기 전용 감사 화면에서 열 수 있습니다. 페이지 열람은 감사 로그에 남지만 메시지 본문 자체는 로그에 복사하지 않습니다. 일반 ADMIN/MODERATOR 역할은 자동으로 대상이 되지 않습니다.
+`direct-message.admin-audit.enabled`는 별도의 기본 OFF DM 본문 감사 스위치입니다. 이 값을 켜도 `private-chat-super-admins`에 함께 정확히 지정된 계정만 DM 본문을 읽기 전용 감사 화면에서 열 수 있습니다. 감사 화면에서는 전송, 답글, 숨김, 읽음 처리를 할 수 없으며 각 페이지 열람은 본문을 복사하지 않고 감사 로그에 기록됩니다.
 
 `capture-game-whispers`는 취소되지 않은 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 명령을 송신자와 수신자의 KWC DM에 복제합니다. Minecraft 귓속말을 다시 보내거나 대체하지는 않습니다. Bukkit에서 모든 귓속말 플러그인의 최종 성공 여부를 공통으로 알 수 없으므로 정상 형식이며 알려진 플레이어를 대상으로 한 명령을 기록 기준으로 사용합니다.
 
@@ -227,29 +230,64 @@ direct-message:
 
 `ui.time-zone`은 채팅 시간 표시 타임존을 지정합니다. `local`은 브라우저/기기 로컬 타임존을 사용하고, `UTC` 또는 `Asia/Seoul` 같은 IANA 타임존을 지정할 수 있습니다. 잘못된 값은 웹 UI에서 로컬 시간으로 fallback됩니다.
 
-## 0 = 무제한/제한 없음인 옵션
+## 중요한 0 값 의미
 
-- `chat.history-size`
-- `chat.history-retention-days`
-- `chat.history-page-size`
-- `chat.max-message-length`
-- `chat.max-url-message-length`
-- `upload.max-uploads-per-minute`
-- `upload.max-file-size-mb`
-- `upload.max-files-per-message`
-- `ui.image-preview-max-per-message`
-- `ui.image-preview-max-height`
-- `ui.max-width`
-- `ui.max-height`
-- `preview.youtube-max-embeds-per-message`
-- `preview.social-embeds.max-embeds-per-message`
-- `preview.external-media-cache-max-size-mb`
-- `pinned.max-pins`
-- `pinned.show-to-logged-out`
-- `commands.max-length`
-- `direct-message.retention-days`
-- `direct-message.max-messages-per-thread`
-- `direct-message.max-message-length`
+`0`은 모든 설정에서 같은 뜻이 아닙니다. 아래 내용은 현재 5.1.0 loader/runtime 동작 기준이며, 실제 설명이 다른 설정을 임의로 “무제한”이라고 해석하면 안 됩니다.
+
+- `chat.history-size`: 개수 기준으로 보존할 공개 채팅 기록 최대 행 수이며 기간 보존 정책과 함께 적용됩니다. 0은 개수 제한을 없앱니다.
+- `chat.history-retention-days`: 공개 채팅 기록의 기간 보존 일수입니다. 0은 기간 기반 만료를 끕니다.
+- `chat.history-page-size`: 기록 페이지 한 번에 요청할 기본 메시지 수입니다. 0이면 memory/JSONL 기록에는 명시적 페이지 제한을 두지 않지만 SQLite는 내장 쿼리 안전 상한 500개를 적용합니다.
+- `chat.max-message-length`: KWC가 허용하는 일반 공개 채팅 메시지 최대 길이입니다. 0은 이 길이 제한을 없앱니다.
+- `chat.max-url-message-length`: URL이 포함된 공개 채팅 메시지 최대 길이입니다. 양수이면 양수인 일반 메시지 제한보다 작지 않도록 보정됩니다. 0은 이 길이 제한을 없앱니다.
+- `message-tokens.max-replacements-per-message`: 한 메시지에서 수행할 token 치환 최대 횟수로 치환 작업량을 제한합니다. 0은 개수 제한을 없앱니다.
+- `reply.game-preview.max-length`: Minecraft Reply 인용 미리보기에 표시할 원문 최대 길이입니다. 0은 미리보기 길이 자르기를 하지 않습니다.
+- `pinned.max-pins`: 동시에 고정 상태로 유지할 수 있는 공개 메시지 최대 개수입니다. 0은 개수 제한을 없앱니다.
+- `direct-message.retention-days`: 저장된 DM 메시지의 기간 보존 일수입니다. 0은 기간 기반 만료를 끕니다.
+- `direct-message.max-messages-per-thread`: 각 DM thread에서 개수 기준으로 보존할 최대 메시지 수입니다. 0은 개수 제한을 없앱니다.
+- `direct-message.max-message-length`: 웹/게임에서 전송할 수 있는 DM 메시지 최대 길이입니다. 0은 이 길이 제한을 없앱니다.
+- `group-chat.retention-days`: 저장된 그룹 방 메시지의 기간 보존 일수입니다. 0은 기간 기반 만료를 끕니다.
+- `group-chat.max-messages-per-room`: 각 그룹 방에서 개수 기준으로 보존할 최대 메시지 수입니다. 0은 개수 제한을 없앱니다.
+- `group-chat.max-message-length`: 그룹 방에서 허용하는 메시지 최대 길이입니다. 0은 이 길이 제한을 없앱니다.
+- `group-chat.max-rooms-per-user`: 방 관리 검사에서 사용자 한 명이 소유/참여할 수 있는 그룹 방 최대 개수입니다. 0은 개수 제한을 없앱니다.
+- `group-chat.max-members-per-room`: 그룹 방 하나에 허용할 최대 멤버 수입니다. 0은 개수 제한을 없앱니다.
+- `group-chat.invite-expire-hours`: 그룹 방 초대 유효시간(시간)입니다. 0은 무제한이 아닙니다. runtime 최소값은 1이며 더 작은 값은 최소값으로 보정합니다.
+- `guest.cooldown-seconds`: 같은 resolved client identity/IP에서 게스트 메시지를 연속 전송할 때 요구하는 최소 간격(초)입니다. 0은 이 cooldown 제한 요소를 끕니다.
+- `guest.max-messages-per-minute`: 같은 resolved client identity/IP에 적용하는 분당 게스트 메시지 제한입니다. 0은 이 분당 제한 요소를 끕니다.
+- `captcha.expire-seconds`: 발급한 captcha 문제의 유효시간(초)입니다. 이 값은 clamp하지 않으므로 0/음수는 새 문제를 즉시 또는 사실상 즉시 만료시킵니다.
+- `captcha.pass-valid-minutes`: 메시지마다 captcha를 요구하지 않을 때 한 번 성공한 captcha 상태를 재사용할 수 있는 시간(분)입니다. runtime 최소값은 1이며 더 작은 값은 최소값으로 보정합니다.
+- `auth.link-code-cooldown-seconds`: 같은 client/user가 계정 연동 코드 발급을 반복할 때 요구하는 최소 간격(초)입니다. 0은 이 제한 요소를 끕니다.
+- `auth.link-code-max-per-minute`: 발급 rate limiter에서 분당 허용할 계정 연동 코드 최대 발급 횟수입니다. 0은 이 제한 요소를 끕니다.
+- `auth.remember-session-days`: 일반 USER/MODERATOR 웹 세션의 만료 기간(일)입니다. 0 이하는 expiry timestamp를 두지 않습니다.
+- `security.login-fail-limit`: 설정된 실패 집계 구간 안에서 IP 기반 임시 잠금을 발생시키는 로그인 실패 횟수입니다. 0은 이 제한 요소를 끕니다.
+- `security.login-lock-seconds`: 로그인 실패 제한을 넘은 뒤 IP 기반 로그인 잠금을 유지할 시간(초)입니다. 0은 이 제한 요소를 끕니다.
+- `security.max-sse-connections-per-ip`: resolved client IP 하나당 허용할 동시 /stream SSE 연결 최대 개수입니다. 리버스 프록시 사용 시 모든 client가 proxy IP로 보이지 않도록 http.trusted-proxies를 정확히 설정합니다. 0은 이 제한 요소를 끕니다.
+- `security.max-sse-connections-total`: KWC 서버 전체에서 허용할 동시 /stream SSE 연결 최대 개수입니다. 0은 이 제한 요소를 끕니다.
+- `admin.admin-session-expire-hours`: ADMIN 웹 세션의 만료 기간(시간)입니다. 0 이하는 관리자 세션에 expiry timestamp를 두지 않습니다.
+- `moderation.default-mute-minutes`: 기간을 생략한 mute의 기본 시간(분)입니다. 0 이하는 영구 mute이며 config 전용 설정입니다.
+- `commands.max-length`: 웹 command 실행에서 허용할 command text 최대 길이입니다. 0은 이 길이 제한을 없앱니다.
+- `ui.image-preview-max-per-message`: 한 메시지에서 렌더링할 inline 이미지 미리보기 최대 개수입니다. 0은 개수 제한을 없앱니다.
+- `ui.image-preview-max-height`: 이미지 미리보기에 설정할 높이 상한(px)입니다. 양수여도 채팅 viewport 안전 상한이 함께 적용되며, 0은 이 명시적 px 상한만 없애고 자동 viewport 상한을 사용하므로 완전 무제한이 아닙니다.
+- `ui.max-width`: 설정상 KWC panel 최대 너비(px)입니다. 0은 설정상 최대값만 없애며 브라우저/viewport 제약은 계속 적용될 수 있습니다.
+- `ui.max-height`: 설정상 KWC panel 최대 높이(px)입니다. 0은 설정상 최대값만 없애며 브라우저/viewport 제약은 계속 적용될 수 있습니다.
+- `ui.user-profiles.max-profiles`: 계정당 서버에 저장할 preference profile 최대 개수입니다. runtime 범위는 0-20이며 범위를 벗어나면 경계값으로 보정합니다. 0은 서버 저장 프로필 기능을 끕니다.
+- `ui.virtual-scroll.overscan-screens`: virtual-scroll 가시 범위 위/아래에 추가로 렌더링할 viewport screen 거리입니다. 0도 유효한 최소 동작값입니다.
+- `ui.virtual-scroll.min-rendered-messages`: viewport 계산상 더 적게 필요해도 렌더 상태로 유지할 최소 메시지 행 수입니다. 0도 유효한 최소 동작값입니다.
+- `discordsrv.max-emoji-links-per-message`: Discord 메시지 한 건에 추가할 custom-emoji 이미지 URL 최대 개수입니다. emoji.game-link.max-links-per-message와 달리 이 설정의 0은 비활성화 의미입니다. 0은 Discord에 emoji 이미지 URL을 추가하지 않습니다.
+- `discordsrv.reply-relay.preview-max-length`: Discord Reply preview에 포함할 Reply 대상 원문 최대 길이입니다. 0은 미리보기 길이 자르기를 하지 않습니다.
+- `upload.cooldown-seconds`: 같은 resolved client IP의 업로드 시도 사이에 요구하는 최소 간격(초)입니다. 0은 이 제한 요소를 끕니다.
+- `upload.max-uploads-per-minute`: resolved client IP 하나에 적용하는 분당 업로드 시도 제한입니다. 0은 이 제한 요소를 끕니다.
+- `upload.max-file-size-mb`: 업로드 파일 한 개에 허용할 최대 크기(MiB)입니다. 0은 이 크기/용량 제한을 없앱니다.
+- `upload.max-total-size-mb`: upload.directory 전체 저장 quota(MiB)입니다. 초과 시 가장 오래된 미참조 업로드부터 제거하며 그래도 공간을 확보하지 못하면 새 업로드를 거부합니다. 0은 이 크기/용량 제한을 없앱니다.
+- `upload.max-files-per-message`: composer 업로드 동작 한 번에 선택/첨부할 최대 파일 수입니다. 0은 개수 제한을 없앱니다.
+- `upload.retention-days`: 보존 중인 메시지/pin에서 더 이상 참조하지 않는 업로드 파일만 이 일수보다 오래됐을 때 삭제합니다. 0은 기간 기반 정리를 끕니다.
+- `preview.youtube-max-embeds-per-message`: 한 메시지에서 렌더링할 YouTube embed 최대 개수입니다. 0은 개수 제한을 없앱니다.
+- `preview.social-embeds.max-embeds-per-message`: 한 메시지에서 렌더링할 지원 social embed 최대 개수입니다. 0은 개수 제한을 없앱니다.
+- `preview.external-media-cache-max-size-mb`: KWC가 fetch/cache할 외부 media 객체 한 개의 최대 크기(MiB)입니다. 0은 이 크기/용량 제한을 없앱니다.
+- `preview.external-media-cache-retention-days`: 참조되지 않는 external-media cache 파일을 삭제할 기간 기준 일수입니다. 0은 기간 기반 정리를 끕니다.
+- `emoji.max-file-size-kb`: custom emoji 파일 한 개의 크기 제한(KiB)이며 초과 파일은 사용하는 경로에 따라 관리 catalog 처리에서 거부/제외됩니다. 0은 이 크기/용량 제한을 없앱니다.
+- `emoji.max-total-size-mb`: 관리 emoji 파일 전체 storage/catalog quota(MiB)입니다. quota 초과 업로드를 거부하고 catalog scan도 설정 총량을 넘는 파일을 노출하지 않습니다. 0은 이 크기/용량 제한을 없앱니다.
+- `emoji.message-token-limit`: 한 메시지에서 허용할 custom emoji token 최대 개수입니다. token은 canonical pack/name 경로를 포함할 수 있습니다. 0은 개수 제한을 없앱니다.
+- `emoji.game-link.max-links-per-message`: link mode에서 게임 메시지 한 건에 추가할 emoji 이미지 링크 최대 개수입니다. 0은 개수 제한을 없앱니다.
 
 ## 게스트 채팅 제한
 
@@ -290,6 +328,8 @@ reply:
 ```
 
 `reply.game-click.enabled`가 켜져 있으면 KWC이 게임에 출력한 메시지의 URL이 아닌 본문을 클릭할 때 `/kchat reply <messageId> `가 자동완성됩니다. URL 조각은 기존 링크 열기가 우선합니다. `/kchat reply <messageId> <내용>`은 웹 댓글과 같은 `replyTo` 메타데이터를 가진 공개 메시지를 만듭니다.
+DM/그룹 메시지도 같은 게임 클릭 모델을 사용합니다. 대화 이름/그룹 영역은 기존 `/kchat dm ...` 또는 `/kchat group ...` 명령을 입력창에 올리고, 본문은 내부 private reply target을 준비합니다. 실제 전송 전 DM 참여 여부/현재 그룹 멤버십을 다시 확인하므로 내부 ID 자체는 권한 토큰이 아닙니다.
+
 
 게임 댓글의 커스텀 이모지는 사용자가 입력한 원본 토큰을 웹 기록과 서버 릴레이에 보존합니다. 댓글을 작성한 서버의 게임 출력에는 게임 이모지 플러그인이 처리한 명령 본문을 재사용해 이모지로 표시합니다. 처리된 glyph가 없고 `emoji.game-link.mode`가 `preserve`라면 인식된 토큰은 게임 이모지 플러그인이 처리할 수 있도록 일반 채팅 줄로 출력되며, 이 호환 출력에서는 KWC의 클릭·hover 정보가 붙지 않습니다.
 
@@ -305,22 +345,18 @@ reply:
 
 ## 서버 릴레이 설정
 
-`peers`는 연결 세션 목록이 아니라 이 서버가 메시지를 보낼 HTTP 대상 목록입니다. 각 항목의 `id`/`secret`은 같은 서버에서 들어오는 릴레이 요청 인증에도 사용됩니다. 양방향 송수신은 양쪽 서버에 서로의 항목을 등록해야 합니다.
-
-서버 1:
+KOKOTO WebChat 5.1.0은 **Relay Protocol v2**를 사용합니다. relay group 자체가 보안 경계이며, 해당 group의 모든 peer 관계가 하나의 group `shared-secret`을 공통으로 사용합니다. peer 항목에는 `id`, `url`, `enabled`만 있으며 `peers[].secret`은 없습니다.
 
 ```yaml
 server-relay:
   enabled: true
-  server-id: "server1"
-  server-name: "서버 1"
-  shared-secret: "양쪽-서버에서-동일하게-쓸-충분히-긴-임의의-비밀키"
+  server-id: "server-1"
+  server-name: "Server 1"
   connect-timeout-seconds: 5
   request-timeout-seconds: 10
   max-clock-skew-seconds: 60
   dedupe-seconds: 300
   max-hops: 8
-  forward-received-public-chat: true
   sources:
     game: true
     web: true
@@ -331,103 +367,24 @@ server-relay:
     web: true
     game: true
   game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-  peers:
-    - id: "server3"
-      url: "https://server3.example.com/chat/api"
-      secret: ""
-      enabled: true
+  groups:
+    - id: "main"
+      shared-secret: ""
+      forwarding:
+        enabled: false
+      peers:
+        - id: "server-2"
+          url: "https://server2.example.com/api"
+          enabled: true
 ```
 
-서버 3:
+최초 설정은 한 서버에서 `shared-secret: ""`로 두고 시작/리로드한 뒤 그 서버의 `config.yml`에 생성된 값을 같은 **group**의 다른 서버에 그대로 복사하세요. 서버마다 따로 빈 값에서 생성하면 서로 다른 secret이 생겨 연결되지 않습니다. 기존 non-empty secret은 보존되고, 수동 secret이 32자 미만이면 자동 교체하지 않고 invalid/fail-closed됩니다. 양쪽 서버는 같은 group 안에 서로를 peer로 등록하고 동일한 생성/복사 secret을 사용해야 합니다. 같은 peer ID를 여러 local group에 중복 등록할 수 없으며 중복 등록은 비활성화됩니다. direct relay는 각 `/relay/v2/message` 요청을 독립적으로 인증/암호화합니다. `/relay/v2/handshake`는 상태를 저장하지 않는 진단용 identity/health probe이며 routing을 제어하지 않습니다.
 
-```yaml
-server-relay:
-  enabled: true
-  server-id: "server3"
-  server-name: "서버 3"
-  shared-secret: "양쪽-서버에서-동일하게-쓸-충분히-긴-임의의-비밀키"
-  sources:
-    game: true
-    web: true
-    guest: true
-    discord: false
-    system: false
-  delivery:
-    web: true
-    game: true
-  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-  peers:
-    - id: "server1"
-      url: "https://server1.example.com/chat/api"
-      secret: ""
-      enabled: true
-```
+Relay v2는 `/relay/v2/message` 하나로 public chat과 cross-server 1:1 DM/read receipt를 전달합니다. payload는 방향별 HKDF-SHA256 key와 AES-256-GCM으로 hop-by-hop 보호됩니다. direct 1-hop HTTP도 payload 암호화/인증 상태로 허용하지만 명시적 경고가 발생하며 forwarding에는 사용할 수 없습니다. direct relay는 각 요청을 독립적으로 인증하며 handshake endpoint는 routing을 제어하지 않습니다. forwarding은 같은 group 안에서 peer 단위로 판단하며, http:// peer는 그 peer를 통한 forwarding만 제외되고 같은 group의 다른 https:// peer는 계속 사용할 수 있습니다.
 
-피어는 반드시 서로 등록해야 합니다. 요청을 받는 서버의 `peers[].id`가 보내는 서버의 `server-id`와 정확히 같아야 합니다. 서버마다 ID는 고유해야 하며 같은 ID를 두 서버에 사용하면 안 됩니다.
+5.0.0 → 5.1.0 최초 migration에서는 기존 flat relay 구성을 보고 group을 **추측하지 않습니다**. 기존 relay trust key/peer/forwarding 설정은 폐기하고 `server-relay.enabled`를 `false`로 안전하게 reset한 뒤, 운영자가 v2 group을 직접 정의하고 다시 활성화해야 합니다.
 
-## HTTPS와 리버스 프록시
-
-`url`에는 상대 서버에서 외부 접근 가능한 KWC API 기본 주소를 입력합니다. `/relay/receive`는 자동으로 붙습니다.
-
-```text
-설정값: https://server3.example.com/chat/api
-실제 요청: https://server3.example.com/chat/api/relay/receive
-```
-
-공개 HTTPS 경로가 `/relay/receive`의 POST 요청을 포함해 KWC API 전체를 내부 KWC HTTP 포트로 전달해야 합니다. 이미 HTTPS로 공개 중이면 8899 포트를 외부에 직접 열 필요가 없습니다. 프록시는 다음 헤더를 보존해야 합니다.
-
-```text
-X-BMWC-Relay-Version
-X-BMWC-Relay-From
-X-BMWC-Relay-Timestamp
-X-BMWC-Relay-Signature
-```
-
-공인 인증서는 Java에서 보통 바로 동작합니다. 자체 서명 인증서는 Java trust store에 등록하지 않으면 요청이 KWC까지 도달하기 전에 TLS 검증에서 실패합니다.
-
-## 비밀키
-
-- `shared-secret`은 모든 피어에 사용할 기본 키입니다.
-- `peers[].secret`은 해당 피어 연결에만 사용할 개별 키이며 공통 키보다 우선합니다.
-- 서버가 2대라면 양쪽 `shared-secret`을 같은 긴 임의 문자열로 설정하고 피어의 `secret: ""`은 비워두면 됩니다.
-- 피어별 키를 쓰면 양쪽의 서로 마주보는 피어 항목에 같은 전용 키를 넣어야 합니다.
-- 피어 키와 공통 키가 모두 없으면 해당 피어는 활성 목록에서 제외됩니다.
-
-## 여러 서버 연결
-
-- 풀 메시: 모든 서버가 나머지 모든 서버를 피어로 등록합니다. 가장 단순하고 한 서버 장애에도 유리합니다.
-- 허브: 각 리프 서버는 허브만 등록하고 허브가 모든 리프를 등록합니다. `forward-received-public-chat: true`이면 받은 공개 채팅을 다른 피어로 다시 전달하고, `false`이면 공개 채팅은 직접 피어 연결까지만 전달합니다. 이 옵션은 DM 다중 홉 라우팅/읽음 확인에는 영향을 주지 않습니다.
-
-릴레이 ID 중복 제거, 원본 서버 억제, 바로 전 송신 피어 제외, `max-hops`가 순환 구조의 무한 반복을 방지합니다. 상대 서버가 꺼져 있을 때의 메시지를 나중에 재전송하는 영구 오프라인 큐는 없습니다.
-
-## reload와 진단 로그
-
-`/kchat reload`는 기존 릴레이 인스턴스를 닫고 현재 설정으로 새 인스턴스를 만듭니다. 릴레이는 상시 소켓 연결이 아니라 메시지마다 HTTPS 요청을 보내므로 별도 재연결 상태는 없습니다.
-
-정상 로그 예시:
-
-```text
-Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
-```
-
-`activePeers`가 설정한 수보다 적으면 바로 앞뒤 경고에 제외 이유가 표시됩니다. 중복 ID, 자기 서버와 같은 ID, 빈 URL, 잘못된 URL/프로토콜, 비밀키 누락을 확인하세요.
-
-## HTTP 오류
-
-- `403 unknown_peer`: 받는 서버의 활성 피어 목록에 보내는 서버의 정확한 `server-id`가 없습니다. 받는 서버의 `activePeers` 로그와 양방향 설정을 확인합니다.
-- `401 bad_signature`: 실제 적용되는 비밀키가 다르거나 프록시가 본문/헤더를 변경했습니다.
-- `401 expired_request`: 양쪽 서버 시간이 `max-clock-skew-seconds`보다 많이 차이 납니다.
-- `404 relay_disabled`: 받는 서버에서 릴레이가 꺼져 있거나 프록시가 다른 KWC 인스턴스/경로로 전달합니다.
-- `426 unsupported_protocol`: 양쪽 플러그인의 릴레이 프로토콜 버전이 호환되지 않습니다.
-
-설정을 바꾼 쪽에서 `/kchat reload`를 실행합니다. 특히 받는 서버의 피어 목록이나 비밀키를 바꿨다면 받는 서버도 반드시 reload해야 합니다.
-
-## 서버 구별 표시
-
-- 웹 채팅은 `originServerId`를 기준으로 서버별 고정 색상의 배지를 표시합니다.
-- 웹→게임 출력에서 `{server}`와 `{server_id}`를 사용할 수 있습니다. 현재 서버의 자체 표시는 생략하며, 다른 서버에서 온 메시지의 이전 형식에 두 placeholder가 모두 없을 때만 `[server-name]`이 자동으로 앞에 붙습니다.
-- Discord 직접 전달 형식도 `{server}`, `{server_id}`를 지원하며 없으면 자동 접두사가 붙습니다.
-- `sources.discord`와 `sources.system`은 DiscordSRV 순환 및 과도한 이벤트 복제를 막기 위해 기본적으로 꺼져 있습니다.
+전체 protocol, trust model, migration, forwarding, 진단 내용은 `docs/SERVER_RELAY_KO.md`를 참고하세요.
 
 ## Discord 연동 옵션
 
@@ -518,23 +475,23 @@ player-display:
 
 ## 커스텀 이모지와 게임 측 이모지 플러그인
 
-KOKOTO WebChat은 커스텀 이모지를 `plugins/KOKOTO-WebChat/emojis` 아래에 저장합니다. 하위 폴더는 이모지 팩으로 처리됩니다.
+KOKOTO WebChat은 커스텀 이모지를 `plugins/KOKOTO-WebChat/emojis` 아래에 저장합니다. 하위 폴더는 이모지 팩으로 처리됩니다. 5.1.0부터 팩 디렉터리명과 이모지 파일명 stem을 같은 토큰 안전 규칙으로 정규화합니다. 공백/사용 불가능 문자는 제거되고 기존 잘못된 이름은 시작 시 일괄 변경되며, 충돌 시 숫자 suffix가 붙습니다. 최종 경로는 `:팩/이름:` 토큰과 그대로 일치합니다.
 
 기본값에서는 `emoji.game-link.enabled`가 `false`이므로 웹→게임 메시지의 `:pack/name:`, `:emoji:pack/name:` 같은 커스텀 이모지 토큰을 그대로 보존합니다. ImageEmojis나 다른 게임 측 이모지 플러그인이 Minecraft 채팅에서 토큰을 렌더링한다면 이 기본값을 사용하세요.
 
 `emoji.game-link.enabled`가 `true`일 때 `emoji.game-link.mode`는 `preserve`, `link`, `label`을 지원합니다.
 
 - `preserve`: game-link가 켜져 있어도 토큰 보존 동작을 강제합니다.
-- `link`: `label-format` 텍스트와 BM Web Chat 짧은 이미지 링크를 같이 보냅니다.
+- `link`: `label-format` 텍스트와 KOKOTO WebChat 짧은 이미지 링크를 같이 보냅니다.
 - `label`: `label-format` 텍스트만 보냅니다.
 
 `emoji.game-link.*`는 웹→Minecraft 채팅에만 적용됩니다. Discord 이미지 미리보기 링크는 웹→Discord용 `discordsrv.append-web-emoji-links`와 게임→Discord용 `discordsrv.append-game-emoji-links`로 분리해서 제어합니다. `append-game-emoji-links`는 DiscordSRV의 일반 Minecraft→Discord 릴레이 메시지를 가능한 경우 수정하며, `game-relay-mode: "kwc"`는 KWC가 게임 채팅을 Discord로 직접 보낼 때 사용하고, `discordsrv`는 DiscordSRV가 전송을 담당합니다.
 
-BM Web Chat은 웹 기록과 릴레이 payload에는 정규 이모지 토큰을 보존합니다. ImageEmojis 또는 ImageEmojis-Bero가 활성화되어 있으면 공개된 runtime 이모지 저장소를 reflection으로 읽고, 클릭 가능한 Minecraft 컴포넌트를 만들기 전에 수신 서버의 활성 glyph로 토큰을 변환합니다. hard dependency를 추가하거나 리소스팩을 분석하지 않습니다.
+KOKOTO WebChat은 웹 기록과 릴레이 payload에는 정규 이모지 토큰을 보존합니다. ImageEmojis 또는 ImageEmojis-Bero가 활성화되어 있으면 공개된 runtime 이모지 저장소를 reflection으로 읽고, 클릭 가능한 Minecraft 컴포넌트를 만들기 전에 수신 서버의 활성 glyph로 토큰을 변환합니다. hard dependency를 추가하거나 리소스팩을 분석하지 않습니다.
 
 상호작용 채팅에서는 ImageEmojis glyph를 먼저 넣은 뒤 발신자·댓글·URL 클릭 이벤트를 구성하므로 이모지와 클릭 가능한 링크가 동시에 동작합니다. 수신 서버에서 해결하지 못한 인식 토큰만 다른 게임 이모지 렌더러를 위한 한 줄의 plain Bukkit fallback을 사용하며, 이 fallback에는 KWC 클릭·hover metadata를 붙일 수 없습니다.
 
-`default-pack`과 `aliases`는 flat 게임 측 토큰을 BM Web Chat의 pack/name id로 매핑할 때 사용합니다. 예:
+`default-pack`과 `aliases`는 flat 게임 측 토큰을 KOKOTO WebChat의 pack/name id로 매핑할 때 사용합니다. 예:
 
 ```yaml
 emoji:
@@ -570,7 +527,7 @@ commands:
 
 ## 미디어 미리보기 높이와 스크롤 안정성
 
-`ui.image-preview-max-height`는 이미지, GIF, 비디오, iframe 계열 미리보기의 표시 높이를 제한합니다. 권장 범위는 `640-720`이며 기본값은 `720`입니다.
+`ui.image-preview-max-height`는 이미지, GIF, 비디오, iframe 계열 미리보기의 표시 높이를 제한합니다. 권장 범위는 `640-720`이며 기본값은 `720`입니다. `ui.image-preview-max-height`가 `0`이면 명시적인 px 상한만 제거되고 자동 viewport 기반 안전 상한은 계속 적용되므로 완전한 높이 무제한이 아닙니다.
 
 ```yaml
 ui:
@@ -650,6 +607,11 @@ ui:
 
 `auth.link-code-cooldown-seconds`와 `auth.link-code-max-per-minute`는 웹 UI에서 `/kchat auth <code>`용 링크 코드를 원격 IP별로 얼마나 자주 발급할 수 있는지 제한합니다. 각 값을 `0`으로 두면 해당 제한을 끕니다.
 
+
+## 반복 운영 오류 로그
+
+KWC는 HTTP 상태 코드마다 별도 로그 예외를 추가하는 대신 반복 가능한 운영 HTTP/네트워크 오류에 공통 콘솔 정책을 사용합니다. 같은 작업/대상의 최초 오류는 즉시 기록하고, 동일 상태의 반복은 억제한 뒤 이후 요약 로그에서 생략 횟수를 알립니다. 오류 상태가 달라지면 즉시 새 상태를 기록하고, 반복이 억제된 뒤 정상 복구되면 복구 요약을 한 번 기록합니다. Relay 검증/HTTP 전송, 업데이트 소스 조회, 운영 API의 rate/server 오류 같은 반복 transport 계열에 적용하며, 일반적인 사용자 입력 검증/인증 실패 응답은 서버 콘솔 오류로 승격하지 않습니다. 실제 재시도/backoff 정책은 각 기능이 별도로 결정하며 로그 억제와 독립적입니다.
+
 ## HTTP 프록시 / 클라이언트 IP
 
 `http.trusted-proxies`는 `X-Forwarded-For`를 신뢰할 프록시를 지정합니다. 직접 HTTP로 공개할 때는 비워두세요. 같은 서버의 Caddy/Nginx 뒤에서 사용할 때는 `127.0.0.1`, `::1`을 블록형 YAML 목록으로 넣으세요. `http.log-client-ip-resolution: true`는 소켓 IP, forwarded 헤더, 최종 클라이언트 IP를 서버 콘솔과 `logs/latest.log`에 찍어 확인할 때만 임시로 사용하세요. 자세한 확인 방법은 `docs/OPERATIONS_SECURITY_KO.md`를 참고하세요.
@@ -676,22 +638,24 @@ ui:
 
 ## 메시지 검색
 
-저장된 기록을 사용할 때 채팅 패널 우측 상단 플로팅 영역의 돋보기 버튼과 `/history/search` API로 메시지 내용과 작성자를 검색할 수 있습니다. 검색 옵션에서 날짜/시간 범위, 작성자, 출처, 시스템/이벤트 포함 여부를 지정할 수 있습니다. 검색 결과는 스크롤 가능한 목록으로 표시되며, 채팅 테마와 폰트 설정을 따릅니다. 검색 결과를 클릭하면 기존 주변 기록 로드 방식으로 해당 메시지로 이동합니다. i18n 키가 있는 시스템/이벤트 메시지는 가능한 경우 요청된 웹 UI 언어 기준으로 검색되고 표시됩니다. 검색은 `search.enabled`로 끄거나 켤 수 있고, `search.result-limit` 하나가 웹 UI 결과 수와 `/history/search` API 제한을 모두 제어합니다. 별도 내부 최대치는 없어서 2000으로 설정하면 최대 2000개, 10으로 설정하면 최대 10개가 반환됩니다. 10000이나 100000처럼 매우 큰 값도 허용되지만, 검색 속도 저하, 응답 크기 증가, CPU/메모리/DB 부하 증가를 일으킬 수 있습니다. 기본값은 50이며 일반 사용은 50~200을 권장합니다. `config-version: "5.0.0_auto_migration"` 상태에서는 누락된 검색 설정이 startup/reload 때 자동 삽입됩니다. 정확한 `config-version: "5.0.0"`으로 같은 버전 자동 migration을 끈 경우에만 누락 키를 직접 추가하거나 `_auto_migration`을 다시 활성화해야 합니다.
+저장된 기록을 사용할 때 채팅 패널 우측 상단 플로팅 영역의 돋보기 버튼과 `/history/search` API로 메시지 내용과 작성자를 검색할 수 있습니다. 검색 옵션에서 날짜/시간 범위, 작성자, 출처, 시스템/이벤트 포함 여부를 지정할 수 있습니다. 검색 결과는 스크롤 가능한 목록으로 표시되며, 채팅 테마와 폰트 설정을 따릅니다. 검색 결과를 클릭하면 기존 주변 기록 로드 방식으로 해당 메시지로 이동합니다. i18n 키가 있는 시스템/이벤트 메시지는 가능한 경우 요청된 웹 UI 언어 기준으로 검색되고 표시됩니다. 검색은 `search.enabled`로 끄거나 켤 수 있고, `search.result-limit` 하나가 웹 UI 결과 수와 `/history/search` API 제한을 모두 제어합니다. 별도 내부 최대치는 없어서 2000으로 설정하면 최대 2000개, 10으로 설정하면 최대 10개가 반환됩니다. 10000이나 100000처럼 매우 큰 값도 허용되지만, 검색 속도 저하, 응답 크기 증가, CPU/메모리/DB 부하 증가를 일으킬 수 있습니다. 기본값은 50이며 일반 사용은 50~200을 권장합니다. `config-version: "5.1.0_auto_migration"` 상태에서는 누락된 검색 설정이 startup/reload 때 자동 삽입됩니다. 정확한 `config-version: "5.1.0"`으로 같은 버전 자동 migration을 끈 경우에만 누락 키를 직접 추가하거나 `_auto_migration`을 다시 활성화해야 합니다.
 
 ## 그룹 채팅
 
 `group-chat.enabled`는 웹 그룹 채팅 기능을 켭니다. 공개/비공개 방, 해시 저장되는 선택 비밀번호, 초대, 방 나가기, 방 숨김/다시 표시, 방 설정, 안 읽음 추적, 사용자별 메시지 숨김, 멤버 강퇴/차단/차단 해제, 방장 이전을 지원합니다. 그룹 메시지는 `group-chat.sqlite-file`(기본 `group-messages.db`)에 저장됩니다. `group-chat.retention-days: 0`은 기간 정리 없음이고, 양수 값은 오래된 그룹 메시지를 물리 삭제합니다.
 
+방 입장/퇴장 알림은 전역 `config.yml` 스위치가 아니라 **방별 DB 설정**입니다. 방 설정에서 켜거나 끌 수 있고 `group_rooms.membership_events_enabled`에 저장됩니다. 기존 DB에 컬럼을 추가할 때는 기본 ON으로 마이그레이션됩니다. 실제 멤버십이 변할 때만 이벤트가 저장되며 그룹채팅 창을 닫는 것은 방 나가기가 아닙니다.
+
 
 ## 비공개 채팅 메타데이터 최고관리자
 
-`private-chat-super-admins: []`에는 DM/그룹채팅 메타데이터를 관리/용량 확인용으로 볼 수 있는 정확한 UUID 또는 마인크래프트 이름을 지정합니다. 기본 메타데이터 화면은 참여자/제목, 메시지 수, 대략적인 저장 용량, 보관 상태와 관리 동작을 제공합니다. DM 본문은 `direct-message.admin-audit.enabled: true`, 그룹채팅 본문은 `group-chat.admin-audit.enabled: true`일 때만 읽기 전용으로 열 수 있으며 두 감사 화면 모두 모든 페이지 열람이 감사 로그에 기록됩니다.
+`private-chat-super-admins: []`에는 DM/그룹채팅 메타데이터를 관리/용량 확인용으로 볼 수 있는 정확한 UUID 또는 마인크래프트 이름을 지정합니다. 기본 메타데이터 화면은 참여자/제목, 메시지 수, 대략적인 저장 용량, 보관 상태와 관리 동작을 제공합니다. DM 본문은 `direct-message.admin-audit.enabled: true`, 그룹채팅 본문은 `group-chat.admin-audit.enabled: true`일 때만 열 수 있으며 둘 다 `private-chat-super-admins`에 지정된 계정이어야 합니다. 두 감사 화면은 읽기 전용이고 페이지 열람은 감사 로그에 기록됩니다.
 
 
 `frontend.standalone.app-name`과 `frontend.standalone.app-short-name`은 standalone 페이지/PWA 이름을 제어합니다. 모바일 홈 화면 웹앱으로 설치한 뒤 값을 바꿨다면 다시 설치해야 반영됩니다. `web-push.notification-title`은 테스트/시스템/백그라운드 푸시의 기본 제목을 제어하며, 비워두면 `frontend.standalone.app-name`을 사용합니다.
 
 
-기존 config에 `KOKOTO WebChat` 또는 `KOKOTO WebChat` 같은 예전 기본 이름이 남아 있으면 레거시 기본값으로 보고 새 fallback을 사용합니다.
+기존 config에 `BlueMapWebChat` 또는 `BM WebChat` 같은 레거시 생성 이름이 남아 있으면 레거시 기본값으로 보고 현재 fallback을 사용합니다.
 
 ### Dynmap 어댑터
 

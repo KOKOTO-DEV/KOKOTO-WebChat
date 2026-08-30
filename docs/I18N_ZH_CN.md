@@ -31,16 +31,27 @@ en-US, ko-KR, ja-JP, zh-CN
 
 ## 翻译范围
 
-包括窗口标题/状态、按钮、placeholder、登录/绑定/密码、账号/用户设置、包含固定/删除显示开关的管理面板、上传、媒体预览/social embed 标签、PIP、命令面板、置顶消息、服务器 command 响应等。
+包括窗口标题/状态、按钮、placeholder、登录/绑定/密码、账号/用户设置、包含置顶/删除显示开关的管理面板、上传、媒体预览/social embed 标签、PIP、命令面板、置顶消息、服务器 command 响应等。
 
 发往游戏内的聊天格式在 `config.yml` 中设置。
 
+```yaml
+chat:
+  web-user-to-game-format: "[Web] {player}: {message}"
+  web-guest-to-game-format: "[Web Guest] {guest}: {message}"
+```
 
 ## 系统消息
 
 内置服务器 announcement 和 Web 命令结果消息会带 i18n 键发送。语言文件中存在对应键时，Web UI 会按查看者选择的语言显示。`config.yml` 中的 `announcements.*.message` 仍作为自定义/回退文本保留，因此缺少翻译键或需要服务器专用措辞时仍会使用它。
 
 折叠的置顶消息也会使用与普通消息相同的聊天字体和消息字号设置。
+
+## 配置注释语言
+
+`ui.language` 也用于 KOKOTO WebChat 重建 `config.yml` 注释/布局、生成 `config-reference-5.1.0.yml` 以及 migration/Difference 提示文本时的显示语言。内置配置显示模板为 `en-US`、`ko-KR`、`ja-JP`、`zh-CN`。程序会把现有已解析的实际配置值覆盖到所选模板上，因此在这四种语言之间切换时只会改变注释/布局，实际配置值会保留。
+
+自定义 Web UI 语言文件仍然可以使用。如果 `ui.language` 指向 `fr-FR` 之类的自定义/不受内置配置模板支持的 locale，Web UI 可以使用该语言文件，但 config/reference/migration 的显示语言会回退到内置英文 (`en-US`) 模板。Difference 判断只比较解析后的 YAML 设置 path 与值，不比较注释、空白、引号形式、键顺序或行号。
 
 ## 添加新语言
 

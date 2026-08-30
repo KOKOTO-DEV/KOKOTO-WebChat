@@ -110,7 +110,7 @@ public final class FabricConfigValuesLoader {
         v.directMessageNotifyOnMessage = c.getBoolean("direct-message.notify-on-message", true);
         v.directMessageWebUnreadBadge = c.getBoolean("direct-message.web-unread-badge", true);
         v.directMessageConfirmHide = c.getBoolean("direct-message.confirm-hide", true);
-        v.directMessageCaptureGameWhispers = c.getBoolean("direct-message.capture-game-whispers", false);
+        v.directMessageCaptureGameWhispers = c.getBoolean("direct-message.capture-game-whispers", true);
         v.directMessageAdminAuditEnabled = c.getBoolean("direct-message.admin-audit.enabled", false);
         v.directMessageRetentionDays = Math.max(0, c.getInt("direct-message.retention-days", 0));
         v.directMessageMaxMessagesPerThread = Math.max(0, c.getInt("direct-message.max-messages-per-thread", 0));
@@ -189,13 +189,11 @@ public final class FabricConfigValuesLoader {
         v.serverRelayEnabled = c.getBoolean("server-relay.enabled", false);
         v.serverRelayServerId = normalizeRelayId(c.getString("server-relay.server-id", ""));
         v.serverRelayServerName = normalizeDisplayName(c.getString("server-relay.server-name", ""), "");
-        v.serverRelaySharedSecret = String.valueOf(c.getString("server-relay.shared-secret", "")).trim();
         v.serverRelayConnectTimeoutSeconds = Math.max(1, c.getInt("server-relay.connect-timeout-seconds", 5));
         v.serverRelayRequestTimeoutSeconds = Math.max(1, c.getInt("server-relay.request-timeout-seconds", 10));
         v.serverRelayMaxClockSkewSeconds = Math.max(1, c.getInt("server-relay.max-clock-skew-seconds", 60));
         v.serverRelayDedupeSeconds = Math.max(30, c.getInt("server-relay.dedupe-seconds", 300));
         v.serverRelayMaxHops = Math.max(1, Math.min(32, c.getInt("server-relay.max-hops", 8)));
-        v.serverRelayForwardReceivedPublicChat = c.getBoolean("server-relay.forward-received-public-chat", true);
         v.serverRelayGameChat = c.getBoolean("server-relay.sources.game", true);
         v.serverRelayWebChat = c.getBoolean("server-relay.sources.web", true);
         v.serverRelayGuestChat = c.getBoolean("server-relay.sources.guest", true);
@@ -204,7 +202,7 @@ public final class FabricConfigValuesLoader {
         v.serverRelayDeliverToWeb = c.getBoolean("server-relay.delivery.web", true);
         v.serverRelayDeliverToGame = c.getBoolean("server-relay.delivery.game", true);
         v.serverRelayGameFormat = c.getString("server-relay.game-format", "&8[&b{server}&8] &f{sender}&7: &f{message}");
-        v.serverRelayPeers = sanitizeRelayPeers(c.getMapList("server-relay.peers"));
+        v.serverRelayGroups = sanitizeRelayGroups(c.getMapList("server-relay.groups"));
 
         v.gameNameHoverEnabled = c.getBoolean("chat.game-name-hover.enabled", false);
         v.gameNameHoverText = c.getString("chat.game-name-hover.text", "&f{real}");
@@ -391,8 +389,8 @@ public final class FabricConfigValuesLoader {
         v.loginFailLimit = Math.max(0, c.getInt("security.login-fail-limit", 5));
         v.loginFailWindowSeconds = Math.max(1, c.getInt("security.login-fail-window-seconds", 300));
         v.loginLockSeconds = Math.max(0, c.getInt("security.login-lock-seconds", 600));
-        v.maxSseConnectionsPerIp = Math.max(0, c.getInt("security.max-sse-connections-per-ip", 5));
-        v.maxSseConnectionsTotal = Math.max(0, c.getInt("security.max-sse-connections-total", 200));
+        v.maxSseConnectionsPerIp = Math.max(0, c.getInt("security.max-sse-connections-per-ip", 10));
+        v.maxSseConnectionsTotal = Math.max(0, c.getInt("security.max-sse-connections-total", 500));
 
         v.allowLocalAdminAccounts = c.getBoolean("admin.allow-local-admin-accounts", true);
         v.adminSessionExpireHours = c.getInt("admin.admin-session-expire-hours", 12);
@@ -546,8 +544,8 @@ public final class FabricConfigValuesLoader {
         v.replyGamePreviewEnabled = c.getBoolean("reply.game-preview.enabled", true);
         v.replyGamePreviewFormat = translateConfiguredGameFormat(c.getString("reply.game-preview.format", "&7{sender}: {preview}"));
         v.replyGamePreviewMaxLength = Math.max(0, c.getInt("reply.game-preview.max-length", 120));
-        v.replyGameClickEnabled = c.getBoolean("reply.game-click.enabled", false);
-        v.replyGameClickLocalChat = c.getBoolean("reply.game-click.local-game-chat", false);
+        v.replyGameClickEnabled = c.getBoolean("reply.game-click.enabled", true);
+        v.replyGameClickLocalChat = c.getBoolean("reply.game-click.local-game-chat", true);
         v.replyGameCommandFormat = translateConfiguredGameFormat(c.getString("reply.game-command-format", "&8[&dReply&8] &f{player}&7: &f{message}"));
 
         v.pinnedEnabled = c.getBoolean("pinned.enabled", true);
@@ -578,18 +576,29 @@ public final class FabricConfigValuesLoader {
     }
 
 
-    private static List<ConfigValues.RelayPeer> sanitizeRelayPeers(List<Map<?, ?>> raw) {
-        List<ConfigValues.RelayPeer> out = new ArrayList<>();
+    private static List<ConfigValues.RelayGroup> sanitizeRelayGroups(List<Map<?, ?>> raw) {
+        List<ConfigValues.RelayGroup> out = new ArrayList<>();
         if (raw == null) return out;
         for (Map<?, ?> item : raw) {
             if (item == null) continue;
-            boolean enabled = boolValue(item.get("enabled"), true);
             String id = normalizeRelayId(String.valueOf(mapValue(item, "id", "")));
-            String url = String.valueOf(mapValue(item, "url", "")).trim();
-            String secret = String.valueOf(mapValue(item, "secret", "")).trim();
-            // Keep incomplete entries so ServerRelay can report exactly why a configured
-            // peer was ignored instead of silently reducing the loaded peer count.
-            out.add(new ConfigValues.RelayPeer(id, url, secret, enabled));
+            String secret = String.valueOf(mapValue(item, "shared-secret", "")).trim();
+            boolean forwarding = false;
+            Object forwardingRaw = item.get("forwarding");
+            if (forwardingRaw instanceof Map<?, ?> forwardingMap) forwarding = boolValue(forwardingMap.get("enabled"), false);
+            else forwarding = boolValue(item.get("forwarding-enabled"), false); // early 5.1.0 development compatibility
+            List<ConfigValues.RelayPeer> peers = new ArrayList<>();
+            Object peersRaw = item.get("peers");
+            if (peersRaw instanceof List<?> list) {
+                for (Object peerRaw : list) {
+                    if (!(peerRaw instanceof Map<?, ?> peer)) continue;
+                    boolean enabled = boolValue(peer.get("enabled"), true);
+                    String peerId = normalizeRelayId(String.valueOf(mapValue(peer, "id", "")));
+                    String url = String.valueOf(mapValue(peer, "url", "")).trim();
+                    peers.add(new ConfigValues.RelayPeer(peerId, url, enabled));
+                }
+            }
+            out.add(new ConfigValues.RelayGroup(id, secret, forwarding, peers));
         }
         return out;
     }

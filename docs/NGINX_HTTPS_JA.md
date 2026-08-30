@@ -184,7 +184,7 @@ ui:
 
 `map.example.com` は実際のドメインに置き換えてください。
 
-スクロールの安定性のため、メディアプレビューの max-height 制限は有効にしておくことを推奨します。推奨値は `640-720` です。`0` は無制限で、メディアが多い virtual scroll ではスクロール位置が跳ねる場合があります。
+スクロールの安定性のため、メディアプレビューの max-height 制限は有効にしておくことを推奨します。推奨値は `640-720` です。`0` は明示的なピクセル上限だけを解除します。ブラウザーの viewport 基準の安全上限は引き続き適用されるため、完全な無制限高さではありません。
 
 ## 4. ファイアウォール推奨設定
 
@@ -216,3 +216,10 @@ BlueMap ページを HTTP のまま配信し、チャット API だけ HTTPS に
 ### URL 設定の解決規則
 
 HTTPS 公開 API の基準は `http.public-prefix + http.path-prefix` で、既定値は `/chat/api` です。adapter と standalone の `api-base-url` は独立した任意の override で、通常は空のままにします。upload/emoji が空なら共通の公開 API に `/uploads`、`/emojis` を追加します。絶対パス、相対値、完全な `https://...` URL は別の公開 URL が必要な場合にだけ使います。
+
+## 公式参照資料
+
+- [NGINX `ngx_http_proxy_module`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html)
+- [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
+
+KWC 固有の path-prefix、trusted proxy、SSE、upload、authentication の動作は、これらの外部資料ではなく KWC 5.1.0 のソースと設定を基準にしてください。

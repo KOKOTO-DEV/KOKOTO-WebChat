@@ -1,5 +1,8 @@
 # KOKOTO WebChat 上传安全说明
 
+
+![上传安全处理流程](assets/upload-security-pipeline.svg)
+
 文件上传很方便，但在公网服务器上可能被滥用。默认配置会禁用访客上传。
 
 ## 推荐默认值
@@ -67,6 +70,24 @@ emoji:
 
 
 ## 允许扩展名
+
+
+```yaml
+upload:
+  allowed-extensions:
+    - png
+    - jpg
+    - jpeg
+    - gif
+    - webp
+    - mp4
+    - webm
+    - mp3
+    - m4a
+    - ogg
+    - wav
+    - flac
+```
 
 只允许你确实希望在聊天中显示或分享的文件类型。KOKOTO WebChat 会按扩展名和大小限制，但公网部署仍建议从受限目录提供上传文件并使用 HTTPS。`upload.max-total-size-mb` 还可以限制 `upload.directory` 直属普通文件的总存储容量；`0` 表示不限制。启用后，服务器会先删除最旧的未引用上传文件，仍无法腾出空间时会拒绝新的上传。
 

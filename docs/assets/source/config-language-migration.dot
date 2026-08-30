@@ -1,0 +1,29 @@
+digraph G {
+
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=LR;
+  old [label="Existing config.yml\noperator values + ui.language", fillcolor="#DBEAFE"];
+  parse [label="Parse YAML values\ncomments/layout are presentation", fillcolor="#FEF3C7"];
+  lang [shape=diamond,label="ui.language", fillcolor="#FEF3C7"];
+  en [label="EN template", fillcolor="#F8FAFC"];
+  ko [label="KO template", fillcolor="#F8FAFC"];
+  ja [label="JA template", fillcolor="#F8FAFC"];
+  zh [label="ZH-CN template", fillcolor="#F8FAFC"];
+  overlay [label="Overlay supported existing values\nonto selected template", fillcolor="#DCFCE7"];
+  exceptions [shape=note,label="Migration exceptions\nretired settings are removed\n5.0.0 → 5.1.0 Relay v1 trust is not inferred;\nRelay v2 is rebuilt disabled for explicit reconfiguration", fillcolor="#FFF7ED"];
+  out [label="Rebuilt config.yml\nlocalized comments/layout\nsupported operator values preserved", fillcolor="#E0F2FE"];
+  ref [label="Localized config-reference-5.1.0.yml", fillcolor="#ECFEFF"];
+  report [label="Localized migration report\nsemantic path/value Difference", fillcolor="#ECFEFF"];
+  old -> parse -> lang;
+  lang -> en [label="en-US"];
+  lang -> ko [label="ko-KR"];
+  lang -> ja [label="ja-JP"];
+  lang -> zh [label="zh-CN"];
+  en -> overlay; ko -> overlay; ja -> overlay; zh -> overlay;
+  overlay -> exceptions [style=dashed, arrowhead=none];
+  overlay -> out; overlay -> ref; overlay -> report;
+
+}

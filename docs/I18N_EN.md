@@ -48,8 +48,8 @@ Game-side chat formats are configured in `config.yml`, not in language files.
 
 ```yaml
 chat:
-  web-user-to-game-format: "\[Web] {player}: {message}"
-  web-guest-to-game-format: "\[Web Guest] {guest}: {message}"
+  web-user-to-game-format: "[Web] {player}: {message}"
+  web-guest-to-game-format: "[Web Guest] {guest}: {message}"
 ```
 
 
@@ -58,6 +58,12 @@ chat:
 Built-in server announcements and web command result messages are sent with an i18n key. The web UI displays them in the viewer's selected language when the key exists in the language file. The `announcements.*.message` text in `config.yml` is still used as custom/fallback text, so server-specific wording is preserved even when a translation key is missing.
 
 Collapsed pinned messages use the same configured chat font and message font size as normal messages.
+
+## Config comment language
+
+`ui.language` also controls the presentation language used when KOKOTO WebChat rebuilds `config.yml` comments/layout, writes `config-reference-5.1.0.yml`, and writes migration/difference guidance. The built-in config presentation templates are `en-US`, `ko-KR`, `ja-JP`, and `zh-CN`. Existing parsed operator values are overlaid onto the selected template, so switching among these languages changes comments/layout only and preserves configured values.
+
+Custom Web UI language files are still supported. If `ui.language` names a custom/unsupported locale such as `fr-FR`, the Web UI can use that language file, while config/reference/migration presentation falls back to the built-in English (`en-US`) template. Difference detection compares parsed YAML setting paths and values, not comments, spacing, quoting, ordering, or line numbers.
 
 ## Add a new language
 

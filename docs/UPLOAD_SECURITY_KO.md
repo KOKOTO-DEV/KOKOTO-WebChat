@@ -1,5 +1,8 @@
 # KOKOTO WebChat 업로드 보안 참고
 
+
+![업로드 보안 파이프라인](assets/upload-security-pipeline.svg)
+
 파일 업로드는 편리하지만 공개 서버에서는 악용될 수 있습니다. 기본 설정은 게스트 업로드를 비활성화합니다.
 
 ## 권장 기본값
@@ -67,6 +70,24 @@ emoji:
 
 
 ## 허용 확장자
+
+
+```yaml
+upload:
+  allowed-extensions:
+    - png
+    - jpg
+    - jpeg
+    - gif
+    - webp
+    - mp4
+    - webm
+    - mp3
+    - m4a
+    - ogg
+    - wav
+    - flac
+```
 
 채팅에서 실제로 표시하거나 공유할 파일 형식만 허용하세요. KOKOTO WebChat은 확장자와 크기로 제한하지만, 공개 배포에서는 제한된 디렉터리에서 제공하고 HTTPS를 사용하는 것을 권장합니다. `upload.max-total-size-mb`로 `upload.directory` 바로 아래 일반 파일의 총 저장 용량도 제한할 수 있습니다. `0`은 무제한이며, 제한을 켜면 서버가 오래된 미참조 업로드부터 삭제하고 그래도 부족하면 새 업로드를 거부합니다.
 

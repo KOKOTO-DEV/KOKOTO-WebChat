@@ -1,0 +1,15 @@
+# Shared build/download caches
+.build-cache/
+.tools/
+.gradle/
+.jdks/
+.gradle-bootstrap/
+
+# Maven / Gradle outputs
+target/
+build/
+
+# Root Windows validation outputs
+validation-logs/
+release-5.1.0/
+build-5.1.0/

@@ -1,6 +1,6 @@
 # ImageEmojis-Bero 연동 (1.9.x)
 
-KOKOTO WebChat 5.0.0은 [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)와 선택적으로 연동할 수 있습니다. 서버측 runtime glyph 연동은 **Bukkit/Paper 계열**에서 동작하며, 현재 1.9.x Bero 계열(1.9.2 포함)을 기준으로 확인되어 있습니다. reflection 기반이라 ImageEmojis-Bero가 없어도 KWC 자체는 정상 시작합니다.
+KOKOTO WebChat 5.1.0은 [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)와 선택적으로 연동할 수 있습니다. 서버측 runtime glyph 연동은 **Bukkit/Paper 계열**에서 동작하며, 현재 1.9.x Bero 계열(1.9.2 포함)을 기준으로 확인되어 있습니다. reflection 기반이라 ImageEmojis-Bero가 없어도 KWC 자체는 정상 시작합니다.
 
 기본 설치, 명령어, 권한, 리소스팩 생성 및 일반 운영은 [원본 ImageEmojis 문서](https://github.com/MrQuackDuck/ImageEmojis)를 참고하세요. 이 문서는 KWC와 같이 사용할 때 필요한 차이와 운영 설정만 설명합니다.
 
@@ -98,3 +98,10 @@ KWC의 `/chat` 웹 포트를 공개했다고 해서 ImageEmojis-Bero의 5000 포
 
 - KWC 연동 확인 포크: [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)
 - 원본 플러그인 / 일반 설치·운영: [ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)
+
+## Upstream 참조 문서
+
+- [ImageEmojis upstream on Modrinth](https://modrinth.com/plugin/image-emojis)
+- [ImageEmojis upstream source](https://github.com/MrQuackDuck/ImageEmojis)
+
+위 링크는 upstream 프로젝트 문서입니다. 이 문서의 KWC token 변환, 공유 디렉터리 처리, Bero 전용 연동 동작은 실제 설치된 Bero/KWC 버전을 기준으로 확인해야 합니다.

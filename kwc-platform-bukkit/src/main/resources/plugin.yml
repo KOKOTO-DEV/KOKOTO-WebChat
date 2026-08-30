@@ -1,5 +1,5 @@
 name: KOKOTO-WebChat
-version: 5.0.0
+version: 5.1.0
 main: dev.kokoto.webchat.KokotoWebChatPlugin
 api-version: '1.18'
 authors: [KOKOTO]

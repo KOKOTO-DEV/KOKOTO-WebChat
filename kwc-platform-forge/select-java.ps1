@@ -78,7 +78,7 @@ function Return-JavaHome([string]$JavaHome) {
 function Get-AdoptiumBinary([int]$Version) {
     $api = "https://api.adoptium.net/v3/assets/feature_releases/$Version/ga?architecture=x64&heap_size=normal&image_type=jdk&jvm_impl=hotspot&os=windows&page=0&page_size=1&project=jdk&sort_method=DEFAULT&sort_order=DESC&vendor=eclipse"
     Write-Host "[KWC Forge] JDK $Version not found locally; resolving Eclipse Temurin..."
-    $releases = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent' = 'KOKOTO-WebChat-Forge-Build/5.0.0' }
+    $releases = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent' = 'KOKOTO-WebChat-Forge-Build/5.1.0' }
     if (!$releases -or $releases.Count -lt 1) {
         throw "Adoptium returned no GA JDK $Version release for Windows x64."
     }
@@ -109,7 +109,7 @@ function Install-LocalTemurin([int]$Version) {
 
     try {
         Write-Host "[KWC Forge] Downloading Eclipse Temurin JDK $Version..."
-        Invoke-WebRequest -Uri $package.link -OutFile $zip -UseBasicParsing -Headers @{ 'User-Agent' = 'KOKOTO-WebChat-Forge-Build/5.0.0' }
+        Invoke-WebRequest -Uri $package.link -OutFile $zip -UseBasicParsing -Headers @{ 'User-Agent' = 'KOKOTO-WebChat-Forge-Build/5.1.0' }
 
         if ([string]::IsNullOrWhiteSpace($package.checksum)) {
             throw "Adoptium response did not include a SHA-256 checksum for JDK $Version."

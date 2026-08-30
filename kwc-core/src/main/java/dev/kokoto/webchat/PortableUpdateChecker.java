@@ -20,14 +20,15 @@ import java.util.function.Consumer;
 
 /**
  * Loader-neutral Modrinth update checker used by Fabric, NeoForge and Forge.
- * Bukkit keeps its native clickable-component notifier, but both paths use the
- * same KWC-first / legacy-BMWC-fallback publication strategy.
+ * Bukkit keeps its native clickable-component notifier. During the project-slug
+ * transition, both paths try the canonical KOKOTO WebChat source first and then
+ * the legacy BlueMapWebChat publication source as a real update fallback.
  */
 public final class PortableUpdateChecker implements AutoCloseable {
     private static final UpdateSource PRIMARY_SOURCE = new UpdateSource(
             URI.create("https://api.modrinth.com/v2/project/kokoto-webchat/version"),
             "https://modrinth.com/plugin/kokoto-webchat",
-            "https://www.curseforge.com/minecraft/bukkit-plugins/bluemapwebchat",
+            "https://www.curseforge.com/minecraft/bukkit-plugins/kokoto-webchat",
             "kokoto-webchat");
     private static final UpdateSource LEGACY_SOURCE = new UpdateSource(
             URI.create("https://api.modrinth.com/v2/project/bluemapwebchat/version"),
@@ -37,7 +38,6 @@ public final class PortableUpdateChecker implements AutoCloseable {
     private static final long INITIAL_DELAY_SECONDS = 3L;
     private static final long CHECK_INTERVAL_SECONDS = 12L * 60L * 60L;
     private static final long JOIN_REFRESH_MIN_INTERVAL_MILLIS = 60_000L;
-    private static final long FAILURE_LOG_REPEAT_MILLIS = 30L * 60L * 1000L;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(8);
 
     private final String currentVersion;
@@ -47,6 +47,7 @@ public final class PortableUpdateChecker implements AutoCloseable {
     private final Consumer<String> warn;
     private final HttpClient httpClient;
     private final ScheduledExecutorService executor;
+    private final OperationalIssueTracker issues;
     private final Set<UUID> notifiedPlayers = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean requestRunning = new AtomicBoolean(false);
     private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -54,8 +55,6 @@ public final class PortableUpdateChecker implements AutoCloseable {
     private volatile UpdateInfo availableUpdate;
     private volatile UpdateSource activeSource = PRIMARY_SOURCE;
     private volatile long lastAttemptMillis;
-    private volatile long lastFailureLogMillis;
-    private volatile String lastFailureMessage = "";
     private volatile String lastLoggedVersion = "";
 
     public PortableUpdateChecker(String currentVersion,
@@ -68,6 +67,7 @@ public final class PortableUpdateChecker implements AutoCloseable {
         this.language = language;
         this.info = info == null ? ignored -> {} : info;
         this.warn = warn == null ? ignored -> {} : warn;
+        this.issues = new OperationalIssueTracker(this.info, this.warn);
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(REQUEST_TIMEOUT)
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -102,15 +102,20 @@ public final class PortableUpdateChecker implements AutoCloseable {
             SourceResult result = querySource(PRIMARY_SOURCE);
             if (!result.usable()) {
                 SourceResult legacy = querySource(LEGACY_SOURCE);
-                if (legacy.usable()) result = legacy;
-                else {
-                    warnFailure("Modrinth sources unavailable: " + result.detail + "; fallback " + legacy.detail);
+                if (legacy.usable()) {
+                    result = legacy;
+                } else {
+                    String detail = "Modrinth sources unavailable: " + result.detail + "; fallback " + legacy.detail;
+                    issues.failed("update-check", detail,
+                            "KOKOTO WebChat update check failed: " + detail
+                                    + ". Current version=" + currentVersion
+                                    + ", sources=" + PRIMARY_SOURCE.api + " -> " + LEGACY_SOURCE.api);
                     return;
                 }
             }
 
             activeSource = result.source;
-            clearFailureState();
+            issues.recovered("update-check", "KOKOTO WebChat update check recovered via " + activeSource.slug + ".");
             UpdateInfo newest = result.update;
             if (compareVersions(newest.version, currentVersion) <= 0) {
                 availableUpdate = null;
@@ -178,22 +183,6 @@ public final class PortableUpdateChecker implements AutoCloseable {
         platform.sendPlainMessage(playerId, "[KOKOTO WebChat] " + notice
                 + " [" + modrinthLabel + "] " + source.modrinthPage
                 + " [" + curseForgeLabel + "] " + source.curseForgePage);
-    }
-
-    private void clearFailureState() {
-        lastFailureMessage = "";
-        lastFailureLogMillis = 0L;
-    }
-
-    private void warnFailure(String detail) {
-        if (closed.get()) return;
-        String safe = detail == null || detail.isBlank() ? "unknown error" : detail;
-        long now = System.currentTimeMillis();
-        if (safe.equals(lastFailureMessage) && now - lastFailureLogMillis < FAILURE_LOG_REPEAT_MILLIS) return;
-        lastFailureMessage = safe;
-        lastFailureLogMillis = now;
-        warn.accept("KOKOTO WebChat update check failed: " + safe + ". Current version=" + currentVersion
-                + ", sources=" + PRIMARY_SOURCE.api + " -> " + LEGACY_SOURCE.api);
     }
 
     static UpdateInfo newestRelease(String json) {

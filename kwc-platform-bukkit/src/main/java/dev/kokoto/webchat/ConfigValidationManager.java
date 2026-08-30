@@ -35,6 +35,9 @@ final class ConfigValidationManager {
             YamlConfiguration parsed = new YamlConfiguration();
             parsed.load(path.toFile());
 
+            String relayShapeProblem = RelayConfigShapeValidator.problem(parsed.get("server-relay.groups"));
+            if (!relayShapeProblem.isBlank()) return new Result(false, relayShapeProblem);
+
             org.bukkit.configuration.ConfigurationSection custom =
                     parsed.getConfigurationSection("message-tokens.custom");
             if (parsed.contains("message-tokens.custom") && custom == null) {

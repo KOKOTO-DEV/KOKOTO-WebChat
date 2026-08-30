@@ -17,8 +17,18 @@ mvn clean package
 出力:
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.0.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.1.0-Bukkit-1.18-26.2.jar
 ```
+
+Windows では root validator を platform build helper としても使用できます。
+
+```bat
+validate-release-windows.bat --bukkit
+validate-release-windows.bat --bukkit --fast
+validate-release-windows.bat --parallel
+```
+
+`--fast` は `clean` を省略して既存の build 出力/cache を再利用する反復開発用 mode です。`--parallel` は clean/fast の意味を変えません。Bukkit が選択されている場合は Bukkit を先に build し、PASS 後に残りの選択 loader を並列実行するため、`validate-release-windows.bat --parallel` は clean full release validation として使用できます。console には全体/platform 別 target progress が live 表示され、詳細 log は `validation-logs/` に残ります。
 
 ## インストールまたはアップグレード
 
@@ -39,9 +49,9 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 現在バージョンの query が含まれている必要があります。
 
 ```text
-addons/kokoto-web-chat/config.js?v=5.0.0-<cache-token>
-addons/kokoto-web-chat/chat.js?v=5.0.0-<cache-token>
-addons/kokoto-web-chat/chat.css?v=5.0.0-<cache-token>
+addons/kokoto-web-chat/config.js?v=5.1.0-<cache-token>
+addons/kokoto-web-chat/chat.js?v=5.1.0-<cache-token>
+addons/kokoto-web-chat/chat.css?v=5.1.0-<cache-token>
 ```
 
 実際の Web ファイル更新も確認します。
@@ -52,7 +62,17 @@ find /opt/minecraft/server -path "*addons/kokoto-web-chat/chat.js" -printf "%p  
 
 ## BlueMap webroot 不一致
 
-`/api/config` は動くのにチャットパネルが表示されない場合、BlueMap が別の webroot を配信している可能性があります。`adapters.bluemap.bluemap-web-root`, `adapters.bluemap.bluemap-webapp-conf`, `adapters.bluemap.addon-path` を実際のパスに合わせてください。
+`/api/config` が動作しているのにチャットパネルが表示されない場合、BlueMap が別の webroot を配信している可能性があります。実際のパスと次の設定を一致させてください。
+
+```yaml
+adapters:
+  bluemap:
+    bluemap-web-root: ""
+    bluemap-webapp-conf: ""
+    addon-path: "addons/kokoto-web-chat"
+```
+
+空のパスは自動検出を使用します。自動検出先が実際の BlueMap インスタンスと異なる場合は絶対パスを指定してください。
 
 ## ブラウザキャッシュ
 

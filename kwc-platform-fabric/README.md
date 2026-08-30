@@ -1,9 +1,9 @@
 # KOKOTO WebChat — Fabric exact-target matrix
 
-KWC 5.0.0 Fabric is built as 16 exact Minecraft targets from 1.18.2 through 26.2.
+KWC 5.1.0 Fabric is built as 16 exact Minecraft targets from 1.18.2 through 26.2.
 The shared KWC core/UI and loader-neutral map adapters are reused; only Minecraft/Fabric API boundaries are split into compatibility source families.
 
-Windows: `build-all.bat` or `build-target.bat <minecraft-version>`
+Windows: `build-all.bat` or `build-target.bat <minecraft-version>`; add `--fast` to either command to skip `clean` and reuse the Gradle build cache during iteration.
 Linux/macOS: `./build-all.sh` or `./build-target.sh <minecraft-version>`
 
 JDK selection: 17 for 1.18.2–1.20.4, 21 for 1.20.6–1.21.11, 25 for 26.1.2–26.2.

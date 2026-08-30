@@ -17,8 +17,18 @@ mvn clean package
 출력:
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.0.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.1.0-Bukkit-1.18-26.2.jar
 ```
+
+Windows에서는 루트 validator를 플랫폼 빌드 도우미로도 사용할 수 있습니다.
+
+```bat
+validate-release-windows.bat --bukkit
+validate-release-windows.bat --bukkit --fast
+validate-release-windows.bat --parallel
+```
+
+`--fast`는 `clean`을 생략하고 기존 빌드 산출물/캐시를 재사용하는 반복 개발용 모드입니다. `--parallel`은 clean/fast 의미를 바꾸지 않습니다. Bukkit이 선택되어 있으면 Bukkit을 먼저 빌드하고, 통과한 뒤 나머지 선택 loader를 병렬 실행하므로 `validate-release-windows.bat --parallel`은 clean 전체 릴리즈 검증으로 사용할 수 있습니다. 콘솔에는 전체/플랫폼별 target 진행률이 실시간 표시되고 상세 로그는 `validation-logs/`에 남습니다.
 
 ## 설치 또는 업그레이드
 
@@ -39,9 +49,9 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 현재 버전 쿼리가 포함되어야 합니다.
 
 ```text
-addons/kokoto-web-chat/config.js?v=5.0.0-<cache-token>
-addons/kokoto-web-chat/chat.js?v=5.0.0-<cache-token>
-addons/kokoto-web-chat/chat.css?v=5.0.0-<cache-token>
+addons/kokoto-web-chat/config.js?v=5.1.0-<cache-token>
+addons/kokoto-web-chat/chat.js?v=5.1.0-<cache-token>
+addons/kokoto-web-chat/chat.css?v=5.1.0-<cache-token>
 ```
 
 실제 웹 파일 갱신도 확인합니다.
@@ -52,7 +62,17 @@ find /opt/minecraft/server -path "*addons/kokoto-web-chat/chat.js" -printf "%p  
 
 ## BlueMap webroot 불일치
 
-`/api/config`는 동작하지만 채팅 패널이 보이지 않으면 BlueMap이 다른 webroot를 서비스하고 있을 수 있습니다. `adapters.bluemap.bluemap-web-root`, `adapters.bluemap.bluemap-webapp-conf`, `adapters.bluemap.addon-path`를 실제 경로와 맞추세요.
+`/api/config`는 동작하지만 채팅 패널이 보이지 않으면 BlueMap이 다른 webroot를 서비스하고 있을 수 있습니다. 실제 경로와 다음 설정을 맞추세요.
+
+```yaml
+adapters:
+  bluemap:
+    bluemap-web-root: ""
+    bluemap-webapp-conf: ""
+    addon-path: "addons/kokoto-web-chat"
+```
+
+빈 경로는 자동 탐색을 사용합니다. 자동 탐색이 실제 BlueMap 인스턴스와 다르면 절대 경로를 명시하세요.
 
 ## 브라우저 캐시
 

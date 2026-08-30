@@ -135,10 +135,8 @@ final class LegacyBmwcMigrationManager {
             // values such as standalone-web.path=/chat from overwriting the new split
             // layout (frontend.standalone.path=/ + http.public-prefix=/chat).
             if (matchesPreviousDefault(previousDefaults, path, legacyValue)) continue;
-            // A relay peer URL belongs to the remote server. A KWC server may
-            // intentionally point at a BlueMapWebChat peer whose public API is
-            // still /bmwc/api, so never apply local brand/path migration inside
-            // server-relay.peers.
+            // Relay v1 trust settings are not known target paths in 5.1.0 and are
+            // intentionally not migrated. Relay v2 groups must be configured explicitly.
             migratedValues.put(mapped, migrateMappedValue(oldConfig, path, mapped, legacyValue));
         }
 
@@ -226,7 +224,6 @@ final class LegacyBmwcMigrationManager {
     }
 
     private static Object migrateMappedValue(YamlConfiguration oldConfig, String oldPath, String mappedPath, Object legacyValue) {
-        if ("server-relay.peers".equals(mappedPath)) return legacyValue;
         if ("standalone-web.path".equals(oldPath)) {
             String legacyPath = legacyValue == null ? "" : String.valueOf(legacyValue).trim();
             if ("/chat".equalsIgnoreCase(legacyPath) || "/bmwc/chat".equalsIgnoreCase(legacyPath)) return "/";

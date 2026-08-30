@@ -1,0 +1,16 @@
+digraph G {
+
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=LR;
+  browser [label="Browser\nnotification preference + subscription", fillcolor="#E0F2FE"];
+  api [label="KWC API\naccount/device registration", fillcolor="#DBEAFE"];
+  mgr [label="WebPushManager\nendpoint validation\nVAPID + HKDF + AES-GCM", fillcolor="#FCE7F3"];
+  push [label="Push service endpoint", fillcolor="#FEF3C7"];
+  device [label="Device notification", fillcolor="#DCFCE7"];
+  browser -> api -> mgr -> push -> device;
+  device -> browser [style=dashed,label="user opens chat"];
+
+}

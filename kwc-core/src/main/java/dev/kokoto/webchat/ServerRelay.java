@@ -2,7 +2,9 @@ package dev.kokoto.webchat;
 
 import com.sun.net.httpserver.HttpExchange;
 
+import javax.crypto.Cipher;
 import javax.crypto.Mac;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -12,46 +14,66 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * KOKOTO WebChat relay protocol v2.
+ *
+ * Trust is group-scoped: every group owns one shared secret and a peer list. Peer
+ * entries never carry a second secret, which prevents group/peer secret drift.
+ * Direct relay follows the 5.0.0 operating model: each message request authenticates
+ * and encrypts itself independently. The handshake endpoint is stateless diagnostics only. Message payloads
+ * use hop-by-hop AES-256-GCM authenticated encryption. Relay participants are trusted
+ * endpoints, not end-to-end opaque forwarders.
+ */
 public final class ServerRelay implements AutoCloseable {
-    private static final String HEADER_VERSION = "X-BMWC-Relay-Version";
-    private static final String HEADER_FROM = "X-BMWC-Relay-From";
-    private static final String HEADER_TIMESTAMP = "X-BMWC-Relay-Timestamp";
-    private static final String HEADER_SIGNATURE = "X-BMWC-Relay-Signature";
-    private static final String PROTOCOL_VERSION = "1";
-    private static final int MAX_BODY_BYTES = 64 * 1024;
-    private static final int UNKNOWN_PEER_BACKOFF_THRESHOLD = 3;
-    private static final int TRANSPORT_BACKOFF_THRESHOLD = 3;
+    private static final String PROTOCOL_VERSION = "2";
+    private static final String PRODUCT_VERSION = "5.1.0";
+    private static final String HEADER_VERSION = "X-KWC-Relay-Version";
+    private static final String HEADER_GROUP = "X-KWC-Relay-Group";
+    private static final String HEADER_FROM = "X-KWC-Relay-From";
+    private static final String HEADER_TO = "X-KWC-Relay-To";
+    private static final String HEADER_TIMESTAMP = "X-KWC-Relay-Timestamp";
+    private static final String HEADER_NONCE = "X-KWC-Relay-Nonce";
+    private static final String HEADER_IV = "X-KWC-Relay-IV";
+    private static final String HEADER_TRANSPORT = "X-KWC-Relay-Transport";
+    private static final String HEADER_SIGNATURE = "X-KWC-Relay-Signature";
+    private static final String HEADER_RESPONSE_TIMESTAMP = "X-KWC-Relay-Response-Timestamp";
+    private static final String HEADER_RESPONSE_SIGNATURE = "X-KWC-Relay-Response-Signature";
+    private static final int MAX_BODY_BYTES = 96 * 1024;
+    private static final int MIN_GROUP_SECRET_LENGTH = 32;
+    private static final int GCM_IV_BYTES = 12;
+    private static final int GCM_TAG_BITS = 128;
     private static final long OUTBOUND_BACKOFF_MILLIS = 60_000L;
-    private static final long OUTBOUND_DISABLED_UNTIL_RELOAD = Long.MAX_VALUE;
+    private static final SecureRandom RNG = new SecureRandom();
 
     private final RelayHost host;
     private final RelaySettings config;
     private final String serverId;
     private final String serverName;
-    private final Map<String, RelaySettings.Peer> peersById = new LinkedHashMap<>();
-    private final List<String> peerDiagnostics = new ArrayList<>();
-    private final int configuredPeerCount;
+    private final Map<String, GroupRef> groupsById = new LinkedHashMap<>();
+    private final Map<String, PeerRef> peersById = new LinkedHashMap<>();
+    private final List<String> diagnostics = new ArrayList<>();
     private final ConcurrentHashMap<String, Long> seenRelayIds = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Long> deliveredRelayIds = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Integer> unknownPeerFailures = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> seenRequestNonces = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> transportFailures = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Long> outboundBackoffUntil = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Boolean> outboundRecoveryInFlight = new ConcurrentHashMap<>();
-    private final ExecutorService executor;
     private final HttpClient httpClient;
+    private final OperationalIssueTracker issues;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final boolean active;
 
@@ -60,165 +82,165 @@ public final class ServerRelay implements AutoCloseable {
         this.config = host.relaySettings();
         String defaultServerName = safe(host.defaultServerName());
         String configuredId = config == null ? "" : safe(config.serverId);
-        this.serverId = configuredId.isBlank() ? fallbackServerId(defaultServerName) : configuredId;
+        this.serverId = normalizeId(configuredId.isBlank() ? fallbackServerId(defaultServerName) : configuredId);
         String configuredName = config == null ? "" : safe(config.serverName);
         this.serverName = configuredName.isBlank() ? defaultServerName : configuredName;
-        int configuredPeers = 0;
-        if (config != null && config.peers != null) {
-            int index = 0;
-            for (RelaySettings.Peer peer : config.peers) {
-                index++;
-                configuredPeers++;
-                if (peer == null) {
-                    peerDiagnostics.add("peer #" + index + " is empty and was ignored");
+
+        Map<String,Integer> peerCounts = new HashMap<>();
+        if (config != null && config.groups != null) {
+            int groupIndex = 0;
+            for (RelaySettings.Group group : config.groups) {
+                groupIndex++;
+                if (group == null) { diagnostics.add("group #" + groupIndex + " is empty and was ignored"); continue; }
+                String gid = normalizeId(group.id);
+                if (gid.isBlank()) { diagnostics.add("group #" + groupIndex + " has no usable id and was ignored"); continue; }
+                if (groupsById.containsKey(gid)) { diagnostics.add("duplicate group id " + gid + " was ignored"); continue; }
+                String secret = safe(group.sharedSecret).trim();
+                if (secret.length() < MIN_GROUP_SECRET_LENGTH) {
+                    diagnostics.add("group " + gid + " shared-secret must be at least " + MIN_GROUP_SECRET_LENGTH + " characters and was ignored");
                     continue;
                 }
-                if (!peer.enabled) continue;
-                if (peer.id.isBlank()) {
-                    peerDiagnostics.add("peer #" + index + " has no id and was ignored");
-                    continue;
+                GroupRef ref = new GroupRef(gid, secret, group.forwardingEnabled);
+                groupsById.put(gid, ref);
+                int peerIndex = 0;
+                for (RelaySettings.Peer peer : group.peers) {
+                    peerIndex++;
+                    if (peer == null || !peer.enabled) continue;
+                    String pid = normalizeId(peer.id);
+                    if (pid.isBlank()) { diagnostics.add("group " + gid + " peer #" + peerIndex + " has no usable id and was ignored"); continue; }
+                    if (pid.equals(serverId)) { diagnostics.add("group " + gid + " peer " + pid + " matches this server-id and was ignored"); continue; }
+                    if (safe(peer.url).isBlank()) { diagnostics.add("group " + gid + " peer " + pid + " has no URL and was ignored"); continue; }
+                    try { relayBaseUri(peer.url); }
+                    catch (IllegalArgumentException ex) { diagnostics.add("group " + gid + " peer " + pid + " has an invalid URL and was ignored: " + ex.getMessage()); continue; }
+                    PeerRef pref = new PeerRef(ref, new RelaySettings.Peer(pid, peer.url, true));
+                    ref.peers.put(pid, pref);
+                    peerCounts.merge(pid, 1, Integer::sum);
                 }
-                if (peer.url.isBlank()) {
-                    peerDiagnostics.add("peer " + peer.id + " has no URL and was ignored");
-                    continue;
-                }
-                if (peer.id.equals(serverId)) {
-                    peerDiagnostics.add("peer " + peer.id + " matches this server-id and was ignored");
-                    continue;
-                }
-                if (peersById.containsKey(peer.id)) {
-                    peerDiagnostics.add("duplicate peer id " + peer.id + " was ignored; peer ids must be unique");
-                    continue;
-                }
-                if (secretFor(peer).isBlank()) {
-                    peerDiagnostics.add("peer " + peer.id + " has no per-peer or shared secret and was ignored");
-                    continue;
-                }
-                try {
-                    relayUri(peer.url);
-                } catch (IllegalArgumentException ex) {
-                    peerDiagnostics.add("peer " + peer.id + " has an invalid URL and was ignored: " + ex.getMessage());
-                    continue;
-                }
-                peersById.put(peer.id, peer);
             }
         }
-        this.configuredPeerCount = configuredPeers;
-        this.executor = Executors.newFixedThreadPool(2, r -> {
-            Thread t = new Thread(r, "KOKOTO WebChat-ServerRelay");
-            t.setDaemon(true);
-            return t;
-        });
+        for (GroupRef group : groupsById.values()) {
+            for (PeerRef peer : new ArrayList<>(group.peers.values())) {
+                if (peerCounts.getOrDefault(peer.id(), 0) > 1) {
+                    diagnostics.add("peer id " + peer.id() + " is registered in multiple relay groups; all registrations for that peer were disabled");
+                    group.peers.remove(peer.id());
+                } else {
+                    peersById.put(peer.id(), peer);
+                }
+            }
+        }
+        groupsById.values().removeIf(g -> g.peers.isEmpty());
+
+        this.issues = new OperationalIssueTracker(host::info, host::warn);
+        // Let java.net.http own its internal executor. A fixed two-thread executor is
+        // too small for concurrent multi-peer HTTPS/TLS requests and can starve HttpClient's
+        // internal asynchronous work under real reverse-proxy/network conditions.
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(config == null ? 5 : config.connectTimeoutSeconds))
-                .executor(executor)
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
         this.active = config != null && config.enabled && !serverId.isBlank() && !peersById.isEmpty();
     }
 
     public void start() {
+        start(true);
+    }
+
+    public void start(boolean emitSecurityWarnings) {
         if (config == null || !config.enabled) return;
-        if (serverId.isBlank()) {
-            host.warn("Server relay is enabled, but server-relay.server-id is empty and no usable fallback could be created.");
+        for (String diagnostic : diagnostics) host.warn("Server relay v2 config: " + diagnostic + ".");
+        // Security warnings are based on the operator's configured enabled peers, not
+        // on the post-validation active peer map. This guarantees that an http:// peer
+        // is reported even when another validation problem makes Relay inactive.
+        if (emitSecurityWarnings) logHttpPeerWarnings();
+        if (!active) {
+            host.warn("Server relay v2 is enabled, but no usable relay groups/peers remain after validation.");
             return;
         }
-        for (String diagnostic : peerDiagnostics) {
-            host.warn("Server relay config: " + diagnostic + ".");
+        host.info("Server relay protocol v2 enabled. serverId=" + serverId + ", groups=" + groupsById.size() + ", peers=" + peersById.size());
+    }
+
+    /**
+     * Re-evaluates the configured Relay peer URLs and writes direct-HTTP security warnings
+     * to the server console. This intentionally scans the loaded configuration rather than
+     * only peers that survived runtime validation: an operator must still see the HTTP
+     * warning even when that peer/group has another validation problem.
+     */
+    public void logHttpPeerWarnings() {
+        if (config == null || !config.enabled || config.groups == null) return;
+        Set<String> warned = new java.util.LinkedHashSet<>();
+        for (RelaySettings.Group group : config.groups) {
+            if (group == null || group.peers == null) continue;
+            for (RelaySettings.Peer peer : group.peers) {
+                if (peer == null || !peer.enabled) continue;
+                String url = safe(peer.url).trim();
+                if (!isPlainHttpUrl(url)) continue;
+                String id = normalizeId(peer.id);
+                String key = id + "\n" + url;
+                if (!warned.add(key)) continue;
+                warnText("security.relayHttpPeerWarning",
+                        "[WARNING] Relay peer '{peer}' uses HTTP ({url}). Direct relay remains authenticated/encrypted at the payload layer, but HTTPS is strongly recommended and this peer is excluded from forwarding.",
+                        "peer", id.isBlank() ? safe(peer.id) : id, "url", url);
+            }
         }
-        if (peersById.isEmpty()) {
-            host.warn("Server relay is enabled, but no usable peers remain after validation (configured="
-                    + configuredPeerCount + ").");
-            return;
-        }
-        host.info("Server relay enabled. serverId=" + serverId
-                + ", activePeers=" + peersById.size() + "/" + configuredPeerCount
-                + ", forwardReceivedPublicChat=" + config.forwardReceivedPublicChat
-                + " [" + String.join(", ", peersById.keySet()) + "]");
     }
 
-    public boolean isEnabled() {
-        return active && !closed.get();
-    }
-
-    public String serverId() {
-        return serverId;
-    }
-
-    public String serverName() {
-        return serverName;
-    }
+    public boolean isEnabled() { return active && !closed.get(); }
+    public String serverId() { return serverId; }
+    public String serverName() { return serverName; }
 
     public boolean canRouteDirectMessage(String targetServerId) {
         String target = normalizeId(targetServerId);
         if (!isEnabled() || target.isBlank() || target.equals(serverId)) return false;
-
-        RelaySettings.Peer direct = peersById.get(target);
-        if (direct != null && !isOutboundBackedOff(direct.id) && !secretFor(direct).isBlank()) return true;
-
-        // A spoke/chain can safely forward a private message only when there is
-        // exactly one authenticated next hop. With two or more possible peers the
-        // destination route is ambiguous, so reject before the sender-side thread
-        // records a message that cannot be routed.
-        int usableNextHops = 0;
-        for (RelaySettings.Peer peer : peersById.values()) {
-            if (peer == null || isOutboundBackedOff(peer.id) || secretFor(peer).isBlank()) continue;
-            usableNextHops++;
-            if (usableNextHops > 1) return false;
-        }
-        return usableNextHops == 1;
+        PeerRef direct = peersById.get(target);
+        if (direct != null) return !isBackedOff(direct.id());
+        return uniqueForwardingNextHop(null, "", target) != null;
     }
 
-    public String createDirectMessageRelayId() {
-        return "dmrelay-" + SecurityUtil.randomToken(16);
-    }
+    public String createDirectMessageRelayId() { return "dmrelay-" + SecurityUtil.randomToken(16); }
 
     public CompletableFuture<DirectMessageDelivery> publishDirectMessage(
             String relayId,
             String senderUuid, String senderUsername, String senderDisplayName,
             String targetServerId, String targetUuid, String targetUsername,
             String targetDisplayName, String message, String gameMessage) {
+        return publishDirectMessage(relayId, senderUuid, senderUsername, senderDisplayName,
+                targetServerId, targetUuid, targetUsername, targetDisplayName, message, gameMessage, "", "", "");
+    }
+
+    public CompletableFuture<DirectMessageDelivery> publishDirectMessage(
+            String relayId,
+            String senderUuid, String senderUsername, String senderDisplayName,
+            String targetServerId, String targetUuid, String targetUsername,
+            String targetDisplayName, String message, String gameMessage,
+            String replyToRelayId, String replyToSender, String replyToPreview) {
         String target = normalizeId(targetServerId);
-        if (!canRouteDirectMessage(target)) {
-            return CompletableFuture.completedFuture(DirectMessageDelivery.failed("remote_server_unavailable", 503));
-        }
-        DirectMessageEnvelope envelope = DirectMessageEnvelope.create(
-                relayId, serverId, serverName, target,
-                senderUuid, senderUsername, senderDisplayName,
-                targetUuid, targetUsername, targetDisplayName, message, gameMessage);
-        if (!envelope.valid()) {
-            return CompletableFuture.completedFuture(DirectMessageDelivery.failed("invalid_envelope", 400));
-        }
+        if (!canRouteDirectMessage(target)) return CompletableFuture.completedFuture(DirectMessageDelivery.failed("remote_server_unavailable", 503));
+        DirectMessageEnvelope envelope = DirectMessageEnvelope.create(relayId, serverId, serverName, target,
+                senderUuid, senderUsername, senderDisplayName, targetUuid, targetUsername, targetDisplayName, message, gameMessage,
+                replyToRelayId, replyToSender, replyToPreview);
+        if (!envelope.valid()) return CompletableFuture.completedFuture(DirectMessageDelivery.failed("invalid_envelope", 400));
         markSeen(envelope.relayId);
-        CompletableFuture<DirectMessageDelivery> future = sendDirectToPeers(envelope, "");
+        CompletableFuture<DirectMessageDelivery> future = sendDirectToPeers(envelope, "", null);
         future.whenComplete((delivery, error) -> {
-            if (error != null || delivery == null || !delivery.delivered) {
-                seenRelayIds.remove(envelope.relayId);
-            } else {
-                markDelivered(envelope.relayId);
-            }
+            if (error != null || delivery == null || !delivery.delivered) seenRelayIds.remove(envelope.relayId);
+            else markDelivered(envelope.relayId);
         });
         return future;
     }
 
     public CompletableFuture<Boolean> publishDirectMessageRead(String targetServerId, String messageRelayId) {
         String target = normalizeId(targetServerId);
-        String relayMessageId = safe(messageRelayId).trim();
-        if (!canRouteDirectMessage(target) || relayMessageId.isBlank()) {
-            return CompletableFuture.completedFuture(false);
-        }
-        DirectMessageReadEnvelope envelope = DirectMessageReadEnvelope.create(
-                serverId, target, relayMessageId);
+        if (!canRouteDirectMessage(target)) return CompletableFuture.completedFuture(false);
+        DirectMessageReadEnvelope envelope = DirectMessageReadEnvelope.create(serverId, target, messageRelayId);
         if (!envelope.valid()) return CompletableFuture.completedFuture(false);
         return sendDirectReadWithRetry(envelope, 0);
     }
 
     private CompletableFuture<Boolean> sendDirectReadWithRetry(DirectMessageReadEnvelope envelope, int attempt) {
-        return sendDirectReadToPeers(envelope, "").thenCompose(ok -> {
+        return sendDirectReadToPeers(envelope, "", null).thenCompose(ok -> {
             if (ok || attempt >= 2 || closed.get()) return CompletableFuture.completedFuture(ok);
             long delayMs = attempt == 0 ? 500L : 1500L;
-            return CompletableFuture
-                    .supplyAsync(() -> Boolean.TRUE, CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS))
+            return CompletableFuture.supplyAsync(() -> Boolean.TRUE, CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS))
                     .thenCompose(ignored -> sendDirectReadWithRetry(envelope, attempt + 1));
         });
     }
@@ -235,14 +257,8 @@ public final class ServerRelay implements AutoCloseable {
 
     public void prepareLocal(ChatMessage msg) {
         if (!isEnabled() || msg == null) return;
-
-        // Origin metadata is also presentation metadata. Stamp it on every local
-        // message while server relay is enabled, even when that source category is
-        // not forwarded to peers, so web/Discord views can always identify the
-        // originating server consistently.
         if (safe(msg.originServerId).isBlank()) msg.originServerId = serverId;
         if (safe(msg.originServerName).isBlank()) msg.originServerName = serverName;
-
         if (!shouldRelay(msg)) return;
         if (safe(msg.relayId).isBlank()) msg.relayId = "relay-" + SecurityUtil.randomToken(16);
         msg.id = msg.relayId;
@@ -254,782 +270,461 @@ public final class ServerRelay implements AutoCloseable {
         if (!shouldRelay(msg)) return;
         prepareLocal(msg);
         RelayEnvelope envelope = RelayEnvelope.fromMessage(msg, serverId, serverName, 0);
-        sendToPeers(envelope, "");
+        for (GroupRef group : groupsById.values()) sendPublicToGroup(envelope, group, "", false);
     }
 
-    public void handleIncoming(HttpExchange exchange) throws IOException {
-        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-            sendJson(exchange, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
-            return;
-        }
-        if (!isEnabled()) {
-            sendJson(exchange, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}");
-            return;
-        }
-        String protocol = header(exchange, HEADER_VERSION);
-        String fromId = normalizeId(header(exchange, HEADER_FROM));
-        String timestampText = header(exchange, HEADER_TIMESTAMP);
+    /** Legacy v1 endpoints are intentionally retired in 5.1.0. */
+    public void handleLegacyV1(HttpExchange exchange) throws IOException {
+        sendJson(exchange, 426, "{\"ok\":false,\"error\":\"relay_protocol_upgrade_required\",\"protocol\":2,\"version\":\"5.1.0\"}");
+    }
+
+    public void handleHandshake(HttpExchange exchange) throws IOException {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) { sendJson(exchange, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        if (!isEnabled()) { sendJson(exchange, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}"); return; }
+        RequestMeta meta = readMeta(exchange, false);
+        if (meta.error != null) { sendJson(exchange, meta.status, meta.error); return; }
+        PeerRef peer = peerFor(meta.groupId, meta.fromId);
+        if (peer == null) { sendJson(exchange, 403, "{\"ok\":false,\"error\":\"unknown_peer\"}"); return; }
+        if (!serverId.equals(meta.toId)) { signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"peer_mismatch\"}", peer, meta.nonce); return; }
+        if (!checkTimestamp(meta.timestamp)) { signedResponse(exchange, 401, "{\"ok\":false,\"error\":\"expired_request\"}", peer, meta.nonce); return; }
+        if (!markRequestNonce(meta.groupId, meta.fromId, meta.nonce)) { signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"replayed_nonce\"}", peer, meta.nonce); return; }
+        String transport = normalizeTransport(header(exchange, HEADER_TRANSPORT));
+        if (transport.isBlank()) { signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_transport\"}", peer, meta.nonce); return; }
         String signature = header(exchange, HEADER_SIGNATURE).toLowerCase(Locale.ROOT);
-        RelaySettings.Peer peer = peersById.get(fromId);
-        if (!PROTOCOL_VERSION.equals(protocol)) {
-            sendJson(exchange, 426, "{\"ok\":false,\"error\":\"unsupported_protocol\"}");
-            return;
+        String canonical = handshakeCanonical(meta, transport);
+        if (signature.isBlank() || !constantTimeEquals(signature, hmacHex(peer.group.secret, canonical))) {
+            signedResponse(exchange, 401, "{\"ok\":false,\"error\":\"bad_signature\"}", peer, meta.nonce); return;
         }
-        if (peer == null) {
-            sendJson(exchange, 403, "{\"ok\":false,\"error\":\"unknown_peer\"}");
-            return;
-        }
-        long timestamp;
-        try {
-            timestamp = Long.parseLong(timestampText);
-        } catch (NumberFormatException ex) {
-            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"invalid_timestamp\"}");
-            return;
-        }
-        long now = System.currentTimeMillis();
-        long allowedSkew = config.maxClockSkewSeconds * 1000L;
-        if (timestamp < now - allowedSkew || timestamp > now + allowedSkew) {
-            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"expired_request\"}");
-            return;
-        }
-        byte[] bodyBytes;
-        try {
-            bodyBytes = readLimited(exchange, MAX_BODY_BYTES);
-        } catch (IOException ex) {
-            sendJson(exchange, 413, "{\"ok\":false,\"error\":\"body_too_large\"}");
-            return;
-        }
-        String body = new String(bodyBytes, StandardCharsets.UTF_8);
-        String secret = secretFor(peer);
-        if (secret.isBlank() || signature.isBlank() || !constantTimeEquals(signature, sign(secret, timestampText + "\n" + body))) {
-            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"bad_signature\"}");
-            return;
-        }
-        RelayEnvelope envelope = RelayEnvelope.fromMap(JsonUtil.parseFlatObject(body));
-        if (!envelope.valid() || !fromId.equals(envelope.fromServerId) || envelope.hop < 0 || envelope.hop >= config.maxHops) {
-            sendJson(exchange, 400, "{\"ok\":false,\"error\":\"invalid_envelope\"}");
-            return;
-        }
-        if (envelope.originServerId.equals(serverId)) {
-            markSeen(envelope.relayId);
-            sendJson(exchange, 200, "{\"ok\":true,\"duplicate\":true}");
-            return;
-        }
-        if (!markSeen(envelope.relayId)) {
-            sendJson(exchange, 200, "{\"ok\":true,\"duplicate\":true}");
-            return;
-        }
-        if (host.hasPublicMessage(envelope.relayId)) {
-            sendJson(exchange, 200, "{\"ok\":true,\"duplicate\":true}");
-            return;
-        }
-        ChatMessage msg = envelope.toMessage();
-        if (!host.acceptPublicMessage(msg)) {
-            sendJson(exchange, 200, "{\"ok\":true,\"duplicate\":true}");
-            return;
-        }
-        sendJson(exchange, 200, "{\"ok\":true}");
-        if (config.forwardReceivedPublicChat && envelope.hop + 1 < config.maxHops) {
-            envelope.hop++;
-            envelope.fromServerId = serverId;
-            sendToPeers(envelope, fromId);
+        // Stateless probe only. Relay traffic itself uses 5.0.0-style request-by-request
+        // authentication/encryption; this diagnostic endpoint never creates routing state.
+        String body = "{\"ok\":true,\"protocol\":2,\"version\":\"" + PRODUCT_VERSION + "\",\"serverId\":" + JsonUtil.quote(serverId)
+                + ",\"groupId\":" + JsonUtil.quote(peer.group.id) + ",\"nonce\":" + JsonUtil.quote(meta.nonce) + "}";
+        signedResponse(exchange, 200, body, peer, meta.nonce);
+    }
+
+    public void handleMessage(HttpExchange exchange) throws IOException {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) { sendJson(exchange, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        if (!isEnabled()) { sendJson(exchange, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}"); return; }
+        RequestMeta meta = readMeta(exchange, true);
+        if (meta.error != null) { sendJson(exchange, meta.status, meta.error); return; }
+        PeerRef peer = peerFor(meta.groupId, meta.fromId);
+        if (peer == null) { sendJson(exchange, 403, "{\"ok\":false,\"error\":\"unknown_peer\"}"); return; }
+        if (!serverId.equals(meta.toId)) { signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"peer_mismatch\"}", peer, meta.nonce); return; }
+        // 5.0.0-compatible relay behavior: each request authenticates itself.
+        // Direct traffic is authenticated by the request itself; the probe stores no route state.
+        if (!checkTimestamp(meta.timestamp)) { signedResponse(exchange, 401, "{\"ok\":false,\"error\":\"expired_request\"}", peer, meta.nonce); return; }
+        if (!markRequestNonce(meta.groupId, meta.fromId, meta.nonce)) { signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"replayed_nonce\"}", peer, meta.nonce); return; }
+        byte[] encrypted;
+        try { encrypted = Base64.getDecoder().decode(readBody(exchange)); }
+        catch (Exception ex) { signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_ciphertext\"}", peer, meta.nonce); return; }
+        String plaintext;
+        try { plaintext = decrypt(peer, meta, encrypted); }
+        catch (Exception ex) { signedResponse(exchange, 401, "{\"ok\":false,\"error\":\"authentication_failed\"}", peer, meta.nonce); return; }
+        int split = plaintext.indexOf('\n');
+        if (split <= 0) { signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_message\"}", peer, meta.nonce); return; }
+        String kind = plaintext.substring(0, split);
+        String payload = plaintext.substring(split + 1);
+        switch (kind) {
+            case "public" -> handlePublicPayload(exchange, peer, meta, payload);
+            case "dm" -> handleDirectPayload(exchange, peer, meta, payload);
+            case "read" -> handleReadPayload(exchange, peer, meta, payload);
+            default -> signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"unknown_message_kind\"}", peer, meta.nonce);
         }
     }
 
-    public void handleIncomingDirectMessage(HttpExchange exchange) throws IOException {
-        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-            sendJson(exchange, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
-            return;
+    private void handlePublicPayload(HttpExchange exchange, PeerRef peer, RequestMeta meta, String payload) throws IOException {
+        RelayEnvelope envelope = RelayEnvelope.fromMap(JsonUtil.parseFlatObject(payload));
+        if (!envelope.valid() || !peer.id().equals(envelope.fromServerId) || envelope.hop < 0 || envelope.hop >= config.maxHops) {
+            signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_envelope\"}", peer, meta.nonce); return;
         }
-        if (!isEnabled()) {
-            sendJson(exchange, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}");
-            return;
+        if (envelope.originServerId.equals(serverId) || !markSeen(envelope.relayId) || host.hasPublicMessage(envelope.relayId)) {
+            signedResponse(exchange, 200, "{\"ok\":true,\"duplicate\":true}", peer, meta.nonce); return;
         }
-        String protocol = header(exchange, HEADER_VERSION);
-        String fromId = normalizeId(header(exchange, HEADER_FROM));
-        String timestampText = header(exchange, HEADER_TIMESTAMP);
-        String signature = header(exchange, HEADER_SIGNATURE).toLowerCase(Locale.ROOT);
-        RelaySettings.Peer peer = peersById.get(fromId);
-        if (!PROTOCOL_VERSION.equals(protocol)) {
-            sendJson(exchange, 426, "{\"ok\":false,\"error\":\"unsupported_protocol\"}");
-            return;
+        if (!host.acceptPublicMessage(envelope.toMessage())) {
+            signedResponse(exchange, 200, "{\"ok\":true,\"duplicate\":true}", peer, meta.nonce); return;
         }
-        if (peer == null) {
-            sendJson(exchange, 403, "{\"ok\":false,\"error\":\"unknown_peer\"}");
-            return;
+        signedResponse(exchange, 200, "{\"ok\":true}", peer, meta.nonce);
+        // Forwarding is per hop. A plain-HTTP peer may exchange direct relay traffic,
+        // but traffic received from that peer is not forwarded onward. Other HTTPS peers
+        // in the same group remain eligible for forwarding.
+        if (peer.group.forwardingEnabled && isHttpsPeer(peer) && envelope.hop + 1 < config.maxHops) {
+            envelope.hop++; envelope.fromServerId = serverId;
+            sendPublicToGroup(envelope, peer.group, peer.id(), true);
         }
-        long timestamp;
-        try {
-            timestamp = Long.parseLong(timestampText);
-        } catch (NumberFormatException ex) {
-            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"invalid_timestamp\"}");
-            return;
-        }
-        long now = System.currentTimeMillis();
-        long allowedSkew = config.maxClockSkewSeconds * 1000L;
-        if (timestamp < now - allowedSkew || timestamp > now + allowedSkew) {
-            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"expired_request\"}");
-            return;
-        }
-        byte[] bodyBytes;
-        try {
-            bodyBytes = readLimited(exchange, MAX_BODY_BYTES);
-        } catch (IOException ex) {
-            sendJson(exchange, 413, "{\"ok\":false,\"error\":\"body_too_large\"}");
-            return;
-        }
-        String body = new String(bodyBytes, StandardCharsets.UTF_8);
-        String secret = secretFor(peer);
-        if (secret.isBlank() || signature.isBlank() || !constantTimeEquals(signature, sign(secret, timestampText + "\n" + body))) {
-            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"bad_signature\"}");
-            return;
-        }
-        DirectMessageEnvelope envelope = DirectMessageEnvelope.fromMap(JsonUtil.parseFlatObject(body));
-        if (!envelope.valid() || !fromId.equals(envelope.fromServerId)
-                || envelope.hop < 0 || envelope.hop >= config.maxHops) {
-            sendJson(exchange, 400, "{\"ok\":false,\"error\":\"invalid_envelope\"}");
-            return;
-        }
-        if (envelope.originServerId.equals(serverId)) {
-            sendJson(exchange, 409, "{\"ok\":false,\"error\":\"relay_loop\"}");
-            return;
-        }
+    }
 
+    private void handleDirectPayload(HttpExchange exchange, PeerRef peer, RequestMeta meta, String payload) throws IOException {
+        DirectMessageEnvelope envelope = DirectMessageEnvelope.fromMap(JsonUtil.parseFlatObject(payload));
+        if (!envelope.valid() || !peer.id().equals(envelope.fromServerId) || envelope.hop < 0 || envelope.hop >= config.maxHops) {
+            signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_envelope\"}", peer, meta.nonce); return;
+        }
+        if (envelope.originServerId.equals(serverId)) { signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"relay_loop\"}", peer, meta.nonce); return; }
         if (envelope.targetServerId.equals(serverId)) {
             if (host.hasDirectRelayId(envelope.relayId) || isDelivered(envelope.relayId)) {
-                markSeen(envelope.relayId);
-                markDelivered(envelope.relayId);
-                sendJson(exchange, 200, "{\"ok\":true,\"delivered\":true,\"duplicate\":true}");
-                return;
+                markSeen(envelope.relayId); markDelivered(envelope.relayId);
+                signedResponse(exchange, 200, "{\"ok\":true,\"delivered\":true,\"duplicate\":true}", peer, meta.nonce); return;
             }
-            if (!markSeen(envelope.relayId)) {
-                sendJson(exchange, 409, "{\"ok\":false,\"error\":\"delivery_in_progress\"}");
-                return;
-            }
-            boolean accepted = host.acceptDirectMessage(new RelayDirectMessage(
-                    envelope.relayId,
-                    envelope.originServerId, envelope.originServerName,
-                    envelope.senderUuid, envelope.senderUsername, envelope.senderDisplayName,
-                    envelope.targetUuid, envelope.targetUsername, envelope.targetDisplayName,
-                    envelope.message, envelope.gameMessage));
-            if (!accepted) {
-                seenRelayIds.remove(envelope.relayId);
-                sendJson(exchange, 404, "{\"ok\":false,\"error\":\"dm_target_unavailable\"}");
-                return;
-            }
-            markDelivered(envelope.relayId);
-            sendJson(exchange, 200, "{\"ok\":true,\"delivered\":true}");
-            return;
+            if (!markSeen(envelope.relayId)) { signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"delivery_in_progress\"}", peer, meta.nonce); return; }
+            boolean accepted = host.acceptDirectMessage(new RelayDirectMessage(envelope.relayId, envelope.originServerId, envelope.originServerName,
+                    envelope.senderUuid, envelope.senderUsername, envelope.senderDisplayName, envelope.targetUuid, envelope.targetUsername,
+                    envelope.targetDisplayName, envelope.message, envelope.gameMessage,
+                    envelope.replyToRelayId, envelope.replyToSender, envelope.replyToPreview));
+            if (!accepted) { seenRelayIds.remove(envelope.relayId); signedResponse(exchange, 404, "{\"ok\":false,\"error\":\"dm_target_unavailable\"}", peer, meta.nonce); return; }
+            markDelivered(envelope.relayId); signedResponse(exchange, 200, "{\"ok\":true,\"delivered\":true}", peer, meta.nonce); return;
         }
-
-        if (isDelivered(envelope.relayId)) {
-            sendJson(exchange, 200, "{\"ok\":true,\"delivered\":true,\"duplicate\":true}");
-            return;
+        if (isDelivered(envelope.relayId)) { signedResponse(exchange, 200, "{\"ok\":true,\"delivered\":true,\"duplicate\":true}", peer, meta.nonce); return; }
+        if (!peer.group.forwardingEnabled || !isHttpsPeer(peer)) {
+            signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"forwarding_disabled_or_http_hop\"}", peer, meta.nonce); return;
         }
-        if (!markSeen(envelope.relayId)) {
-            sendJson(exchange, 409, "{\"ok\":false,\"error\":\"relay_in_progress\"}");
-            return;
-        }
-        if (envelope.hop + 1 >= config.maxHops) {
-            seenRelayIds.remove(envelope.relayId);
-            sendJson(exchange, 409, "{\"ok\":false,\"error\":\"max_hops\"}");
-            return;
-        }
-        envelope.hop++;
-        envelope.fromServerId = serverId;
+        if (!markSeen(envelope.relayId)) { signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"relay_in_progress\"}", peer, meta.nonce); return; }
+        if (envelope.hop + 1 >= config.maxHops) { seenRelayIds.remove(envelope.relayId); signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"max_hops\"}", peer, meta.nonce); return; }
+        envelope.hop++; envelope.fromServerId = serverId;
         DirectMessageDelivery delivery;
-        try {
-            delivery = sendDirectToPeers(envelope, fromId)
-                    .get(Math.max(2, config.requestTimeoutSeconds + 2L), TimeUnit.SECONDS);
-        } catch (Exception ex) {
-            seenRelayIds.remove(envelope.relayId);
-            sendJson(exchange, 504, "{\"ok\":false,\"error\":\"dm_forward_timeout\"}");
-            return;
-        }
+        try { delivery = sendDirectToPeers(envelope, peer.id(), peer.group).get(Math.max(2, config.requestTimeoutSeconds + 2L), TimeUnit.SECONDS); }
+        catch (Exception ex) { seenRelayIds.remove(envelope.relayId); signedResponse(exchange, 504, "{\"ok\":false,\"error\":\"dm_forward_timeout\"}", peer, meta.nonce); return; }
         if (delivery == null || !delivery.delivered) {
-            seenRelayIds.remove(envelope.relayId);
-            String error = delivery == null ? "dm_route_unavailable" : delivery.error;
+            seenRelayIds.remove(envelope.relayId); String error = delivery == null ? "dm_route_unavailable" : delivery.error;
             int status = delivery == null || delivery.httpStatus < 400 ? 502 : delivery.httpStatus;
-            sendJson(exchange, status, "{\"ok\":false,\"error\":" + JsonUtil.quote(error) + "}");
-            return;
+            signedResponse(exchange, status, "{\"ok\":false,\"error\":" + JsonUtil.quote(error) + "}", peer, meta.nonce); return;
         }
-        markDelivered(envelope.relayId);
-        sendJson(exchange, 200, "{\"ok\":true,\"delivered\":true,\"forwarded\":true}");
+        markDelivered(envelope.relayId); signedResponse(exchange, 200, "{\"ok\":true,\"delivered\":true,\"forwarded\":true}", peer, meta.nonce);
     }
 
-    public void handleIncomingDirectMessageRead(HttpExchange exchange) throws IOException {
-        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-            sendJson(exchange, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
-            return;
-        }
-        if (!isEnabled()) {
-            sendJson(exchange, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}");
-            return;
-        }
-        String protocol = header(exchange, HEADER_VERSION);
-        String fromId = normalizeId(header(exchange, HEADER_FROM));
-        String timestampText = header(exchange, HEADER_TIMESTAMP);
-        String signature = header(exchange, HEADER_SIGNATURE).toLowerCase(Locale.ROOT);
-        RelaySettings.Peer peer = peersById.get(fromId);
-        if (!PROTOCOL_VERSION.equals(protocol)) {
-            sendJson(exchange, 426, "{\"ok\":false,\"error\":\"unsupported_protocol\"}");
-            return;
-        }
-        if (peer == null) {
-            sendJson(exchange, 403, "{\"ok\":false,\"error\":\"unknown_peer\"}");
-            return;
-        }
-        long timestamp;
-        try {
-            timestamp = Long.parseLong(timestampText);
-        } catch (NumberFormatException ex) {
-            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"invalid_timestamp\"}");
-            return;
-        }
-        long now = System.currentTimeMillis();
-        long allowedSkew = config.maxClockSkewSeconds * 1000L;
-        if (timestamp < now - allowedSkew || timestamp > now + allowedSkew) {
-            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"expired_request\"}");
-            return;
-        }
-        byte[] bodyBytes;
-        try {
-            bodyBytes = readLimited(exchange, MAX_BODY_BYTES);
-        } catch (IOException ex) {
-            sendJson(exchange, 413, "{\"ok\":false,\"error\":\"body_too_large\"}");
-            return;
-        }
-        String body = new String(bodyBytes, StandardCharsets.UTF_8);
-        String secret = secretFor(peer);
-        if (secret.isBlank() || signature.isBlank() || !constantTimeEquals(signature, sign(secret, timestampText + "\n" + body))) {
-            sendJson(exchange, 401, "{\"ok\":false,\"error\":\"bad_signature\"}");
-            return;
-        }
-        DirectMessageReadEnvelope envelope = DirectMessageReadEnvelope.fromMap(JsonUtil.parseFlatObject(body));
-        if (!envelope.valid() || !fromId.equals(envelope.fromServerId)
-                || envelope.hop < 0 || envelope.hop >= config.maxHops) {
-            sendJson(exchange, 400, "{\"ok\":false,\"error\":\"invalid_envelope\"}");
-            return;
+    private void handleReadPayload(HttpExchange exchange, PeerRef peer, RequestMeta meta, String payload) throws IOException {
+        DirectMessageReadEnvelope envelope = DirectMessageReadEnvelope.fromMap(JsonUtil.parseFlatObject(payload));
+        if (!envelope.valid() || !peer.id().equals(envelope.fromServerId) || envelope.hop < 0 || envelope.hop >= config.maxHops) {
+            signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_envelope\"}", peer, meta.nonce); return;
         }
         if (envelope.targetServerId.equals(serverId)) {
             RelayReadApplyResult applied = host.applyDirectMessageRead(envelope.messageRelayId);
             if (applied == null || !applied.ok) {
-                String error = applied == null || applied.error == null || applied.error.isBlank() ? "message_not_found" : applied.error;
-                sendJson(exchange, 404, "{\"ok\":false,\"error\":" + JsonUtil.quote(error) + "}");
-                return;
+                String error = applied == null || safe(applied.error).isBlank() ? "message_not_found" : applied.error;
+                signedResponse(exchange, 404, "{\"ok\":false,\"error\":" + JsonUtil.quote(error) + "}", peer, meta.nonce); return;
             }
-            // Replayed read receipts are intentionally idempotent. Only notify web
-            // clients when the origin-side read position actually advanced; otherwise
-            // two open remote DM windows could keep refreshing each other indefinitely.
-            if (applied.changed) {
-                host.publishDirectMessageUpdate(applied.localUserUuid, applied.remoteUserUuid, applied.threadId);
-            }
-            sendJson(exchange, 200, "{\"ok\":true,\"read\":true,\"changed\":" + applied.changed + "}");
-            return;
+            if (applied.changed) host.publishDirectMessageUpdate(applied.localUserUuid, applied.remoteUserUuid, applied.threadId);
+            signedResponse(exchange, 200, "{\"ok\":true,\"read\":true,\"changed\":" + applied.changed + "}", peer, meta.nonce); return;
         }
-        if (envelope.hop + 1 >= config.maxHops) {
-            sendJson(exchange, 409, "{\"ok\":false,\"error\":\"max_hops\"}");
-            return;
+        if (!peer.group.forwardingEnabled || !isHttpsPeer(peer)) {
+            signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"forwarding_disabled_or_http_hop\"}", peer, meta.nonce); return;
         }
-        envelope.hop++;
-        envelope.fromServerId = serverId;
+        if (envelope.hop + 1 >= config.maxHops) { signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"max_hops\"}", peer, meta.nonce); return; }
+        envelope.hop++; envelope.fromServerId = serverId;
         boolean forwarded;
-        try {
-            forwarded = sendDirectReadToPeers(envelope, fromId)
-                    .get(Math.max(2, config.requestTimeoutSeconds + 2L), TimeUnit.SECONDS);
-        } catch (Exception ex) {
-            sendJson(exchange, 504, "{\"ok\":false,\"error\":\"dm_read_forward_timeout\"}");
-            return;
-        }
-        if (!forwarded) {
-            sendJson(exchange, 502, "{\"ok\":false,\"error\":\"dm_read_route_unavailable\"}");
-            return;
-        }
-        sendJson(exchange, 200, "{\"ok\":true,\"read\":true,\"forwarded\":true}");
+        try { forwarded = sendDirectReadToPeers(envelope, peer.id(), peer.group).get(Math.max(2, config.requestTimeoutSeconds + 2L), TimeUnit.SECONDS); }
+        catch (Exception ex) { signedResponse(exchange, 504, "{\"ok\":false,\"error\":\"dm_read_forward_timeout\"}", peer, meta.nonce); return; }
+        if (!forwarded) { signedResponse(exchange, 502, "{\"ok\":false,\"error\":\"dm_read_route_unavailable\"}", peer, meta.nonce); return; }
+        signedResponse(exchange, 200, "{\"ok\":true,\"read\":true,\"forwarded\":true}", peer, meta.nonce);
     }
 
-    private CompletableFuture<Boolean> sendDirectReadToPeers(DirectMessageReadEnvelope envelope, String excludePeerId) {
+    // Compatibility method names retained for loader code compiled against the prior core surface.
+    public void handleIncoming(HttpExchange exchange) throws IOException { handleLegacyV1(exchange); }
+    public void handleIncomingDirectMessage(HttpExchange exchange) throws IOException { handleLegacyV1(exchange); }
+    public void handleIncomingDirectMessageRead(HttpExchange exchange) throws IOException { handleLegacyV1(exchange); }
+
+    private void sendPublicToGroup(RelayEnvelope envelope, GroupRef group, String excludePeerId, boolean forwarding) {
+        if (!isEnabled() || envelope == null || group == null) return;
+        if (forwarding && !group.forwardingEnabled) return;
+        String payload = envelope.toJson();
+        for (PeerRef peer : group.peers.values()) {
+            if (peer.id().equals(excludePeerId) || peer.id().equals(envelope.originServerId)) continue;
+            if (!isPeerUsable(peer, forwarding)) continue;
+            sendMessage(peer, "public", payload).thenAccept(x -> {});
+        }
+    }
+
+    private CompletableFuture<DirectMessageDelivery> sendDirectToPeers(DirectMessageEnvelope envelope, String excludePeerId, GroupRef groupConstraint) {
+        if (!isEnabled() || envelope == null) return CompletableFuture.completedFuture(DirectMessageDelivery.failed("relay_disabled", 503));
+        PeerRef direct = peersById.get(envelope.targetServerId);
+        if (direct != null && (groupConstraint == null || direct.group == groupConstraint) && !direct.id().equals(excludePeerId)) {
+            boolean forwarding = !safe(excludePeerId).isBlank() || envelope.hop > 0;
+            if (isPeerUsable(direct, forwarding)) return sendDirect(direct, envelope.toJson());
+        }
+        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId);
+        if (next == null) return CompletableFuture.completedFuture(DirectMessageDelivery.failed("dm_route_unavailable", 404));
+        return sendDirect(next, envelope.toJson());
+    }
+
+    private CompletableFuture<Boolean> sendDirectReadToPeers(DirectMessageReadEnvelope envelope, String excludePeerId, GroupRef groupConstraint) {
         if (!isEnabled() || envelope == null) return CompletableFuture.completedFuture(false);
-        String body = envelope.toJson();
-        RelaySettings.Peer direct = peersById.get(envelope.targetServerId);
-        if (direct != null && !isOutboundBackedOff(direct.id) && !direct.id.equals(excludePeerId)) {
-            String secret = secretFor(direct);
-            if (secret.isBlank()) return CompletableFuture.completedFuture(false);
-            return sendDirectRead(direct, body, secret);
+        PeerRef direct = peersById.get(envelope.targetServerId);
+        if (direct != null && (groupConstraint == null || direct.group == groupConstraint) && !direct.id().equals(excludePeerId)) {
+            boolean forwarding = !safe(excludePeerId).isBlank() || envelope.hop > 0;
+            if (isPeerUsable(direct, forwarding)) return sendRead(direct, envelope.toJson());
         }
-        RelaySettings.Peer nextHop = null;
-        for (RelaySettings.Peer candidate : peersById.values()) {
-            if (isOutboundBackedOff(candidate.id) || candidate.id.equals(excludePeerId) || candidate.id.equals(envelope.originServerId)) continue;
-            if (secretFor(candidate).isBlank()) continue;
-            if (nextHop != null) return CompletableFuture.completedFuture(false);
-            nextHop = candidate;
-        }
-        if (nextHop == null) return CompletableFuture.completedFuture(false);
-        return sendDirectRead(nextHop, body, secretFor(nextHop));
+        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId);
+        return next == null ? CompletableFuture.completedFuture(false) : sendRead(next, envelope.toJson());
     }
 
-    private CompletableFuture<DirectMessageDelivery> sendDirectToPeers(DirectMessageEnvelope envelope, String excludePeerId) {
-        if (!isEnabled() || envelope == null) {
-            return CompletableFuture.completedFuture(DirectMessageDelivery.failed("relay_disabled", 503));
-        }
-        String body = envelope.toJson();
-        RelaySettings.Peer direct = peersById.get(envelope.targetServerId);
-        if (direct != null && !isOutboundBackedOff(direct.id) && !direct.id.equals(excludePeerId)) {
-            String secret = secretFor(direct);
-            if (secret.isBlank()) return CompletableFuture.completedFuture(DirectMessageDelivery.failed("dm_route_unavailable", 404));
-            return sendDirect(direct, body, secret);
-        }
-
-        RelaySettings.Peer nextHop = null;
-        for (RelaySettings.Peer peer : peersById.values()) {
-            if (isOutboundBackedOff(peer.id) || peer.id.equals(excludePeerId) || peer.id.equals(envelope.originServerId)) continue;
-            if (secretFor(peer).isBlank()) continue;
-            if (nextHop != null) {
-                host.warn("DM relay route to " + envelope.targetServerId
-                        + " is ambiguous; configure a direct peer or a single hub/next hop.");
-                return CompletableFuture.completedFuture(DirectMessageDelivery.failed("dm_route_ambiguous", 409));
+    private PeerRef uniqueForwardingNextHop(GroupRef groupConstraint, String excludePeerId, String targetServerId) {
+        PeerRef found = null;
+        for (GroupRef group : groupsById.values()) {
+            if (groupConstraint != null && group != groupConstraint) continue;
+            if (!group.forwardingEnabled) continue;
+            for (PeerRef peer : group.peers.values()) {
+                if (peer.id().equals(excludePeerId) || peer.id().equals(serverId) || peer.id().equals(targetServerId)) continue;
+                if (!isPeerUsable(peer, true)) continue;
+                if (found != null) return null; // deterministic routing only; avoid accidental fan-out.
+                found = peer;
             }
-            nextHop = peer;
         }
-        if (nextHop == null) return CompletableFuture.completedFuture(DirectMessageDelivery.failed("dm_route_unavailable", 404));
-        return sendDirect(nextHop, body, secretFor(nextHop));
+        return found;
     }
 
-    private void sendToPeers(RelayEnvelope envelope, String excludePeerId) {
-        if (!isEnabled() || envelope == null) return;
-        String body = envelope.toJson();
-        for (RelaySettings.Peer peer : peersById.values()) {
-            if (isOutboundBackedOff(peer.id) || peer.id.equals(excludePeerId) || peer.id.equals(envelope.originServerId)) continue;
-            String secret = secretFor(peer);
-            if (secret.isBlank()) continue;
-            send(peer, body, secret);
-        }
+    private CompletableFuture<DirectMessageDelivery> sendDirect(PeerRef peer, String json) {
+        return sendMessage(peer, "dm", json).thenApply(result -> {
+            if (result == null) return DirectMessageDelivery.failed("dm_transport_error", 502);
+            Map<String,String> parsed = JsonUtil.parseFlatObject(result.body);
+            boolean delivered = Boolean.parseBoolean(safe(parsed.get("delivered")));
+            if (result.status >= 200 && result.status < 300 && delivered) return DirectMessageDelivery.delivered(result.status);
+            String error = safe(parsed.get("error"));
+            if (error.isBlank()) error = result.status >= 200 && result.status < 300 ? "delivery_not_confirmed" : "remote_http_" + result.status;
+            return DirectMessageDelivery.failed(error, result.status);
+        });
     }
 
-    private void send(RelaySettings.Peer peer, String body, String secret) {
-        send(peer, body, secret, false);
+    private CompletableFuture<Boolean> sendRead(PeerRef peer, String json) {
+        return sendMessage(peer, "read", json).thenApply(result -> result != null && result.status >= 200 && result.status < 300
+                && Boolean.parseBoolean(safe(JsonUtil.parseFlatObject(result.body).get("read"))));
     }
 
-    private void send(RelaySettings.Peer peer, String body, String secret, boolean directMessage) {
-        if (peer == null || !beginOutboundAttempt(peer.id)) return;
-        String kind = directMessage ? "DM relay" : "Server relay";
+    private CompletableFuture<SignedResult> sendMessage(PeerRef peer, String kind, String json) {
+        if (peer == null || isBackedOff(peer.id())) return CompletableFuture.completedFuture(null);
         try {
-            String timestamp = Long.toString(System.currentTimeMillis());
-            URI endpoint = directMessage ? relayDirectMessageUri(peer.url) : relayUri(peer.url);
-            HttpRequest request = HttpRequest.newBuilder(endpoint)
+            long timestamp = System.currentTimeMillis();
+            String nonce = SecurityUtil.randomToken(18);
+            byte[] iv = new byte[GCM_IV_BYTES]; RNG.nextBytes(iv);
+            String ivText = Base64.getEncoder().encodeToString(iv);
+            RequestMeta meta = new RequestMeta(peer.group.id, serverId, peer.id(), timestamp, nonce, ivText, 0, null);
+            byte[] cipher = encrypt(peer, meta, (kind + "\n" + json).getBytes(StandardCharsets.UTF_8));
+            String body = Base64.getEncoder().encodeToString(cipher);
+            HttpRequest request = HttpRequest.newBuilder(relayMessageUri(peer.peer.url))
                     .timeout(Duration.ofSeconds(config.requestTimeoutSeconds))
-                    .header("Content-Type", "application/json; charset=utf-8")
+                    .header("Content-Type", "text/plain; charset=us-ascii")
                     .header(HEADER_VERSION, PROTOCOL_VERSION)
+                    .header(HEADER_GROUP, peer.group.id)
                     .header(HEADER_FROM, serverId)
-                    .header(HEADER_TIMESTAMP, timestamp)
-                    .header(HEADER_SIGNATURE, sign(secret, timestamp + "\n" + body))
-                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-                    .build();
-            httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
-                    .whenComplete((response, error) -> {
-                        if (closed.get()) return;
-                        if (error != null) {
-                            recordTransportFailure(peer.id, kind, safe(error.getMessage()));
-                        } else {
-                            recordTransportReachable(peer.id);
-                            if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                            recordPeerSuccess(peer.id);
-                        } else if (isRelayDisabledResponse(response.statusCode(), response.body())) {
-                            recordRelayDisabled(peer.id, kind);
-                        } else if (isUnknownPeerResponse(response.statusCode(), response.body())) {
-                            recordUnknownPeerFailure(peer.id, kind);
-                            } else {
-                                String detail = compactResponseBody(response.body());
-                                String failure = "HTTP " + response.statusCode() + (detail.isBlank() ? "" : " (" + detail + ")");
-                                if (!recordBackoffRetryFailureIfNeeded(peer.id, kind, failure)) {
-                                    host.warn(kind + " peer " + peer.id + " returned " + failure);
-                                }
-                            }
-                        }
-                    });
+                    .header(HEADER_TO, peer.id())
+                    .header(HEADER_TIMESTAMP, Long.toString(timestamp))
+                    .header(HEADER_NONCE, nonce)
+                    .header(HEADER_IV, ivText)
+                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.US_ASCII)).build();
+            return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)).handle((response, error) -> {
+                if (error != null || response == null) { recordTransportFailure(peer.id(), error == null ? "empty response" : safe(error.getMessage())); return null; }
+                if (!verifyResponse(peer, nonce, response)) { recordTransportFailure(peer.id(), "unauthenticated response"); return new SignedResult(502, "{\"ok\":false,\"error\":\"unauthenticated_response\"}"); }
+                recordTransportSuccess(peer.id());
+                return new SignedResult(response.statusCode(), response.body());
+            });
         } catch (Exception ex) {
-            recordTransportFailure(peer.id, kind, safe(ex.getMessage()));
+            recordTransportFailure(peer.id(), safe(ex.getMessage()));
+            return CompletableFuture.completedFuture(null);
         }
     }
 
-    private CompletableFuture<DirectMessageDelivery> sendDirect(RelaySettings.Peer peer, String body, String secret) {
-        if (peer == null || !beginOutboundAttempt(peer.id)) {
-            return CompletableFuture.completedFuture(DirectMessageDelivery.failed("relay_backoff", 503));
+    private byte[] encrypt(PeerRef peer, RequestMeta meta, byte[] plaintext) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        byte[] iv = Base64.getDecoder().decode(meta.iv);
+        cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(deriveKey(peer, meta.fromId, meta.toId), "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
+        cipher.updateAAD(aad(meta).getBytes(StandardCharsets.UTF_8));
+        return cipher.doFinal(plaintext);
+    }
+
+    private String decrypt(PeerRef peer, RequestMeta meta, byte[] ciphertext) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        byte[] iv = Base64.getDecoder().decode(meta.iv);
+        if (iv.length != GCM_IV_BYTES) throw new IllegalArgumentException("bad iv");
+        cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(deriveKey(peer, meta.fromId, meta.toId), "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
+        cipher.updateAAD(aad(meta).getBytes(StandardCharsets.UTF_8));
+        return new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8);
+    }
+
+    private byte[] deriveKey(PeerRef peer, String from, String to) throws Exception {
+        byte[] ikm = peer.group.secret.getBytes(StandardCharsets.UTF_8);
+        byte[] salt = ("KWC-Relay-v2|" + peer.group.id).getBytes(StandardCharsets.UTF_8);
+        byte[] prk = hmacBytes(salt, ikm);
+        byte[] info = ("message|" + peer.group.id + "|" + from + "|" + to).getBytes(StandardCharsets.UTF_8);
+        return hkdfExpand(prk, info, 32);
+    }
+
+    private static byte[] hkdfExpand(byte[] prk, byte[] info, int length) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(prk, "HmacSHA256"));
+        byte[] out = new byte[length]; byte[] previous = new byte[0]; int offset = 0; int counter = 1;
+        while (offset < length) {
+            mac.reset(); mac.update(previous); mac.update(info); mac.update((byte) counter++); previous = mac.doFinal();
+            int n = Math.min(previous.length, length - offset); System.arraycopy(previous, 0, out, offset, n); offset += n;
         }
+        return out;
+    }
+
+    private static byte[] hmacBytes(byte[] key, byte[] data) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256"); mac.init(new SecretKeySpec(key, "HmacSHA256")); return mac.doFinal(data);
+    }
+
+    private static String hmacHex(String secret, String canonical) {
         try {
-            String timestamp = Long.toString(System.currentTimeMillis());
-            URI endpoint = relayDirectMessageUri(peer.url);
-            HttpRequest request = HttpRequest.newBuilder(endpoint)
-                    .timeout(Duration.ofSeconds(config.requestTimeoutSeconds))
-                    .header("Content-Type", "application/json; charset=utf-8")
-                    .header(HEADER_VERSION, PROTOCOL_VERSION)
-                    .header(HEADER_FROM, serverId)
-                    .header(HEADER_TIMESTAMP, timestamp)
-                    .header(HEADER_SIGNATURE, sign(secret, timestamp + "\n" + body))
-                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-                    .build();
-            return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
-                    .handle((response, error) -> {
-                        if (error != null) {
-                            recordTransportFailure(peer.id, "DM relay", safe(error.getMessage()));
-                            return DirectMessageDelivery.failed("dm_transport_error", 502);
-                        }
-                        recordTransportReachable(peer.id);
-                        int status = response.statusCode();
-                        Map<String, String> responseBody = JsonUtil.parseFlatObject(response.body());
-                        if (status >= 200 && status < 300) {
-                            recordPeerSuccess(peer.id);
-                        } else if (isRelayDisabledResponse(status, response.body())) {
-                            recordRelayDisabled(peer.id, "DM relay");
-                        } else if (isUnknownPeerResponse(status, response.body())) {
-                            recordUnknownPeerFailure(peer.id, "DM relay");
-                        } else {
-                            String detail = compactResponseBody(response.body());
-                            recordBackoffRetryFailureIfNeeded(peer.id, "DM relay", "HTTP " + status
-                                    + (detail.isBlank() ? "" : " (" + detail + ")"));
-                        }
-                        boolean delivered = Boolean.parseBoolean(String.valueOf(responseBody.getOrDefault("delivered", "false")));
-                        if (status >= 200 && status < 300 && delivered) {
-                            return DirectMessageDelivery.delivered(status);
-                        }
-                        String errorCode = String.valueOf(responseBody.getOrDefault("error", "")).trim();
-                        if (errorCode.isBlank()) {
-                            errorCode = status >= 200 && status < 300 ? "delivery_not_confirmed" : "remote_http_" + status;
-                        }
-                        String detail = compactResponseBody(response.body());
-                        if (!"relay_disabled".equalsIgnoreCase(errorCode)) {
-                            host.warn("DM relay peer " + peer.id + " did not confirm delivery: HTTP "
-                                    + status + (detail.isBlank() ? "" : " (" + detail + ")"));
-                        }
-                        return DirectMessageDelivery.failed(errorCode, status);
-                    });
-        } catch (Exception ex) {
-            recordTransportFailure(peer.id, "DM relay", safe(ex.getMessage()));
-            return CompletableFuture.completedFuture(DirectMessageDelivery.failed("dm_request_error", 500));
-        }
-    }
-
-    private CompletableFuture<Boolean> sendDirectRead(RelaySettings.Peer peer, String body, String secret) {
-        if (peer == null || !beginOutboundAttempt(peer.id)) {
-            return CompletableFuture.completedFuture(false);
-        }
-        try {
-            String timestamp = Long.toString(System.currentTimeMillis());
-            URI endpoint = relayDirectMessageReadUri(peer.url);
-            HttpRequest request = HttpRequest.newBuilder(endpoint)
-                    .timeout(Duration.ofSeconds(config.requestTimeoutSeconds))
-                    .header("Content-Type", "application/json; charset=utf-8")
-                    .header(HEADER_VERSION, PROTOCOL_VERSION)
-                    .header(HEADER_FROM, serverId)
-                    .header(HEADER_TIMESTAMP, timestamp)
-                    .header(HEADER_SIGNATURE, sign(secret, timestamp + "\n" + body))
-                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-                    .build();
-            return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
-                    .handle((response, error) -> {
-                        if (error != null || response == null) {
-                            recordTransportFailure(peer.id, "DM read relay", error == null ? "empty response" : safe(error.getMessage()));
-                            return false;
-                        }
-                        recordTransportReachable(peer.id);
-                        if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                            recordPeerSuccess(peer.id);
-                        } else {
-                            if (isRelayDisabledResponse(response.statusCode(), response.body())) {
-                                recordRelayDisabled(peer.id, "DM read relay");
-                            } else if (isUnknownPeerResponse(response.statusCode(), response.body())) {
-                                recordUnknownPeerFailure(peer.id, "DM read relay");
-                            } else {
-                                String detail = compactResponseBody(response.body());
-                                recordBackoffRetryFailureIfNeeded(peer.id, "DM read relay", "HTTP " + response.statusCode()
-                                        + (detail.isBlank() ? "" : " (" + detail + ")"));
-                            }
-                            return false;
-                        }
-                        Map<String, String> parsed = JsonUtil.parseFlatObject(response.body());
-                        return Boolean.parseBoolean(String.valueOf(parsed.getOrDefault("read", "false")));
-                    });
-        } catch (Exception ex) {
-            recordTransportFailure(peer.id, "DM read relay", safe(ex.getMessage()));
-            return CompletableFuture.completedFuture(false);
-        }
-    }
-
-    private boolean isOutboundBackedOff(String peerId) {
-        if (peerId == null || peerId.isBlank()) return false;
-        Long retryAt = outboundBackoffUntil.get(peerId);
-        if (retryAt == null) return false;
-        if (outboundRecoveryInFlight.containsKey(peerId)) return true;
-        return System.currentTimeMillis() < retryAt;
-    }
-
-    private boolean beginOutboundAttempt(String peerId) {
-        if (peerId == null || peerId.isBlank()) return true;
-        Long retryAt = outboundBackoffUntil.get(peerId);
-        if (retryAt == null) return true;
-        if (System.currentTimeMillis() < retryAt) return false;
-        return outboundRecoveryInFlight.putIfAbsent(peerId, Boolean.TRUE) == null;
-    }
-
-    private void recordPeerSuccess(String peerId) {
-        if (peerId == null || peerId.isBlank()) return;
-        Long state = outboundBackoffUntil.get(peerId);
-        // relay_disabled is an explicit remote administrative state. A response
-        // from another request that was already in flight must not accidentally
-        // reactivate the peer; only recreating ServerRelay on reload/restart does.
-        if (state != null && state.longValue() == OUTBOUND_DISABLED_UNTIL_RELOAD) {
-            outboundRecoveryInFlight.remove(peerId);
-            return;
-        }
-        unknownPeerFailures.remove(peerId);
-        transportFailures.remove(peerId);
-        outboundBackoffUntil.remove(peerId);
-        outboundRecoveryInFlight.remove(peerId);
-    }
-
-    private void recordRelayDisabled(String peerId, String kind) {
-        if (peerId == null || peerId.isBlank()) return;
-        unknownPeerFailures.remove(peerId);
-        outboundRecoveryInFlight.remove(peerId);
-        Long previous = outboundBackoffUntil.put(peerId, OUTBOUND_DISABLED_UNTIL_RELOAD);
-        if (previous == null || previous.longValue() != OUTBOUND_DISABLED_UNTIL_RELOAD) {
-            host.warn(kind + " peer " + peerId + " reports relay_disabled. "
-                    + "Outbound relay to this peer is suspended until the local server relay is reloaded or restarted. "
-                    + "No periodic probe will be sent.");
-        }
-    }
-
-    private void recordUnknownPeerFailure(String peerId, String kind) {
-        if (peerId == null || peerId.isBlank()) return;
-        Long state = outboundBackoffUntil.get(peerId);
-        if (state != null && state.longValue() == OUTBOUND_DISABLED_UNTIL_RELOAD) {
-            outboundRecoveryInFlight.remove(peerId);
-            return;
-        }
-        boolean recoveryAttempt = state != null;
-        outboundRecoveryInFlight.remove(peerId);
-        if (recoveryAttempt) {
-            outboundBackoffUntil.put(peerId, System.currentTimeMillis() + OUTBOUND_BACKOFF_MILLIS);
-            host.warn(kind + " peer " + peerId + " still returns HTTP 403 unknown_peer. "
-                    + "Messages for this destination will be skipped for 60 seconds; the next actual relay message after that interval will retry automatically.");
-            return;
-        }
-        int failures = unknownPeerFailures.merge(peerId, 1, Integer::sum);
-        if (failures >= UNKNOWN_PEER_BACKOFF_THRESHOLD) {
-            outboundBackoffUntil.put(peerId, System.currentTimeMillis() + OUTBOUND_BACKOFF_MILLIS);
-            host.warn(kind + " peer " + peerId + " returned HTTP 403 unknown_peer "
-                    + failures + " times without a successful response. Messages for this destination will be skipped for 60 seconds. "
-                    + "After that, the next actual relay message will retry automatically; no periodic probe is sent. "
-                    + "Add this server-id to the receiver's server-relay.peers and verify the shared/per-peer secret.");
-            return;
-        }
-        host.warn(kind + " peer " + peerId + " returned HTTP 403 unknown_peer ("
-                + failures + "/" + UNKNOWN_PEER_BACKOFF_THRESHOLD + "). "
-                + "The receiver does not list this server-id; KWC will retry until the backoff threshold is reached.");
-    }
-
-    private void recordTransportReachable(String peerId) {
-        if (peerId == null || peerId.isBlank()) return;
-        transportFailures.remove(peerId);
-    }
-
-    private void recordTransportFailure(String peerId, String kind, String detail) {
-        if (peerId == null || peerId.isBlank()) return;
-        Long state = outboundBackoffUntil.get(peerId);
-        if (state != null && state.longValue() == OUTBOUND_DISABLED_UNTIL_RELOAD) {
-            outboundRecoveryInFlight.remove(peerId);
-            return;
-        }
-        boolean recoveryAttempt = state != null;
-        outboundRecoveryInFlight.remove(peerId);
-        if (recoveryAttempt) {
-            outboundBackoffUntil.put(peerId, System.currentTimeMillis() + OUTBOUND_BACKOFF_MILLIS);
-            host.warn(kind + " peer " + peerId + " recovery attempt failed"
-                    + (detail == null || detail.isBlank() ? "" : ": " + detail)
-                    + ". Messages for this destination will be skipped for another 60 seconds; the next actual relay message after that interval will retry.");
-            return;
-        }
-        int failures = transportFailures.merge(peerId, 1, Integer::sum);
-        if (failures >= TRANSPORT_BACKOFF_THRESHOLD) {
-            outboundBackoffUntil.put(peerId, System.currentTimeMillis() + OUTBOUND_BACKOFF_MILLIS);
-            host.warn(kind + " peer " + peerId + " transport failed " + failures
-                    + " times without a successful connection"
-                    + (detail == null || detail.isBlank() ? "" : ": " + detail)
-                    + ". Messages for this destination will be skipped for 60 seconds. "
-                    + "After that, the next actual relay message will retry automatically; no periodic probe is sent.");
-            return;
-        }
-        host.warn(kind + " transport failed for peer " + peerId
-                + (detail == null || detail.isBlank() ? "" : ": " + detail)
-                + " (" + failures + "/" + TRANSPORT_BACKOFF_THRESHOLD + "). "
-                + "KWC will retry until the backoff threshold is reached.");
-    }
-
-    private boolean recordBackoffRetryFailureIfNeeded(String peerId, String kind, String detail) {
-        if (peerId == null || peerId.isBlank()) return false;
-        Long state = outboundBackoffUntil.get(peerId);
-        if (state == null) return false;
-        outboundRecoveryInFlight.remove(peerId);
-        if (state.longValue() == OUTBOUND_DISABLED_UNTIL_RELOAD) {
-            return true;
-        }
-        outboundBackoffUntil.put(peerId, System.currentTimeMillis() + OUTBOUND_BACKOFF_MILLIS);
-        host.warn(kind + " peer " + peerId + " recovery attempt failed"
-                + (detail == null || detail.isBlank() ? "" : ": " + detail)
-                + ". Messages for this destination will be skipped for another 60 seconds; the next actual relay message after that interval will retry.");
-        return true;
-    }
-
-    private static boolean isRelayDisabledResponse(int status, String body) {
-        if (status != 404) return false;
-        Map<String, String> parsed = JsonUtil.parseFlatObject(body);
-        return "relay_disabled".equalsIgnoreCase(String.valueOf(parsed.getOrDefault("error", "")).trim());
-    }
-
-    private static boolean isUnknownPeerResponse(int status, String body) {
-        if (status != 403) return false;
-        Map<String, String> parsed = JsonUtil.parseFlatObject(body);
-        return "unknown_peer".equalsIgnoreCase(String.valueOf(parsed.getOrDefault("error", "")).trim());
-    }
-
-    private URI relayUri(String configured) {
-        return relayEndpointUri(configured, "/relay/receive");
-    }
-
-    private URI relayDirectMessageUri(String configured) {
-        return relayEndpointUri(configured, "/relay/dm/receive");
-    }
-
-    private URI relayDirectMessageReadUri(String configured) {
-        return relayEndpointUri(configured, "/relay/dm/read");
-    }
-
-    private URI relayEndpointUri(String configured, String endpoint) {
-        String url = safe(configured).trim();
-        while (url.endsWith("/")) url = url.substring(0, url.length() - 1);
-        if (url.endsWith("/relay/receive")) url = url.substring(0, url.length() - "/relay/receive".length());
-        if (url.endsWith("/relay/dm/receive")) url = url.substring(0, url.length() - "/relay/dm/receive".length());
-        if (url.endsWith("/relay/dm/read")) url = url.substring(0, url.length() - "/relay/dm/read".length());
-        url += endpoint;
-        URI uri = URI.create(url);
-        String scheme = safe(uri.getScheme()).toLowerCase(Locale.ROOT);
-        if (!scheme.equals("http") && !scheme.equals("https")) {
-            throw new IllegalArgumentException("URL must use http or https");
-        }
-        if (uri.getHost() == null || uri.getHost().isBlank()) {
-            throw new IllegalArgumentException("URL must include a host");
-        }
-        if (uri.getQuery() != null || uri.getFragment() != null) {
-            throw new IllegalArgumentException("URL must not include a query string or fragment");
-        }
-        return uri;
-    }
-
-    private boolean markSeen(String relayId) {
-        cleanupSeen();
-        long expiry = System.currentTimeMillis() + config.dedupeSeconds * 1000L;
-        Long existing = seenRelayIds.putIfAbsent(relayId, expiry);
-        if (existing == null) return true;
-        if (existing < System.currentTimeMillis()) {
-            return seenRelayIds.replace(relayId, existing, expiry);
-        }
-        return false;
-    }
-
-    private void cleanupSeen() {
-        if (seenRelayIds.size() < 2048 && deliveredRelayIds.size() < 2048) return;
-        long now = System.currentTimeMillis();
-        seenRelayIds.entrySet().removeIf(entry -> entry.getValue() < now);
-        deliveredRelayIds.entrySet().removeIf(entry -> entry.getValue() < now);
-    }
-
-    private void markDelivered(String relayId) {
-        if (relayId == null || relayId.isBlank()) return;
-        long expiry = System.currentTimeMillis() + config.dedupeSeconds * 1000L;
-        deliveredRelayIds.put(relayId, expiry);
-        seenRelayIds.put(relayId, expiry);
-    }
-
-    private boolean isDelivered(String relayId) {
-        if (relayId == null || relayId.isBlank()) return false;
-        Long expiry = deliveredRelayIds.get(relayId);
-        if (expiry == null) return false;
-        if (expiry < System.currentTimeMillis()) {
-            deliveredRelayIds.remove(relayId, expiry);
-            return false;
-        }
-        return true;
-    }
-
-    private String secretFor(RelaySettings.Peer peer) {
-        String perPeer = peer == null ? "" : safe(peer.secret);
-        return perPeer.isBlank() ? safe(config.sharedSecret) : perPeer;
-    }
-
-    private static byte[] readLimited(HttpExchange exchange, int maxBytes) throws IOException {
-        byte[] data = exchange.getRequestBody().readNBytes(maxBytes + 1);
-        if (data.length > maxBytes) throw new IOException("relay_body_too_large");
-        return data;
-    }
-
-    private static String header(HttpExchange exchange, String name) {
-        String value = exchange.getRequestHeaders().getFirst(name);
-        return value == null ? "" : value.trim();
-    }
-
-    private static String sign(String secret, String canonical) {
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            byte[] digest = mac.doFinal(canonical.getBytes(StandardCharsets.UTF_8));
+            byte[] digest = hmacBytes(secret.getBytes(StandardCharsets.UTF_8), canonical.getBytes(StandardCharsets.UTF_8));
             StringBuilder out = new StringBuilder(digest.length * 2);
             for (byte b : digest) out.append(String.format(Locale.ROOT, "%02x", b & 0xff));
             return out.toString();
-        } catch (Exception ex) {
-            throw new IllegalStateException("HMAC-SHA256 is unavailable", ex);
+        } catch (Exception ex) { throw new IllegalStateException("HMAC-SHA256 unavailable", ex); }
+    }
+
+    private String aad(RequestMeta meta) {
+        return meta.groupId + "\n" + meta.fromId + "\n" + meta.toId + "\n" + meta.timestamp + "\n" + meta.nonce + "\n" + meta.iv;
+    }
+
+    private String handshakeCanonical(RequestMeta meta, String transport) {
+        return "handshake\n" + PROTOCOL_VERSION + "\n" + PRODUCT_VERSION + "\n" + meta.groupId + "\n" + meta.fromId + "\n" + meta.toId
+                + "\n" + meta.timestamp + "\n" + meta.nonce + "\n" + transport;
+    }
+
+    private boolean verifyResponse(PeerRef peer, String requestNonce, HttpResponse<String> response) {
+        String ts = response.headers().firstValue(HEADER_RESPONSE_TIMESTAMP).orElse("");
+        String sig = response.headers().firstValue(HEADER_RESPONSE_SIGNATURE).orElse("").toLowerCase(Locale.ROOT);
+        if (ts.isBlank() || sig.isBlank()) return false;
+        try { if (!checkTimestamp(Long.parseLong(ts))) return false; } catch (NumberFormatException ex) { return false; }
+        String canonical = "response\n" + peer.group.id + "\n" + peer.id() + "\n" + serverId + "\n" + ts + "\n" + requestNonce + "\n" + response.statusCode() + "\n" + safe(response.body());
+        return constantTimeEquals(sig, hmacHex(peer.group.secret, canonical));
+    }
+
+    private void signedResponse(HttpExchange exchange, int status, String body, PeerRef peer, String requestNonce) throws IOException {
+        String ts = Long.toString(System.currentTimeMillis());
+        String canonical = "response\n" + peer.group.id + "\n" + serverId + "\n" + peer.id() + "\n" + ts + "\n" + requestNonce + "\n" + status + "\n" + body;
+        exchange.getResponseHeaders().set(HEADER_RESPONSE_TIMESTAMP, ts);
+        exchange.getResponseHeaders().set(HEADER_RESPONSE_SIGNATURE, hmacHex(peer.group.secret, canonical));
+        sendJson(exchange, status, body);
+    }
+
+    private RequestMeta readMeta(HttpExchange exchange, boolean requireIv) {
+        if (!PROTOCOL_VERSION.equals(header(exchange, HEADER_VERSION))) return new RequestMeta("", "", "", 0, "", "", 426, "{\"ok\":false,\"error\":\"unsupported_protocol\",\"protocol\":2,\"version\":\"5.1.0\"}");
+        String group = normalizeId(header(exchange, HEADER_GROUP));
+        String from = normalizeId(header(exchange, HEADER_FROM));
+        String to = normalizeId(header(exchange, HEADER_TO));
+        String nonce = safe(header(exchange, HEADER_NONCE)).trim();
+        String iv = requireIv ? safe(header(exchange, HEADER_IV)).trim() : "";
+        long ts;
+        try { ts = Long.parseLong(header(exchange, HEADER_TIMESTAMP)); }
+        catch (NumberFormatException ex) { return new RequestMeta(group, from, to, 0, nonce, iv, 401, "{\"ok\":false,\"error\":\"invalid_timestamp\"}"); }
+        if (group.isBlank() || from.isBlank() || to.isBlank() || nonce.length() < 8 || nonce.length() > 180 || (requireIv && iv.isBlank()))
+            return new RequestMeta(group, from, to, ts, nonce, iv, 400, "{\"ok\":false,\"error\":\"invalid_headers\"}");
+        return new RequestMeta(group, from, to, ts, nonce, iv, 0, null);
+    }
+
+    private PeerRef peerFor(String groupId, String peerId) {
+        GroupRef group = groupsById.get(groupId);
+        if (group == null) return null;
+        PeerRef peer = group.peers.get(peerId);
+        return peer != null && peersById.get(peerId) == peer ? peer : null;
+    }
+
+    private boolean isPeerUsable(PeerRef peer, boolean forwarding) {
+        if (peer == null || isBackedOff(peer.id())) return false;
+        if (!forwarding) return true;
+        // Forwarding is filtered per hop, not per group. HTTP peers remain usable for
+        // direct relay, while only HTTPS peers can be selected as forwarding hops.
+        return peer.group.forwardingEnabled && isHttpsPeer(peer);
+    }
+
+    private boolean isHttpsPeer(PeerRef peer) { return "https".equals(transportForPeer(peer)); }
+    private static boolean isPlainHttpUrl(String value) {
+        String url = safe(value).trim().toLowerCase(Locale.ROOT);
+        return url.startsWith("http://");
+    }
+    private String transportForPeer(PeerRef peer) {
+        try { return normalizeTransport(relayBaseUri(peer.peer.url).getScheme()); } catch (Exception ex) { return ""; }
+    }
+    private static String normalizeTransport(String value) {
+        String v = safe(value).trim().toLowerCase(Locale.ROOT); return (v.equals("http") || v.equals("https")) ? v : "";
+    }
+
+    private void warnForwardingBlocked(PeerRef peer, String direction) {
+        warnText("security.relayForwardingHttpBlocked",
+                "[WARNING] Relay forwarding was blocked for peer '{peer}' because every forwarding hop must be HTTPS.",
+                "peer", peer.id(), "url", peer.peer.url, "direction", direction);
+    }
+    private void warnText(String key, String fallback, String... values) {
+        host.warn(text(key, fallback, values));
+    }
+    private String text(String key, String fallback, String... values) {
+        Map<String,String> args = new LinkedHashMap<>();
+        if (values != null) for (int i=0;i+1<values.length;i+=2) args.put(values[i], values[i+1]);
+        WebChatLanguage language = host.language();
+        return language == null ? format(fallback,args) : language.text(key,fallback,args);
+    }
+    private static String format(String template, Map<String,String> args) {
+        String out=safe(template); for (Map.Entry<String,String> e:args.entrySet()) out=out.replace("{"+e.getKey()+"}",safe(e.getValue())); return out;
+    }
+
+    private boolean markSeen(String relayId) {
+        cleanupReplayCaches(); long now=System.currentTimeMillis(); return seenRelayIds.putIfAbsent(safe(relayId), now) == null;
+    }
+    private void markDelivered(String relayId) { deliveredRelayIds.put(safe(relayId), System.currentTimeMillis()); }
+    private boolean isDelivered(String relayId) { cleanupReplayCaches(); return deliveredRelayIds.containsKey(safe(relayId)); }
+    private boolean markRequestNonce(String group, String from, String nonce) {
+        cleanupReplayCaches(); return seenRequestNonces.putIfAbsent(group + "|" + from + "|" + nonce, System.currentTimeMillis()) == null;
+    }
+    private void cleanupReplayCaches() {
+        long cutoff=System.currentTimeMillis() - Math.max(30, config == null ? 300 : config.dedupeSeconds) * 1000L;
+        seenRelayIds.entrySet().removeIf(e->e.getValue()<cutoff); deliveredRelayIds.entrySet().removeIf(e->e.getValue()<cutoff); seenRequestNonces.entrySet().removeIf(e->e.getValue()<cutoff);
+    }
+    private boolean checkTimestamp(long timestamp) { long skew=(config==null?60:config.maxClockSkewSeconds)*1000L, now=System.currentTimeMillis(); return timestamp>=now-skew && timestamp<=now+skew; }
+
+    private boolean isBackedOff(String peerId) { Long until=outboundBackoffUntil.get(peerId); if (until==null) return false; if (until<=System.currentTimeMillis()) { outboundBackoffUntil.remove(peerId,until); return false; } return true; }
+    private void recordTransportSuccess(String peerId) {
+        transportFailures.remove(peerId);
+        outboundBackoffUntil.remove(peerId);
+        issues.recovered("relay-transport:" + peerId,
+                "Server relay v2 transport recovered for peer " + peerId + ".");
+    }
+    private void recordTransportFailure(String peerId, String detail) {
+        String safeDetail = safe(detail).trim();
+        if (safeDetail.isBlank()) safeDetail = "unknown transport error";
+        int n = transportFailures.merge(peerId, 1, Integer::sum);
+        if (n >= 3) {
+            outboundBackoffUntil.put(peerId, System.currentTimeMillis() + OUTBOUND_BACKOFF_MILLIS);
+            transportFailures.put(peerId, 0);
         }
+        issues.failed("relay-transport:" + peerId, safeDetail,
+                "Server relay v2 transport failure for peer " + peerId + ": " + safeDetail);
     }
 
-    private static boolean constantTimeEquals(String a, String b) {
-        return MessageDigest.isEqual(a.getBytes(StandardCharsets.US_ASCII), b.getBytes(StandardCharsets.US_ASCII));
+    private URI relayBaseUri(String configured) {
+        String url=safe(configured).trim(); if(url.isBlank()) throw new IllegalArgumentException("URL is blank");
+        URI uri=URI.create(url); String scheme=normalizeTransport(uri.getScheme()); if(scheme.isBlank()) throw new IllegalArgumentException("URL must use http or https");
+        return uri;
+    }
+    private URI relayMessageUri(String configured) { return relayEndpointUri(configured, "/relay/v2/message"); }
+    private URI relayEndpointUri(String configured, String endpoint) {
+        String url=relayBaseUri(configured).toString(); while(url.endsWith("/")) url=url.substring(0,url.length()-1);
+        String[] legacy={"/relay/handshake","/relay/receive","/relay/dm/receive","/relay/dm/read","/relay/v2/handshake","/relay/v2/message"};
+        for(String suffix:legacy) if(url.endsWith(suffix)){url=url.substring(0,url.length()-suffix.length()); break;}
+        return URI.create(url+endpoint);
     }
 
-    private static void sendJson(HttpExchange exchange, int status, String json) throws IOException {
-        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-        exchange.sendResponseHeaders(status, bytes.length);
-        try (OutputStream out = exchange.getResponseBody()) {
-            out.write(bytes);
-        }
+
+    private String readBody(HttpExchange exchange) throws IOException { return new String(readLimited(exchange, MAX_BODY_BYTES), StandardCharsets.US_ASCII).trim(); }
+    private static byte[] readLimited(HttpExchange exchange,int maxBytes)throws IOException { byte[] data=exchange.getRequestBody().readNBytes(maxBytes+1); if(data.length>maxBytes) throw new IOException("body_too_large"); return data; }
+    private static String header(HttpExchange exchange,String name){return safe(exchange.getRequestHeaders().getFirst(name)).trim();}
+    private static boolean constantTimeEquals(String a,String b){return MessageDigest.isEqual(safe(a).getBytes(StandardCharsets.US_ASCII),safe(b).getBytes(StandardCharsets.US_ASCII));}
+    private static void sendJson(HttpExchange exchange,int status,String json)throws IOException{byte[] bytes=json.getBytes(StandardCharsets.UTF_8);exchange.getResponseHeaders().set("Content-Type","application/json; charset=utf-8");exchange.sendResponseHeaders(status,bytes.length);try(OutputStream out=exchange.getResponseBody()){out.write(bytes);}}
+    private static String normalizeId(String raw){String id=safe(raw).trim().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]","-");while(id.contains("--"))id=id.replace("--","-");while(id.startsWith("-"))id=id.substring(1);while(id.endsWith("-"))id=id.substring(0,id.length()-1);return id.length()>64?id.substring(0,64):id;}
+    private static String fallbackServerId(String raw){String id=normalizeId(raw);return id.isBlank()?"server":id;}
+    private static String safe(String value){return value==null?"":value;}
+
+    @Override public void close(){
+        if(!closed.compareAndSet(false,true))return;
+        seenRelayIds.clear();deliveredRelayIds.clear();seenRequestNonces.clear();issues.clearAll();
     }
 
-
-    private static String compactResponseBody(String value) {
-        String body = safe(value).replace('\n', ' ').replace('\r', ' ').trim();
-        if (body.length() > 240) body = body.substring(0, 237) + "...";
-        return body;
+    private static final class GroupRef {
+        final String id; final String secret; final boolean forwardingEnabled; final Map<String,PeerRef> peers=new LinkedHashMap<>();
+        GroupRef(String id,String secret,boolean forwardingEnabled){this.id=id;this.secret=secret;this.forwardingEnabled=forwardingEnabled;}
     }
-
-    private static String normalizeId(String raw) {
-        return safe(raw).trim().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]", "-");
+    private static final class PeerRef {
+        final GroupRef group; final RelaySettings.Peer peer; PeerRef(GroupRef group,RelaySettings.Peer peer){this.group=group;this.peer=peer;} String id(){return peer.id;}
     }
-
-    private static String fallbackServerId(String raw) {
-        String id = normalizeId(raw);
-        return id.isBlank() ? "server" : id;
-    }
-
-    private static String safe(String value) {
-        return value == null ? "" : value;
-    }
-
-    @Override
-    public void close() {
-        if (!closed.compareAndSet(false, true)) return;
-        executor.shutdownNow();
-        seenRelayIds.clear();
-        deliveredRelayIds.clear();
-    }
+    private record SignedResult(int status,String body){}
+    private record RequestMeta(String groupId,String fromId,String toId,long timestamp,String nonce,String iv,int status,String error){}
 
     public static final class DirectMessageDelivery {
         public final boolean delivered;
@@ -1134,11 +829,15 @@ public final class ServerRelay implements AutoCloseable {
         String targetDisplayName;
         String message;
         String gameMessage;
+        String replyToRelayId;
+        String replyToSender;
+        String replyToPreview;
 
         static DirectMessageEnvelope create(String relayId, String originServerId, String originServerName, String targetServerId,
                                             String senderUuid, String senderUsername, String senderDisplayName,
                                             String targetUuid, String targetUsername, String targetDisplayName,
-                                            String message, String gameMessage) {
+                                            String message, String gameMessage,
+                                            String replyToRelayId, String replyToSender, String replyToPreview) {
             DirectMessageEnvelope e = new DirectMessageEnvelope();
             e.relayId = safe(relayId).isBlank() ? "dmrelay-" + SecurityUtil.randomToken(16) : limit(safe(relayId), 180);
             e.originServerId = normalizeId(originServerId);
@@ -1155,6 +854,9 @@ public final class ServerRelay implements AutoCloseable {
             e.targetDisplayName = limit(safe(targetDisplayName), 128);
             e.message = limit(safe(message), 16384);
             e.gameMessage = limit(safe(gameMessage), 16384);
+            e.replyToRelayId = limit(safe(replyToRelayId).trim(), 180);
+            e.replyToSender = limit(safe(replyToSender), 128);
+            e.replyToPreview = limit(safe(replyToPreview), 240);
             return e;
         }
 
@@ -1175,6 +877,9 @@ public final class ServerRelay implements AutoCloseable {
             e.targetDisplayName = safe(map.get("targetDisplayName"));
             e.message = safe(map.get("message"));
             e.gameMessage = safe(map.get("gameMessage"));
+            e.replyToRelayId = safe(map.get("replyToRelayId")).trim();
+            e.replyToSender = safe(map.get("replyToSender"));
+            e.replyToPreview = safe(map.get("replyToPreview"));
             return e;
         }
 
@@ -1192,7 +897,10 @@ public final class ServerRelay implements AutoCloseable {
                     && targetUsername.length() <= 64
                     && targetDisplayName.length() <= 128
                     && !message.isBlank() && message.length() <= 16384
-                    && gameMessage.length() <= 16384;
+                    && gameMessage.length() <= 16384
+                    && (replyToRelayId.isBlank() || replyToRelayId.matches("[A-Za-z0-9._:-]{8,180}"))
+                    && replyToSender.length() <= 128
+                    && replyToPreview.length() <= 240;
         }
 
         String toJson() {
@@ -1212,6 +920,11 @@ public final class ServerRelay implements AutoCloseable {
             m.put("targetDisplayName", targetDisplayName);
             m.put("message", message);
             if (!gameMessage.isBlank()) m.put("gameMessage", gameMessage);
+            if (!replyToRelayId.isBlank()) {
+                m.put("replyToRelayId", replyToRelayId);
+                m.put("replyToSender", replyToSender);
+                m.put("replyToPreview", replyToPreview);
+            }
             return JsonUtil.obj(m);
         }
 
@@ -1309,7 +1022,7 @@ public final class ServerRelay implements AutoCloseable {
                     && i18nKey.length() <= 128 && i18nArgs.length() <= 8192
                     && replyToId.length() <= 160
                     && replyToSender.length() <= 96
-                    && replyToPreview.length() <= 512;
+                    && replyToPreview.length() <= 16384;
         }
 
         ChatMessage toMessage() {

@@ -1,13 +1,13 @@
-# KOKOTO WebChat 5.0.0 総合ユーザー・運用マニュアル
+# KOKOTO WebChat 5.1.0 総合ユーザー・運用マニュアル
 
-> **5.0.0 運用:** Web Admin **Filter** で公開/グループ/任意 DM の block/mask/replace ルールとテストを管理し、**Settings** で guest/CAPTCHA、セッション、moderation、upload、filter の安全なライブ設定を管理します。ゲーム側は `/kchat filter` / `/kchat settings`。セッション期間変更は期限切れセッションを復活させず作成時刻基準で既存対象を再計算します。`upload.filename-mode: original` は新規アップロードの安全な Unicode 元名を保持し重複時に番号を付けます。
+> **5.1.0 運用:** Web Admin **Filter** で公開/グループ/任意 DM の block/mask/replace ルールと送信しないテストを管理し、**Settings** では対応しているライブ設定（guest/CAPTCHA、セッション、ユーザープロファイル、管理者アラート、upload、content-filter）のみを管理します。moderation の 5 つのポリシー設定は `config.yml` 専用で Web Admin には公開しません。ゲーム側は `/kchat filter` / `/kchat settings`。セッション期間変更は期限切れセッションを復活させず作成時刻基準で既存対象を再計算します。`upload.filename-mode: original` は新規アップロードの安全な Unicode 元名を保持し重複時に番号を付けます。
 
 
-この文書は KOKOTO WebChat 5.0.0 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION_JA.md`、サーバー間リレーは `SERVER_RELAY_JA.md`、HTTPS は `CADDY_HTTPS_JA.md` と `NGINX_HTTPS_JA.md` を参照してください。
+この文書は KOKOTO WebChat 5.1.0 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION_JA.md`、サーバー間リレーは `SERVER_RELAY_JA.md`、HTTPS は `CADDY_HTTPS_JA.md` と `NGINX_HTTPS_JA.md` を参照してください。
 
 ## 1. 概要
 
-KOKOTO WebChat は Minecraft サーバーのチャットをブラウザーに接続するサーバー側 Web チャットです。5.0.0 は Bukkit/Paper/Spigot に加え、Fabric 1.18.2〜26.2、NeoForge 1.20.2〜26.2、Forge 1.18.2〜26.2 の exact-target build を提供します。
+KOKOTO WebChat は Minecraft サーバーのチャットをブラウザーに接続するサーバー側 Web チャットです。5.1.0 は Bukkit/Paper/Spigot に加え、Fabric 1.18.2〜26.2、NeoForge 1.20.2〜26.2、Forge 1.18.2〜26.2 の exact-target build を提供します。
 
 主な利用形態:
 
@@ -49,7 +49,7 @@ KOKOTO WebChat は Minecraft サーバーのチャットをブラウザーに接
 7. 再起動または `/kchat reload` を実行します。
 
 ```yaml
-config-version: "5.0.0"
+config-version: "5.1.0"
 enabled: false
 ```
 
@@ -57,15 +57,17 @@ enabled: false
 
 ## 4. 設定マイグレーション
 
+![設定言語と移行の流れ](assets/config-language-migration.gif)
+
 既存値は保持しますが、active migration では古い config text を継承しません。現在の bundled `config.yml` を新しい template として作成し、既存 operator 値だけを overlay します。旧 comment・順序・空白・indent は破棄され、最新 bundled comment/layout を使用します。
 
 現在 version の完全な reference は常に次へ生成されます。
 
 ```text
-<KWC data dir>/config-reference-5.0.0.yml
+<KWC data dir>/config-reference-5.1.0.yml
 ```
 
-これは JAR 内の bundled `config.yml` を **comment と string scalar の double-quote 表記まで含めてそのまま**コピーした管理者確認用 file で、migration template には使用しません。`/kchat reload` は live service を停止する前に YAML を検証し、不正な YAML なら現在の実行設定を維持します。
+これは `ui.language` で選択した内蔵言語（`en-US`、`ko-KR`、`ja-JP`、`zh-CN`）と同じ言語で表示した現在のデフォルト設定の管理者向けコピーです。未対応/カスタム UI 言語では英語の設定表示を使用します。reference は migration 入力には使用しません。`/kchat reload` は live service を停止する前に YAML を検証し、不正な YAML なら現在の実行設定を維持します。
 
 `config-version` がない、または実行 version と異なる場合、KWC は実 `config.yml` に対して一度だけ migration を行います。
 
@@ -74,36 +76,38 @@ enabled: false
 - 旧 comment・順序・空白・indent は引き継ぎません。
 - 旧 marker が `*_auto_migration` でない場合、実 version upgrade 前に元の `config.yml` を backup します。
 - 既存設定の bundled default が新 version で変わった場合は自動上書きせず review 対象に残します。
-- 実ファイルを `config-version: "5.0.0_auto_migration"` とします。
+- 実ファイルを `config-version: "5.1.0_auto_migration"` とします。
 
 その後、次を生成します。
 
 ```text
-<KWC data dir>/config-migration-5.0.0.yml
+<KWC data dir>/config-migration-5.1.0.yml
 ```
 
-これは不足設定を copy/paste する fragment ではなく **review report** です。自動挿入数、operator 判断が必要な default 変更、最終確認用の正確な version marker、current-vs-reference text diff を記録します。不足設定と comment はすでに実 config の適切な位置へ挿入されるため、diff の先頭に巨大な reference-only block として並びません。
+これは不足設定を copy/paste する fragment ではなく **review report** です。自動挿入数、operator 判断が必要な default 変更、最終確認用の正確な version marker、current-vs-reference の**設定値セマンティック差分**を記録します。Difference は解析済み YAML の path/value だけを比較し、comment、空行、indent、引用符形式、行位置、key 順は無視します。各 Difference block は説明 comment を重複コピーせず、その設定の実際の YAML 値 block だけを表示し、list/map は複数行構造を維持します。不足設定と comment はすでに実 config の適切な位置へ挿入されるため、diff の先頭に巨大な reference-only block として並びません。
 
 判定基準:
 
 | 実 `config.yml` | 動作 |
 |---|---|
-| `config-version` がない/以前/異なる | migration を実行し `5.0.0_auto_migration` にして migration/review report を生成 |
-| `config-version: "5.0.0_auto_migration"` | 自動 migration 有効。startup/reload ごとに最新 bundled `config.yml` から再構築し、現在値を overlay して report/diff を更新 |
-| `config-version: "5.0.0"` | 現在 version の自動 migration を停止。同一 version の migration/backfill を skip し、古い migration 案内を削除 |
+| `config-version` がない/以前/異なる | migration を実行し `5.1.0_auto_migration` にして migration/review report を生成 |
+| `config-version: "5.1.0_auto_migration"` | 自動 migration 有効。startup/reload ごとに最新 bundled `config.yml` から再構築し、現在値を overlay して report/diff を更新 |
+| `config-version: "5.1.0"` | 現在 version の自動 migration を停止。同一 version の migration/backfill を skip し、古い migration 案内を削除 |
 
 この marker は **review 状態ではなく自動 migration の有効/無効**を表します。
 
 ```yaml
 # 確認済みでも自動 migration を継続
-config-version: "5.0.0_auto_migration"
+config-version: "5.1.0_auto_migration"
 
 # 同一 version の自動 migration を停止
-config-version: "5.0.0"
+config-version: "5.1.0"
 ```
 
 後で実際の plugin version upgrade が発生した場合は、新しい version の `_auto_migration` 状態に入ります。
 ## 5. 配布モード
+
+![KWC 配備モード](assets/deployment-modes.svg)
 
 ### 5.1 BlueMap addon
 
@@ -207,7 +211,9 @@ frontend:
 
 ## 6. HTTP・HTTPS・公開 URL
 
-テスト用の直接 HTTP:
+### 6.1 直接 HTTP
+
+テストまたはプライベートネットワーク用途に限定して使用することを推奨します。
 
 ```yaml
 http:
@@ -220,7 +226,8 @@ adapters:
     api-base-url: ""
 ```
 
-HTTPS reverse proxy:
+### 6.2 同一ドメインの HTTPS リバースプロキシ
+
 
 ```yaml
 http:
@@ -239,6 +246,7 @@ adapters:
 frontend:
   standalone:
     enabled: true
+    path: "/"
     api-base-url: ""
 ```
 
@@ -250,7 +258,11 @@ https://map.example.com/chat/api
 https://map.example.com/chat
 ```
 
-通常は `frontend.standalone.api-base-url`、`upload.public-base-url`、`emoji.public-base-url` を空にします。`X-Forwarded-For` は `trusted-proxies` に登録された proxy からのみ信頼されます。
+通常は `frontend.standalone.api-base-url`、`upload.public-base-url`、`emoji.public-base-url` を空にし、現在の公開 API base に追従させます。
+
+### 6.3 信頼するプロキシの処理
+
+`X-Forwarded-For` は、直接接続元が `http.trusted-proxies` に登録されている場合だけ受け入れます。リバースプロキシを使わない直接 HTTP では一覧を空にします。
 
 IP 判定確認用:
 
@@ -310,7 +322,7 @@ https://map.example.com/chat/  BlueMap
 - 通知設定
 - 管理・moderation panel
 
-5.0.0 から login user の表示設定は複数の KWC account profile として保存でき、guest のみ browser-local preset を使います。window 位置・size・minimize 状態、最後に選択した profile ID、Web Push 登録は localStorage/device-local のままです。login user の notification 種別と keyword alert は browser ごとではなく account 共通です。browser-local notification inbox で最近の通知対象 event を確認できます。
+5.0.0 以降、ログインユーザーの表示設定は複数の KWC アカウントプロファイルとして保存できます。ゲストだけはブラウザー内のローカルプリセットを使用します。ウィンドウ位置・サイズ・最小化状態、最後に選択したプロファイル ID、Web Push 登録は localStorage / デバイスローカルのままです。ログインユーザーの通知種別とキーワード通知はブラウザー単位ではなくアカウント共通で、ブラウザー内の通知受信箱から最近の対象イベントを確認できます。
 
 ```yaml
 ui:
@@ -329,14 +341,18 @@ ui:
 
 ## 8. 公開チャット
 
-ゲーム→Web:
+### 8.1 ゲームから Web へ
+
 
 ```yaml
 chat:
   broadcast-ingame-chat-to-web: true
 ```
 
-Web→ゲーム:
+通常の Minecraft チャットを公開 Web チャットへ配信します。送信者名は `player-display.mode` に従います。
+
+### 8.2 Web からゲームへ
+
 
 ```yaml
 chat:
@@ -346,14 +362,20 @@ chat:
   web-admin-to-game-format: "[Web Admin] {player}: {message}"
 ```
 
-Web→Web:
+設定した format template の legacy `&` color は変換されますが、ユーザー本文を任意に color 変換することはありません。
+
+### 8.3 Web から Web へ
+
 
 ```yaml
 chat:
   broadcast-web-chat-to-web: true
 ```
 
-長さ制限:
+公開 Web メッセージは SSE を通じて他の接続ブラウザへ配信されます。
+
+### 8.4 メッセージ長
+
 
 ```yaml
 chat:
@@ -365,7 +387,7 @@ chat:
 
 ### 8.5 メッセージトークン
 
-KOKOTO WebChat 5.0.0 は、保存または relay の前に管理者設定の `:alias:` token を置換できます。標準 alias は英語のみで、管理者が任意の言語の alias に変更・追加できます。
+KOKOTO WebChat 5.1.0 は、保存または relay の前に管理者設定の `:alias:` token を置換できます。標準 alias は英語のみで、管理者が任意の言語の alias に変更・追加できます。
 
 - `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 改行 1 行
 - `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 空行 1 行
@@ -406,6 +428,8 @@ chat:
 - `jsonl`: legacy single-file
 - `memory`: 再起動で消去
 
+`history-retention-days: 0` は経過日数による削除を無効にし、`history-size: 0` は件数による削除を無効にします。
+
 JSONL から SQLite への初回移行:
 
 ```yaml
@@ -425,17 +449,21 @@ search:
 
 ## 10. アカウント連携とログイン
 
-Web で code を発行し、ゲームで実行:
+### 10.1 Minecraft アカウントを連携する
+
+Web UI で連携コードを発行し、ゲーム内で次を実行します。
 
 ```text
 /kchat auth <code>
 ```
 
-権限:
+必要権限:
 
 ```text
 kwc.auth
 ```
+
+関連設定:
 
 ```yaml
 auth:
@@ -446,7 +474,9 @@ auth:
   link-code-max-per-minute: 10
 ```
 
-Web password:
+### 10.2 パスワードログイン
+
+ゲーム内で Web ログイン用パスワードを設定します。
 
 ```text
 /kchat password <newPassword>
@@ -459,9 +489,18 @@ auth:
   remember-session-days: 30
 ```
 
-Role: USER, MODERATOR, ADMIN。
+パスワードはハッシュ化して保存されますが、HTTP のログイン通信自体は暗号化されません。公開運用では HTTPS を使用してください。
 
-Permission から ADMIN を自動設定:
+### 10.3 ロール
+
+利用可能なロール:
+
+- `USER`
+- `MODERATOR`
+- `ADMIN`
+- 未ログインのゲスト
+
+権限に基づく ADMIN 自動付与:
 
 ```yaml
 auth:
@@ -469,7 +508,16 @@ auth:
   admin-permission: "kwc.admin"
 ```
 
-ローカル管理者:
+### 10.4 ローカル管理者アカウント
+
+Minecraft UUID と連携していない Web 専用管理者アカウントも作成できます。
+
+```yaml
+admin:
+  allow-local-admin-accounts: true
+```
+
+コマンド:
 
 ```text
 /kchat admin create <id>
@@ -477,12 +525,14 @@ auth:
 /kchat admin role <id> <user|moderator|admin>
 ```
 
-Session:
+### 10.5 セッション管理
 
 ```text
 /kchat sessions
 /kchat revoke <username>
 ```
+
+`revoke` は対象ユーザーの有効なセッションを無効化し、接続中ブラウザーへ認証失効を通知します。
 
 ## 11. セキュリティ
 
@@ -491,8 +541,8 @@ security:
   login-fail-limit: 5
   login-fail-window-seconds: 300
   login-lock-seconds: 600
-  max-sse-connections-per-ip: 5
-  max-sse-connections-total: 200
+  max-sse-connections-per-ip: 10
+  max-sse-connections-total: 500
 ```
 
 `0` は該当制限を無効化します。
@@ -506,7 +556,7 @@ admin:
 
 公開環境では HTTPS と強い password を使用してください。
 
-## 12. Guest chat と captcha
+## 12. ゲストチャットと CAPTCHA
 
 ```yaml
 guest:
@@ -517,6 +567,8 @@ guest:
   max-messages-per-minute: 50
   block-player-name-spoofing: true
 ```
+
+`block-player-name-spoofing` は guest が既知の player name を名乗ることを防ぎます。管理者や server を装われたくない名前は `blocked-names` に追加できます。
 
 Captcha:
 
@@ -538,7 +590,7 @@ Mute command:
 /kchat guest list
 ```
 
-## 13. プレイヤー名・hover・click
+## 13. プレイヤー名・ホバー・クリック操作
 
 ```yaml
 player-display:
@@ -563,7 +615,7 @@ Placeholder: `{display}`, `{real}`, `{uuid}`, `{source}`
 - Web sender: `/kchat dm <realName> `
 - 他サーバーの game sender: `/kchat dm <realName>@<server-id> `
 
-## 14. 公開メッセージ reply
+## 14. 公開メッセージへの返信
 
 ```yaml
 reply:
@@ -580,13 +632,13 @@ reply:
     text: "↪ [Reply] "
 ```
 
-本文 click:
+KWC が描画した Minecraft メッセージの URL 以外の部分をクリックすると、次のコマンドが入力欄に準備されます。
 
 ```text
 /kchat reply <messageId> 
 ```
 
-送信:
+返信を送信するには:
 
 ```text
 /kchat reply <messageId> <message>
@@ -598,9 +650,19 @@ reply:
 kwc.reply
 ```
 
-URL 部分はリンクを開き、URL 以外だけ reply command を提案します。chat formatter と競合する場合は `local-game-chat: false` にします。
+`local-game-chat: true` はローカルのゲームチャット表示を同等のクリック可能コンポーネントへ置き換えます。最終表示を別のチャット整形プラグインに任せる必要がある場合は無効にしてください。無効でも Web→game と relay の返信処理は継続します。
 
-## 15. DM
+URL 部分は通常のリンクを開く動作を維持し、返信コマンドを提案するのは URL 以外の本文部分だけです。
+
+## 15. ダイレクトメッセージ
+
+![DM/グループ Reply の検証フロー](assets/private-reply-flow.svg)
+
+Minecraft の DM 履歴/ライブ通知は操作可能です。DM 相手名をクリックすると既存の `/kchat dm <player> ` が入力欄に入り、本文をクリックすると `/kchat reply dm-<internal-id> ` が準備されます。この internal ID はサーバー内部専用で、送信時に KWC が本人がその DM thread の参加者か再検証します。URL 部分は通常の URL を開く動作を維持します。保存された DM が Reply の場合、ライブ受信/送信 echo と履歴はいずれも public chat と同じ `reply.game-preview` / `reply.game-prefix` 設定を使用します。Web から送信した DM も、連携済み送信者が Minecraft にオンラインなら本人のゲームチャットへ表示されます。
+
+Web で DM の Reply を選ぶと、元メッセージとの実際の返信関係を保存します。KWC は同じ thread のメッセージか検証し、正規化した送信者/preview snapshot を保存して参照を表示し、ローカルに原文が残っていればそこへ移動できます。reply metadata は再起動後も保持されます。サーバー間 DM の返信では他サーバーのローカル数値 DB ID を使わず、安定した relay message ID を使います。
+
+DM は既定で無効です。
 
 ```yaml
 direct-message:
@@ -618,9 +680,9 @@ direct-message:
   confirm-hide: true
 ```
 
-DM 宛先は UUID で識別されます。local join/linked account の記録に加えて、server relay で受信した game または linked web message に `playerUuid` がある場合、その送信者の表示名と実 Minecraft 名を Web DM の新規宛先検索へ登録します。公開 chat で見た別サーバーの名前を通常の DM 検索に入力して会話を開始できます。最新の名前は `known-display-names.yml` に保持され、再起動後も検索できます。UUID のない guest/Discord message は登録されません。`storage: auto` は公開 chat が JSONL の場合だけ DM も JSONL、それ以外は SQLite を使用します。`sqlite`/`jsonl` の明示指定も可能です。
+受信者は UUID で識別できる必要があります。ローカル参加履歴や連携アカウントだけでなく、relay 経由の game/linked-web message に `playerUuid` が含まれる場合、その送信者の表示名と実 Minecraft 名を新規 DM 検索へ登録します。これにより公開チャットで見た別サーバーの送信者も通常の DM 検索から選択できます。最新 identity は `known-display-names.yml` に保存され、再起動後も検索できます。UUID のない guest/Discord message は登録しません。`storage: auto` は公開チャット storage が JSONL の場合だけ DM も JSONL を使い、それ以外は SQLite を使います。`sqlite` / `jsonl` を明示指定することもできます。
 
-Command:
+ゲームコマンド:
 
 ```text
 /kchat dm
@@ -641,13 +703,27 @@ Command:
 kwc.dm
 ```
 
-`capture-game-whispers: true` では `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` を KWC DM にも記録します。同一サーバーの通常 whisper 自体は置き換えません。別サーバー宛ては `名前@server-id` を指定すると `/kchat dm 名前@server-id <message>` に変換され、署名付き cross-server DM relay で送信されます。サーバー指定のない `/kchat dm <名前>` は現在のサーバー内だけを検索します。対象を含まない `/r`, `/reply` は既存 whisper plugin の last-target state と競合するため intercept しません。
+### 15.1 Minecraft の whisper 取り込み
+
+`capture-game-whispers: true` の場合、次のコマンドを同じ KWC DM thread に記録します。
+
+```text
+/w /msg /tell /whisper /m /pm /message /t
+```
+
+KWC は同一サーバーの通常 whisper を置き換えず、送信者/受信者双方の DM 履歴へコピーを記録します。remote target は `name@server-id` を使い、同じ alias が `/kchat dm name@server-id <message>` に書き換えられて認証済みサーバー間 DM relay から送信されます。修飾のない `/kchat dm <name>` は現在サーバーの player だけを解決します。`/r` と `/reply` は相手を含まないため intercept せず既存 whisper plugin に任せます。
 
 ### 15.2 送信・既読状態
 
-正常送信完了には状態ラベルを表示しません。local の送信要求を処理中のときだけ `送信中`、配信を確認できない場合だけ `失敗 · 再試行` を時刻表示の横に短く表示します。既読状態は DM のすべてのメッセージで時刻表示の横に表示し、1 対 1 DM では相手が未読なら `未読`、読んだ後は `✓` を表示します。group chat は従来どおり未読受信者数を数字で表示します。他サーバー DM の既読通知は認証済み server relay で返され、元の message 側にも同じ状態が反映されます。会話を再度開くと最新の既読 ACK を安全に再送するため、一時的な relay / HTTP 障害があっても後の閲覧で既読マークを復旧できます。
+通常の成功送信には状態ラベルを付けません。`Sending` はローカル送信要求が処理中の間だけ、`Failed · Retry` は配信確認に失敗した場合だけ timestamp 横に表示します。各 DM の既読状態も timestamp 横に表示され、`Unread` は唯一の受信者が未読、`✓` は既読です。group chat は人数ベースの表示を使います。cross-server DM では受信側が認証済み relay で read acknowledgement を返すため、送信元でも同じ状態になります。最新 acknowledgement は冪等で、conversation を開いたとき再送されるため一時的な relay/HTTP 障害も後から修復できます。
 
-## 16. Group chat
+## 16. グループチャット
+
+Minecraft の group message は操作可能です。group/sender 部分をクリックすると既存の `/kchat group <room> ` が入力欄に入り、本文をクリックするとその group message への reply target が準備されます。送信時に KWC は現在の group membership を再確認し、URL 部分は通常のリンク動作を維持します。Reply 付き group message はライブ受信/送信 echo と履歴のすべてで public chat と同じ `reply.game-preview` / `reply.game-prefix` 表示を使用します。
+
+Web の group Reply も metadata として保存します。同じ room の target で送信者が現在 member の場合だけ受け付け、保存済み原文から sender/preview を生成します。再起動後も保持され、ローカル履歴に原文があればそこへ移動できます。
+
+各ルームの設定には **メンバーの入退室通知を表示** オプションがあります。有効にすると、実際の membership 変更を `member_join` / `member_leave` event として保存し、group history とオンライン member へのゲーム通知に表示します。参加または招待承認で入室 event、退出・kick・ban で membership が削除されると退室 event を生成します。**グループチャット画面を閉じる、別ルームへ切り替える、ルームを非表示にする操作は退出ではなく、退室 event を生成しません。** membership event は案内専用で Reply target にはできません。
 
 ```yaml
 group-chat:
@@ -665,9 +741,11 @@ group-chat:
   sqlite-file: "group-messages.db"
 ```
 
-Web では公開・非公開 room、PBKDF2 hash で保存される password、invite、leave、hide/restore、member kick/block、owner transfer、unread tracking を使用できます。
+Web では公開/非公開ルームの作成、PBKDF2 ハッシュで保存する任意のルームパスワード、招待、承認/拒否、退出、非表示/復元、ルーム設定、未読管理、ユーザー単位のメッセージ非表示、メンバーの kick/block/unblock、所有権移譲を利用できます。
 
-group chat のすべてのメッセージに、その message の受信者既読状態を表示します。数字は**送信時点ですでに room に参加しており、現在も member である受信者のうち未読の人数**です。message sender は受信者ではないため count 対象には含まれません。未読受信者が 0 人になると数字は `✓` に変わります。正常送信完了自体には状態 label を表示しません。
+各 group message には受信者の既読状態を表示します。数字は「送信時点で member で、現在も room member であり、まだ読んでいない受信者」の人数で、送信者自身は数えません。未読人数が 0 になると `✓` を表示します。通常の配信成功そのものにはラベルを付けません。
+
+ゲームコマンド:
 
 ```text
 /kchat group
@@ -678,25 +756,34 @@ group chat のすべてのメッセージに、その message の受信者既読
 /kchat group read <room|id> [pageSize]
 /kchat group next
 /kchat group prev
+```
+
+alias:
+
+```text
 /kchat gc ...
 ```
 
-権限: `kwc.group`
+権限:
 
-## 17. System/event announcement
+```text
+kwc.group
+```
+
+## 17. システム/イベント通知
 
 ```yaml
 announcements:
   broadcast-to-web-chat: true
 ```
 
-Default ON: join, quit, first join, death, advancement, server start/stop。
+既定で ON: join、quit、first join、death、advancement、server start/stop。
 
-Default OFF: world, gamemode, level, bed, web login/logout。
+既定で無効: world、gamemode、level、bed、Web login/logout。
 
 i18n key がある場合は Web UI language に合わせて表示できます。
 
-## 18. Pinned message
+## 18. ピン留めメッセージ
 
 ```yaml
 pinned:
@@ -708,7 +795,7 @@ pinned:
 
 通常履歴とは別に保存され、top bar から開きます。参照 upload は cleanup から保護できます。
 
-## 19. Upload
+## 19. ファイル/クリップボードアップロード
 
 ```yaml
 upload:
@@ -734,13 +821,20 @@ upload:
 
 `filename-mode: original` でも、クリップボードアップロードは `clipboardData.files` から取得できる長いファイル名を優先します。Windows/Chromium が別のクリップボード項目で `202608~1.JPG` のような DOS 8.3 別名を返しても、長い名前を取得できる場合は元の長い名前を使用します。ブラウザーが 8.3 別名しか公開しない場合は、その別名を元ファイル名として保存せず `clipboard-...` 形式の名前へ置き換えます。
 
-## 20. Media preview
+## 20. メディアとリンクプレビュー
+
+アップロードメディアの preview:
 
 ```yaml
 upload:
   preview-images: true
   preview-videos: true
   preview-audio: true
+```
+
+YouTube:
+
+```yaml
 preview:
   youtube-embed-enabled: true
   youtube-click-to-load: true
@@ -748,7 +842,9 @@ preview:
   youtube-max-embeds-per-message: 1
 ```
 
-YouTube Shorts は vertical player で処理されます。`ui.image-preview-max-per-message` と `ui.image-preview-max-height` で数と高さを制限し、Google Drive preview は `ui.google-drive-image-preview` で有効化できます。
+YouTube Shorts も通常の YouTube preview 経路を使い、縦長レイアウトで表示します。`ui.image-preview-max-per-message` は 1 メッセージ内の画像 preview 数を制限します。`ui.image-preview-max-height` は明示的 px 上限で、`0` にしても viewport ベースの安全上限は残ります。Google Drive image preview は `ui.google-drive-image-preview` で有効化し、`ui.google-drive-preview-mode` で動作を選択できます。
+
+TikTok / X:
 
 ```yaml
 preview:
@@ -764,7 +860,7 @@ preview:
       dnt: true
 ```
 
-External embed は third-party request を発生させるため public server では click-to-load を推奨します。
+外部埋め込みはサードパーティーサービスへのブラウザーリクエストを発生させます。公開サーバーでは自動読み込みを明示的に許可する場合を除き、`click-to-load: true` を維持してください。
 
 Discord CDN cache:
 
@@ -775,7 +871,9 @@ preview:
   external-media-cache-retention-days: 5
 ```
 
-## 21. Custom emoji
+期限付き Discord attachment URL の preview を保存するために使用します。
+
+## 21. カスタム絵文字
 
 ```yaml
 emoji:
@@ -790,15 +888,32 @@ emoji:
   token-format: "short"
 ```
 
+ファイル配置:
+
 ```text
 <KWC data dir>/emojis/default/wave.png
+<KWC data dir>/emojis/reaction/happy.gif
+```
+
+token:
+
+```text
 :default/wave:
+:reaction/happy:
 :emoji:default/wave:
 ```
 
-管理者は folder 作成、upload、rename、delete ができます。rename すると過去 token が解決できなくなる場合があります。
+`token-format: short` は `:pack/name:` を挿入し、`legacy` は `:emoji:pack/name:` を挿入します。解析時は両形式を受け付けます。
 
-Game-side renderer を使う場合:
+管理者は Web emoji manager から folder 作成、**1 回の picker で複数 PNG/JPG/JPEG/GIF/WEBP を選択して即時 upload**、item rename、delete を実行できます。multi-file upload は順番に処理し、既存の per-file validation、storage accounting、unique-name allocation、audit log、PNG sidecar generation を維持します。file/pack rename 後は古い token を含む過去メッセージが表示できなくなる場合があります。
+
+既存および新規の pack directory 名/file 名/token は canonicalize されます。未対応文字と空白は保存前に除去し、同一 pack 内の衝突は数値 suffix で解決します。同じ emoji 名を別 pack で使うことはできます。
+
+一時的に `/emojis` の取得に失敗しても、ブラウザーは直前に正常取得したカタログを保持し、上限付き指数バックオフで再試行します。SSE 再接続後はカタログを強制再同期し、管理者がカタログを変更した場合は `emoji-catalog` SSE イベントで他のブラウザーにも更新を通知します。`emoji.message-token-limit: 0` は再同期後も無制限として扱います。
+
+### 21.1 ゲーム内絵文字処理
+
+既定:
 
 ```yaml
 emoji:
@@ -806,7 +921,24 @@ emoji:
     enabled: false
 ```
 
-KWC 変換を使う場合は `preserve`, `label`, `link` mode を選択します。
+この状態では token を保持し、ImageEmojis-Bero など game-side renderer に任せます。
+
+KWC conversion mode:
+
+```yaml
+emoji:
+  game-link:
+    enabled: true
+    mode: "link"
+    label-format: ":{id}:"
+    max-links-per-message: 4
+```
+
+mode:
+
+- `preserve`: token をそのまま保持
+- `label`: 設定した label だけを出力
+- `link`: label と短い image URL を出力
 
 ## 22. ImageEmojis-Bero 1.9.x
 
@@ -833,9 +965,9 @@ imageemojis.use
 
 詳細は `IMAGEEMOJIS_BERO_1_9_0_JA.md`。
 
-## 23. Browser notification と Web Push
+## 23. ブラウザー通知と Web Push
 
-5.0.0 では login user の keyword/notification 種別設定を account data に保存し、browser/device 間で共有します。Windows/mobile など表示条件が異なる場合は account ごとに複数の UI profile を保存でき、window 位置・size・minimize 状態・Web Push endpoint は device-local のままです。profile 上限と JSON import/export 可否は Web Admin で管理します。同じ device に有効な KWC Web Push subscription がある場合、live page 側の OS Notification は重複表示しません。
+5.0.0 ではログインユーザーのキーワード/通知種別設定をアカウントデータに保存し、ブラウザーや端末間で共有します。Windows/モバイルなど表示条件が異なる場合はアカウントごとに複数の UI プロファイルを保存でき、ウィンドウ位置・サイズ・最小化状態・Web Push endpoint は端末ローカルのままです。プロファイル上限と JSON import/export の可否は Web Admin で管理します。同じ端末に有効な KWC Web Push subscription がある場合、開いているページ側の OS 通知は重複表示しません。
 
 
 server-side 表示 profile は次で制御します。
@@ -877,25 +1009,34 @@ web-push:
 
 VAPID key が空なら plugin が永続 key を生成します。iOS/iPadOS は Home Screen web app が必要な場合があります。
 
-## 24. PWA と PIP
+## 24. PWA と Picture-in-Picture
+
+standalone app 名:
 
 ```yaml
 frontend:
   standalone:
     app-name: "Web Chat"
     app-short-name: "Web Chat"
+```
+
+既に Home Screen にインストールした app は、名前を変更した後に再インストールが必要になる場合があります。
+
+Picture-in-Picture:
+
+```yaml
 ui:
   picture-in-picture:
     enabled: false
 ```
 
-Install 済み PWA の名前変更は再インストールが必要な場合があります。
+browser/OS 側の対応が必要です。外部 window の control は browser/OS が管理します。
 
-## 25. DiscordSRV
+## 25. DiscordSRV 連携
 
-5.0.0 の管理者向け Discord keyword alert では、検出や format policy を DiscordSRV に委譲しません。KWC が keyword、source、mention、重複除去、alert 本文を決定し、DiscordSRV の認証済み JDA connection と Channels mapping のみ再利用します。Web Admin の alert channel selector には DiscordSRV の logical channel 名だけを表示し、logical 名がない ID-only 構成だけ channel ID を fallback として使用します。Discord 由来 message は再 alert しません。
+5.0.0 で追加された管理者向け Discord キーワード通知は、照合や表示形式の規則を DiscordSRV に委譲しません。KWC がキーワード照合、送信元選択、メンション、重複除去、通知本文を管理し、DiscordSRV の認証済み JDA 接続と Channels マッピングだけを利用します。Web Admin の通知チャンネル選択欄には DiscordSRV の論理チャンネル名を表示し、論理名がない ID-only 構成に限って生の channel ID をフォールバックとして使用します。Discord 由来のメッセージは管理者通知の照合対象へ戻しません。
 
-管理者 alert policy 例:
+管理者 alert 設定例:
 
 ```yaml
 admin-alerts:
@@ -912,10 +1053,7 @@ admin-alerts:
     keywords: ""
 ```
 
-`channel: ""` は `discordsrv.channel` を再利用し、Web Admin では通常 DiscordSRV の logical channel 名を選択/保存します。
-
-
-
+`channel: ""` は `discordsrv.channel` を再利用します。Web Admin では通常、DiscordSRV の論理チャンネル名を保存/選択します。
 
 ```yaml
 discordsrv:
@@ -927,82 +1065,67 @@ discordsrv:
   ignore-bot-messages: true
   suppress-game-echo: true
   suppress-game-echo-seconds: 5
+  send-web-user-chat-to-discord: true
+  send-web-guest-chat-to-discord: false
+  send-web-admin-chat-to-discord: true
   append-web-emoji-links: true
   append-game-emoji-links: true
+  max-emoji-links-per-message: 4
   web-to-discord-format: "[{server}] [Web] {sender}: {message}"
   game-relay-format: "[{server}] {sender}: {message}"
+  discord-to-web-sender-format: "Discord:{sender}"
+  discord-to-web-message-format: "{message}"
 ```
 
-DiscordSRV が game chat を転送している場合は `game-relay-mode: "discordsrv"` を維持します。
+DiscordSRV が通常の Minecraft chat を既に relay している場合は KWC の `game-relay-mode: "discordsrv"` を維持し、二重投稿を防ぎます。
 
-複数 server が同じ channel を使う場合:
+複数 server が同じ Discord channel を共有する場合:
 
-- 原本 game event を見た server だけが DiscordSRV message を加工
-- relay receiver は Discord に再送しない
-- `[Server]`, `[Web]` を重複追加しない
+- 元の local game chat を観測した server だけが DiscordSRV message を変更します。
+- relay 受信 server は Discord へ再投稿しません。
+- 他 server の listener は `[Server]` や `[Web]` prefix を重複追加しません。
 
-Reply preview は `discordsrv.reply-relay` で選択的に有効化できます。
+reply preview オプション:
 
-## 26. Server relay
+```yaml
+discordsrv:
+  reply-relay:
+    enabled: false
+    prefix-enabled: true
+    preview-enabled: true
+    preview-max-length: 120
+```
 
-`peers` は常時接続セッションではなく、このサーバーがメッセージを送信する HTTP 宛先一覧です。同じ `id` / `secret` は受信要求の認証にも使用され、双方向通信には両側で相手を登録する必要があります。
+## 26. サーバー間 Relay
+
+KOKOTO WebChat 5.1.0 は public chat と cross-server 1:1 DM/read receipt に **Relay Protocol v2** を使用します。group chat room は local のままです。
+
+Relay v2 は `groups -> peers` 構造です。各 group は 1 つの shared secret を持ち、peer は server ID、API URL、enabled state のみを持ちます。初回設定では 1 台のサーバーで `shared-secret: ""` のまま起動/リロードし、その `config.yml` に生成された値を同じ group の他サーバーへコピーします。既存の空でない secret は自動再生成されず、32 文字未満の手動 secret は invalid のままです。両側は同じ group で相互に peer 登録する必要があり、同一 peer ID を複数 local group に登録できません。
 
 ```yaml
 server-relay:
   enabled: true
   server-id: "server1"
-  server-name: "Server1"
-  shared-secret: "long-shared-secret"
-  connect-timeout-seconds: 5
-  request-timeout-seconds: 10
-  max-clock-skew-seconds: 60
-  dedupe-seconds: 300
-  max-hops: 8
-  forward-received-public-chat: true
-  sources:
-    game: true
-    web: true
-    guest: true
-    discord: false
-    system: false
-  delivery:
-    web: true
-    game: true
-  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-  peers:
-    - id: "server2"
-      url: "https://server2.example.com/chat/api"
-      secret: ""
-      enabled: true
+  groups:
+    - id: "main"
+      shared-secret: ""
+      forwarding:
+        enabled: false
+      peers:
+        - id: "server2"
+          url: "https://server2.example.com/chat/api"
+          enabled: true
 ```
 
-`forward-received-public-chat` は peer が受信した公開チャットを他の peer へ再転送するかを制御します。`true` は hub/chain 構成、`false` は直接 peer 間のみの公開チャットにします。サーバー間 DM と既読通知のルーティングには影響しません。
+direct relay は 5.0.0 と同じ request 単位の方式です。`/relay/v2/message` が HKDF-SHA256 directional key と AES-256-GCM で暗号化・認証された payload を独立して運びます。`/relay/v2/handshake` は状態を保持しない診断用 identity/health probe で、direct routing を制御しません。direct HTTP は warning 付きで利用できます。forwarding は同一 group 内で peer 単位に判定され、http:// peer はその peer を通る forwarding だけ除外され、他の https:// peer は引き続き利用できます。
 
-実際の URL:
+Relay v2 は E2EE ではなく hop-by-hop authenticated encryption です。中継 server は次 hop 用に payload を復号・再暗号化する trusted participant です。group secret が漏洩した場合は group 全体で rotate してください。
 
-```text
-https://server2.example.com/chat/api/relay/receive
-```
+5.0.0 → 5.1.0 初回 migration は旧 flat topology から group を推測せず relay を無効化します。v2 group を明示的に定義してから `server-relay.enabled: true` に戻し `/kchat reload` を実行してください。
 
-Receiver の `peers[].id` は sender の `server-id` と一致する必要があります。Peer secret は shared secret より優先されます。Offline queue はありません。
+詳細は `docs/SERVER_RELAY_JA.md` を参照してください。
 
-```text
-Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
-```
-
-Error:
-
-- 403 `unknown_peer`
-
-同じ destination から成功応答なしで `403 unknown_peer` が 3 回返ると、KWC はその destination を 60 秒の backoff 状態にします。その 60 秒間に発生した relay message は送信せず、定期 probe も送りません。60 秒経過後に最初に発生した実際の relay message で自動的に再試行し、失敗した場合はその失敗時刻から再び 60 秒待機します。成功応答が返れば通常送信へ即時復帰し、counter もリセットされます。受信側は unknown sender の直接 request を適用前に拒否します。接続拒否や timeout などの transport failure も同じ 3 回/60 秒 backoff を使用するため、offline peer に対して転送 message ごとに警告が繰り返されません。
-- 401 `bad_signature`
-- 401 `expired_request`
-- 404 `relay_disabled`
-- 426 `unsupported_protocol`
-
-詳細は `SERVER_RELAY_JA.md`。
-
-## 27. Web command panel
+## 27. Web コンソールコマンドパネル
 
 ```yaml
 commands:
@@ -1011,23 +1134,27 @@ commands:
   min-role: "ADMIN"
   show-button: true
   run-from-chat-input: false
+  show-when-input-starts-with-slash: true
   require-confirm: true
   max-length: 0
   broadcast-result-to-web-chat: false
 ```
 
-`allow-all: true` は Web account から任意 console command を許可するため非常に危険です。HTTPS、IP restriction、強い password、preset 制限を使用してください。
+`broadcast-result-to-web-chat: true` の場合、Web コマンド実行通知を公開 Web チャットとオンラインのゲームプレイヤーへ同時に表示します。既存のコンソール/監査ログはそのまま維持し、ゲーム表示のための追加ログは出しません。
+
+`allow-all: true` は Web アカウントから任意のコンソールコマンド実行を許可するため非常に危険です。HTTPS、IP 制限、強力なパスワード、preset 制限を使用してください。
 
 ```yaml
 commands:
   presets:
     - id: "day"
       label: "昼に変更"
+      description: "現在のワールド時刻を昼に設定します。"
       command: "time set day"
       confirm: true
 ```
 
-## 28. 管理・moderation
+## 28. 管理者・モデレーター機能
 
 ```yaml
 moderation:
@@ -1038,6 +1165,8 @@ moderation:
   default-mute-minutes: 60
 ```
 
+上記 5 個の `moderation.*` ポリシーキーは **config.yml 専用設定**です。Web Admin の設定画面には編集項目として意図的に公開されません。変更する場合は `config.yml` を編集して KWC を reload してください。これらは Web moderation 機能の可用性と moderator の操作範囲を制御します。
+
 機能:
 
 - message hide/delete
@@ -1047,9 +1176,9 @@ moderation:
 - emoji 管理
 - upload/storage usage
 - private chat metadata
-- console command panel
+- コンソールコマンドパネル
 
-Private metadata super admin:
+### 28.1 非公開チャットメタデータのスーパー管理者
 
 ```yaml
 private-chat-super-admins:
@@ -1057,19 +1186,11 @@ private-chat-super-admins:
   - "00000000-0000-0000-0000-000000000000"
 ```
 
-default では participant、count、size、retention、cleanup metadata のみ扱います。
+メタデータビューでは DM/group の title・participant、message count、概算 storage usage、retention state、cleanup preview、lock/exclusion などのメタデータ管理機能を確認できます。
 
-DM本文 audit が必要な場合は次も有効にします。
+`direct-message.admin-audit.enabled` は default-off の read-only DM 本文監査スイッチです。`private-chat-super-admins` に明示した account だけが利用でき、監査 view では送信、Reply、非表示、既読更新はできません。各 page read は `admin.dm-audit-read` として記録されます。`group-chat.admin-audit.enabled` は独立した read-only group 本文監査スイッチです。
 
-```yaml
-direct-message:
-  admin-audit:
-    enabled: true
-```
-
-`private-chat-super-admins` とこの switch の両方を満たす account だけが管理者 DM thread を read-only で開けます。通常の ADMIN/MODERATOR role だけでは本文を閲覧できません。audit view では送信、participant ごとの hide、read 状態更新はできません。各 page load は `admin.dm-audit-read` として audit log に記録され、本文自体は log にコピーされません。
-
-Audit:
+### 28.2 監査ログ
 
 ```yaml
 audit:
@@ -1077,12 +1198,22 @@ audit:
   directory: "audit"
 ```
 
-## 29. Web font と表示
+管理操作は既定で `<KWC data dir>/audit` 配下の日付別ファイルへ追記されます。監査ログ自体は Web UI には表示されません。
+
+## 29. Web フォントと表示設定
+
+```yaml
+web-fonts:
+  enabled: false
+  directory: "fonts"
+  items: []
+```
+
+例:
 
 ```yaml
 web-fonts:
   enabled: true
-  directory: "fonts"
   items:
     - family: "Pretendard"
       file: "Pretendard.woff2"
@@ -1090,7 +1221,9 @@ web-fonts:
       style: "normal"
 ```
 
-対応: WOFF2, WOFF, TTF, OTF。
+対応 extension: WOFF2、WOFF、TTF、OTF。
+
+表示の既定値:
 
 ```yaml
 ui:
@@ -1103,9 +1236,9 @@ ui:
   text-shadow-mode: "auto"
 ```
 
-空の色は theme default です。
+空の color 値は選択中 theme の値に従います。
 
-## 30. Virtual scroll と性能
+## 30. 仮想スクロールとパフォーマンス
 
 ```yaml
 ui:
@@ -1118,7 +1251,7 @@ ui:
     min-px: 200
 ```
 
-長い履歴の browser rendering cost を削減します。
+長い履歴を表示するときのブラウザー描画負荷を削減します。
 
 ```yaml
 ui:
@@ -1130,9 +1263,9 @@ ui:
 
 公開チャットの仮想スクロールはコンテンツ種類を区別せず、画像・動画・音声・リンクプレビュー・YouTube/その他 iframe を同じメッセージ範囲/高さ追跡ルールで扱います。
 
-## 31. Command 一覧
+## 31. コマンド一覧
 
-User:
+ユーザーコマンド:
 
 ```text
 /kchat auth <code>
@@ -1155,7 +1288,7 @@ User:
 /kchat group prev
 ```
 
-Admin:
+管理者コマンド:
 
 ```text
 /kchat reload
@@ -1169,9 +1302,19 @@ Admin:
 /kchat revoke <username>
 ```
 
-Alias: `/kc`。group は `/kchat gc` も使用できます。
+root alias:
 
-## 32. Permission
+```text
+/kc
+```
+
+group alias:
+
+```text
+/kchat gc
+```
+
+## 32. 権限リファレンス
 
 ```text
 kwc.auth
@@ -1185,7 +1328,7 @@ kwc.update.notify
 
 User permission は default true、`kwc.admin` と `kwc.update.notify` は OP default です。
 
-## 33. Data と backup
+## 33. データファイルとバックアップ
 
 ```text
 <KWC data dir>/config.yml
@@ -1198,9 +1341,9 @@ User permission は default true、`kwc.admin` と `kwc.update.notify` は OP de
 <KWC data dir>/audit/
 ```
 
-Backup 対象は config、DB/JSONL、emoji、必要な upload、Push subscription/VAPID key です。SQLite は clean shutdown 後の copy を推奨します。
+バックアップ対象は設定、DB/JSONL、絵文字、必要なアップロード、Push subscription/VAPID key です。SQLite は正常停止後にコピーすることを推奨します。
 
-## 34. Reload と restart
+## 34. リロードと再起動
 
 `/kchat reload`:
 
@@ -1216,78 +1359,88 @@ Restart 必須:
 
 `/kchat reload` は `bluemap reload light` を自動要求します。asset がまだ古い場合または自動実行に失敗した場合は `/bluemap reload light` を手動実行してください。
 
-## 35. Troubleshooting
+## 35. トラブルシューティング早見表
 
-Web が開かない:
+### ページが開かない
 
-- `enabled: true`
-- host/port
-- port conflict
-- proxy upstream
-- standalone enabled
+- `enabled: true` を確認
+- `http.host` / `http.port` を確認
+- port conflict を確認
+- reverse proxy upstream が `127.0.0.1:8899` を向いているか確認
+- standalone が必要なら `frontend.standalone.enabled` を有効化
 
-BlueMap button がない:
+### BlueMap にチャットボタンが出ない
 
-- auto-install/auto-patch
-- BlueMap path
-- log
-- `/kchat reload` は通常 `bluemap reload light` を自動実行します。必要な場合のみ `/bluemap reload light` を手動実行してください。
-- browser cache
+- `adapters.bluemap.auto-install` を有効化
+- `adapters.bluemap.auto-patch-webapp-conf` を有効化
+- BlueMap path を確認
+- install/patch log を確認
+- `/kchat reload` は通常 `bluemap reload light` を要求するため、必要時のみ `/bluemap reload light` を手動実行
+- browser cache を refresh
 
-Login 失敗:
+### ログインできない
 
-- HTTPS/cookie path
-- code expiry
-- lockout
-- password-login
-- admin IP restriction
+- HTTPS domain と cookie path を確認
+- link code の期限を確認
+- login lockout log を確認
+- `auth.password-login` を確認
+- administrator IP restriction を確認
 
-Game/Web 転送不良:
+### Web chat が game に届かない
 
-- `send-web-chat-to-game`
-- `broadcast-ingame-chat-to-web`
-- chat plugin event conflict
-- relay delivery
+- `chat.send-web-chat-to-game: true` を設定
+- player が online か確認
+- chat-format plugin conflict を確認
+- relay message は `server-relay.delivery.game: true` を確認
 
-Reply 不良:
+### Game chat が Web に届かない
 
-- game-click enabled
-- local-game-chat
-- URL 部分は link open が正常
+- `chat.broadcast-ingame-chat-to-web: true` を設定
+- player permission と event cancellation を確認
+- 別 chat plugin が event を排他的に消費していないか確認
 
-Emoji text のまま:
+### Reply click が動かない
 
-- file と pack name
-- ImageEmojis permission
-- replaceInCommands
-- reload/update
-- relay 全 server の同一 file
+- `reply.game-click.enabled` を有効化
+- local game message は `local-game-chat` を有効化
+- chat-format plugin conflict を確認
+- URL 部分が reply ではなくリンクを開くのは正常動作
 
-Relay 403:
+### Emoji token が文字のまま表示される
 
-- receiver peer ID と sender server-id
-- receiver reload
-- active peer log
+- KWC emoji file の存在を確認
+- ImageEmojis-Bero の共有 folder/permission を確認
+- `replaceInCommands` を有効化
+- `/emojis reload` と `/emojis update` を実行
+- relay server 間で一致する emoji file を確認
 
-Relay 401:
+### Relay が 403 を返す
 
-- secret
-- proxy body/header
-- clock sync
+- 両 server が同じ relay group で相互に peer 登録しているか確認
+- peer ID が remote `server-id` と完全一致するか確認
+- direct relay は request ごとに独立認証します。相互に同じ group の peer と同じ shared secret を設定しているか確認してください。forwarding では受信元として設定された peer と選択される次 hop peer の両方が HTTPS である必要があります
+- relay config 変更後は両側を reload
 
-Discord prefix 重複:
+### Relay が 401 を返す
 
-- 全 server の build を統一
-- 他 plugin の repost
-- DiscordSRV 転送時は game-relay-mode discordsrv
+- group ID と group shared secret を両 server で比較
+- 双方が完全に同じ group secret を使用しているか確認します。初回設定は 1 台の空値から生成して他サーバーへコピーし、手動 non-empty secret は 32 文字以上必要です
+- proxy が signed relay header/body を変更していないか確認
+- server clock sync と replay/nonce diagnostic を確認
 
-Web Push:
+### Discord prefix が重複する
 
-- HTTPS
-- notification permission
-- Service Worker/Push API
-- iOS Home Screen app
-- VAPID
+- 全 server が同じ修正版を使うことを確認
+- 別 plugin が relay message を repost していないか確認
+- DiscordSRV が game chat を転送する場合は `game-relay-mode: "discordsrv"` を維持
+
+### Web Push が動かない
+
+- HTTPS を確認
+- notification permission を確認
+- Service Worker / Push API 対応を確認
+- iOS は Home Screen にインストールした Web app を使用
+- VAPID subject と key file を確認
 
 ## 36. 関連文書
 
@@ -1308,8 +1461,8 @@ Web Push:
 - `I18N_JA.md`
 - `RELEASE_CHECKLIST_JA.md`
 
-### 管理者 group-chat body audit (4.6.3)
 
+### 管理者 group-chat body audit (4.6.3)
 `group-chat.admin-audit.enabled: true` を設定し、exact Minecraft name または UUID を `private-chat-super-admins` に登録する必要があります。両方の条件が必須です。対象管理者は room member でなくても管理者 room metadata list から body を read-only で開けます。audit view は room 参加、read/unread state 更新、message send/upload/hide、membership 変更を行いません。各 page read は `admin.group-audit-read` として記録され、message body は audit log にコピーされません。
 
 
@@ -1317,3 +1470,7 @@ Web Push:
 ## SimpleNicks-Bero 連携
 
 Bukkit/Paper 系では `player-display.mode: "display-name"` で [SimpleNicks-Bero](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) の Bukkit display name を表示できます。詳細は `SIMPLENICKS_BERO_JA.md`。一般運用は [upstream SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks) を参照してください。
+
+## 参照資料
+
+プロトコル標準と公式の外部連携ドキュメントは [REFERENCES_JA.md](REFERENCES_JA.md) を参照してください。

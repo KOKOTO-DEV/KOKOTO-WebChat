@@ -235,16 +235,20 @@ public final class UserPreferenceStore {
         String theme = clean(raw.get("theme"), 32).toLowerCase(Locale.ROOT);
         if (!Set.of("", "system", "dark", "light", "high-contrast").contains(theme)) throw new IllegalArgumentException("invalid_profile_theme");
         out.put("theme", theme);
-        out.put("opacity", number(raw.get("opacity"), 0.10, 1.0, 0.92));
-        out.put("fontSize", number(raw.get("fontSize"), 8.0, 36.0, 13.0));
+        // Numeric visual preferences are nullable. Null means "follow the current
+        // server/default value" and must remain distinct from explicitly saving that
+        // numeric default so profiles round-trip exactly across servers/devices.
+        out.put("opacity", nullableNumber(raw.get("opacity"), 0.10, 1.0));
+        out.put("fontSize", nullableNumber(raw.get("fontSize"), 8.0, 36.0));
         String font = clean(raw.get("fontFamily"), MAX_FONT_FAMILY);
         if (!font.isBlank() && UNSAFE_FONT.matcher(font).find()) throw new IllegalArgumentException("invalid_profile_font");
         out.put("fontFamily", font);
         out.put("textColor", color(raw.get("textColor")));
         out.put("uiTextColor", color(raw.get("uiTextColor")));
         String shadowMode = clean(raw.get("textShadowMode"), 16).toLowerCase(Locale.ROOT);
-        if (shadowMode.isBlank()) shadowMode = "auto";
-        if (!Set.of("none", "auto", "dark", "light", "custom").contains(shadowMode)) throw new IllegalArgumentException("invalid_profile_shadow_mode");
+        // Blank is meaningful: it means no user override, so the receiving server's
+        // current ui.text-shadow mode remains authoritative. Do not coerce blank to auto.
+        if (!Set.of("", "none", "auto", "dark", "light", "custom").contains(shadowMode)) throw new IllegalArgumentException("invalid_profile_shadow_mode");
         out.put("textShadowMode", shadowMode);
         String shadow = clean(raw.get("textShadowCustom"), MAX_SHADOW);
         if (!shadow.isBlank() && (!SAFE_SHADOW.matcher(shadow).matches() || shadow.toLowerCase(Locale.ROOT).contains("url("))) {
@@ -302,8 +306,8 @@ public final class UserPreferenceStore {
         throw new IllegalArgumentException("invalid_boolean");
     }
 
-    private double number(String raw, double min, double max, double fallback) {
-        if (raw == null || raw.isBlank() || "null".equalsIgnoreCase(raw)) return fallback;
+    private Double nullableNumber(String raw, double min, double max) {
+        if (raw == null || raw.isBlank() || "null".equalsIgnoreCase(raw)) return null;
         final double v;
         try { v = Double.parseDouble(raw.trim()); }
         catch (NumberFormatException ex) { throw new IllegalArgumentException("invalid_profile_number"); }

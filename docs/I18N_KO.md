@@ -60,6 +60,12 @@ chat:
 
 접혀 있는 고정 메시지도 일반 메시지와 같은 채팅 폰트 및 메시지 글자 크기 설정을 따릅니다.
 
+## 설정 주석 언어
+
+`ui.language`는 KOKOTO WebChat이 `config.yml`의 주석/레이아웃을 재구성하고 `config-reference-5.1.0.yml` 및 마이그레이션/Difference 안내문을 작성할 때 사용하는 표시 언어에도 적용됩니다. 내장 설정 표시 템플릿은 `en-US`, `ko-KR`, `ja-JP`, `zh-CN`입니다. 기존에 파싱된 운영 설정값을 선택한 템플릿 위에 다시 적용하므로, 이 네 언어 사이를 전환해도 주석/레이아웃만 바뀌고 실제 설정값은 보존됩니다.
+
+사용자가 추가한 Web UI 언어 파일도 계속 사용할 수 있습니다. `ui.language`가 `fr-FR` 같은 사용자 지정/미지원 locale을 가리키면 Web UI는 해당 언어 파일을 사용할 수 있지만, config/reference/migration 표시 언어는 내장 영어(`en-US`) 템플릿으로 fallback됩니다. Difference 판정은 주석, 공백, 따옴표, 키 순서, 줄번호가 아니라 파싱된 YAML 설정 path와 값만 비교합니다.
+
 ## 새 언어 추가
 
 1. `plugins/KOKOTO-WebChat/lang/en-US.yml`을 복사합니다.

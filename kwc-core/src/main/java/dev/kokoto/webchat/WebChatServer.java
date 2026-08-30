@@ -36,6 +36,7 @@ public class WebChatServer {
     private final UserPreferenceStore userPreferences;
     private final AdminDiscordAlertManager adminDiscordAlerts;
     private final RateLimiter rateLimiter = new RateLimiter();
+    private final OperationalIssueTracker operationalIssues;
     private static final long STREAM_TICKET_TTL_MILLIS = 30_000L;
     private static final long ADMIN_FILTER_REQUEST_BODY_LIMIT_BYTES = 32L * 1024L * 1024L;
     private final ConcurrentHashMap<String, StreamTicket> streamTickets = new ConcurrentHashMap<>();
@@ -53,7 +54,7 @@ public class WebChatServer {
     private final SseHub sseHub = new SseHub();
     private static final Pattern URL_PATTERN = Pattern.compile("(?i)((?:https?://|www\\.)[^\\s<>\"]+)");
     // Keep this aligned with the frontend customEmojiTokenRegex().
-    // Emoji ids may contain spaces and pack paths, for example :pack 1/name:.
+    // Emoji ids use canonical pack/name path segments. Legacy tokens with spaces still parse but no longer resolve after 5.1.0 storage normalization.
     // The negative lookbehind prevents URL schemes such as http:// from being treated as emoji tokens.
     private static final Pattern EMOJI_TOKEN_PATTERN = Pattern.compile("(?<![A-Za-z0-9+.-]):(?:emoji:)?([^:\\r\\n]{1,200}):");
     private static final Set<String> DANGEROUS_UPLOAD_EXTENSIONS = Set.of(
@@ -89,9 +90,14 @@ public class WebChatServer {
         this.webPush = new WebPushManager(java.util.Objects.requireNonNull(host.webPushHost(), "webPushHost"));
         this.userPreferences = new UserPreferenceStore(host.dataDirectory(), host.logger());
         this.adminDiscordAlerts = new AdminDiscordAlertManager(host);
+        this.operationalIssues = new OperationalIssueTracker(host.logger()::info, host.logger()::warn);
     }
 
     public void start() throws IOException {
+        start(true);
+    }
+
+    public void start(boolean emitSecurityWarnings) throws IOException {
         ConfigValues config = host.configValues();
         int configuredSseCapacity = config.maxSseConnectionsTotal > 0 ? config.maxSseConnectionsTotal : 200;
         int httpThreadCap = Math.max(64, Math.min(512, configuredSseCapacity + 64));
@@ -118,6 +124,7 @@ public class WebChatServer {
         cleanupOldUploads();
         cleanupOldExternalMediaCache();
         ensureImageIoPluginsRegistered();
+        normalizeExistingEmojiStorageOnStartup();
         syncExistingGameEmojiPngSidecarsOnStartup();
         refreshImageEmojiRuntimeSymbols();
         // Load the authoritative content-filter.rules block from config.yml through
@@ -127,6 +134,12 @@ public class WebChatServer {
         running = true;
         httpServer.start();
         host.logger().info("HTTP chat server started on " + config.httpHost + ":" + config.httpPort + config.pathPrefix);
+        if (emitSecurityWarnings) logHttpSecurityWarning();
+    }
+
+    /** Re-evaluates the loaded config and writes the configured HTTP/HTTPS warning to the server console. */
+    public void logHttpSecurityWarning() {
+        TransportSecurityWarnings.logHttpServer(host.configValues(), host.language(), host.logger());
     }
 
     private void createApiContexts(String p) {
@@ -139,9 +152,13 @@ public class WebChatServer {
         httpServer.createContext(p + "/stream", this::handleStream);
         httpServer.createContext(p + "/stream-ticket", this::handleStreamTicket);
         httpServer.createContext(p + "/send", this::handleSend);
-        httpServer.createContext(p + "/relay/receive", this::handleRelayReceive);
-        httpServer.createContext(p + "/relay/dm/receive", this::handleRelayDirectMessageReceive);
-        httpServer.createContext(p + "/relay/dm/read", this::handleRelayDirectMessageRead);
+        // Relay protocol v2 endpoints. Legacy v1 paths remain registered only to return HTTP 426.
+        httpServer.createContext(p + "/relay/v2/handshake", this::handleRelayHandshake);
+        httpServer.createContext(p + "/relay/v2/message", this::handleRelayMessage);
+        httpServer.createContext(p + "/relay/handshake", this::handleRelayLegacyV1);
+        httpServer.createContext(p + "/relay/receive", this::handleRelayLegacyV1);
+        httpServer.createContext(p + "/relay/dm/receive", this::handleRelayLegacyV1);
+        httpServer.createContext(p + "/relay/dm/read", this::handleRelayLegacyV1);
         httpServer.createContext(p + "/push/subscribe", this::handlePushSubscribe);
         httpServer.createContext(p + "/push/unsubscribe", this::handlePushUnsubscribe);
         httpServer.createContext(p + "/push/test", this::handlePushTest);
@@ -736,31 +753,31 @@ public class WebChatServer {
         publishServerRelay(msg);
     }
 
-    private void handleRelayReceive(HttpExchange ex) throws IOException {
+    private void handleRelayHandshake(HttpExchange ex) throws IOException {
         ServerRelay relay = host.serverRelay();
         if (relay == null) {
             sendJson(ex, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}");
             return;
         }
-        relay.handleIncoming(ex);
+        relay.handleHandshake(ex);
     }
 
-    private void handleRelayDirectMessageReceive(HttpExchange ex) throws IOException {
+    private void handleRelayMessage(HttpExchange ex) throws IOException {
         ServerRelay relay = host.serverRelay();
         if (relay == null) {
             sendJson(ex, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}");
             return;
         }
-        relay.handleIncomingDirectMessage(ex);
+        relay.handleMessage(ex);
     }
 
-    private void handleRelayDirectMessageRead(HttpExchange ex) throws IOException {
+    private void handleRelayLegacyV1(HttpExchange ex) throws IOException {
         ServerRelay relay = host.serverRelay();
         if (relay == null) {
-            sendJson(ex, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}");
+            sendJson(ex, 426, "{\"ok\":false,\"error\":\"relay_protocol_upgrade_required\",\"protocol\":2,\"version\":\"5.1.0\"}");
             return;
         }
-        relay.handleIncomingDirectMessageRead(ex);
+        relay.handleLegacyV1(ex);
     }
 
     private void handleConfig(HttpExchange ex) throws IOException {
@@ -1591,6 +1608,7 @@ public class WebChatServer {
             return;
         }
         String clientMessageId = stripControl(body.get("clientMessageId"), 180).trim();
+        long replyToId = Math.max(0L, parseLong(body.get("replyToId"), 0L));
 
         ServerRelay relay = host.serverRelay();
         if (remote != null && (relay == null || !relay.canRouteDirectMessage(remote.serverId))) {
@@ -1603,10 +1621,10 @@ public class WebChatServer {
         if (remote != null) {
             relayId = relay.createDirectMessageRelayId();
             result = host.directMessages().sendPendingRemote(
-                    ctx.account.uuid, target.uuid, message, relayId, remote.serverId, clientMessageId);
+                    ctx.account.uuid, target.uuid, message, relayId, remote.serverId, clientMessageId, replyToId);
             if (result.duplicate && result.message != null) relayId = result.message.relayId;
         } else {
-            result = host.directMessages().sendWithClientMessageId(ctx.account.uuid, target.uuid, message, clientMessageId);
+            result = host.directMessages().sendWithClientMessageId(ctx.account.uuid, target.uuid, message, clientMessageId, replyToId);
         }
         if (!result.ok) {
             sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}");
@@ -1642,7 +1660,10 @@ public class WebChatServer {
                 relay.publishDirectMessage(
                                 finalRelayId,
                                 ctx.account.uuid, senderUsername, senderDisplayName,
-                                remote.serverId, remote.playerUuid, targetUsername, targetDisplayName, message, gameNoticeMessage)
+                                remote.serverId, remote.playerUuid, targetUsername, targetDisplayName, message, gameNoticeMessage,
+                                result.message == null ? "" : result.message.replyToRelayId,
+                                result.message == null ? "" : result.message.replyToSender,
+                                result.message == null ? "" : result.message.replyToPreview)
                         .whenComplete((delivery, error) -> completeRemoteDirectMessageDelivery(
                                 ctx.account.uuid, finalTargetUuid, threadId, messageId, delivery, error));
                 if (!result.duplicate) {
@@ -1651,7 +1672,10 @@ public class WebChatServer {
             }
         } else if (!result.duplicate) {
             dispatchWebPushDirectMessage(ctx.account.uuid, host.displayNameForAccount(ctx.account), target.uuid, target.label(), threadId, messageId, message);
-            notifyOnlineDirectMessage(ctx.account, target, gameNoticeMessage);
+            notifyOnlineDirectMessage(ctx.account, target, gameNoticeMessage, result.message);
+        }
+        if (!result.duplicate) {
+            echoWebDirectMessageToSender(ctx.account, target, gameNoticeMessage, result.message);
         }
 
         String threadJson = result.thread == null ? "null" : result.thread.toJson();
@@ -1715,7 +1739,8 @@ public class WebChatServer {
         relay.publishDirectMessage(
                         relayId,
                         ctx.account.uuid, senderUsername, senderDisplayName,
-                        remote.serverId, remote.playerUuid, targetUsername, targetDisplayName, retry.message.body, retry.message.body)
+                        remote.serverId, remote.playerUuid, targetUsername, targetDisplayName, retry.message.body, retry.message.body,
+                        retry.message.replyToRelayId, retry.message.replyToSender, retry.message.replyToPreview)
                 .whenComplete((delivery, error) -> completeRemoteDirectMessageDelivery(
                         ctx.account.uuid, retry.targetUuid, threadId, messageId, delivery, error));
         sendJson(ex, 202, "{\"ok\":true,\"status\":\"pending\",\"messageId\":" + messageId + "}");
@@ -1923,7 +1948,8 @@ public class WebChatServer {
         Map<String,String> body = JsonUtil.parseFlatObject(JsonUtil.readBody(ex.getRequestBody()));
         SessionContext ctx = sessionForRequest(ex, body.get("token"));
         if (!validGroupUser(ctx)) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
-        GroupChatStore.CreateResult result = host.groupChats().createRoom(ctx.account.uuid, body.get("name"), body.get("visibility"), body.get("password"));
+        boolean membershipEventsEnabled = !body.containsKey("membershipEventsEnabled") || Boolean.parseBoolean(String.valueOf(body.get("membershipEventsEnabled")));
+        GroupChatStore.CreateResult result = host.groupChats().createRoom(ctx.account.uuid, body.get("name"), body.get("visibility"), body.get("password"), membershipEventsEnabled);
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
         publishGroupChatUpdate(result.room == null ? "" : result.room.id);
         sendJson(ex, 200, "{\"ok\":true,\"room\":" + (result.room == null ? "null" : result.room.toJson()) + "}");
@@ -1937,6 +1963,7 @@ public class WebChatServer {
         GroupChatStore.ActionResult result = host.groupChats().joinRoom(req.ctx.account.uuid, req.body.get("roomId"), req.body.get("password"));
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
         publishGroupChatUpdate(result.room == null ? req.body.get("roomId") : result.room.id);
+        notifyOnlineGroupMembershipEvent(result.room, result.membershipEvent, req.body.get("roomId"));
         sendJson(ex, 200, "{\"ok\":true,\"room\":" + (result.room == null ? "null" : result.room.toJson()) + "}");
     }
 
@@ -1949,6 +1976,7 @@ public class WebChatServer {
         GroupChatStore.ActionResult result = host.groupChats().leaveRoom(req.ctx.account.uuid, roomId);
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
         publishGroupChatUpdate(roomId);
+        notifyOnlineGroupMembershipEvent(result.room, result.membershipEvent, roomId);
         sendJson(ex, 200, "{\"ok\":true,\"unread\":" + host.groupChats().unreadCount(req.ctx.account.uuid) + "}");
     }
 
@@ -1996,6 +2024,7 @@ public class WebChatServer {
         GroupChatStore.ActionResult result = host.groupChats().respondInvite(req.ctx.account.uuid, inviteId, accept);
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
         publishGroupChatUpdate(result.room == null ? "" : result.room.id);
+        if (accept) notifyOnlineGroupMembershipEvent(result.room, result.membershipEvent, result.room == null ? "" : result.room.id);
         sendJson(ex, 200, "{\"ok\":true,\"room\":" + (result.room == null ? "null" : result.room.toJson()) + "}");
     }
 
@@ -2019,7 +2048,8 @@ public class WebChatServer {
                 req.ctx.account.uuid,
                 req.body.get("roomId"),
                 message,
-                stripControl(req.body.get("clientMessageId"), 180).trim());
+                stripControl(req.body.get("clientMessageId"), 180).trim(),
+                Math.max(0L, parseLong(req.body.get("replyToId"), 0L)));
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
         publishGroupChatUpdate(result.room == null ? req.body.get("roomId") : result.room.id);
         if (!result.duplicate) {
@@ -2062,7 +2092,9 @@ public class WebChatServer {
         GroupRequest req = groupRequest(ex);
         if (!req.ok) return;
         boolean passwordSet = req.body.containsKey("password");
-        GroupChatStore.ActionResult result = host.groupChats().updateSettings(req.ctx.account.uuid, req.body.get("roomId"), req.body.get("name"), req.body.get("visibility"), req.body.get("password"), passwordSet);
+        Boolean membershipEventsEnabled = req.body.containsKey("membershipEventsEnabled")
+                ? Boolean.valueOf(Boolean.parseBoolean(String.valueOf(req.body.get("membershipEventsEnabled")))) : null;
+        GroupChatStore.ActionResult result = host.groupChats().updateSettings(req.ctx.account.uuid, req.body.get("roomId"), req.body.get("name"), req.body.get("visibility"), req.body.get("password"), passwordSet, membershipEventsEnabled);
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
         publishGroupChatUpdate(result.room == null ? req.body.get("roomId") : result.room.id);
         sendJson(ex, 200, "{\"ok\":true,\"room\":" + (result.room == null ? "null" : result.room.toJson()) + "}");
@@ -2098,6 +2130,7 @@ public class WebChatServer {
         else result = host.groupChats().kick(req.ctx.account.uuid, req.body.get("roomId"), targetUuid, "ban".equals(action));
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
         publishGroupChatUpdate(req.body.get("roomId"), targetUuid);
+        if (!"unban".equals(action)) notifyOnlineGroupMembershipEvent(result.room, result.membershipEvent, req.body.get("roomId"));
         sendJson(ex, 200, "{\"ok\":true}");
     }
 
@@ -2194,11 +2227,19 @@ public class WebChatServer {
         return out;
     }
 
-    private void notifyOnlineDirectMessage(Account sender, PlayerIdentity target, String message) {
-        notifyOnlineDirectMessage(host.displayNameForAccount(sender), target, message);
+    private void notifyOnlineDirectMessage(Account sender, PlayerIdentity target, String message, DirectMessageMessage stored) {
+        if (sender == null) return;
+        String senderName = host.displayNameForAccount(sender);
+        String senderTarget = dmCommandTarget(sender.uuid, sender.safeUsername(), senderName);
+        notifyOnlineDirectMessage(senderName, senderTarget, target, message, stored);
     }
 
-    private void notifyOnlineDirectMessage(String senderName, PlayerIdentity target, String message) {
+    private void notifyOnlineDirectMessage(String senderName, PlayerIdentity target, String message, DirectMessageMessage stored) {
+        notifyOnlineDirectMessage(senderName, "", target, message, stored);
+    }
+
+    private void notifyOnlineDirectMessage(String senderName, String senderCommandTarget, PlayerIdentity target,
+                                           String message, DirectMessageMessage stored) {
         ConfigValues config = host.configValues();
         if (config == null || !config.directMessageNotifyOnMessage || target == null) return;
         platform.runMainThread(() -> {
@@ -2209,7 +2250,50 @@ public class WebChatServer {
                 java.util.Map<String, String> vars = new java.util.HashMap<>();
                 vars.put("player", LegacyText.RESET + String.valueOf(senderName == null ? "" : senderName) + LegacyText.LIGHT_PURPLE);
                 vars.put("message", LegacyText.RESET + body);
-                sendTokenGameLines(recipientUuid, LegacyText.LIGHT_PURPLE + host.language().text("command.dmIncoming", "DM from {player}: {message}", vars));
+                String line = LegacyText.LIGHT_PURPLE + host.language().text("command.dmIncoming", "DM from {player}: {message}", vars);
+                long messageId = stored == null ? 0L : stored.id;
+                String senderCommand = String.valueOf(senderCommandTarget == null ? "" : senderCommandTarget).isBlank()
+                        ? "" : "/kchat dm " + senderCommandTarget + " ";
+                sendPrivateInteractiveGameNotice(recipientUuid, line,
+                        String.valueOf(senderName == null ? "" : senderName),
+                        host.language().text("command.dmClickHint", "Click to write a DM to {player}",
+                                Map.of("player", String.valueOf(senderName == null ? "" : senderName))),
+                        senderCommand,
+                        body,
+                        host.language().text("command.privateReplyClickHint", "Click the message to reply", Map.of()),
+                        "/kchat reply dm-" + messageId + " ",
+                        stored == null ? 0L : stored.replyToId,
+                        stored == null ? "" : stored.replyToRelayId,
+                        stored == null ? "" : stored.replyToSender,
+                        stored == null ? "" : stored.replyToPreview);
+            } catch (IllegalArgumentException ignored) {
+            }
+        });
+    }
+
+    private void echoWebDirectMessageToSender(Account sender, PlayerIdentity target, String message, DirectMessageMessage stored) {
+        if (sender == null || sender.uuid == null || sender.uuid.isBlank() || target == null) return;
+        platform.runMainThread(() -> {
+            try {
+                java.util.UUID senderUuid = java.util.UUID.fromString(sender.uuid);
+                if (platform.onlinePlayer(senderUuid).isEmpty()) return;
+                String body = colorizeForGame(trimForNotice(message, 100));
+                java.util.Map<String, String> vars = new java.util.HashMap<>();
+                vars.put("player", LegacyText.RESET + String.valueOf(target.label()) + LegacyText.GRAY);
+                vars.put("message", LegacyText.RESET + body);
+                String line = LegacyText.GRAY + host.language().text("command.dmSentEcho", "to: {player} {message}", vars);
+                long messageId = stored == null ? 0L : stored.id;
+                sendPrivateInteractiveGameNotice(senderUuid, line,
+                        String.valueOf(target.label()),
+                        host.language().text("command.dmClickHint", "Click to write a DM to {player}", Map.of("player", String.valueOf(target.label()))),
+                        "/kchat dm " + dmCommandTarget(target.uuid, target.username, target.displayName) + " ",
+                        body,
+                        host.language().text("command.privateReplyClickHint", "Click the message to reply", Map.of()),
+                        "/kchat reply dm-" + messageId + " ",
+                        stored == null ? 0L : stored.replyToId,
+                        stored == null ? "" : stored.replyToRelayId,
+                        stored == null ? "" : stored.replyToSender,
+                        stored == null ? "" : stored.replyToPreview);
             } catch (IllegalArgumentException ignored) {
             }
         });
@@ -2234,7 +2318,43 @@ public class WebChatServer {
                 if (memberUuid == null || memberUuid.isBlank()) continue;
                 try {
                     java.util.UUID recipientUuid = java.util.UUID.fromString(memberUuid);
-                    if (platform.onlinePlayer(recipientUuid).isPresent()) sendTokenGameLines(recipientUuid, line);
+                    if (platform.onlinePlayer(recipientUuid).isPresent()) {
+                        sendPrivateInteractiveGameNotice(recipientUuid, line,
+                                roomName,
+                                host.language().text("command.groupClickHint", "Click to write to group {room}", Map.of("room", roomName)),
+                                "/kchat group " + shortPrivateRoomId(roomId) + " ",
+                                body,
+                                host.language().text("command.privateReplyClickHint", "Click the message to reply", Map.of()),
+                                "/kchat reply group-" + message.id + " ",
+                                message.replyToId, "", message.replyToSender, message.replyToPreview);
+                    }
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        });
+    }
+
+    private void notifyOnlineGroupMembershipEvent(GroupRoom room, GroupMessage message, String fallbackRoomId) {
+        if (host.groupChats() == null || message == null || message.eventType == null || message.eventType.isBlank()) return;
+        String roomId = room != null && room.id != null && !room.id.isBlank() ? room.id : String.valueOf(fallbackRoomId == null ? "" : fallbackRoomId);
+        if (roomId.isBlank()) return;
+        String roomName = room != null && room.name != null && !room.name.isBlank() ? room.name : roomId;
+        String actor = message.senderDisplayName == null || message.senderDisplayName.isBlank()
+                ? (message.senderUsername == null || message.senderUsername.isBlank() ? message.senderUuid : message.senderUsername)
+                : message.senderDisplayName;
+        String key = "member_leave".equals(message.eventType) ? "command.groupMemberLeft" : "command.groupMemberJoined";
+        String fallback = "member_leave".equals(message.eventType) ? "{player} left group {room}." : "{player} joined group {room}.";
+        String line = LegacyText.AQUA + host.language().text(key, fallback, Map.of(
+                "player", LegacyText.RESET + actor + LegacyText.AQUA,
+                "room", LegacyText.RESET + roomName + LegacyText.AQUA));
+        Set<String> members = host.groupChats().memberUuids(roomId);
+        if (members == null || members.isEmpty()) return;
+        platform.runMainThread(() -> {
+            for (String memberUuid : members) {
+                if (memberUuid == null || memberUuid.isBlank()) continue;
+                try {
+                    java.util.UUID recipientUuid = java.util.UUID.fromString(memberUuid);
+                    if (platform.onlinePlayer(recipientUuid).isPresent()) platform.sendPlainMessage(recipientUuid, line);
                 } catch (IllegalArgumentException ignored) {
                 }
             }
@@ -2249,6 +2369,128 @@ public class WebChatServer {
         String out = value == null ? "" : value.replace('\n', ' ').replace('\r', ' ').trim();
         if (max > 0 && out.length() > max) return out.substring(0, Math.max(0, max - 1)) + "…";
         return out;
+    }
+
+    /**
+     * Sends a DM/group game line through the same Reply interaction builder used by
+     * public chat. The private message id becomes the normal ChatMessage id
+     * (dm-<id>/group-<id>), so gameLineHover() creates the same click-to-reply
+     * interaction. Platform renderers keep URL OPEN_URL actions and add their
+     * existing separate [↩] affordance when the reply target is URL-only.
+     */
+    public void sendPrivateClickableGameMessage(java.util.Collection<java.util.UUID> recipients,
+                                                String privateMessageId,
+                                                String renderedLine, String renderedMessage,
+                                                String senderTarget, String senderHover, String senderCommand,
+                                                long replyToId, String replyToStableId,
+                                                String replyToSender, String replyToPreview) {
+        if (recipients == null || recipients.isEmpty()) return;
+        ConfigValues config = host.configValues();
+        if (config == null) return;
+
+        String ownId = stripControl(privateMessageId, 96).trim();
+        String referencedId = replyToId > 0L
+                ? Long.toString(replyToId)
+                : stripControl(replyToStableId, 180).trim();
+        String body = String.valueOf(renderedMessage == null ? "" : renderedMessage);
+        ChatMessage synthetic = new ChatMessage(System.currentTimeMillis(), "private", "", "USER", body);
+        synthetic.id = ownId;
+        synthetic.gameMessage = body;
+        if (!referencedId.isBlank()) {
+            synthetic.withReply(referencedId,
+                    String.valueOf(replyToSender == null ? "" : replyToSender),
+                    String.valueOf(replyToPreview == null ? "" : replyToPreview));
+        }
+
+        String protectedMessage = renderImageEmojiSymbolsForGame(messageForGameChat(body, config));
+        String message = restoreTokenGameBreaks(protectedMessage);
+        String lineSource = String.valueOf(renderedLine == null ? "" : renderedLine);
+        if (!body.isBlank() && !protectedMessage.equals(body) && lineSource.contains(body)) {
+            lineSource = lineSource.replace(body, protectedMessage);
+        }
+        String line = applyReplyGameLinePrefix(synthetic, lineSource, config);
+        line = sanitizeSingleGameLine(line, 32768);
+        String restoredLine = restoreTokenGameBreaks(line);
+
+        // This is intentionally the public-chat Reply builder. Only the sender/channel
+        // click target is private-chat specific; Reply target/hover/command are common.
+        GameLineHover replyInteraction = gameLineHover(synthetic, restoredLine, message, config);
+        GameLineHover interaction = new GameLineHover(
+                String.valueOf(senderTarget == null ? "" : senderTarget),
+                String.valueOf(senderHover == null ? "" : senderHover),
+                String.valueOf(senderCommand == null ? "" : senderCommand),
+                replyInteraction.replyTarget,
+                replyInteraction.replyText,
+                replyInteraction.replySuggestCommand);
+
+        String preview = gameReplyPreviewLine(synthetic, config);
+        boolean preservePreview = shouldPreservePlainBroadcastForGameEmojiTokens(
+                synthetic.replyToPreview, preview, config);
+        boolean preserveLine = shouldPreservePlainBroadcastForGameEmojiTokens(body, line, config);
+        java.util.Collection<java.util.UUID> targets = java.util.List.copyOf(recipients);
+        String finalLine = line;
+        platform.runMainThread(() -> {
+            if (!preview.isBlank()) {
+                sendTargetedGameLine(targets, preview, preservePreview, config, GameLineHover.empty());
+            }
+            sendTargetedGameLine(targets, finalLine, preserveLine, config, interaction);
+        });
+    }
+
+    private void sendPrivateInteractiveGameNotice(java.util.UUID recipientUuid, String renderedLine,
+                                                  String senderTarget, String senderHover, String senderCommand,
+                                                  String replyTarget, String replyHover, String replyCommand,
+                                                  long replyToId, String replyToStableId,
+                                                  String replyToSender, String replyToPreview) {
+        // Compatibility wrapper for older internal call sites. Derive the private
+        // message id from the supplied /kchat reply command and use the common path.
+        String command = String.valueOf(replyCommand == null ? "" : replyCommand).trim();
+        String ownId = "";
+        String marker = "/kchat reply ";
+        if (command.regionMatches(true, 0, marker, 0, marker.length())) {
+            String tail = command.substring(marker.length()).trim();
+            int space = tail.indexOf(' ');
+            ownId = space < 0 ? tail : tail.substring(0, space);
+        }
+        sendPrivateClickableGameMessage(java.util.List.of(recipientUuid), ownId,
+                renderedLine, replyTarget,
+                senderTarget, senderHover, senderCommand,
+                replyToId, replyToStableId, replyToSender, replyToPreview);
+    }
+
+    private void sendTargetedGameLine(java.util.Collection<java.util.UUID> recipients, String line,
+                                      boolean preservePlainForGameEmojiTokens,
+                                      ConfigValues config, GameLineHover hover) {
+        if (recipients == null || recipients.isEmpty() || line == null || line.isEmpty()) return;
+        java.util.List<String> lines = host.splitMessageTokenGameLines(line);
+        for (int i = 0; i < lines.size(); i++) {
+            String rendered = visibleGameLine(lines.get(i));
+            GameLineHover lineHover = i == 0
+                    ? (hover == null ? GameLineHover.empty() : hover)
+                    : (hover == null ? GameLineHover.empty() : hover.withoutSender());
+            boolean hasClickableUrl = config != null && config.clickableUrlsInGame && containsUrl(rendered);
+            boolean hasInteraction = lineHover.enabled();
+            if (preservePlainForGameEmojiTokens || (!hasClickableUrl && !hasInteraction)) {
+                for (java.util.UUID target : recipients) platform.sendPlainMessage(target, rendered);
+                continue;
+            }
+            platform.sendInteractiveMessage(recipients, platformGameMessage(rendered, hasClickableUrl, lineHover));
+        }
+    }
+
+    private String dmCommandTarget(String uuid, String username, String displayName) {
+        String rawUuid = String.valueOf(uuid == null ? "" : uuid).trim();
+        RemotePlayerRef remote = RemotePlayerRef.parse(rawUuid);
+        String user = stripMinecraftFormatting(String.valueOf(username == null ? "" : username)).trim();
+        if (remote != null) return !user.isBlank() ? user + "@" + remote.serverId : remote.key;
+        if (!user.isBlank()) return user;
+        String display = stripMinecraftFormatting(String.valueOf(displayName == null ? "" : displayName)).trim();
+        return !display.isBlank() ? display : rawUuid;
+    }
+
+    private String shortPrivateRoomId(String roomId) {
+        String id = String.valueOf(roomId == null ? "" : roomId).trim();
+        return id.length() <= 8 ? id : id.substring(0, 8);
     }
 
     private boolean emojiTokenLimitExceeded(String message, ConfigValues config) {
@@ -2486,6 +2728,7 @@ public class WebChatServer {
             String message = host.language().text("system.command-executed-by",
                     executor + " executed web command: " + resultLabel, values);
             publishSystemEvent("Command", message, "system.command-executed-by", JsonUtil.obj(values));
+            broadcastWebCommandNoticeToPlayers(message);
         }
 
         sendJson(ex, 200, "{\"ok\":true,\"accepted\":" + accepted
@@ -2511,6 +2754,19 @@ public class WebChatServer {
             return display + " (" + username + ")";
         }
         return display;
+    }
+
+    private void broadcastWebCommandNoticeToPlayers(String message) {
+        String line = String.valueOf(message == null ? "" : message);
+        if (line.isBlank()) return;
+        // Player-only delivery keeps the existing console/audit logging path from
+        // being duplicated by platform broadcast implementations that also log.
+        platform.runMainThread(() -> {
+            for (PlatformPlayer player : platform.onlinePlayers()) {
+                if (player == null || player.uuid() == null) continue;
+                platform.sendPlainMessage(player.uuid(), line);
+            }
+        });
     }
 
 
@@ -2642,14 +2898,40 @@ public class WebChatServer {
 
     private Path emojiPackDir(String packId) {
         Path dir = emojiDir();
-        String pack = sanitizeEmojiSegment(packId);
+        String pack = canonicalEmojiPackName(packId);
         if (pack.isBlank() || "default".equalsIgnoreCase(pack)) return dir;
         return dir.resolve(pack).normalize();
     }
 
     private String normalizeEmojiPackId(String packId) {
-        String pack = sanitizeEmojiSegment(packId);
+        String pack = canonicalEmojiPackName(packId);
         return pack.isBlank() ? "default" : pack;
+    }
+
+    private String uniqueEmojiPackId(Path root, String desired, Path excludedDir) {
+        String clean = canonicalEmojiPackName(desired);
+        if (clean.isBlank()) clean = "pack";
+        if ("default".equalsIgnoreCase(clean)) clean = "pack";
+        String candidate = clean;
+        int suffix = 1;
+        while (emojiPackDirectoryExistsExcluding(root, candidate, excludedDir)) {
+            candidate = clean + "-" + suffix++;
+        }
+        return candidate;
+    }
+
+    private boolean emojiPackDirectoryExistsExcluding(Path root, String packId, Path excludedDir) {
+        if (root == null || packId == null || packId.isBlank() || !Files.isDirectory(root)) return false;
+        Path excluded = excludedDir == null ? null : excludedDir.normalize();
+        try (java.util.stream.Stream<Path> stream = Files.list(root)) {
+            return stream.filter(Files::isDirectory).anyMatch(path -> {
+                if (excluded != null && path.normalize().equals(excluded)) return false;
+                String name = path.getFileName() == null ? "" : path.getFileName().toString();
+                return name.equalsIgnoreCase(packId);
+            });
+        } catch (IOException ex) {
+            return Files.exists(root.resolve(packId));
+        }
     }
 
     private boolean validEmojiPackTarget(Path dir, Path target) {
@@ -2686,7 +2968,7 @@ public class WebChatServer {
     }
 
     private String emojiRenameFilename(String requested, String currentExt) {
-        String cleaned = safeUploadedFilename(requested, "emoji");
+        String cleaned = uploadedLeafFilename(requested, "emoji");
         String ext = extension(cleaned).toLowerCase(Locale.ROOT);
         String base = cleaned;
         if (!ext.isBlank() && ext.equalsIgnoreCase(currentExt)) {
@@ -2696,7 +2978,7 @@ public class WebChatServer {
             // extension is intentionally not supported from the admin panel.
             return "";
         }
-        String safeBase = sanitizeEmojiFilenameBase(base);
+        String safeBase = canonicalEmojiItemName(base);
         if (safeBase.isBlank()) return "";
         return safeBase + "." + currentExt.toLowerCase(Locale.ROOT);
     }
@@ -2938,6 +3220,9 @@ public class WebChatServer {
         cachedEmojiCatalogStamp = Long.MIN_VALUE;
         cachedEmojiCatalogSignature = "";
         cachedContentFilterEmojiAliases = Set.of();
+        // Tell every connected browser to fetch a fresh catalog. The event carries
+        // no catalog contents so clients always re-read the authoritative endpoint.
+        broadcastEvent("emoji-catalog", "{\"ok\":true}");
     }
 
     private long emojiDirectoryStamp(Path dir) {
@@ -2986,8 +3271,11 @@ public class WebChatServer {
             packs.sort((a, b) -> compareNatural(a.getFileName().toString(), b.getFileName().toString()));
             for (Path packDir : packs) {
                 String rawName = packDir.getFileName().toString();
-                String packId = sanitizeEmojiSegment(rawName);
-                if (packId.isBlank()) continue;
+                String packId = canonicalEmojiPackName(rawName);
+                // Startup migration keeps the real directory and token segment identical.
+                // If a rename failed (for example read-only storage), do not expose a
+                // synthetic token path that does not exist on disk.
+                if (packId.isBlank() || !packId.equals(rawName)) continue;
                 EmojiPack pack = scanEmojiPack(config, packDir, packId, rawName, packId + "/", maxOne, maxTotal, total);
                 if (!pack.items.isEmpty()) {
                     catalog.packs.add(pack);
@@ -3018,7 +3306,7 @@ public class WebChatServer {
     }
 
     private String uniqueEmojiBase(Path packDir, String desiredBase) {
-        String clean = sanitizeEmojiFilenameBase(desiredBase);
+        String clean = canonicalEmojiItemName(desiredBase);
         if (clean.isBlank()) clean = "emoji";
         String base = clean;
         int i = 1;
@@ -3030,12 +3318,15 @@ public class WebChatServer {
 
     private boolean emojiBaseExists(Path packDir, String base) {
         if (packDir == null || base == null || base.isBlank()) return false;
-        String prefix = base + ".";
         try (java.util.stream.Stream<Path> stream = Files.list(packDir)) {
             return stream
                     .filter(Files::isRegularFile)
                     .map(p -> p.getFileName() == null ? "" : p.getFileName().toString())
-                    .anyMatch(name -> name.equals(base) || name.startsWith(prefix));
+                    .map(name -> {
+                        int dot = name.lastIndexOf('.');
+                        return dot > 0 ? name.substring(0, dot) : name;
+                    })
+                    .anyMatch(name -> name.equalsIgnoreCase(base));
         } catch (IOException ignored) {
             return false;
         }
@@ -3055,12 +3346,15 @@ public class WebChatServer {
             String ext = extension(fileName).toLowerCase(Locale.ROOT);
             if (!emojiExtensionAllowed(ext, config)) continue;
             String base = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
-            String itemName = sanitizeEmojiSegment(base);
-            if (itemName.isBlank()) continue;
+            String itemName = canonicalEmojiItemName(base);
+            // 5.1.0 normalizes invalid legacy files on startup. If a rename could not
+            // be completed (for example because the directory is read-only), do not
+            // expose a token that differs from the real filename stem.
+            if (itemName.isBlank() || !itemName.equals(base)) continue;
 
-            Path current = chosenByBase.get(itemName);
+            Path current = chosenByBase.get(itemName.toLowerCase(Locale.ROOT));
             if (current == null || shouldReplaceEmojiCatalogChoice(current, file)) {
-                chosenByBase.put(itemName, file);
+                chosenByBase.put(itemName.toLowerCase(Locale.ROOT), file);
             }
         }
 
@@ -3072,8 +3366,8 @@ public class WebChatServer {
             if (maxOne > 0 && len > maxOne) continue;
             if (maxTotal > 0 && total[0] + len > maxTotal) continue;
             String base = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
-            String itemName = sanitizeEmojiSegment(base);
-            if (itemName.isBlank()) continue;
+            String itemName = canonicalEmojiItemName(base);
+            if (itemName.isBlank() || !itemName.equals(base)) continue;
             String id = packId + "/" + itemName;
             String rel = relativePrefix + fileName;
             EmojiItem item = new EmojiItem(id, packId, itemName, base, rel, ext, len);
@@ -3209,37 +3503,6 @@ public class WebChatServer {
                 + ", already present " + already + ", failed " + failed + ".");
     }
 
-    private String sanitizeEmojiSegment(String value) {
-        String raw = java.text.Normalizer.normalize(String.valueOf(value == null ? "" : value), java.text.Normalizer.Form.NFC).trim();
-        if (raw.isBlank()) return "";
-        StringBuilder out = new StringBuilder();
-        boolean lastSpace = false;
-        for (int i = 0; i < raw.length(); ) {
-            int cp = raw.codePointAt(i);
-            i += Character.charCount(cp);
-            if (cp == '/' || cp == '\\' || cp == ':' || cp == 0 || Character.isISOControl(cp)) {
-                if (!lastSpace) {
-                    out.append('-');
-                    lastSpace = true;
-                }
-                continue;
-            }
-            if (Character.isWhitespace(cp)) {
-                if (!lastSpace) {
-                    out.append(' ');
-                    lastSpace = true;
-                }
-                continue;
-            }
-            out.appendCodePoint(cp);
-            lastSpace = false;
-        }
-        String result = out.toString().trim();
-        while (result.startsWith("-")) result = result.substring(1).trim();
-        while (result.endsWith("-")) result = result.substring(0, result.length() - 1).trim();
-        return limitCodePoints(result, 96);
-    }
-
     private String sanitizeEmojiFilenameBase(String value) {
         String raw = java.text.Normalizer.normalize(String.valueOf(value == null ? "" : value), java.text.Normalizer.Form.NFC).trim();
         if (raw.isBlank()) return "";
@@ -3270,6 +3533,226 @@ public class WebChatServer {
         while (result.startsWith("-")) result = result.substring(1).trim();
         while (result.endsWith("-")) result = result.substring(0, result.length() - 1).trim();
         return limitCodePoints(result, 80);
+    }
+
+    /**
+     * Canonical 5.1.0 emoji item name. The filename stem and :pack/name: token
+     * deliberately use this exact same value. Whitespace and characters that are
+     * awkward in URLs/filesystem paths/tokens are removed instead of escaped.
+     * Unicode letters, combining marks and digits are retained so Korean/Japanese
+     * and other normal localized names remain usable.
+     */
+    private String canonicalEmojiItemName(String value) {
+        String raw = java.text.Normalizer.normalize(String.valueOf(value == null ? "" : value), java.text.Normalizer.Form.NFC);
+        if (raw.isBlank()) return "";
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < raw.length(); ) {
+            int cp = raw.codePointAt(i);
+            i += Character.charCount(cp);
+            int type = Character.getType(cp);
+            boolean combiningMark = type == Character.NON_SPACING_MARK
+                    || type == Character.COMBINING_SPACING_MARK
+                    || type == Character.ENCLOSING_MARK;
+            if (Character.isLetterOrDigit(cp) || combiningMark || cp == '-' || cp == '_') {
+                out.appendCodePoint(cp);
+            }
+        }
+        String result = limitCodePoints(out.toString(), 80);
+        while (result.startsWith("-")) result = result.substring(1);
+        while (result.endsWith("-")) result = result.substring(0, result.length() - 1);
+        return result;
+    }
+
+    /**
+     * Canonical 5.1.0 emoji pack directory/token segment. Pack directory names
+     * follow the same safe character policy as emoji item stems so the physical
+     * directory and the :pack/name: token segment cannot diverge.
+     */
+    private String canonicalEmojiPackName(String value) {
+        String raw = java.text.Normalizer.normalize(String.valueOf(value == null ? "" : value), java.text.Normalizer.Form.NFC);
+        if (raw.isBlank()) return "";
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < raw.length(); ) {
+            int cp = raw.codePointAt(i);
+            i += Character.charCount(cp);
+            int type = Character.getType(cp);
+            boolean combiningMark = type == Character.NON_SPACING_MARK
+                    || type == Character.COMBINING_SPACING_MARK
+                    || type == Character.ENCLOSING_MARK;
+            if (Character.isLetterOrDigit(cp) || combiningMark || cp == '-' || cp == '_') {
+                out.appendCodePoint(cp);
+            }
+        }
+        String result = limitCodePoints(out.toString(), 96);
+        while (result.startsWith("-")) result = result.substring(1);
+        while (result.endsWith("-")) result = result.substring(0, result.length() - 1);
+        return result;
+    }
+
+    private String uploadedLeafFilename(String filename, String fallback) {
+        String raw = java.text.Normalizer.normalize(String.valueOf(filename == null ? "" : filename), java.text.Normalizer.Form.NFC).replace("\\", "/");
+        int slash = raw.lastIndexOf('/');
+        if (slash >= 0) raw = raw.substring(slash + 1);
+        raw = raw.replace("\0", "").trim();
+        if (raw.isBlank()) raw = fallback == null || fallback.isBlank() ? "file" : fallback;
+        return raw;
+    }
+
+    private void normalizeExistingEmojiStorageOnStartup() {
+        ConfigValues config = host.configValues();
+        if (config == null || !config.emojiEnabled) return;
+        Path root = emojiDir();
+        if (!Files.isDirectory(root)) return;
+        int renamedFiles = 0;
+        int renamedNames = 0;
+        int renamedPacks = 0;
+        try {
+            int[] rootResult = normalizeEmojiPackFilenames(root, "default", config);
+            renamedFiles += rootResult[0];
+            renamedNames += rootResult[1];
+
+            List<Path> packs = new ArrayList<>();
+            try (java.util.stream.Stream<Path> stream = Files.list(root)) {
+                stream.filter(Files::isDirectory).forEach(packs::add);
+            }
+            packs.sort((a, b) -> compareNatural(a.getFileName().toString(), b.getFileName().toString()));
+
+            // Reserve already-valid pack names first so invalid legacy names never
+            // steal a canonical name from a pack that does not need migration.
+            LinkedHashSet<String> reservedPacks = new LinkedHashSet<>();
+            for (Path packDir : packs) {
+                String rawName = packDir.getFileName().toString();
+                String canonical = canonicalEmojiPackName(rawName);
+                if (!canonical.isBlank() && canonical.equals(rawName)) {
+                    reservedPacks.add(canonical.toLowerCase(Locale.ROOT));
+                }
+            }
+
+            List<Path> normalizedPacks = new ArrayList<>();
+            for (Path originalDir : packs) {
+                String rawName = originalDir.getFileName().toString();
+                String canonical = canonicalEmojiPackName(rawName);
+                Path packDir = originalDir;
+                String packId = canonical;
+
+                if (canonical.isBlank()) canonical = "pack";
+                if (!canonical.equals(rawName)) {
+                    String chosen = canonical;
+                    int suffix = 1;
+                    while (reservedPacks.contains(chosen.toLowerCase(Locale.ROOT))
+                            || Files.exists(root.resolve(chosen))) {
+                        chosen = canonical + "-" + suffix++;
+                    }
+                    Path targetDir = root.resolve(chosen).normalize();
+                    if (!targetDir.startsWith(root.normalize())) continue;
+                    try {
+                        Files.move(originalDir, targetDir);
+                        packDir = targetDir;
+                        packId = chosen;
+                        renamedPacks++;
+                        host.logger().info("Normalized emoji pack name: " + rawName + " -> " + chosen);
+                    } catch (IOException ex) {
+                        host.logger().warn("Failed to normalize emoji pack " + rawName + ": " + ex.getMessage());
+                        // Keep it out of the catalog if the physical name cannot be made
+                        // identical to the canonical token segment.
+                        continue;
+                    }
+                }
+                reservedPacks.add(packId.toLowerCase(Locale.ROOT));
+                normalizedPacks.add(packDir);
+            }
+
+            normalizedPacks.sort((a, b) -> compareNatural(a.getFileName().toString(), b.getFileName().toString()));
+            for (Path packDir : normalizedPacks) {
+                String packId = canonicalEmojiPackName(packDir.getFileName().toString());
+                if (packId.isBlank() || !packId.equals(packDir.getFileName().toString())) continue;
+                int[] result = normalizeEmojiPackFilenames(packDir, packId, config);
+                renamedFiles += result[0];
+                renamedNames += result[1];
+            }
+        } catch (IOException ex) {
+            host.logger().warn("Failed to normalize existing emoji storage: " + ex.getMessage());
+        }
+        if (renamedFiles > 0 || renamedPacks > 0) {
+            invalidateEmojiCatalog();
+            host.logger().info("Emoji storage normalization complete: renamed " + renamedPacks
+                    + " pack(s), " + renamedFiles + " file(s) across " + renamedNames + " emoji name(s).");
+        }
+    }
+
+    private int[] normalizeEmojiPackFilenames(Path packDir, String packId, ConfigValues config) throws IOException {
+        LinkedHashMap<String, List<Path>> byBase = new LinkedHashMap<>();
+        List<Path> files = new ArrayList<>();
+        try (java.util.stream.Stream<Path> stream = Files.list(packDir)) {
+            stream.filter(Files::isRegularFile).forEach(files::add);
+        }
+        files.sort((a, b) -> compareNatural(a.getFileName().toString(), b.getFileName().toString()));
+        for (Path file : files) {
+            String name = file.getFileName().toString();
+            String ext = extension(name).toLowerCase(Locale.ROOT);
+            if (!emojiExtensionAllowed(ext, config)) continue;
+            int dot = name.lastIndexOf('.');
+            String base = dot > 0 ? name.substring(0, dot) : name;
+            byBase.computeIfAbsent(base, ignored -> new ArrayList<>()).add(file);
+        }
+        if (byBase.isEmpty()) return new int[]{0, 0};
+
+        LinkedHashSet<String> reserved = new LinkedHashSet<>();
+        for (String base : byBase.keySet()) {
+            String canonical = canonicalEmojiItemName(base);
+            if (!canonical.isBlank() && canonical.equals(base)) reserved.add(canonical.toLowerCase(Locale.ROOT));
+        }
+
+        int renamedFiles = 0;
+        int renamedNames = 0;
+        for (Map.Entry<String, List<Path>> entry : byBase.entrySet()) {
+            String oldBase = entry.getKey();
+            String canonical = canonicalEmojiItemName(oldBase);
+            if (!canonical.isBlank() && canonical.equals(oldBase)) continue;
+            if (canonical.isBlank()) canonical = "emoji";
+            String chosen = canonical;
+            int suffix = 1;
+            while (reserved.contains(chosen.toLowerCase(Locale.ROOT)) || emojiBaseExistsExcluding(packDir, chosen, entry.getValue())) {
+                chosen = canonical + "-" + suffix++;
+            }
+            reserved.add(chosen.toLowerCase(Locale.ROOT));
+
+            int moved = 0;
+            for (Path source : entry.getValue()) {
+                String sourceName = source.getFileName().toString();
+                String ext = extension(sourceName).toLowerCase(Locale.ROOT);
+                Path target = packDir.resolve(chosen + "." + ext).normalize();
+                if (!target.startsWith(packDir.normalize())) continue;
+                try {
+                    Files.move(source, target);
+                    moved++;
+                } catch (IOException ex) {
+                    host.logger().warn("Failed to normalize emoji file " + sourceName + " in pack " + packId + ": " + ex.getMessage());
+                }
+            }
+            if (moved > 0) {
+                renamedFiles += moved;
+                renamedNames++;
+                host.logger().info("Normalized emoji name in pack " + packId + ": " + oldBase + " -> " + chosen);
+            }
+        }
+        return new int[]{renamedFiles, renamedNames};
+    }
+
+    private boolean emojiBaseExistsExcluding(Path packDir, String base, List<Path> excluded) {
+        Set<Path> skip = new HashSet<>();
+        if (excluded != null) for (Path path : excluded) if (path != null) skip.add(path.normalize());
+        try (java.util.stream.Stream<Path> stream = Files.list(packDir)) {
+            return stream.filter(Files::isRegularFile).anyMatch(path -> {
+                if (skip.contains(path.normalize())) return false;
+                String name = path.getFileName() == null ? "" : path.getFileName().toString();
+                int dot = name.lastIndexOf('.');
+                String stem = dot > 0 ? name.substring(0, dot) : name;
+                return stem.equalsIgnoreCase(base);
+            });
+        } catch (IOException ex) {
+            return false;
+        }
     }
 
     private int compareNatural(String a, String b) {
@@ -4641,11 +5124,7 @@ public class WebChatServer {
     }
 
     private String safeUploadedFilename(String filename, String fallback) {
-        String raw = java.text.Normalizer.normalize(String.valueOf(filename == null ? "" : filename), java.text.Normalizer.Form.NFC).replace("\\", "/");
-        int slash = raw.lastIndexOf('/');
-        if (slash >= 0) raw = raw.substring(slash + 1);
-        raw = raw.replace("\0", "").trim();
-        if (raw.isBlank()) raw = fallback == null || fallback.isBlank() ? "file" : fallback;
+        String raw = uploadedLeafFilename(filename, fallback);
         String ext = extension(raw).toLowerCase(Locale.ROOT);
         String base = raw.contains(".") ? raw.substring(0, raw.lastIndexOf('.')) : raw;
         String safeBase = sanitizeEmojiFilenameBase(base);
@@ -5146,8 +5625,8 @@ public class WebChatServer {
             try (java.util.stream.Stream<Path> stream = Files.list(dir)) {
                 stream.filter(Files::isDirectory).sorted((a, b) -> compareNatural(a.getFileName().toString(), b.getFileName().toString())).forEach(p -> {
                     String raw = p.getFileName().toString();
-                    String id = sanitizeEmojiSegment(raw);
-                    if (!id.isBlank()) byId.putIfAbsent(id, new EmojiPack(id, raw));
+                    String id = canonicalEmojiPackName(raw);
+                    if (!id.isBlank() && id.equals(raw)) byId.putIfAbsent(id, new EmojiPack(id, raw));
                 });
             } catch (IOException ignored) {}
         }
@@ -5202,13 +5681,15 @@ public class WebChatServer {
         }
         Map<String, String> body = parsedBody(ex);
         String requested = body.getOrDefault("pack", body.getOrDefault("name", ""));
-        String packId = normalizeEmojiPackId(requested);
-        if ("default".equals(packId)) {
+        String requestedPackId = normalizeEmojiPackId(requested);
+        if ("default".equals(requestedPackId)) {
             ensureEmojiDirectoryExists();
             sendJson(ex, 200, "{\"ok\":true,\"pack\":\"default\"}");
             return;
         }
         Path root = emojiDir();
+        Files.createDirectories(root);
+        String packId = uniqueEmojiPackId(root, requestedPackId, null);
         Path dir = emojiPackDir(packId);
         if (!validEmojiPackTarget(root, dir)) {
             sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_pack\"}");
@@ -5258,7 +5739,7 @@ public class WebChatServer {
             sendJson(ex, 413, "{\"ok\":false,\"error\":\"file_too_large\"}");
             return;
         }
-        String original = safeUploadedFilename(file.filename, "emoji");
+        String original = uploadedLeafFilename(file.filename, "emoji");
         String ext = extension(original).toLowerCase(Locale.ROOT);
         if (!emojiExtensionAllowed(ext, config)) {
             sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_extension\"}");
@@ -5352,14 +5833,13 @@ public class WebChatServer {
 
         if ("pack".equals(type)) {
             String oldPack = normalizeEmojiPackId(body.getOrDefault("pack", ""));
-            String newPack = normalizeEmojiPackId(newName);
-            if (oldPack.isBlank() || newPack.isBlank() || "default".equalsIgnoreCase(oldPack) || "default".equalsIgnoreCase(newPack)) {
+            String requestedNewPack = normalizeEmojiPackId(newName);
+            if (oldPack.isBlank() || requestedNewPack.isBlank() || "default".equalsIgnoreCase(oldPack) || "default".equalsIgnoreCase(requestedNewPack)) {
                 sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_pack\"}");
                 return;
             }
             Path oldDir = emojiPackDir(oldPack);
-            Path newDir = emojiPackDir(newPack);
-            if (!validEmojiPackTarget(root, oldDir) || !validEmojiPackTarget(root, newDir)) {
+            if (!validEmojiPackTarget(root, oldDir)) {
                 sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_pack\"}");
                 return;
             }
@@ -5367,12 +5847,14 @@ public class WebChatServer {
                 sendJson(ex, 404, "{\"ok\":false,\"error\":\"not_found\"}");
                 return;
             }
-            if (oldDir.equals(newDir)) {
-                sendJson(ex, 200, "{\"ok\":true,\"pack\":" + JsonUtil.quote(newPack) + "}");
+            String newPack = uniqueEmojiPackId(root, requestedNewPack, oldDir);
+            Path newDir = emojiPackDir(newPack);
+            if (!validEmojiPackTarget(root, newDir)) {
+                sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_pack\"}");
                 return;
             }
-            if (Files.exists(newDir)) {
-                sendJson(ex, 409, "{\"ok\":false,\"error\":\"already_exists\"}");
+            if (oldDir.equals(newDir)) {
+                sendJson(ex, 200, "{\"ok\":true,\"pack\":" + JsonUtil.quote(newPack) + "}");
                 return;
             }
             Files.move(oldDir, newDir);
@@ -5431,7 +5913,7 @@ public class WebChatServer {
             }
         }
         String base = renamed.contains(".") ? renamed.substring(0, renamed.lastIndexOf('.')) : renamed;
-        String newItemName = sanitizeEmojiSegment(base);
+        String newItemName = canonicalEmojiItemName(base);
         String newId = found.pack + "/" + newItemName;
         invalidateEmojiCatalog();
         audit(ctx, "admin.emoji-rename", Map.of("oldId", found.id, "newId", newId, "filename", renamed));
@@ -5517,7 +5999,7 @@ public class WebChatServer {
         }
         String base = target.getFileName().toString();
         int dot = base.lastIndexOf('.');
-        String itemName = sanitizeEmojiSegment(dot >= 0 ? base.substring(0, dot) : base);
+        String itemName = canonicalEmojiItemName(dot >= 0 ? base.substring(0, dot) : base);
         String newId = targetPack + "/" + itemName;
         invalidateEmojiCatalog();
         audit(ctx, "admin.emoji-move", Map.of("oldId", found.id, "newId", newId, "oldPack", currentPack, "newPack", targetPack));
@@ -6573,7 +7055,8 @@ public class WebChatServer {
     public boolean acceptRelayedDirectMessage(String relayId, String originServerId, String originServerName,
                                                String senderUuid, String senderUsername, String senderDisplayName,
                                                String targetUuid, String targetUsername, String targetDisplayName,
-                                               String rawMessage, String rawGameMessage) {
+                                               String rawMessage, String rawGameMessage,
+                                               String replyToRelayId, String replyToSender, String replyToPreview) {
         ConfigValues config = host.configValues();
         if (config == null || !config.directMessageEnabled || host.directMessages() == null
                 || !host.directMessages().available()) return false;
@@ -6607,7 +7090,9 @@ public class WebChatServer {
                 safeSenderDisplay, safeSenderUsername, stripControl(originServerName, 96), originId);
         storage.updateLastDisplayName(remoteSenderKey, safeSenderUsername, remoteSenderDisplay);
 
-        DirectMessageStore.SendResult result = host.directMessages().receiveRelayed(remoteSenderKey, targetRealUuid, message, relayId);
+        DirectMessageStore.SendResult result = host.directMessages().receiveRelayed(
+                remoteSenderKey, targetRealUuid, message, relayId,
+                stripControl(replyToRelayId, 180).trim(), stripControl(replyToSender, 128), stripControl(replyToPreview, 240));
         if (!result.ok) return false;
         if (result.duplicate) return true;
         adminDiscordAlerts.inspect("dm-relay:" + stripControl(relayId, 180), remoteSenderDisplay, "relay", message, AdminDiscordAlertManager.Scope.DM);
@@ -6615,7 +7100,10 @@ public class WebChatServer {
         long messageId = result.message == null ? 0L : result.message.id;
         publishDirectMessageUpdate(remoteSenderKey, targetRealUuid, threadId);
         dispatchWebPushDirectMessage(remoteSenderKey, remoteSenderDisplay, targetRealUuid, target.label(), threadId, messageId, message);
-        notifyOnlineDirectMessage(remoteSenderDisplay, target, gameNoticeMessage);
+        String remoteSenderCommandTarget = !safeSenderUsername.isBlank()
+                ? safeSenderUsername + "@" + originId
+                : remoteSenderKey;
+        notifyOnlineDirectMessage(remoteSenderDisplay, remoteSenderCommandTarget, target, gameNoticeMessage, result.message);
         return true;
     }
 
@@ -7469,12 +7957,29 @@ public class WebChatServer {
         return fallback == null ? "" : fallback;
     }
 
+    private String sanitizeReplyPreview(String value) {
+        // replyToPreview is stored as source data, not as a pre-truncated UI label.
+        // Keep line breaks, URL text and emoji tokens intact so every frontend can
+        // render the same original content. The generous hard cap only protects
+        // relay/storage payloads from an unbounded client-provided fallback.
+        String text = String.valueOf(value == null ? "" : value)
+                .replace("\r\n", "\n")
+                .replace('\r', '\n');
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < text.length();) {
+            int cp = text.codePointAt(i);
+            i += Character.charCount(cp);
+            if (cp == '\n' || cp == '\t' || !Character.isISOControl(cp)) out.appendCodePoint(cp);
+            if (out.length() >= 16384) break;
+        }
+        String clean = out.toString();
+        if (clean.length() > 16384) clean = clean.substring(0, 16384);
+        return clean.trim();
+    }
+
     private String messageReplyPreview(ChatMessage msg) {
         if (msg == null) return "";
-        String text = msg.hidden ? "[deleted]" : String.valueOf(msg.message == null ? "" : msg.message);
-        text = stripControl(text, 180).replace('\n', ' ').replace('\r', ' ').trim();
-        if (text.length() > 120) text = text.substring(0, 117) + "...";
-        return text;
+        return sanitizeReplyPreview(msg.hidden ? "[deleted]" : msg.message);
     }
 
     private void attachReplyIfPresent(ChatMessage msg, String replyToId, String fallbackSender, String fallbackPreview) {
@@ -7495,8 +8000,7 @@ public class WebChatServer {
             // reconnect races with history refresh). Preserve the reply relation
             // using the client-provided preview instead of silently dropping it.
             sender = stripControl(fallbackSender, 64);
-            preview = stripControl(fallbackPreview, 180).replace("\n", " ").replace("\r", " ").trim();
-            if (preview.length() > 120) preview = preview.substring(0, 117) + "...";
+            preview = sanitizeReplyPreview(fallbackPreview);
         }
         if (sender.isBlank()) sender = "Unknown";
         if (preview.isBlank()) preview = "...";
@@ -8088,6 +8592,7 @@ public class WebChatServer {
     }
 
     private void sendJson(HttpExchange ex, int status, String json) throws IOException {
+        recordOperationalHttpResponse(ex, status, json);
         addCors(ex);
         addSecurityHeaders(ex);
         byte[] data = json.getBytes(StandardCharsets.UTF_8);
@@ -8098,6 +8603,40 @@ public class WebChatServer {
         try (OutputStream os = ex.getResponseBody()) {
             os.write(data);
         }
+    }
+
+
+    /**
+     * Common console policy for operational HTTP failures produced by the embedded
+     * API. Client validation/authentication responses are normal request outcomes and
+     * are not console errors. Rate-limit exhaustion and server-side 5xx responses can
+     * repeat automatically, so they use the same deduplication policy as Relay/update
+     * network failures instead of status-code-specific logging branches.
+     */
+    private void recordOperationalHttpResponse(HttpExchange ex, int status, String json) {
+        if (status != 429 && status < 500) return;
+        String endpoint = ex == null || ex.getRequestURI() == null ? "unknown" : String.valueOf(ex.getRequestURI().getPath());
+        if (endpoint == null || endpoint.isBlank()) endpoint = "unknown";
+        String errorCode = jsonErrorCode(json);
+        if (errorCode.isBlank()) errorCode = "unknown";
+        String client = ex == null ? "" : remoteIp(ex);
+        String key = "http-response:" + endpoint;
+        String fingerprint = "status=" + status + ";error=" + errorCode;
+        String message = "HTTP request failed endpoint=" + endpoint + " status=" + status + " error=" + errorCode
+                + (client.isBlank() ? "" : " client=" + client);
+        operationalIssues.failed(key, fingerprint, message);
+    }
+
+    private static String jsonErrorCode(String json) {
+        String text = String.valueOf(json == null ? "" : json);
+        int key = text.indexOf("\"error\"");
+        if (key < 0) return "";
+        int colon = text.indexOf(':', key + 7);
+        if (colon < 0) return "";
+        int firstQuote = text.indexOf('\"', colon + 1);
+        if (firstQuote < 0) return "";
+        int secondQuote = text.indexOf('\"', firstQuote + 1);
+        return secondQuote > firstQuote ? text.substring(firstQuote + 1, secondQuote).trim() : "";
     }
 
     private void sendBytes(HttpExchange ex, int status, String contentType, byte[] data) throws IOException {

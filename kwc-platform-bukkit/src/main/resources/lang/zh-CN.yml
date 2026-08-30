@@ -36,8 +36,8 @@ web:
     cancel: 取消
     reply: 回复
     pin: 置顶
-    moderationActionsEnable: 启用固定/删除
-    moderationActionsDisable: 停用固定/删除
+    moderationActionsEnable: 启用置顶/删除
+    moderationActionsDisable: 禁用置顶/删除
     unpin: 取消置顶
     moveUp: 上移
     move: 移动
@@ -163,7 +163,7 @@ web:
     includeGroupRetentionHint: '将此群聊重新纳入自动清理。'
     deleteGroupRoomHint: '删除此群聊的元数据、消息和上传文件。'
     messages: '消息'
-    storage: '占用'
+    storage: '存储'
     archived: '已归档'
     accounts: 账户
     onlinePlayers: 在线玩家
@@ -229,7 +229,6 @@ web:
       auth-password-login: '密码登录'
       auth-remember-session-days: '普通会话期限（天）'
       admin-admin-session-expire-hours: '管理员会话期限（小时）'
-      moderation-enabled: '管理功能'
       upload-enabled: '文件上传'
       upload-allow-guest-upload: '访客上传'
       upload-allow-user-upload: '普通用户上传'
@@ -247,8 +246,8 @@ web:
       ui-user-profiles-allow-import-export: '允许导入/导出配置文件'
       admin-alerts-discord-enabled: 'Discord 管理员关键词提醒'
       admin-alerts-discord-channel: 'Discord 提醒频道'
-      admin-alerts-discord-sources-public-chat: '检测公共聊天'
-      admin-alerts-discord-sources-relay-chat: '检测中继公共聊天'
+      admin-alerts-discord-sources-public-chat: '检测公开聊天'
+      admin-alerts-discord-sources-relay-chat: '检测中继公开聊天'
       admin-alerts-discord-sources-dm: '检测私信'
       admin-alerts-discord-sources-group-chat: '检测群聊'
       admin-alerts-discord-mention: 'Discord 提及'
@@ -259,7 +258,7 @@ web:
       content-filter-scopes-group: '群聊'
       content-filter-scopes-dm: 'DM'
       content-filter-block-show-matched-word: '显示匹配词'
-      content-filter-mask-text: '掩码文本'
+      content-filter-mask-text: '遮罩文本'
       content-filter-anti-evasion-unicode-normalization: 'Unicode 规范化'
       content-filter-anti-evasion-compact-match: '紧凑匹配'
       content-filter-anti-evasion-interleave-match: '插入检测'
@@ -329,17 +328,17 @@ web:
     filterReplacementMode: '替换方式'
     filterReplacementModeHint: '如果设置了逐词替换，则优先使用逐词替换值。'
     filterWordsHint: '每行一个目标词'
-    filterReplacementsHint: '用于 replace；每行一个'
+    filterReplacementsHint: '用于“替换”动作；每行一个候选词'
     filterMappingsHint: '原词 => 替换词'
     filterNewRule: '新规则'
     filterScopePublic: '公开'
     filterScopeGroup: '群组'
     filterScopeDm: 'DM'
-    filterRulesCount: '{count}条'
+    filterRulesCount: '{count} 条'
     filterRulesEmpty: 'config.yml 中没有自定义过滤规则。'
     filterDisabled: '已停用'
     filterActionBlock: '拦截'
-    filterActionMask: '掩码'
+    filterActionMask: '遮罩'
     filterListActionMask: '过滤'
     filterActionReplace: '替换'
     filterModeFirst: '使用第一个替换词'
@@ -352,12 +351,13 @@ web:
     filterTestRule: '规则'
     filterTestWord: '词语'
     filterTestMatch: '匹配'
-    filterTestRuleCount: '已加载规则：{count}条'
-    filterTestListWordCount: '列表词数: {count}'
+    filterTestRuleCount: '已加载规则：{count} 条'
+    filterTestListWordCount: '列表词数：{count}'
     filterTestInput: '测试输入'
   prompt:
     createEmojiPack: 新文件夹名称
     renameEmoji: 新表情名称
+    androidPhotoPickerEmojiName: "Android 照片选择器未提供原始文件名。请输入要使用的表情名称；图片扩展名会自动保留。"
     renameEmojiPack: 新文件夹名称
   login:
     title: KOKOTO WebChat 登录
@@ -397,7 +397,7 @@ web:
   account:
     role: 角色
     local: '本地'
-    linked: '已关联'
+    linked: '已绑定'
   pip:
     unsupported: 此浏览器不支持 Document Picture-in-Picture。请尝试桌面版 Chrome 或 Edge。
     openFailed: 无法打开 Picture-in-Picture 窗口：{error}
@@ -420,7 +420,7 @@ web:
     fontApply: 应用
     fontTest: 检测
     fontHelp: font-family 名称可在系统字体设置中查看。
-    fontExample: 示例：Malgun Gothic、Noto Sans KR、D2Coding。
+    fontExample: 示例：Microsoft YaHei、Noto Sans CJK SC、SimSun。
     fontDetected: 此浏览器中已检测到：{name}
     fontNotDetected: 未检测到。请确认 font-family 名称是否正确，或此设备是否已安装该字体。
     fontGeneric: CSS 通用字体族：{name}
@@ -488,7 +488,7 @@ web:
     notificationsNotRequestedStatus: '请点击启用通知并允许浏览器通知权限。'
     webPushTest: '测试通知'
     webPushTestSent: '测试推送已发送。请检查此设备的通知区域。'
-    webPushHowToTest: '移动/后台 Push 使用相同的通知开关和通知类型选项。支持的浏览器会在启用通知时自动刷新订阅。'
+    webPushHowToTest: '移动/后台推送使用相同的通知开关和通知类型选项。支持的浏览器会在启用通知时自动刷新订阅。'
     webPushFailedHttp: 'Web Push 失败：HTTP {status}'
     webPushInvalidVapid: 'Web Push 失败：VAPID 密钥无效。'
     webPushServiceUnavailable: 'Web Push 失败：浏览器推送服务不可用。请稍后重试，或使用通知测试立即重试。'
@@ -526,7 +526,7 @@ web:
     note: '此设置窗口可通过拖动标题移动。'
     noteDrag: 此设置窗口可通过拖动标题移动。
   opacity:
-    title: 透明度
+    title: 不透明度
   role:
     admin:
       short: 管理
@@ -613,14 +613,13 @@ web:
     dmHideFailed: '无法隐藏消息: {error}'
     dmSendFailed: '无法发送消息: {error}'
     dm_disabled: 私信已禁用
-    dm_audit_disabled: 私信正文审计功能已禁用
     web_send_disabled: Web 私信发送已禁用
     player_not_found: 找不到玩家
     remote_server_unavailable: 无法连接到目标服务器
     self_message: 不能给自己发送私信
   dm:
     title: 消息
-    noThreads: 没有会话线程。
+    noThreads: 没有私信会话。
     selectThread: 选择一个会话
     emptyThread: 还没有消息。
     searchPlayer: 搜索玩家
@@ -663,6 +662,9 @@ web:
     passwordProtected: '密码'
     passwordOptionalLabel: '密码（可选）'
     passwordSettingsLabel: '密码（留空则移除）'
+    membershipEvents: '显示成员加入/退出通知'
+    memberJoined: '{player} 加入了房间。'
+    memberLeft: '{player} 离开了房间。'
     membersShort: '人'
     join: '加入'
     invite: '邀请'
@@ -671,7 +673,7 @@ web:
     leave: '退出'
     namePrompt: '房间名称'
     visibilityChoice: '要将此房间设为公开房间吗？\n确定 = 公开，取消 = 私密'
-    visibilityPrompt: '可见性：public 或 private'
+    visibilityPrompt: '可见性：公开或私密'
     passwordPrompt: '房间密码'
     passwordOptionalPrompt: '密码（没有则留空）'
     passwordSettingsPrompt: '密码：留空则移除，取消则保持不变'
@@ -723,7 +725,7 @@ web:
     web-login: 🌐 {name} 登录了网页聊天。
     web-logout: 🌐 {name} 退出了网页聊天。
   notifications:
-    inbox: '通知箱'
+    inbox: '通知收件箱'
     empty: '没有错过的通知。'
     clear: '清空通知'
     replyTitle: '来自 {sender} 的回复'
@@ -739,8 +741,8 @@ web:
     unknown: 未知
     server: 服务器
     discord: Discord
-    originalId: '原始ID: {name}'
-    displayName: '显示名称: {name}'
+    originalId: '原始 ID：{name}'
+    displayName: '显示名称：{name}'
     command: 命令
     system: 服务器
   source:
@@ -764,7 +766,7 @@ web:
     guestMuteAdded: '已添加禁言: {type}:{value} ({minutes} 分钟)'
     guestMuteRemoved: 禁言已移除。
     guestMuteNotFound: 未找到禁言。
-    guestUnknownSubcommand: 未知的 guest 子命令。
+    guestUnknownSubcommand: 未知的访客子命令。
     sessionsTitle: 'KOKOTO WebChat 会话: {count}'
     sessionEntry: '- {username} {role} ip={ip}'
     revokeDone: 已撤销 {username} 的 {count} 个会话。
@@ -775,8 +777,8 @@ web:
     adminPasswordSetFor: '密码已设置: {username}'
     adminRoleInvalid: 角色必须是 user、moderator 或 admin。
     adminRoleChanged: '{username} 的角色已更改为 {role}。'
-    adminUnknownSubcommand: 未知的 admin 子命令。
-    helpAuth: 关联 Web 账号
+    adminUnknownSubcommand: 未知的管理员子命令。
+    helpAuth: 绑定 Web 账号
     helpPassword: 设置 Web 登录密码
     helpStatus: 显示运行状态
     helpReload: 重新加载配置
@@ -786,13 +788,13 @@ web:
     helpRevoke: 撤销 Web 会话
     helpFilter: 管理过滤规则
     helpSettings: 查看或修改实时设置
-    filterStatus: '过滤: {state} / public={public} group={group} dm={dm} / rules={rules}'
+    filterStatus: '过滤器：{state} / 公开={public} 群组={group} 私信={dm} / 规则={rules}'
     filterListTitle: '过滤规则: {count}'
     filterRuleNotFound: '找不到过滤规则: {id}'
     filterRuleRemoved: '已删除过滤规则: {id}'
     filterRuleAdded: '已添加过滤规则: {id}'
     filterWordRequired: 必须输入目标词。
-    filterTestResult: 'blocked={blocked} changed={changed} rule={rule} mode={mode} -> {message}'
+    filterTestResult: '已拦截={blocked} 已更改={changed} 规则={rule} 模式={mode} -> {message}'
     contentFilterBlocked: '消息包含被禁止的内容，无法发送。'
     contentFilterBlockedWord: '消息包含禁用词 {word}，无法发送。'
     settingsShowHint: '使用 /kchat settings show <key> 或 /kchat settings set <key> <value>。'
@@ -805,6 +807,9 @@ web:
     helpDmRead: 读取 1 对 1 消息会话
     helpReply: 回复公开 KWC 消息
     replyClickHint: "点击回复 (#{id})"
+    dmClickHint: "点击向 {player} 发送私信"
+    groupClickHint: "点击向群组 {room} 发送消息"
+    privateReplyClickHint: "点击此消息进行回复"
     helpGroup: '发送群聊消息'
     helpGroupList: '列出已加入的群聊'
     helpGroupRead: '读取群聊'
@@ -824,6 +829,8 @@ web:
     groupReadFirstPage: '已经是最新的群聊页面。'
     groupReadLastPage: '已经是最旧的群聊页面。'
     groupIncoming: '群组 {room} 中 {player}：{message}'
+    groupMemberJoined: '{player} 加入了群聊 {room}。'
+    groupMemberLeft: '{player} 离开了群聊 {room}。'
     dmDisabled: 私信已禁用。
     dmTitle: '私信: {count} 条未读'
     dmTitlePage: '私信: {count} 条未读（第 {page}/{pages} 页）'
@@ -832,7 +839,7 @@ web:
     dmListLastPage: '已经是最旧的会话列表页。'
     dmNoThreads: 没有私信会话。
     dmGameSendDisabled: 游戏内私信发送已禁用。
-    dmDirectInputRequired: "DM 只能通过玩家直接输入的命令发送。"
+    dmDirectInputRequired: "私信只能通过玩家直接输入的命令发送。"
     dmPlayerNotFound: 找不到玩家。玩家必须至少加入过一次。
     dmRemoteServerUnavailable: 无法连接到目标服务器。
     replyDisabled: 游戏内回复功能已禁用。
@@ -843,10 +850,10 @@ web:
     dmFailed: '私信发送失败: {error}'
     dmDeliveryFailed: '私信发送失败。可以在网页聊天中重试。'
     dmSent: '已发送给 {player}: {message}'
-    dmSentEcho: '发送: {player} {message}'
+    dmSentEcho: '发送给 {player}：{message}'
     dmIncoming: '来自 {player} 的私信: {message}'
-    dmReadTitle: '与 {player} 的消息:'
-    dmReadTitlePage: '与 {player} 的消息（第 {page}/{pages} 页）:'
+    dmReadTitle: '与 {player} 的私信：'
+    dmReadTitlePage: '与 {player} 的私信（第 {page}/{pages} 页）：'
     dmReadPageHint: '下一页: /kchat dm read {player} {page} {pageSize}'
     dmReadNavHint: '使用 /kchat dm prev 查看较新的消息，使用 /kchat dm next 查看较旧的消息。'
     dmReadNoCursor: '请先打开一个会话: /kchat dm read <player>'
@@ -887,6 +894,11 @@ web:
     failed: 命令运行失败：{error}
     tooLong: 命令过长。最多 {max} 个字符。
     maxLengthHint: 最多 {max} 个字符
+  security:
+    httpServerWarning: "[警告] KOKOTO WebChat 当前配置为 HTTP（{url}）。登录信息和聊天内容可能以明文在网络中传输。请尽可能通过反向代理使用 HTTPS。"
+    relayHttpPeerWarning: "[警告] 中继对端 '{peer}' 正在使用 HTTP（{url}）。仍允许直接中继，但该对端不会用于转发；强烈建议使用 HTTPS。"
+    relayForwardingHttpBlocked: "[警告] 中继对端 '{peer}' 使用 HTTP，因此仅禁用通过该对端进行的转发（{url}）。同一组中的其他 HTTPS 对端仍可继续转发。"
+
   update:
     available: '有新版本 {latest}。当前版本：{current}'
     openDownload: 打开下载页面
@@ -895,7 +907,7 @@ web:
   system:
     command-executed: '{executor} 执行了 Web 命令：{label}'
     command-executed-by: '{executor} 执行了 Web 命令：{label}'
-    note: 服务器事件和 Web 命令结果等系统消息在存在 i18n 键时会在 Web UI 中翻译。config.yml 中的自定义 announcement 文本会作为回退文本保留。
+    note: 服务器事件和 Web 命令结果等系统消息在存在 i18n 键时会在 Web UI 中翻译。config.yml 中的自定义公告文本会保留为回退文本。
   history:
     end: 没有更多可显示的消息。
     loading: '正在加载历史。

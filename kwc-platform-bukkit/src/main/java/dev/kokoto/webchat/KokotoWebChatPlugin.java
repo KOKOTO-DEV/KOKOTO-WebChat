@@ -65,6 +65,7 @@ public class KokotoWebChatPlugin extends JavaPlugin {
         // config and overlays the operator's values.
         reloadConfig();
         ConfigMigrationManager.check(this);
+        provisionRelaySharedSecrets();
         configValues = BukkitConfigValuesLoader.load(getConfig());
         lastConfigReloadError = "";
         registerCommandExecutor();
@@ -94,8 +95,13 @@ public class KokotoWebChatPlugin extends JavaPlugin {
 
         installAssets();
         ensureEmojiDirectory();
-        startWebServer();
-        startServerRelay();
+        prepareServerRelay();
+        // Start services quietly, then emit transport warnings once from the loaded
+        // config itself. This avoids warning visibility depending on service instance
+        // lifecycle or platform-specific start ordering.
+        startWebServer(false);
+        startServerRelay(false);
+        logReloadTransportSecurityWarnings();
         discordBridge.start();
 
         registerRuntimeListeners();
@@ -104,6 +110,18 @@ public class KokotoWebChatPlugin extends JavaPlugin {
         scheduleServerStartAnnouncement();
 
         getLogger().info("KOKOTO WebChat enabled.");
+    }
+
+    private void provisionRelaySharedSecrets() {
+        try {
+            boolean changed = RelaySharedSecretProvisioner.provision(
+                    getDataFolder().toPath().resolve("config.yml"),
+                    getConfig().getMapList("server-relay.groups"),
+                    CoreLogger.of(message -> getLogger().info(message), message -> getLogger().warning(message)));
+            if (changed) reloadConfig();
+        } catch (Exception ex) {
+            getLogger().warning("Failed to provision Relay v2 group shared-secret: " + ex.getMessage());
+        }
     }
 
     private void installDefaultFilterLists() {
@@ -171,6 +189,7 @@ public class KokotoWebChatPlugin extends JavaPlugin {
         saveRuntimeState();
         reloadConfig();
         ConfigMigrationManager.check(this);
+        provisionRelaySharedSecrets();
         configValues = BukkitConfigValuesLoader.load(getConfig());
         lastConfigReloadError = "";
         if (storage != null) enforceCurrentSessionPolicies("reload");
@@ -216,8 +235,13 @@ public class KokotoWebChatPlugin extends JavaPlugin {
         installAssets();
         scheduleBlueMapLightReload();
         ensureEmojiDirectory();
-        startWebServer();
-        startServerRelay();
+        prepareServerRelay();
+        startWebServer(false);
+        startServerRelay(false);
+        // Reload-time transport warnings belong to the reload lifecycle itself, not
+        // only to a particular command frontend. This guarantees console warnings
+        // for built-in HTTP and configured HTTP relay peers on every successful reload.
+        logReloadTransportSecurityWarnings();
         if (discordBridge == null) {
             discordBridge = new DiscordBridge(this);
         }
@@ -278,8 +302,27 @@ public class KokotoWebChatPlugin extends JavaPlugin {
     }
 
     private void startServerRelay() {
+        startServerRelay(true);
+    }
+
+    private void prepareServerRelay() {
         serverRelay = new ServerRelay(new BukkitRelayHost(this));
-        serverRelay.start();
+    }
+
+    private void startServerRelay(boolean emitSecurityWarnings) {
+        if (serverRelay == null) prepareServerRelay();
+        serverRelay.start(emitSecurityWarnings);
+    }
+
+    public void logReloadTransportSecurityWarnings() {
+        TransportSecurityWarnings.logAll(
+                configValues, langManager,
+                CoreLogger.of(message -> getLogger().info(message), message -> getLogger().warning(message)));
+    }
+
+    /** Returns the currently applicable transport-security warnings for command frontends. */
+    public java.util.List<String> currentTransportSecurityWarnings() {
+        return TransportSecurityWarnings.collectAll(configValues, langManager);
     }
 
     private void stopRuntimeServices() {
@@ -365,9 +408,13 @@ public class KokotoWebChatPlugin extends JavaPlugin {
     }
 
     private void startWebServer() {
+        startWebServer(true);
+    }
+
+    private void startWebServer(boolean emitSecurityWarnings) {
         webServer = new WebChatServer(new BukkitWebChatHost(this));
         try {
-            webServer.start();
+            webServer.start(emitSecurityWarnings);
         } catch (Exception ex) {
             getLogger().log(Level.SEVERE, "Failed to start HTTP chat server", ex);
         }

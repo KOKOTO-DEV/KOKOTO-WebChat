@@ -1,5 +1,8 @@
 # Upgrade from 4.6.0 to 4.6.1
 
+**5.1.0 note:** This administrator DM-body audit behavior is still supported in 5.1.0. It requires both `direct-message.admin-audit.enabled` and `private-chat-super-admins`, and the audit view is read-only.
+
+
 ## Main changes
 
 - Remote-server players observed in relayed game or linked-web messages are available in the existing web DM recipient search when the relay payload contains a player UUID.

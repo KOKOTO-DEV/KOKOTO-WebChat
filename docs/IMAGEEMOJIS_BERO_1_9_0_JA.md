@@ -1,6 +1,6 @@
 # ImageEmojis-Bero 連携 (1.9.x)
 
-KOKOTO WebChat 5.0.0 は [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) と任意で連携できます。サーバー側 runtime glyph 連携は **Bukkit/Paper 系**が対象で、現在の 1.9.x Bero 系列（1.9.2 を含む）を基準に確認しています。reflection ベースのため hard dependency はありません。
+KOKOTO WebChat 5.1.0 は [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) と任意で連携できます。サーバー側 runtime glyph 連携は **Bukkit/Paper 系**が対象で、現在の 1.9.x Bero 系列（1.9.2 を含む）を基準に確認しています。reflection ベースのため hard dependency はありません。
 
 基本的な導入、command、permission、resource pack 生成、一般運用は [upstream ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis) を参照してください。この文書は KWC と併用するときに必要な差分だけを説明します。
 
@@ -20,7 +20,13 @@ templateFormat: ':<emoji>:'
 
 ## 共通 emoji directory
 
-`emojisFolder: /KOKOTO-WebChat/emojis` は次の場所を参照します。
+この設定:
+
+```yaml
+emojisFolder: /KOKOTO-WebChat/emojis
+```
+
+は次の場所を参照します。
 
 ```text
 plugins/KOKOTO-WebChat/emojis/<pack>/<name>.png
@@ -30,7 +36,14 @@ plugins/KOKOTO-WebChat/emojis/<pack>/<name>.png
 
 ## Resource-pack HTTP port
 
-`serverIp` と `webServerPort` は **KWC の Web server ではなく ImageEmojis-Bero の resource-pack HTTP server** の設定です。`serverIp: yourdomain`, `webServerPort: 5000` の場合、Minecraft client から `yourdomain:5000` へ TCP 接続できる必要があります。必要に応じて OS firewall、router/NAT port forwarding、DNS を設定してください。KWC の `/chat` を公開しても ImageEmojis の port は自動では公開されません。
+`serverIp` と `webServerPort` は **KWC の Web server ではなく ImageEmojis-Bero の resource-pack HTTP server** の設定です。例えば:
+
+```text
+serverIp: yourdomain
+webServerPort: 5000
+```
+
+この場合、Minecraft client から `yourdomain:5000` へ TCP 接続できる必要があります。必要に応じて OS firewall、router/NAT port forwarding、DNS を設定してください。KWC の `/chat` を公開しても ImageEmojis の port は自動では公開されません。
 
 ## KWC 側の動作
 
@@ -67,3 +80,10 @@ Relay は token を送るだけで PNG/resource pack を同期しません。表
 
 - KWC-tested fork: [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)
 - Upstream / general operation: [ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)
+
+## Upstream 参照資料
+
+- [ImageEmojis upstream on Modrinth](https://modrinth.com/plugin/image-emojis)
+- [ImageEmojis upstream source](https://github.com/MrQuackDuck/ImageEmojis)
+
+これらは upstream project の資料です。この文書に記載する KWC の token 変換、共有 directory の扱い、Bero 固有の連携動作は、実際に使用する Bero/KWC version を基準に確認してください。

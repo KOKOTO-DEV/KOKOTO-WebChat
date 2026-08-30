@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
 final class ConfigDeprecatedSettingsManager {
     private static final Pattern TOP_LEVEL_KEY = Pattern.compile("^([A-Za-z0-9_.-]+)\\s*:(?:\\s.*)?$");
     private static final Pattern SHOW_LOGIN_ONLY = Pattern.compile("^\\s+show-login-only-when-hidden\\s*:.*$");
+    private static final Pattern OLD_RELAY_FORWARD = Pattern.compile("^\\s+forward-received-public-chat\\s*:.*$");
 
     private ConfigDeprecatedSettingsManager() {
     }
@@ -31,8 +32,8 @@ final class ConfigDeprecatedSettingsManager {
             if (updated.equals(raw)) return;
             Files.writeString(path, updated, StandardCharsets.UTF_8,
                     StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-            plugin.getLogger().info("Removed deprecated config setting: ui.show-login-only-when-hidden. "
-                    + "Guest chat visibility is now controlled only by guest.enabled and "
+            plugin.getLogger().info("Removed deprecated config setting(s). Relay v2 forwarding is configured per group at "
+                    + "server-relay.groups[].forwarding.enabled; guest visibility uses guest.enabled and "
                     + "ui.hide-chat-for-guests-when-guest-disabled.");
         } catch (Exception ex) {
             plugin.getLogger().warning("Failed to remove deprecated config settings: " + ex.getMessage());
@@ -57,6 +58,10 @@ final class ConfigDeprecatedSettingsManager {
             Matcher top = TOP_LEVEL_KEY.matcher(line);
             if (top.matches()) topLevel = top.group(1);
             if ("ui".equals(topLevel) && SHOW_LOGIN_ONLY.matcher(line).matches()) {
+                removed = true;
+                continue;
+            }
+            if ("server-relay".equals(topLevel) && OLD_RELAY_FORWARD.matcher(line).matches()) {
                 removed = true;
                 continue;
             }

@@ -106,11 +106,41 @@ public final class GameCommandService {
         int max = c.maxUrlMessageLength > 0 ? c.maxUrlMessageLength : c.maxMessageLength;
         String body = stripMessage(parts[1], max);
         if (body.isBlank()) return fail(sender, msg("replyEmpty", "Reply message is empty."));
+        String targetId = clean(parts[0]);
+        if (targetId.regionMatches(true, 0, "dm-", 0, 3)) return replyDm(sender, targetId.substring(3), body);
+        if (targetId.regionMatches(true, 0, "group-", 0, 6)) return replyGroup(sender, targetId.substring(6), body);
         WebChatServer server = webServer.get();
         ChatMessage made = server == null ? null : server.publishReplyFromGame(
-                sender.displayName(), sender.username(), sender.uuid().toString(), parts[0], body, body);
+                sender.displayName(), sender.username(), sender.uuid().toString(), targetId, body, body);
         if (made == null) return fail(sender, msg("replyTargetNotFound", "The referenced message could not be found."));
         return 1;
+    }
+
+    private int replyDm(Sender sender, String rawId, String body) {
+        ConfigValues c = host.configValues();
+        if (c == null || !c.directMessageEnabled || !c.directMessageAllowGameSend || !has(sender, "kwc.dm"))
+            return fail(sender, msg("replyTargetNotFound", "The referenced message could not be found."));
+        long id = parseMessageId(rawId);
+        String me = sender.uuid().toString();
+        DirectMessageMessage original = id <= 0 ? null : host.directMessages().messageForUser(me, id);
+        if (original == null) return fail(sender, msg("replyTargetNotFound", "The referenced message could not be found."));
+        String otherUuid = host.directMessages().otherParticipantUuid(original.threadId, me);
+        PlayerIdentity target = host.storage().findKnownPlayerByUuid(otherUuid);
+        if (target == null) target = new PlayerIdentity(otherUuid, "", "");
+        return dmSend(sender, me, target, body, original.id);
+    }
+
+    private int replyGroup(Sender sender, String rawId, String body) {
+        ConfigValues c = host.configValues();
+        if (c == null || !c.groupChatEnabled || !has(sender, "kwc.group"))
+            return fail(sender, msg("replyTargetNotFound", "The referenced message could not be found."));
+        long id = parseMessageId(rawId);
+        String me = sender.uuid().toString();
+        GroupMessage original = id <= 0 ? null : host.groupChats().messageForUser(me, id);
+        if (original == null) return fail(sender, msg("replyTargetNotFound", "The referenced message could not be found."));
+        GroupRoom room = findGroupRoom(me, original.roomId);
+        if (room == null) return fail(sender, msg("replyTargetNotFound", "The referenced message could not be found."));
+        return groupSend(sender, me, room, body, original.id);
     }
 
     private int dm(Sender sender, String tail) {
@@ -143,8 +173,15 @@ public final class GameCommandService {
     }
 
     private int dmSend(Sender sender, String me, String targetInput, String rawBody) {
+        return dmSend(sender, me, findDmTarget(targetInput), rawBody, 0L);
+    }
+
+    private int dmSend(Sender sender, String me, PlayerIdentity target, String rawBody) {
+        return dmSend(sender, me, target, rawBody, 0L);
+    }
+
+    private int dmSend(Sender sender, String me, PlayerIdentity target, String rawBody, long replyToId) {
         ConfigValues c = host.configValues();
-        PlayerIdentity target = findDmTarget(targetInput);
         if (target == null || clean(target.uuid).isBlank()) return fail(sender, msg("dmPlayerNotFound", "Player not found. The player must have joined at least once."));
         RemotePlayerRef remote = RemotePlayerRef.parse(target.uuid);
         ServerRelay relay = host.serverRelay();
@@ -161,8 +198,8 @@ public final class GameCommandService {
         if (body.isBlank()) return fail(sender, msg("dmEmpty", "Message is empty."));
         String relayId = remote == null ? "" : relay.createDirectMessageRelayId();
         DirectMessageStore.SendResult r = remote == null
-                ? host.directMessages().send(me, target.uuid, body)
-                : host.directMessages().sendPendingRemote(me, target.uuid, body, relayId, remote.serverId, "");
+                ? host.directMessages().send(me, target.uuid, body, replyToId)
+                : host.directMessages().sendPendingRemote(me, target.uuid, body, relayId, remote.serverId, "", replyToId);
         if (!r.ok) return fail(sender, msg("dmFailed", "Direct message failed: {error}", "error", r.error));
         String threadId = r.thread == null ? "" : r.thread.id;
         long messageId = r.message == null ? 0L : r.message.id;
@@ -175,7 +212,10 @@ public final class GameCommandService {
         if (remote != null) {
             String finalTarget = target.uuid;
             relay.publishDirectMessage(relayId, me, sender.username(), sender.displayName(), remote.serverId, remote.playerUuid,
-                    target.username, target.displayName, body, gameBody).whenComplete((delivery, error) -> {
+                    target.username, target.displayName, body, gameBody,
+                    r.message == null ? "" : r.message.replyToRelayId,
+                    r.message == null ? "" : r.message.replyToSender,
+                    r.message == null ? "" : r.message.replyToPreview).whenComplete((delivery, error) -> {
                 boolean delivered = error == null && delivery != null && delivery.delivered;
                 String errorCode = delivered ? "" : (delivery == null ? "dm_transport_error" : delivery.error);
                 host.directMessages().updateDeliveryStatus(messageId, delivered ? "delivered" : "failed", errorCode);
@@ -187,11 +227,27 @@ public final class GameCommandService {
         } else if (c.directMessageNotifyOnMessage) {
             try {
                 UUID targetUuid = UUID.fromString(target.uuid);
-                host.platformAdapter().sendPlainMessage(targetUuid, msg("dmIncoming", "DM from {player}: {message}",
-                        "player", sender.displayName(), "message", gameBody));
+                String line = msg("dmIncoming", "DM from {player}: {message}", "player", sender.displayName(), "message", gameBody);
+                sendInteractiveWithReply(targetUuid, line, sender.displayName(),
+                        msg("dmClickHint", "Click to write a DM to {player}", "player", sender.displayName()),
+                        "/kchat dm " + dmCommandTarget(new PlayerIdentity(me, sender.username(), sender.displayName())) + " ",
+                        gameBody, msg("privateReplyClickHint", "Click the message to reply"), "/kchat reply dm-" + messageId + " ",
+                        r.message == null ? 0L : r.message.replyToId,
+                        r.message == null ? "" : r.message.replyToRelayId,
+                        r.message == null ? "" : r.message.replyToSender,
+                        r.message == null ? "" : r.message.replyToPreview);
             } catch (IllegalArgumentException ignored) {}
         }
-        sender.send(msg("dmSentEcho", "to: {player} {message}", "player", target.label(), "message", gameBody));
+        sendInteractiveWithReply(sender,
+                msg("dmSentEcho", "to: {player} {message}", "player", target.label(), "message", gameBody),
+                target.label(), msg("dmClickHint", "Click to write a DM to {player}", "player", target.label()),
+                "/kchat dm " + dmCommandTarget(target) + " ",
+                gameBody, msg("privateReplyClickHint", "Click the message to reply"),
+                "/kchat reply dm-" + messageId + " ",
+                r.message == null ? 0L : r.message.replyToId,
+                r.message == null ? "" : r.message.replyToRelayId,
+                r.message == null ? "" : r.message.replyToSender,
+                r.message == null ? "" : r.message.replyToPreview);
         return 1;
     }
 
@@ -252,7 +308,17 @@ public final class GameCommandService {
         }
         sender.send(msg("dmReadTitlePage", "Direct messages with {player} (page {page}/{pages}):", "player", identityLabel(c.otherDisplayName, c.otherUsername, c.otherUuid), "page", Integer.toString(c.page), "pages", Integer.toString(pages)));
         if (messages.isEmpty()) return fail(sender, msg("dmNoMessages", "No messages in this thread."));
-        for (DirectMessageMessage m : messages) sender.send("#" + m.id + " " + (me.equalsIgnoreCase(m.senderUuid) ? msg("dmMe", "me") : identityLabel(m.senderDisplayName, m.senderUsername, m.senderUuid)) + ": " + m.body);
+        for (DirectMessageMessage m : messages) {
+            String senderName = me.equalsIgnoreCase(m.senderUuid) ? msg("dmMe", "me") : identityLabel(m.senderDisplayName, m.senderUsername, m.senderUuid);
+            String line = "#" + m.id + " " + senderName + ": " + m.body;
+            PlayerIdentity other = host.storage().findKnownPlayerByUuid(c.otherUuid);
+            if (other == null) other = new PlayerIdentity(c.otherUuid, c.otherUsername, c.otherDisplayName);
+            sendInteractiveWithReply(sender, line, senderName,
+                    msg("dmClickHint", "Click to write a DM to {player}", "player", identityLabel(c.otherDisplayName, c.otherUsername, c.otherUuid)),
+                    "/kchat dm " + dmCommandTarget(other) + " ",
+                    m.body, msg("privateReplyClickHint", "Click the message to reply"), "/kchat reply dm-" + m.id + " ",
+                    m.replyToId, m.replyToRelayId, m.replyToSender, m.replyToPreview);
+        }
         sender.send(msg("dmReadNavHint", "Use /kchat dm prev for newer messages, /kchat dm next for older messages."));
         sender.send(msg("dmHideHint", "Hide one from your view: /kchat dm hide <messageId>"));
         return 1;
@@ -277,15 +343,21 @@ public final class GameCommandService {
         if (action.equals("next")) return groupReadMove(sender, me, 1);
         if (action.equals("prev") || action.equals("previous")) return groupReadMove(sender, me, -1);
         if (action.equals("send")) {
-            String[] sr = rest.split("\\s+", 2); if (sr.length < 2) return usage(sender, "/kchat group send <room> <message>");
-            GroupRoom room = findGroupRoom(me, sr[0]); if (room == null) return fail(sender, msg("groupRoomNotFound", "Group chat room not found or you are not a member."));
-            return groupSend(sender, me, room, sr[1]);
+            GroupCommandTargetResolver.Result target = resolveGroupCommandTarget(me, rest);
+            if (target == null) return fail(sender, msg("groupRoomNotFound", "Group chat room not found or you are not a member."));
+            if (target.remainder.isBlank()) return usage(sender, "/kchat group send <room> <message>");
+            return groupSend(sender, me, target.room, target.remainder);
         }
-        if (rest.isBlank()) return usage(sender, "/kchat group <room> <message>");
-        GroupRoom room = findGroupRoom(me, p[0]); if (room == null) return fail(sender, msg("groupRoomNotFound", "Group chat room not found or you are not a member."));
-        return groupSend(sender, me, room, rest);
+        GroupCommandTargetResolver.Result target = resolveGroupCommandTarget(me, raw);
+        if (target == null) return fail(sender, msg("groupRoomNotFound", "Group chat room not found or you are not a member."));
+        if (target.remainder.isBlank()) return usage(sender, "/kchat group <room> <message>");
+        return groupSend(sender, me, target.room, target.remainder);
     }
     private int groupSend(Sender sender, String me, GroupRoom room, String rawBody) {
+        return groupSend(sender, me, room, rawBody, 0L);
+    }
+
+    private int groupSend(Sender sender, String me, GroupRoom room, String rawBody, long replyToId) {
         ConfigValues c = host.configValues(); String raw = stripMessage(rawBody, c == null ? 500 : c.groupChatMaxMessageLength);
         WebChatServer filterServer = webServer.get();
         if (filterServer != null) {
@@ -295,14 +367,31 @@ public final class GameCommandService {
         }
         String body = host.applyMessageTokens(raw), gameBody = host.applyMessageTokensForGame(raw);
         if (body.isBlank()) return fail(sender, msg("groupEmpty", "Message is empty."));
-        GroupChatStore.SendResult r = host.groupChats().send(me, room.id, body);
+        GroupChatStore.SendResult r = host.groupChats().send(me, room.id, body, replyToId);
         if (!r.ok) return fail(sender, msg("groupFailed", "Group chat failed: {error}", "error", r.error));
         WebChatServer s = webServer.get(); if (s != null) { s.publishGroupChatUpdate(room.id); s.inspectAdminGroupAlert("group:" + (r.message == null ? 0L : r.message.id), sender.displayName(), "game", body); s.dispatchWebPushGroupMessage(me, sender.displayName(), room, r.message, room.id); }
-        sender.send(msg("groupSentEcho", "to group {room}: {message}", "room", room.name, "message", gameBody));
+        sendInteractiveWithReply(sender,
+                msg("groupSentEcho", "to group {room}: {message}", "room", room.name, "message", gameBody),
+                room.name, msg("groupClickHint", "Click to write to group {room}", "room", room.name),
+                "/kchat group " + shortId(room.id) + " ",
+                gameBody, msg("privateReplyClickHint", "Click the message to reply"),
+                "/kchat reply group-" + (r.message == null ? 0L : r.message.id) + " ",
+                r.message == null ? 0L : r.message.replyToId, "",
+                r.message == null ? "" : r.message.replyToSender,
+                r.message == null ? "" : r.message.replyToPreview);
         for (String member : host.groupChats().memberUuids(room.id)) {
             if (member == null || member.equalsIgnoreCase(me) || RemotePlayerRef.isRemote(member)) continue;
-            try { host.platformAdapter().sendPlainMessage(UUID.fromString(member), msg("groupIncoming", "Group {room} from {player}: {message}", "room", room.name, "player", sender.displayName(), "message", gameBody)); }
-            catch (IllegalArgumentException ignored) {}
+            try {
+                UUID targetUuid = UUID.fromString(member);
+                String line = msg("groupIncoming", "Group {room} from {player}: {message}", "room", room.name, "player", sender.displayName(), "message", gameBody);
+                sendInteractiveWithReply(targetUuid, line, room.name,
+                        msg("groupClickHint", "Click to write to group {room}", "room", room.name),
+                        "/kchat group " + shortId(room.id) + " ",
+                        gameBody, msg("privateReplyClickHint", "Click the message to reply"), "/kchat reply group-" + (r.message == null ? 0L : r.message.id) + " ",
+                        r.message == null ? 0L : r.message.replyToId, "",
+                        r.message == null ? "" : r.message.replyToSender,
+                        r.message == null ? "" : r.message.replyToPreview);
+            } catch (IllegalArgumentException ignored) {}
         }
         return 1;
     }
@@ -314,9 +403,12 @@ public final class GameCommandService {
         sender.send("/kchat group <room|id> <message>"); sender.send("/kchat group read <room|id> [pageSize]"); return 1;
     }
     private int groupReadOpen(Sender sender, String me, String rest) {
-        String[] p = clean(rest).split("\\s+"); if (p.length < 1 || p[0].isBlank()) return usage(sender, "/kchat group read <room> [pageSize]");
-        GroupRoom room = findGroupRoom(me, p[0]); if (room == null) return fail(sender, msg("groupRoomNotFound", "Group chat room not found or you are not a member."));
-        GroupReadCursor c = new GroupReadCursor(); c.roomId = room.id; c.roomName = room.name; if (p.length >= 2) c.pageSize = clamp(parseLimit(p[1], 20), 1, 100);
+        GroupCommandTargetResolver.Result target = resolveGroupCommandTarget(me, rest);
+        if (target == null) return fail(sender, msg("groupRoomNotFound", "Group chat room not found or you are not a member."));
+        GroupRoom room = target.room;
+        GroupReadCursor c = new GroupReadCursor();
+        c.roomId = room.id; c.roomName = room.name;
+        if (!target.remainder.isBlank()) c.pageSize = clamp(parseLimit(target.remainder.split("\\s+", 2)[0], 20), 1, 100);
         groupRead.put(key(me), c); return groupReadShow(sender, me, c);
     }
     private int groupReadMove(Sender sender, String me, int direction) {
@@ -341,7 +433,21 @@ public final class GameCommandService {
         }
         sender.send(msg("groupReadTitle", "Group chat {room}:", "room", c.roomName));
         if (messages.isEmpty()) return fail(sender, msg("groupNoMessages", "No messages in this group chat."));
-        for (GroupMessage m : messages) sender.send("#" + m.id + " " + (me.equalsIgnoreCase(m.senderUuid) ? msg("dmMe", "me") : identityLabel(m.senderDisplayName, m.senderUsername, m.senderUuid)) + ": " + m.body);
+        for (GroupMessage m : messages) {
+            String senderName = me.equalsIgnoreCase(m.senderUuid) ? msg("dmMe", "me") : identityLabel(m.senderDisplayName, m.senderUsername, m.senderUuid);
+            if ("member_join".equals(m.eventType) || "member_leave".equals(m.eventType)) {
+                String key = "member_leave".equals(m.eventType) ? "groupMemberLeft" : "groupMemberJoined";
+                String fallback = "member_leave".equals(m.eventType) ? "{player} left group {room}." : "{player} joined group {room}.";
+                sender.send("#" + m.id + " " + msg(key, fallback, "player", senderName, "room", c.roomName));
+                continue;
+            }
+            String line = "#" + m.id + " " + senderName + ": " + m.body;
+            sendInteractiveWithReply(sender, line, senderName,
+                    msg("groupClickHint", "Click to write to group {room}", "room", c.roomName),
+                    "/kchat group " + shortId(c.roomId) + " ",
+                    m.body, msg("privateReplyClickHint", "Click the message to reply"), "/kchat reply group-" + m.id + " ",
+                    m.replyToId, "", m.replyToSender, m.replyToPreview);
+        }
         sender.send(msg("groupReadNavHint", "Use /kchat group prev for newer messages, /kchat group next for older messages."));
         sender.send(msg("groupReadHint", "Send: /kchat group {room} <message>", "room", c.roomName)); return 1;
     }
@@ -529,6 +635,72 @@ public final class GameCommandService {
         return fail(sender, msg("adminUnknownSubcommand", "Unknown admin subcommand."));
     }
 
+    private void sendInteractiveWithReply(Sender sender, String text, String senderTarget, String senderHover, String senderCommand,
+                                          String replyTarget, String replyHover, String replyCommand,
+                                          long replyToId, String replyToStableId, String replyToSender, String replyToPreview) {
+        if (sender == null) return;
+        WebChatServer server = webServer.get();
+        if (server != null && sender.isPlayer() && sender.uuid() != null) {
+            server.sendPrivateClickableGameMessage(List.of(sender.uuid()), privateMessageId(replyCommand),
+                    text, replyTarget,
+                    senderTarget, senderHover, senderCommand,
+                    replyToId, replyToStableId, replyToSender, replyToPreview);
+            return;
+        }
+        sender.send(text);
+    }
+
+    private void sendInteractiveWithReply(UUID targetUuid, String text, String senderTarget, String senderHover, String senderCommand,
+                                          String replyTarget, String replyHover, String replyCommand,
+                                          long replyToId, String replyToStableId, String replyToSender, String replyToPreview) {
+        if (targetUuid == null) return;
+        WebChatServer server = webServer.get();
+        if (server != null) {
+            server.sendPrivateClickableGameMessage(List.of(targetUuid), privateMessageId(replyCommand),
+                    text, replyTarget,
+                    senderTarget, senderHover, senderCommand,
+                    replyToId, replyToStableId, replyToSender, replyToPreview);
+            return;
+        }
+        sendInteractive(targetUuid, text, senderTarget, senderHover, senderCommand, replyTarget, replyHover, replyCommand);
+    }
+
+    private static String privateMessageId(String replyCommand) {
+        String command = clean(replyCommand);
+        String prefix = "/kchat reply ";
+        if (!command.regionMatches(true, 0, prefix, 0, prefix.length())) return "";
+        String tail = command.substring(prefix.length()).trim();
+        int space = tail.indexOf(' ');
+        return space < 0 ? tail : tail.substring(0, space);
+    }
+
+    private void sendInteractive(Sender sender, String text, String senderTarget, String senderHover, String senderCommand,
+                                 String replyTarget, String replyHover, String replyCommand) {
+        if (sender == null || !sender.isPlayer() || sender.uuid() == null || host.platformAdapter() == null) {
+            if (sender != null) sender.send(text);
+            return;
+        }
+        sendInteractive(sender.uuid(), text, senderTarget, senderHover, senderCommand, replyTarget, replyHover, replyCommand);
+    }
+
+    private void sendInteractive(UUID targetUuid, String text, String senderTarget, String senderHover, String senderCommand,
+                                 String replyTarget, String replyHover, String replyCommand) {
+        if (targetUuid == null || host.platformAdapter() == null) return;
+        host.platformAdapter().sendInteractiveMessage(List.of(targetUuid), new PlatformGameMessage(
+                text, true, senderTarget, senderHover, senderCommand, replyTarget, replyHover, replyCommand));
+    }
+
+    private static long parseMessageId(String value) {
+        try { return Long.parseLong(clean(value)); } catch (Exception ignored) { return 0L; }
+    }
+
+    private static String dmCommandTarget(PlayerIdentity identity) {
+        if (identity == null) return "";
+        RemotePlayerRef remote = RemotePlayerRef.parse(identity.uuid);
+        if (remote != null) return !clean(identity.username).isBlank() ? clean(identity.username) + "@" + remote.serverId : remote.key;
+        return !clean(identity.username).isBlank() ? clean(identity.username) : clean(identity.uuid);
+    }
+
     private PlayerIdentity findDmTarget(String rawInput) {
         String input = clean(rawInput); if (input.isBlank()) return null;
         RemotePlayerRef direct = RemotePlayerRef.parse(input); if (direct != null) return host.storage().findKnownPlayerByUuid(direct.key);
@@ -553,6 +725,9 @@ public final class GameCommandService {
         for (GroupRoom r : rooms) if (r != null && r.member && shortId(r.id).equalsIgnoreCase(needle)) return r;
         for (GroupRoom r : rooms) if (r != null && r.member && r.name != null && r.name.equalsIgnoreCase(needle)) return r;
         return null;
+    }
+    private GroupCommandTargetResolver.Result resolveGroupCommandTarget(String userUuid, String input) {
+        return GroupCommandTargetResolver.resolve(host.groupChats().listRooms(userUuid, 200), input);
     }
 
     private boolean requirePlayer(Sender s) { if (s.isPlayer() && s.uuid() != null) return true; s.send(msg("onlyPlayers", "This command can only be used by players.")); return false; }

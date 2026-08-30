@@ -229,7 +229,6 @@ web:
       auth-password-login: 'Password login'
       auth-remember-session-days: 'User session duration (days)'
       admin-admin-session-expire-hours: 'Admin session duration (hours)'
-      moderation-enabled: 'Moderation'
       upload-enabled: 'Uploads'
       upload-allow-guest-upload: 'Guest uploads'
       upload-allow-user-upload: 'User uploads'
@@ -358,6 +357,7 @@ web:
   prompt:
     createEmojiPack: New folder name
     renameEmoji: New emoji name
+    androidPhotoPickerEmojiName: "Android's photo picker did not provide the original filename. Enter the emoji name; the image extension is kept automatically."
     renameEmojiPack: New folder name
   login:
     title: KOKOTO WebChat Login
@@ -613,7 +613,6 @@ web:
     dmSendFailed: 'Failed to send message: {error}'
     dmHideFailed: 'Failed to hide message: {error}'
     dm_disabled: Direct messages are disabled
-    dm_audit_disabled: DM content auditing is disabled
     web_send_disabled: Web direct-message sending is disabled
     player_not_found: Player not found
     remote_server_unavailable: Remote server is unavailable
@@ -663,6 +662,9 @@ web:
     passwordProtected: 'password'
     passwordOptionalLabel: 'Password (optional)'
     passwordSettingsLabel: 'Password (blank removes it)'
+    membershipEvents: 'Show member join/leave notices'
+    memberJoined: '{player} joined the room.'
+    memberLeft: '{player} left the room.'
     membersShort: 'members'
     join: 'join'
     invite: 'Invite'
@@ -805,6 +807,9 @@ web:
     helpDmRead: Read a direct message thread
     helpReply: Reply to a public KWC message
     replyClickHint: "Click to reply (#{id})"
+    dmClickHint: "Click to write a DM to {player}"
+    groupClickHint: "Click to write to group {room}"
+    privateReplyClickHint: "Click the message to reply"
     helpGroup: 'Send a group chat message'
     helpGroupList: 'List joined group chats'
     helpGroupRead: 'Read a group chat'
@@ -824,6 +829,8 @@ web:
     groupReadFirstPage: 'You are already on the newest group page.'
     groupReadLastPage: 'You are already on the oldest group page.'
     groupIncoming: 'Group {room} from {player}: {message}'
+    groupMemberJoined: '{player} joined group {room}.'
+    groupMemberLeft: '{player} left group {room}.'
     dmDisabled: Direct messages are disabled.
     dmTitle: 'Direct messages: {count} unread'
     dmTitlePage: 'Direct messages: {count} unread (page {page}/{pages})'
@@ -887,6 +894,11 @@ web:
     failed: 'Command failed: {error}'
     tooLong: 'Command is too long. Maximum: {max} characters.'
     maxLengthHint: 'Maximum: {max} characters'
+  security:
+    httpServerWarning: "[WARNING] KOKOTO WebChat is configured for HTTP ({url}). Login data and chat traffic can be read in plaintext on the network. Use HTTPS through a reverse proxy whenever possible."
+    relayHttpPeerWarning: "[WARNING] Relay peer '{peer}' uses HTTP ({url}). Direct Relay is still allowed, but that peer is excluded from forwarding; HTTPS is strongly recommended."
+    relayForwardingHttpBlocked: "[WARNING] Relay peer '{peer}' uses HTTP ({url}), so only forwarding through that peer is disabled. Other HTTPS peers in the group can still forward."
+
   update:
     available: 'A new version {latest} is available. Current: {current}'
     openDownload: Open download page

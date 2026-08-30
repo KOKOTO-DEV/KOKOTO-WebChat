@@ -15,6 +15,11 @@ public class DirectMessageMessage {
     public String deliveryError = "";
     public String relayId = "";
     public String clientMessageId = "";
+    public long replyToId = 0L;
+    public String replyToSender = "";
+    public String replyToPreview = "";
+    /** Stable relay id of the replied-to DM when that target crossed servers. */
+    public String replyToRelayId = "";
     public boolean readByOther = false;
     public int unreadRecipientCount = 1;
 
@@ -31,6 +36,10 @@ public class DirectMessageMessage {
         m.put("deliveryError", deliveryError == null ? "" : deliveryError);
         m.put("relayId", relayId == null ? "" : relayId);
         m.put("clientMessageId", clientMessageId == null ? "" : clientMessageId);
+        m.put("replyToId", Math.max(0L, replyToId));
+        m.put("replyToSender", replyToSender == null ? "" : replyToSender);
+        m.put("replyToPreview", replyToPreview == null ? "" : replyToPreview);
+        m.put("replyToRelayId", replyToRelayId == null ? "" : replyToRelayId);
         m.put("readByOther", readByOther);
         m.put("unreadRecipientCount", Math.max(0, unreadRecipientCount));
         return JsonUtil.obj(m);

@@ -24,7 +24,7 @@ import java.util.Map;
 @Mod(KwcNeoForgeMod.MOD_ID)
 public final class KwcNeoForgeMod {
     public static final String MOD_ID = "kokoto_webchat";
-    public static final String VERSION = "5.0.0";
+    public static final String VERSION = "5.1.0";
     public static final Logger LOGGER = LoggerFactory.getLogger("KOKOTO WebChat");
     private static final KwcNeoForgeRuntime RUNTIME = new KwcNeoForgeRuntime();
     private static final NeoForgeWebChatHost COMMAND_HOST = new NeoForgeWebChatHost(RUNTIME);
@@ -119,7 +119,7 @@ public final class KwcNeoForgeMod {
         if (!hasPermission(source, "kwc.admin")) return fail(source, "You do not have permission.");
         RUNTIME.audit("command.reload", source.getTextName(), Map.of("platform", "neoforge"));
         if (!RUNTIME.reload()) return fail(source, "KOKOTO WebChat configuration reload failed. Check the server log.");
-        return ok(source, "KOKOTO WebChat reloaded.");
+        return ok(source, "KOKOTO WebChat configuration reloaded.");
     }
 
     private static int commandStatus(CommandSourceStack source) {

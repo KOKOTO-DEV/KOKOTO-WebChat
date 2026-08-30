@@ -18,6 +18,7 @@ public class GroupRoom {
     public int unread;
     public int memberCount;
     public int onlineMemberCount;
+    public boolean membershipEventsEnabled = true;
 
     public String toJson() {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -35,6 +36,7 @@ public class GroupRoom {
         m.put("unread", unread);
         m.put("memberCount", memberCount);
         m.put("onlineMemberCount", onlineMemberCount);
+        m.put("membershipEventsEnabled", membershipEventsEnabled);
         return JsonUtil.obj(m);
     }
 }

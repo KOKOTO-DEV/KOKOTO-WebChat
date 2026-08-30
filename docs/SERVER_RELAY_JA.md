@@ -1,89 +1,191 @@
-# サーバー間公開チャットリレー
+# Server Relay — Protocol v2
 
-`server-relay` は複数の KOKOTO WebChat サーバーの公開チャットを接続します。ゲーム、連携済み Web ユーザー、ゲストのメッセージを相手側の Web チャットと Minecraft チャットへ送り、メッセージ ID、返信関係、送信者、発信元サーバー情報を保持します。
+![Relay Protocol v2 のリクエスト認証と暗号化メッセージフロー](assets/relay-v2-flow.gif)
 
-`peers` はサーバー間の常時接続や相互セッションを作成する一覧ではありません。各項目の `url` は **このサーバーがリレーメッセージを送信する HTTP 宛先**です。同じ項目の `id` / `secret` は、そのサーバーから受信したリレー要求の認証にも使用されます。双方向で送受信する場合は、両方のサーバーに相手側の項目を登録してください。
+> **セキュリティ境界:** Relay v2 はエンドツーエンド暗号化ではなく、**hop-by-hop authenticated encryption** です。転送に参加する KWC サーバーは信頼境界内の参加者です。
 
-## 2 サーバー構成例
+KOKOTO WebChat 5.1.0 では、5.0.0 のフラットな relay 信頼モデルを **Relay Protocol v2** に置き換えました。公開チャットとサーバー間 1:1 DM/read receipt は、同じ group 単位の認証済み transport を使用します。Group chat room はローカルのままで、サーバー間 relay されません。
 
-サーバー 1:
+## 信頼モデル
+
+Relay の **group がセキュリティ境界**です。各 group には次の要素があります。
+
+- group の `id` 1つ
+- その group 内のすべての member 関係で共有する `shared-secret` 1つ
+- group 単位の `forwarding.enabled`
+- `id`、`url`、`enabled` だけを持つ peer 一覧
+
+Protocol v2 には `peers[].secret` はありません。これにより、peer entry に別 group の secret を誤って組み合わせる構成を防ぎます。
+
+同じ peer ID を複数のローカル group に登録することはできません。KWC が重複を検出すると、その peer ID の登録をすべて無効化し、診断ログを出力します。
+
+`shared-secret` は最終的に **32文字以上**必要ですが、operator が長い値を手作業で作る必要はありません。初回設定では **1台のサーバーだけ** `shared-secret: ""` にして KWC を起動または `/kchat reload` してください。KWC は暗号学的に安全な 32-byte URL-safe ランダム値を生成してそのサーバーの `config.yml` に書き戻し、secret 本文はログへ出力しません。生成された値を同じ group の他の全サーバーへそのままコピーします。各サーバーで個別に空値から生成すると異なる secret になり request の認証/復号に失敗するため避けてください。既存の空でない secret は自動再生成されず、32文字未満の手動値も自動置換せず invalid/fail-closed になります。secret が漏えいした場合は同じ group の全サーバーで交換してください。
+
+## 設定例
 
 ```yaml
 server-relay:
   enabled: true
-  server-id: "server1"
-  server-name: "サーバー 1"
-  shared-secret: "両方のサーバーで同じ長いランダム秘密鍵"
+  server-id: "server-1"
+  server-name: "Server 1"
   connect-timeout-seconds: 5
   request-timeout-seconds: 10
   max-clock-skew-seconds: 60
   dedupe-seconds: 300
   max-hops: 8
-  forward-received-public-chat: true
+
   sources:
     game: true
     web: true
     guest: true
     discord: false
     system: false
+
   delivery:
     web: true
     game: true
+
   game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-  peers:
-    - id: "server3"
-      url: "https://server3.example.com/chat/api"
-      secret: ""
-      enabled: true
+
+  groups:
+    - id: "main"
+      shared-secret: ""
+      forwarding:
+        enabled: false
+      peers:
+        - id: "server-2"
+          url: "https://server2.example.com/api"
+          enabled: true
 ```
 
-サーバー 3 側では `server-id: "server3"` とし、`peers` に `id: "server1"` とサーバー 1 の公開 API URL を登録します。受信側の peer ID は送信側の `server-id` と正確に一致し、各サーバー ID は一意でなければなりません。
+まず `server-1` を空値のまま一度起動/リロードし、`config.yml` を開き直して生成された secret を確認します。その値を `server-2` にそのままコピーし、同じ `main` group で `server-1` を逆方向 peer として登録します。
 
-## HTTPS / リバースプロキシ
+```yaml
+server-relay:
+  enabled: true
+  server-id: "server-2"
+  server-name: "Server 2"
+  groups:
+    - id: "main"
+      shared-secret: "<copy-the-generated-secret-from-server-1>"
+      forwarding:
+        enabled: false
+      peers:
+        - id: "server-1"
+          url: "https://server1.example.com/api"
+          enabled: true
+```
 
-`url` は相手サーバーで外部から到達できる KWC API base です。`/relay/receive` は自動追加されます。
+## Request 単位の認証と任意 identity/health probe
+
+direct relay は 5.0.0 と同じ運用モデルで、各 `/relay/v2/message` request を独立して認証します。受信側は送信元を同じ group・同じ shared secret で登録する必要があり、その情報で request を認証/復号します。逆方向は独立です。`/relay/v2/handshake` は状態を保持しない診断用 identity/health probe であり、direct route の作成・保持・有効化・無効化には使いません。任意 probe request には次の値が結び付けられます。
+
+- protocol `2` と product version `5.1.0`
+- `group-id`
+- 送信 server ID
+- 宛先 server ID
+- timestamp
+- nonce
+- 送信側で実際に設定されている outbound transport (`http` または `https`)
+
+受信側は、group の存在、送信 server がその group の peer であること、自身が target ID であること、timestamp の有効性、nonce が再利用されていないこと、HMAC が group shared secret と一致することを検証します。そのため片側だけの peer 設定は、どちらの方向にも利用可能になりません。
+
+Endpoint:
 
 ```text
-設定: https://server3.example.com/chat/api
-要求: https://server3.example.com/chat/api/relay/receive
+/relay/v2/handshake
+/relay/v2/message
 ```
 
-公開 HTTPS ルートは `/relay/receive` の POST を含む API パス全体を内部 KWC HTTP リスナーへ転送してください。HTTPS 経由なら 8899 を外部公開する必要はありません。プロキシは `X-BMWC-Relay-Version`, `X-BMWC-Relay-From`, `X-BMWC-Relay-Timestamp`, `X-BMWC-Relay-Signature` を保持する必要があります。自己署名証明書は Java trust store へ登録しないと TLS 検証で失敗します。
+旧 v1 endpoint (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, `/relay/dm/read`) は **HTTP 426** を返し、protocol `2` / version `5.1.0` を通知します。
 
-## 秘密鍵
+## メッセージの暗号化と認証
 
-- `shared-secret` は全 peer の既定キーです。
-- `peers[].secret` はその接続だけのキーで、共通キーより優先されます。
-- 2 サーバーなら同じ長い `shared-secret` を両方に設定し、peer の `secret` は空にできます。
-- peer キーも共通キーもない peer は無効として除外されます。
+Relay v2 は group secret、group ID、sender ID、receiver ID から HKDF-SHA256 で **方向別 256-bit key** を導出します。各 request はランダムな 12-byte IV と 128-bit authentication tag を持つ AES-256-GCM を使用します。
 
-## 複数サーバーとループ防止
-
-フルメッシュでは全サーバーが互いを登録します。ハブ構成では leaf が hub のみを登録して hub が全 leaf を登録し、`forward-received-public-chat: true` の場合は hub が受信した公開チャットを他の peer へ再転送します。`false` の場合、公開チャットは直接設定された peer 間だけで配信されます。この設定は公開チャットのみを対象とし、サーバー間 DM のマルチホップ配送・既読通知には影響しません。relay ID の重複排除、発信元抑止、直前 peer 除外、`max-hops` により循環構成でも無限ループを防ぎます。停止中の peer へ後から再送する永続オフラインキューはありません。
-
-## reload と診断
-
-`/kchat reload` は以前の relay を閉じ、現在の設定で作り直します。常時接続ではなくメッセージごとの HTTP(S) 要求なので、別の再接続操作はありません。
+次の値は GCM Additional Authenticated Data (AAD) に含まれます。
 
 ```text
-Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
+group-id
+from-server-id
+to-server-id
+timestamp
+nonce
+IV
 ```
 
-`activePeers` が設定数より少ない場合、重複 ID、自己 ID、空/不正 URL、未対応 scheme、秘密鍵不足などの理由が警告に表示されます。
+これらの値を1つでも変更すると認証に失敗します。暗号化 payload には message kind (`public`, `dm`, `read`) と対応する relay envelope が含まれます。
 
-## HTTP エラー
+既知 peer からの成功/エラー response も HMAC-SHA256 で認証されます。Response signature は group、responder、requester、response timestamp、request nonce、HTTP status、response body に結び付けられ、未認証の中継者が成功 response を偽装することを防ぎます。
 
-- `403 unknown_peer`: 受信側の有効 peer に送信側 `server-id` がありません。
-- `404 relay_disabled`: 受信側で `server-relay.enabled: false` です。この応答を一度確認すると、送信側はその peer への追加送信を直ちに停止し、定期 probe も送りません。受信側で relay を有効化した後、送信側 KWC を reload または restart すると再試行します。
+## Replay / loop 防御
 
-`403 unknown_peer` は、受信側がその直接 request を保存・公開する前に拒否されます。同じ destination で成功応答なしに `unknown_peer` が 3 回発生すると、送信側はその destination を 60 秒の backoff 状態にします。backoff 中に発生した message は送信せず、定期 probe も行いません。60 秒経過後の最初の実 relay message が再試行を兼ね、失敗すればその失敗時刻から再び 60 秒待機します。成功応答が返れば counter と backoff は即時解除されます。別の hub 経由で同じ message が見える場合、それは別経路の forward であり、403 の直接 request が受理された意味ではありません。接続拒否や timeout などの transport failure も同じ 3 回/60 秒 backoff を使用するため、offline peer に対して転送 message ごとに警告が繰り返されません。
-- `401 bad_signature`: 実効秘密鍵が異なるか、プロキシが本文/ヘッダーを変更しました。
-- `401 expired_request`: サーバー時刻差が `max-clock-skew-seconds` を超えています。
-- `404 relay_disabled`: 受信側で無効、またはプロキシ先のパス/インスタンスが違います。
-- `426 unsupported_protocol`: relay protocol の互換性がありません。
+Relay v2 は次を強制します。
 
-受信側の peer 一覧や秘密鍵を変えた場合は受信側でも `/kchat reload` を実行してください。
+- timestamp の許容差 (`max-clock-skew-seconds`)
+- request ごとの nonce replay 拒否
+- relay ID / receipt ID の重複排除
+- origin-server loop 検出
+- forwarding traffic の `max-hops`
 
-## 表示
+## HTTP と HTTPS
 
-Web では現在のサーバーバッジを省略し、別サーバーのメッセージだけ `originServerId` 由来の固定色バッジを表示します。ゲーム出力も現在のサーバー名を省略し、別サーバー由来の古い形式に `{server}` / `{server_id}` がなければ `[server-name]` を自動付与します。Discord は共有外部チャンネルのためサーバー表示を維持します。同じ Discord チャンネルを複数サーバーで共有する場合、ローカルゲームチャットを実際に検知した発信元サーバーだけが DiscordSRV メッセージを編集し、他の peer は自分のサーバー名や絵文字リンクを追加しません。受信 peer は relay メッセージを Discord へ再送しないため、経由サーバーによる代替送信はありません。DiscordSRV ループとイベント重複を避けるため `sources.discord` と `sources.system` は既定で無効です。
+直接 1-hop の HTTP peer は許可されます。**Relay payload 自体は AES-256-GCM で暗号化・認証される**ため、relay v1 のような plaintext payload ではありません。ただし HTTPS は metadata に対する transport-layer confidentiality、標準的な server identity 検証、defense in depth を提供するため、KWC は localized warning を記録します。
+
+HTTP を forwarding hop として使用することはできません。
+
+Forwarding が行われる条件は次のすべてです。
+
+1. source group の `forwarding.enabled: true`
+2. この server に設定された incoming peer entry の URL が HTTPS
+3. 次に選ぶ peer entry の URL も HTTPS
+4. 次の peer が同じ group に所属する
+
+HTTP の除外は **peer 単位**です。`http://` peer は direct relay には利用できますが、その peer から受けた traffic はさらに forwarding せず、その peer 自体も forwarding next hop には選びません。同じ group の他の `https://` peer は引き続き候補です。
+
+## Group 分離
+
+ある group で受信した message を別 group へ forwarding することはありません。Forwarding candidate は **incoming group と同じ group** からだけ選択されます。公開チャット、DM、DM read receipt のすべてに同じ規則が適用されます。
+
+Local message は local server が明示的に所属する複数 group へ publish できます。これは送信元 server で operator が定義した bridge であり、受信済み message の cross-group forwarding ではありません。
+
+## End-to-end ではなく hop-by-hop 暗号化
+
+Relay v2 は **hop-by-hop authenticated encryption** であり、end-to-end encryption ではありません。Forwarding を行う KWC server は incoming payload を復号し、relay envelope を検証・処理した後、次 hop 用の方向別 key で再暗号化します。
+
+したがって forwarding server は trusted participant であり、relay payload を閲覧できます。Relay v2 を E2EE と表現しないでください。
+
+## 5.0.0 / relay v1 からのアップグレード
+
+5.1.0 は旧 flat relay 設定から v2 group を推測しません。最初の 5.0.0 → 5.1.0 migration では次を行います。
+
+- `server-relay.shared-secret` を廃止
+- flat `server-relay.peers` を廃止
+- `server-relay.forward-received-public-chat` を廃止
+- 旧 top-level forwarding 設定を推測した group へ引き継がない
+- `server-relay.enabled` を `false` にリセット
+- operator が明示的な v2 group を定義した後に relay を再度有効化
+
+これにより peer を誤った trust group へ暗黙に割り当てることを防ぎます。
+
+## 運用診断
+
+Startup/reload 時は次を確認してください。
+
+- `Server relay protocol v2 enabled`
+- 任意 identity/health probe の結果（診断用）
+- duplicate peer ID の診断
+- group secret length の診断
+- HTTP peer warning
+- forwarding HTTPS-block warning
+
+任意の identity/health probe が失敗する場合は、group ID、両 server ID、相互 peer entry、group secret、API base URL、clock synchronization、network reachability を確認してください。direct message 配信は probe 状態と独立しています。
+
+## 参照規格
+
+一次規格と公式資料の一覧は [REFERENCES_JA.md](REFERENCES_JA.md) を参照してください。
+
+- [RFC 2104 — HMAC](https://www.rfc-editor.org/rfc/rfc2104.html)
+- [RFC 5869 — HKDF](https://www.rfc-editor.org/info/rfc5869/)
+- [NIST SP 800-38D — GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)
+- [RFC 9110 — HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)

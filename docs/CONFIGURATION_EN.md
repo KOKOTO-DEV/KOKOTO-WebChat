@@ -54,11 +54,13 @@ This document describes `plugins/KOKOTO-WebChat/config.yml`.
 
 ## Configuration version and migration fragment
 
-`config-version` selects automatic migration behavior. The bundled `config.yml` is the **only migration template**. `config-reference-<plugin-version>.yml` is only an administrator-readable exact copy of that bundled default; migration never uses the generated reference file as its source.
+`config-version` selects automatic migration behavior. Reconstruction uses a **bundled current-version presentation template** selected by `ui.language`: `en-US` uses `config.yml`, while `ko-KR`, `ja-JP`, and `zh-CN` use their bundled localized templates. `config-reference-<plugin-version>.yml` is an administrator-readable default rendered from that selected template and is never used as migration input. Canonical default-value comparison still uses the English `config.yml`; all built-in templates are required to parse to identical values.
 
-If `config-version` is missing or belongs to another version, KWC reads the existing values, backs up the original `config.yml` first when the previous marker is not `*_auto_migration`, creates a fresh file from the running plugin's bundled default config, and overlays the existing values. Old comments, order, whitespace, and indentation are intentionally discarded; bundled comments/layout become authoritative while operator values remain authoritative. Retired settings are not copied back. The result is marked `<plugin-version>_auto_migration`. While that marker remains, startup/reload repeats the same bundled-default rebuild so newly added settings and current bundled comments/layout are picked up automatically. Exact `<plugin-version>` means the operator fixed the current-version config, so same-version startup/reload does not rewrite `config.yml`.
+If `config-version` is missing or belongs to another version, KWC reads the existing values, backs up the original `config.yml` first when the previous marker is not `*_auto_migration`, creates a fresh file from the running plugin's bundled default config, and overlays the existing values. Old comments, order, whitespace, and indentation are intentionally discarded; bundled comments/layout become authoritative while operator values remain authoritative. Retired settings are not copied back. The result is marked `<plugin-version>_auto_migration`. While that marker remains, startup/reload repeats the same bundled-default rebuild so newly added settings and current bundled comments/layout are picked up automatically. Exact `<plugin-version>` disables same-version automatic **setting** reconstruction. The only same-version rewrite still allowed in that fixed state is a `ui.language` presentation change, which rebuilds comments/layout from the selected built-in template while overlaying every parsed operator value.
 
 `config-migration-<plugin-version>.yml` is a review/diff report. Older generated `config-reference-*`, `config-migration-*`, and `config-upgrade-*` files are removed automatically; internal `config-baselines/*` resources remain because they are required to identify changed defaults across real version upgrades.
+In 5.1.0, `ui.language` also selects the comment/presentation language used when KWC rebuilds `config.yml`, writes `config-reference-5.1.0.yml`, and writes the migration/difference report. Bundled templates are `en-US`, `ko-KR`, `ja-JP`, and `zh-CN`; switching language changes comments/layout only and overlays the existing parsed operator values, including Relay groups/secrets/peers. The semantic difference report compares parsed YAML setting paths and values, not comments, whitespace, indentation, quote style, line numbers, or key order.
+
 ## Master switch
 
 New generated configs start with top-level `enabled: false`. In this state, KOKOTO WebChat only creates/loads configuration and keeps only `/kchat reload` available; it does not start web/chat services, listeners, Discord integration, private-message storage, addon installation, upload/emoji initialization, or cleanup tasks. Existing configs without this key are treated as enabled for upgrade compatibility. Review storage, retention, upload, preview, authentication, and exposure settings, then set `enabled: true`.
@@ -70,8 +72,7 @@ update-check:
   enabled: true
 ```
 
-When enabled, KOKOTO WebChat checks Modrinth for a newer stable release in the background on Bukkit, Fabric, NeoForge, and Forge. It checks the KWC `kokoto-webchat` project first and falls back to the legacy `bluemapwebchat` project during the listing transition. An OP or a player with `kwc.update.notify` also triggers a rate-limited refresh on login, so a newly published release is not dependent only on the periodic result. For 5.0.0, the CurseForge notice intentionally continues to use the existing BMWC bridge page until a replacement KWC listing is confirmed live. The check interval, release channel, and join delay remain built-in defaults. Update lookup failures never stop server startup and are logged as warnings.
-
+When enabled, KOKOTO WebChat checks Modrinth for a newer stable release in the background on Bukkit, Fabric, NeoForge, and Forge. During the current project-address transition KWC 5.1.0 queries `kokoto-webchat` first and falls back to `bluemapwebchat` when the canonical project is unavailable. The fallback remains a real update source until the transition is complete; a newer BMWC-published version can still generate the normal update notice, and a warning is emitted only if both sources fail. An OP or a player with `kwc.update.notify` also triggers a rate-limited refresh on login, so a newly published release is not dependent only on the periodic result. For
 ## Deployment modes
 
 ### BlueMap addon
@@ -207,7 +208,7 @@ message-tokens:
 
 ## Message search
 
-`/history/search` and the in-chat search modal are available for message text and sender searches when stored history is enabled. The search options section can filter by date/time range, sender, source, and system/event inclusion. The search button is in the floating chat-panel area so the input row stays compact, and search results use a scrollable list with the configured chat theme/font settings. Search results can jump to the matching message using the existing history-around navigation. i18n-backed system/event messages are searched and displayed in the requested web UI language when possible. Search can be disabled with `search.enabled`, and the single `search.result-limit` setting controls both the web UI result count and the `/history/search` API limit. There is no separate internal maximum: setting it to 2000 returns up to 2000 results, while setting it to 10 returns up to 10. Very large values such as 10000 or 100000 are accepted, but they can slow searches, increase response size, and add significant CPU, memory, and database load. The default is 50, and 50-200 is recommended for normal use. With `config-version: "5.0.0_auto_migration"`, missing search settings are inserted automatically on startup/reload. If same-version automatic migration has been disabled with exact `config-version: "5.0.0"`, add the missing keys manually or re-enable `_auto_migration`.
+`/history/search` and the in-chat search modal are available for message text and sender searches when stored history is enabled. The search options section can filter by date/time range, sender, source, and system/event inclusion. The search button is in the floating chat-panel area so the input row stays compact, and search results use a scrollable list with the configured chat theme/font settings. Search results can jump to the matching message using the existing history-around navigation. i18n-backed system/event messages are searched and displayed in the requested web UI language when possible. Search can be disabled with `search.enabled`, and the single `search.result-limit` setting controls both the web UI result count and the `/history/search` API limit. There is no separate internal maximum: setting it to 2000 returns up to 2000 results, while setting it to 10 returns up to 10. Very large values such as 10000 or 100000 are accepted, but they can slow searches, increase response size, and add significant CPU, memory, and database load. The default is 50, and 50-200 is recommended for normal use. With `config-version: "5.1.0_auto_migration"`, missing search settings are inserted automatically on startup/reload. If same-version automatic migration has been disabled with exact `config-version: "5.1.0"`, add the missing keys manually or re-enable `_auto_migration`.
 
 
 ## Direct message threads
@@ -228,7 +229,7 @@ direct-message:
 
 `group-chat.admin-audit.enabled` is an independent, default-off group-content access switch added in 4.6.3. It still requires the account to be listed in `private-chat-super-admins`. The administrator view is read-only, does not require room membership, does not join the room or update read state, and every page read is logged as `admin.group-audit-read` without copying message bodies into the audit log.
 
-`direct-message.admin-audit.enabled` is a separate, default-off content-access switch. When enabled, only accounts also listed in `private-chat-super-admins` can open DM bodies in the read-only audit view. Each page read is audit-logged; message bodies are not copied into the audit log. Ordinary ADMIN/MODERATOR roles do not qualify automatically.
+`direct-message.admin-audit.enabled` is a separate, default-off DM-body access switch. When enabled, only accounts also listed in `private-chat-super-admins` can open DM bodies in the read-only audit view. The audit view cannot send, reply, hide messages, or change read state. Each page read is audit-logged without copying message bodies into the audit log.
 
 `capture-game-whispers` mirrors non-cancelled `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, and `/t` commands into the sender and recipient KWC DM thread. It does not resend or replace the Minecraft whisper. Bukkit does not expose a reliable final success result for every whisper plugin, so a valid command targeting a known player is used as the capture criterion.
 
@@ -236,29 +237,64 @@ direct-message:
 
 `ui.time-zone` controls the time zone used for chat timestamps. Use `local` for the browser/device time zone, `UTC`, or an IANA time zone such as `Asia/Seoul`. Invalid values fall back to local time in the web UI.
 
-## Options where 0 means unlimited/no maximum
+## Important 0-value semantics
 
-- `chat.history-size`
-- `chat.history-retention-days`
-- `chat.history-page-size`
-- `chat.max-message-length`
-- `chat.max-url-message-length`
-- `upload.max-uploads-per-minute`
-- `upload.max-file-size-mb`
-- `upload.max-files-per-message`
-- `ui.image-preview-max-per-message`
-- `ui.image-preview-max-height`
-- `ui.max-width`
-- `ui.max-height`
-- `preview.youtube-max-embeds-per-message`
-- `preview.social-embeds.max-embeds-per-message`
-- `preview.external-media-cache-max-size-mb`
-- `pinned.max-pins`
-- `pinned.show-to-logged-out`
-- `commands.max-length`
-- `direct-message.retention-days`
-- `direct-message.max-messages-per-thread`
-- `direct-message.max-message-length`
+`0` does not have one universal meaning. These behaviors are taken from the current 5.1.0 loader/runtime paths; do not infer “unlimited” where the documented behavior is different.
+
+- `chat.history-size`: Maximum number of public-chat history rows retained by count. This works alongside the age-retention policy. 0 removes the count limit.
+- `chat.history-retention-days`: Age-retention window in days for public-chat history. 0 disables age-based expiration.
+- `chat.history-page-size`: Default number of history messages requested per page. 0 means no explicit page limit for in-memory/JSONL history, while SQLite applies its built-in 500-row query safety cap.
+- `chat.max-message-length`: Maximum normal public-chat message length accepted by KWC. 0 removes this length limit.
+- `chat.max-url-message-length`: Maximum public-chat message length when the message contains a URL. A positive value is kept at least as large as a positive normal-message limit. 0 removes this length limit.
+- `message-tokens.max-replacements-per-message`: Maximum token expansions performed in one message to bound replacement work. 0 removes the count limit.
+- `reply.game-preview.max-length`: Maximum quoted-text length shown in the Minecraft Reply preview. 0 disables preview truncation.
+- `pinned.max-pins`: Maximum number of public messages that may remain pinned at once. 0 removes the count limit.
+- `direct-message.retention-days`: Age-retention window in days for stored DM messages. 0 disables age-based expiration.
+- `direct-message.max-messages-per-thread`: Maximum stored messages retained in each DM thread by count. 0 removes the count limit.
+- `direct-message.max-message-length`: Maximum accepted DM message length for web/game sends. 0 removes this length limit.
+- `group-chat.retention-days`: Age-retention window in days for stored group-room messages. 0 disables age-based expiration.
+- `group-chat.max-messages-per-room`: Maximum stored messages retained in each group room by count. 0 removes the count limit.
+- `group-chat.max-message-length`: Maximum accepted group-room message length. 0 removes this length limit.
+- `group-chat.max-rooms-per-user`: Maximum number of group rooms one user may own/join according to room-management checks. 0 removes the count limit.
+- `group-chat.max-members-per-room`: Maximum members allowed in one group room. 0 removes the count limit.
+- `group-chat.invite-expire-hours`: Lifetime of a group-room invitation in hours. 0 is not unlimited. Runtime minimum: 1; lower values are raised to the minimum.
+- `guest.cooldown-seconds`: Minimum delay between guest messages from the same resolved client identity/IP. 0 disables this cooldown component.
+- `guest.max-messages-per-minute`: Per-minute guest-message rate limit for the same resolved client identity/IP. 0 disables this per-minute limiting component.
+- `captcha.expire-seconds`: Lifetime of each issued captcha challenge in seconds. This value is not clamped; zero or negative values make a newly issued challenge immediately/effectively expire.
+- `captcha.pass-valid-minutes`: How long a successful captcha pass may be reused when per-message captcha is disabled. Runtime minimum: 1; lower values are raised to the minimum.
+- `auth.link-code-cooldown-seconds`: Minimum delay between account-link code issuance attempts for the same client/user. 0 disables this limiting component.
+- `auth.link-code-max-per-minute`: Maximum account-link codes that may be issued per minute under the issuance rate limiter. 0 disables this limiting component.
+- `auth.remember-session-days`: Expiration period in days for normal USER/MODERATOR web sessions. Values <=0 create sessions without an expiry timestamp.
+- `security.login-fail-limit`: Failed-login count that triggers temporary IP-based lockout inside the configured failure window. 0 disables this limiting component.
+- `security.login-lock-seconds`: Duration in seconds of an IP-based login lock after the failure limit is exceeded. 0 disables this limiting component.
+- `security.max-sse-connections-per-ip`: Maximum concurrent /stream SSE connections allowed for one resolved client IP. With a reverse proxy, configure http.trusted-proxies correctly so clients do not all appear as the proxy IP. 0 disables this limiting component.
+- `security.max-sse-connections-total`: Maximum concurrent /stream SSE connections allowed across the entire KWC server. 0 disables this limiting component.
+- `admin.admin-session-expire-hours`: Expiration period in hours for ADMIN web sessions. Values <=0 create administrator sessions without an expiry timestamp.
+- `moderation.default-mute-minutes`: Default mute duration in minutes when no duration is supplied. Values <=0 mean a permanent mute. This setting is config-only.
+- `commands.max-length`: Maximum command-text length accepted from web command execution. 0 removes this length limit.
+- `ui.image-preview-max-per-message`: Maximum inline image previews rendered from one message. 0 removes the count limit.
+- `ui.image-preview-max-height`: Configured image-preview height cap in pixels. A positive value is still clamped by the chat viewport safety cap; 0 removes only this explicit pixel cap and uses the automatic viewport-derived cap, so it is not truly unlimited.
+- `ui.max-width`: Configured maximum KWC panel width in pixels. 0 removes the configured maximum; browser/viewport constraints can still apply.
+- `ui.max-height`: Configured maximum KWC panel height in pixels. 0 removes the configured maximum; browser/viewport constraints can still apply.
+- `ui.user-profiles.max-profiles`: Maximum saved server-side preference profiles per account. Runtime range: 0-20; out-of-range values are clamped. 0 disables server-side saved profiles.
+- `ui.virtual-scroll.overscan-screens`: Extra viewport-screen distance rendered above and below the visible virtual-scroll window. 0 is a valid minimum behavior value.
+- `ui.virtual-scroll.min-rendered-messages`: Minimum message rows kept rendered even when viewport calculation would need fewer. 0 is a valid minimum behavior value.
+- `discordsrv.max-emoji-links-per-message`: Maximum custom-emoji image URLs appended to one Discord message. Unlike emoji.game-link.max-links-per-message, this setting treats zero as disabled. 0 disables appending emoji image URLs to Discord.
+- `discordsrv.reply-relay.preview-max-length`: Maximum replied-to text length included in the Discord Reply preview. 0 disables preview truncation.
+- `upload.cooldown-seconds`: Minimum delay in seconds between upload attempts from the same resolved client IP. 0 disables this limiting component.
+- `upload.max-uploads-per-minute`: Per-minute upload-attempt limit for one resolved client IP. 0 disables this limiting component.
+- `upload.max-file-size-mb`: Maximum accepted size of one uploaded file in MiB. 0 removes this size/quota limit.
+- `upload.max-total-size-mb`: Total storage quota in MiB for upload.directory. When over quota KWC removes oldest unreferenced uploads first; if enough space still cannot be made, the new upload is rejected. 0 removes this size/quota limit.
+- `upload.max-files-per-message`: Maximum files selected/attached in one composer upload action. 0 removes the count limit.
+- `upload.retention-days`: Deletes uploaded files older than this many days only when they are no longer referenced by retained messages/pins. 0 disables age-based cleanup.
+- `preview.youtube-max-embeds-per-message`: Maximum YouTube embeds rendered from one message. 0 removes the count limit.
+- `preview.social-embeds.max-embeds-per-message`: Maximum supported social embeds rendered from one message. 0 removes the count limit.
+- `preview.external-media-cache-max-size-mb`: Maximum size in MiB of one external media object that KWC will fetch/cache. 0 removes this size/quota limit.
+- `preview.external-media-cache-retention-days`: Age window in days for deleting unreferenced external-media cache files. 0 disables age-based cleanup.
+- `emoji.max-file-size-kb`: Per-file custom emoji size limit in KiB; oversized files are rejected/omitted from managed catalog operations according to the path being used. 0 removes this size/quota limit.
+- `emoji.max-total-size-mb`: Total storage/catalog quota in MiB for managed emoji files. Uploads beyond the quota are rejected and catalog scanning does not expose files beyond the configured total limit. 0 removes this size/quota limit.
+- `emoji.message-token-limit`: Maximum custom emoji tokens accepted in one message. Tokens may include canonical pack/name paths. 0 removes the count limit.
+- `emoji.game-link.max-links-per-message`: Maximum emoji image links appended to one in-game message in link mode. 0 removes the count limit.
 
 ## Guest chat controls
 
@@ -299,6 +335,8 @@ reply:
 ```
 
 When `reply.game-click.enabled` is true, clicking a non-URL message body rendered by KWC suggests `/kchat reply <messageId> `. URL segments retain their open-link action. `/kchat reply <messageId> <message>` creates a public message with the same `replyTo` metadata used by web replies.
+DM/group messages use the same in-game click model: the conversation label prepares the existing `/kchat dm ...` or `/kchat group ...` command, while the body prepares an internal private reply target. KWC re-validates DM participation/current group membership before sending; the internal ID is not an authorization token.
+
 
 Game replies preserve the player-entered custom emoji token for web history and server relay. On the originating server, KWC also reuses the game emoji plugin's processed command body so the Minecraft reply line renders the emoji. If no processed glyph is available and `emoji.game-link.mode` is `preserve`, KWC emits a plain compatibility line for recognized tokens; that fallback line cannot carry KWC's click/hover metadata.
 
@@ -314,22 +352,18 @@ A local game sender name suggests `/w <realName> ` when clicked. Linked web-user
 
 ## Server relay configuration
 
-`peers` is not a connection/session list. It defines the HTTP destinations this server sends relay messages to; the same `id`/`secret` entries authenticate relay requests received from those servers. Configure matching entries on both sides for two-way relay.
-
-Server 1:
+KOKOTO WebChat 5.1.0 uses **Relay Protocol v2**. A relay group is the trust boundary: every peer in that group uses the same group `shared-secret`, and peer entries contain only `id`, `url`, and `enabled`. There is no `peers[].secret`.
 
 ```yaml
 server-relay:
   enabled: true
-  server-id: "server1"
+  server-id: "server-1"
   server-name: "Server 1"
-  shared-secret: "replace-with-one-long-random-secret-used-on-both-servers"
   connect-timeout-seconds: 5
   request-timeout-seconds: 10
   max-clock-skew-seconds: 60
   dedupe-seconds: 300
   max-hops: 8
-  forward-received-public-chat: true
   sources:
     game: true
     web: true
@@ -340,105 +374,24 @@ server-relay:
     web: true
     game: true
   game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-  peers:
-    - id: "server3"
-      url: "https://server3.example.com/chat/api"
-      secret: ""
-      enabled: true
+  groups:
+    - id: "main"
+      shared-secret: ""
+      forwarding:
+        enabled: false
+      peers:
+        - id: "server-2"
+          url: "https://server2.example.com/api"
+          enabled: true
 ```
 
-Server 3:
+For first setup, leave `shared-secret: ""` on one server, start/reload KWC, then reopen `config.yml` and copy the generated secret to the other servers in that **same group**. Existing non-empty secrets are preserved; manually supplied secrets shorter than 32 characters remain invalid. Both servers must list each other in the same group with the same generated/copied secret. The same peer ID cannot be registered in multiple local groups; duplicate registrations are disabled. Direct relay authenticates/encrypts each `/relay/v2/message` request independently. `/relay/v2/handshake` is a stateless diagnostic identity/health probe only and does not create or control routing state.
 
-```yaml
-server-relay:
-  enabled: true
-  server-id: "server3"
-  server-name: "Server 3"
-  shared-secret: "replace-with-one-long-random-secret-used-on-both-servers"
-  sources:
-    game: true
-    web: true
-    guest: true
-    discord: false
-    system: false
-  delivery:
-    web: true
-    game: true
-  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-  peers:
-    - id: "server1"
-      url: "https://server1.example.com/chat/api"
-      secret: ""
-      enabled: true
-```
+Relay v2 carries public chat and cross-server 1:1 DM/read receipts through `/relay/v2/message`. Payloads are protected hop-by-hop with a directional HKDF-SHA256 key and AES-256-GCM. Direct one-hop HTTP remains allowed with an explicit warning because the payload is still encrypted/authenticated, but HTTP may not participate in forwarding. Forwarding is group-local and filtered per peer: an http:// peer is excluded from forwarding through that peer, while other https:// peers in the same group remain eligible. Direct relay authenticates each request independently; the diagnostic probe does not control routing.
 
-Each peer must be reciprocal: the receiving server must list the sender's exact `server-id`. IDs are case-sensitive after normalization and must be unique. Do not use the same ID for two servers.
+On the first 5.0.0 → 5.1.0 migration KWC does **not** guess groups from the old flat relay topology. Legacy relay trust keys/peers/forwarding are retired, `server-relay.enabled` is reset to `false`, and the operator must define v2 groups before enabling relay again.
 
-## HTTPS and reverse proxies
-
-`url` is the other server's externally reachable KWC API base. KOKOTO WebChat appends `/relay/receive` automatically:
-
-```text
-Configured: https://server3.example.com/chat/api
-Requested:  https://server3.example.com/chat/api/relay/receive
-```
-
-The public HTTPS route must proxy the whole KWC API path to the internal KWC HTTP listener, including POST requests to `/relay/receive`. Do not expose port 8899 publicly when HTTPS already fronts the service. The proxy must preserve these request headers:
-
-```text
-X-BMWC-Relay-Version
-X-BMWC-Relay-From
-X-BMWC-Relay-Timestamp
-X-BMWC-Relay-Signature
-```
-
-A publicly trusted certificate works with Java normally. A private/self-signed certificate must be imported into the Java trust store or the HTTPS request will fail before reaching KWC.
-
-## Secrets
-
-- `shared-secret` is the default key for every peer.
-- `peers[].secret` overrides the shared key for that one connection.
-- With two servers, use the same long random `shared-secret` on both servers and leave each peer `secret: ""`.
-- With per-peer keys, the two reciprocal entries must use the same pair-specific key.
-- If neither a peer secret nor a shared secret is available, the peer is ignored.
-
-## Topology
-
-For three or more servers, use either:
-
-- Full mesh: every server lists every other server. This is simplest and most resilient.
-- Hub: leaf servers list a hub and the hub lists every leaf. With `forward-received-public-chat: true`, the hub forwards received public messages to the remaining peers; `false` limits public chat to direct peer links. This option does not disable multi-hop DM routing/read receipts.
-
-Relay IDs, origin suppression, immediate-sender exclusion, and `max-hops` prevent loops in cyclic topologies. There is no persistent offline queue; a message is not replayed later when a peer was unreachable.
-
-## Reload behavior and diagnostics
-
-`/kchat reload` closes the previous relay instance and creates a new one from the current config. Relay uses one HTTPS request per message, not a permanent connection, so there is no separate reconnect operation.
-
-A healthy startup log looks like:
-
-```text
-Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
-```
-
-If `activePeers` is lower than the configured count, nearby warnings explain which peer was rejected and why. Typical causes are duplicate IDs, a peer ID equal to the local server ID, an empty/invalid URL, an unsupported URL scheme, or a missing secret.
-
-## HTTP errors
-
-- `403 unknown_peer`: the receiving server does not have the sender's exact `server-id` in its active peers. Check both directions and the `activePeers` log on the receiver.
-- `401 bad_signature`: the effective secrets differ or a proxy altered the body/headers.
-- `401 expired_request`: server clocks differ by more than `max-clock-skew-seconds`.
-- `404 relay_disabled`: relay is disabled on the receiver, or the proxy routes to the wrong KWC instance/path.
-- `426 unsupported_protocol`: the two plugin builds use incompatible relay protocol versions.
-
-After editing either side, run `/kchat reload` on that side. When a receiver's peer list or secret changes, reload the receiver as well.
-
-## Display behavior
-
-- Web chat shows a colored badge derived from `originServerId`; the same server keeps the same color.
-- Web-to-game output uses `{server}` and `{server_id}`. The local server omits its own automatic label; if a remote message uses an older format containing neither placeholder, `[server-name]` is prepended automatically.
-- Discord direct relay formats support `{server}` and `{server_id}` and receive an automatic prefix when missing.
-- `sources.discord` and `sources.system` are disabled by default to avoid DiscordSRV loops and noisy cross-server event duplication.
+See `docs/SERVER_RELAY_EN.md` for the complete protocol, trust, migration, forwarding and diagnostics reference.
 
 ## Discord relay options
 
@@ -550,7 +503,7 @@ commands:
 
 ## Media preview height and scroll stability
 
-`ui.image-preview-max-height` limits the displayed height of image, GIF, video, and iframe-style previews. The recommended range is `640-720`; the default is `720`.
+`ui.image-preview-max-height` limits the displayed height of image, GIF, video, and iframe-style previews. The recommended range is `640-720`; the default is `720`. When `ui.image-preview-max-height` is `0`, only the explicit pixel cap is removed; the automatic viewport-derived safety cap still applies, so this is not a truly unlimited height.
 
 ```yaml
 ui:
@@ -629,6 +582,11 @@ This single flag controls both the PIP button and PIP execution. Browser URL/clo
 
 `auth.link-code-cooldown-seconds` and `auth.link-code-max-per-minute` limit how often the web UI may issue `/kchat auth <code>` link codes per remote IP. Set either value to `0` to disable that part of the limit.
 
+
+## Repeated operational error logging
+
+KWC uses one shared console policy for recurring operational HTTP/network failures rather than special log rules for individual status codes. The first failure for an operation/target is logged immediately. Identical repeats are suppressed; a later summary reports the suppressed count. If the failure changes, the new state is logged immediately. After recovery, KWC emits one recovery summary when repeats had been suppressed. This policy applies to recurring transport-style failures such as Relay verification/HTTP transport, update-source lookup, and operational API rate/server failures; normal client validation/authentication responses are not promoted to server-console errors. Retry/backoff behavior remains controlled by the feature itself and is independent of log suppression.
+
 ## HTTP proxy / client IP
 
 `http.trusted-proxies` controls whether `X-Forwarded-For` is trusted. Keep it empty for direct HTTP. When using Caddy/Nginx on the same host, add `127.0.0.1` and `::1` as block-style YAML list entries. Set `http.log-client-ip-resolution: true` only temporarily to confirm the socket IP, forwarded header, and resolved client IP in the server console and `logs/latest.log`. See `docs/OPERATIONS_SECURITY_EN.md` for the full check procedure.
@@ -657,23 +615,23 @@ Admin custom emoji manager note: the 4.7.0 manager uses a hidden multi-file pick
 
 ## Custom emoji and game-side emoji plugins
 
-KOKOTO WebChat stores custom emoji files under `plugins/KOKOTO-WebChat/emojis`. Subfolders are treated as emoji packs.
+KOKOTO WebChat stores custom emoji files under `plugins/KOKOTO-WebChat/emojis`. Subfolders are treated as emoji packs. In 5.1.0, pack directory names and emoji filename stems are canonicalized with the same token-safe rule; whitespace/unsupported characters are removed, existing invalid names are migrated on startup, and collisions receive numeric suffixes. The final path directly matches `:pack/name:`.
 
 By default, `emoji.game-link.enabled` is `false`, so web-to-game messages preserve custom emoji tokens such as `:pack/name:` and `:emoji:pack/name:` unchanged. Use this default when ImageEmojis or another game-side emoji plugin renders tokens in Minecraft chat.
 
 When `emoji.game-link.enabled` is `true`, `emoji.game-link.mode` supports `preserve`, `link`, and `label`.
 
 - `preserve`: force token-preserving behavior even when game-link is enabled.
-- `link`: sends `label-format` text plus a short BM Web Chat image link.
+- `link`: sends `label-format` text plus a short KOKOTO WebChat image link.
 - `label`: sends `label-format` text only.
 
 `emoji.game-link.*` only affects web-to-Minecraft chat. Discord image preview links are controlled separately by `discordsrv.append-web-emoji-links` for web→Discord and `discordsrv.append-game-emoji-links` for game→Discord. `append-game-emoji-links` can augment DiscordSRV's normal Minecraft→Discord relay messages, while `game-relay-mode: "kwc"` selects KWC as the direct game-chat sender; `discordsrv` keeps DiscordSRV as the sender.
 
-BM Web Chat preserves canonical tokens in web history and relay payloads. If ImageEmojis or ImageEmojis-Bero is enabled, KWC reads its public runtime emoji repository through reflection and resolves tokens to the receiving server's active glyphs before constructing clickable Minecraft components. This does not add a hard dependency and does not parse the resource pack.
+KOKOTO WebChat preserves canonical tokens in web history and relay payloads. If ImageEmojis or ImageEmojis-Bero is enabled, KWC reads its public runtime emoji repository through reflection and resolves tokens to the receiving server's active glyphs before constructing clickable Minecraft components. This does not add a hard dependency and does not parse the resource pack.
 
 For interactive lines, resolved ImageEmojis glyphs are inserted before KWC adds sender, reply, and URL click events, so emoji rendering and clickable URLs work together. Only unresolved known tokens use the single plain-Bukkit-line fallback for compatibility with another game-side renderer; that fallback cannot carry KWC click or hover metadata.
 
-`default-pack` and `aliases` help map flat game-side tokens back to BM Web Chat pack/name ids. For example:
+`default-pack` and `aliases` help map flat game-side tokens back to KOKOTO WebChat pack/name ids. For example:
 
 ```yaml
 emoji:
@@ -689,16 +647,18 @@ GIF/JPG/JPEG/WEBP emoji originals automatically get same-folder PNG sidecars for
 
 `group-chat.enabled` enables the web group-chat system. It supports public/private rooms, optional hashed room passwords, invitations, leave room, room hide/restore, room settings, unread tracking, per-user message hiding, member kick/ban/unban, and owner transfer. Group messages are stored in `group-chat.sqlite-file` (default `group-messages.db`). `group-chat.retention-days: 0` disables age-based cleanup; positive values physically delete older group messages.
 
+Room join/leave notices are a **per-room database setting**, not a global `config.yml` switch. Room owners/managers can enable or disable them from Room settings. The flag is stored in `group_rooms.membership_events_enabled`; existing databases default it to enabled when the column is added. Only real membership changes create stored events—closing the group-chat window does not leave a room.
+
 
 ## Private chat metadata super admins
 
-`private-chat-super-admins: []` lists exact UUIDs or Minecraft names allowed to see DM/group-chat metadata for moderation/accounting. The metadata view shows participants/titles, message counts, approximate storage size, retention status, and management actions. DM message bodies are available only when `direct-message.admin-audit.enabled: true`, and group-chat bodies only when `group-chat.admin-audit.enabled: true`; both views are read-only and every page read is audit-logged.
+`private-chat-super-admins: []` lists exact UUIDs or Minecraft names allowed to see DM/group-chat metadata for moderation/accounting. The metadata view shows participants/titles, message counts, approximate storage size, retention status, and management actions. DM message bodies are available only when `direct-message.admin-audit.enabled: true`, and group-chat bodies only when `group-chat.admin-audit.enabled: true`; both also require the account to be listed in `private-chat-super-admins`. Both audit views are read-only and every page read is audit-logged.
 
 
 `frontend.standalone.app-name` and `frontend.standalone.app-short-name` control the standalone page/PWA name. Reinstall the Home Screen web app after changing them on mobile devices. `web-push.notification-title` controls the default title used for test/system/background push notifications; if it is empty, the plugin uses `frontend.standalone.app-name`.
 
 
-Existing configs that still contain old generated display names such as `KOKOTO WebChat` or `KOKOTO WebChat` are treated as legacy defaults and use the new fallback.
+Existing configs that still contain legacy generated display names such as `BlueMapWebChat` or `BM WebChat` are treated as legacy defaults and use the current fallback.
 
 ### Dynmap adapter
 

@@ -1,19 +1,28 @@
 # KOKOTO WebChat
 
 
+
+![아키텍처 개요](docs/assets/architecture-5.1.0.svg)
+
+> 시각 매뉴얼, 움직이는 흐름도, 편집 가능한 다이어그램 원본, 참조 표준 목록은 `docs/assets/`, `docs/VISUAL_DOCUMENTATION.md`, `docs/REFERENCES.md`에 포함되어 있습니다.
+
+## 5.1.0 릴리스
+
+5.1.0은 서버 간 통신을 상호 peer 설정과 요청별 인증 암호화를 사용하는 group 기반 Relay Protocol v2로 전환하고, Web/게임 DM·그룹채팅의 영구 Reply와 서버 간 stable reply 참조를 추가합니다. 또한 `ui.language`에 맞춘 config/reference/migration 표시 언어, emoji catalog·SSE 복구 강화, 기본 SSE 제한 1 IP당 10 / 전체 500, custom emoji pack·파일·token canonicalization, 일반채팅 Reply 렌더링 개선, Android 채팅 입력창 Autofill 억제를 포함합니다. 릴리스 노트와 마이그레이션 안내는 5.0.0 → 5.1.0의 최종 변경사항을 기준으로 작성합니다. 반복되는 운영 HTTP/네트워크 오류는 공통 상태 추적 정책으로 처리해 동일한 재시도 오류가 콘솔에 계속 누적되지 않으며, 최초 오류·상태 변화·복구는 계속 확인할 수 있습니다.
+
 ## 프로젝트 이름 및 배포 주소 전환
 
 **BlueMapWebChat(BMWC)는 5.0.0부터 KOKOTO WebChat으로 이름이 변경됩니다.** 4.7.0 사용자의 기존 업데이트 확인 경로를 끊지 않기 위해 5.0.0 전환 릴리스는 우선 기존 BlueMapWebChat 프로젝트 페이지를 통해 배포할 수 있습니다. BMWC 4.x 데이터는 5.0.0에서 마이그레이션 입력으로만 사용하며, 실제 5.0.0 런타임 이름은 KOKOTO WebChat입니다.
 
-전환 기간에는 다음 기존 주소를 배포 진입점으로 계속 사용할 수 있습니다.
+현재 KOKOTO WebChat 배포 주소는 다음과 같습니다.
 
 - Modrinth: `https://modrinth.com/plugin/bluemapwebchat`
-- CurseForge: `https://www.curseforge.com/minecraft/bukkit-plugins/bluemapwebchat`
-- GitHub: `https://github.com/KOKOTO-DEV/BlueMapWebChat`
+- CurseForge: `https://www.curseforge.com/minecraft/bukkit-plugins/kokoto-webchat`
+- GitHub: `https://github.com/KOKOTO-DEV/KOKOTO-WebChat`
 
-목표 KOKOTO WebChat 주소는 `https://modrinth.com/plugin/kokoto-webchat`, `https://www.curseforge.com/minecraft/bukkit-plugins/kokoto-webchat`, `https://github.com/KOKOTO-DEV/KOKOTO-WebChat`이며 **각 플랫폼에서 실제 이름/주소 전환이 완료된 뒤** 정식 주소로 사용합니다. 아직 생성·변경되지 않은 목표 주소를 현재 다운로드 주소처럼 안내하지 않습니다. 기존 프로젝트를 같은 항목으로 연결할 수 없는 플랫폼에서는 BMWC 페이지를 종료/이전 안내 페이지로 남기고 새 KOKOTO WebChat 페이지로 이동하도록 안내합니다.
+현재 프로젝트 주소 전환 기간의 5.1.0 업데이트 체커는 Modrinth `kokoto-webchat`을 먼저 확인하고, canonical 프로젝트를 사용할 수 없으면 기존 `bluemapwebchat`으로 fallback합니다. BMWC fallback도 주소 전환이 끝날 때까지 실제 업데이트 소스로 사용하며, 두 소스가 모두 실패한 경우에만 업데이트 확인 경고를 출력합니다.
 
-Bukkit/Paper/Spigot, Fabric 1.18.2~26.2 exact-target, NeoForge 1.20.2~26.2 exact-target 및 Forge 1.18.2~26.2 exact-target 서버에서 동작하는 서버측 웹 채팅입니다. standalone 페이지뿐 아니라 BlueMap, squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD, Minecraft Overviewer 지도 화면에도 KWC 채팅을 삽입할 수 있습니다.
+Bukkit/Paper/Spigot에서는 BlueMap, squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD, Minecraft Overviewer 또는 standalone WebChat을 사용할 수 있습니다. Fabric 1.18.2~26.2, NeoForge 1.20.2~26.2, Forge 1.18.2~26.2 exact-target 빌드는 공통 core/standalone frontend를 사용하며 squaremap, Dynmap, LiveAtlas, uNmINeD, Overviewer filesystem adapter를 지원합니다. Pl3xMap filesystem adapter는 Fabric에서도 지원하고, BlueMapAPI 연동은 지원되는 Fabric/NeoForge 및 Forge 26.1.2/26.2 대상에서 사용할 수 있습니다.
 
 ## 주요 기능
 
@@ -28,7 +37,7 @@ Bukkit/Paper/Spigot, Fabric 1.18.2~26.2 exact-target, NeoForge 1.20.2~26.2 exact
 - `upload.filename-mode: original` 선택 시 새 업로드의 안전한 Unicode 원본 파일명을 보존하고 중복 이름은 덮어쓰지 않음
 - BlueMap/squaremap/Dynmap/Pl3xMap/LiveAtlas/uNmINeD/Overviewer 지도 안 채팅 패널 또는 standalone 페이지 제공
 - 게임 ↔ 웹 채팅 양방향 전달
-- HMAC 서명 기반 서버 간 공개 채팅 릴레이와 서버별 웹 색상 배지, 게임/Discord 서버명 표시
+- group 기반 공개채팅과 서버 간 DM/읽음 확인을 지원하는 Relay Protocol v2: 요청별 peer 인증, HKDF-SHA256/AES-256-GCM 기반 hop-by-hop 인증 암호화, replay 방어, HTTPS 전용 forwarding
 - Minecraft 메시지 클릭 댓글(`/kchat reply`)과 웹 발신자 클릭 KWC DM(`/kchat dm`)
 - 게임 `/w`/`/msg`/`/tell`류 귓속말을 양쪽 사용자의 웹 DM으로 선택적 복제
 - 게스트 채팅, 수학 캡차, 쿨다운/분당 제한
@@ -42,12 +51,12 @@ Bukkit/Paper/Spigot, Fabric 1.18.2~26.2 exact-target, NeoForge 1.20.2~26.2 exact
 - 답글 및 원본 메시지 점프, 게임 채팅 원문 미리보기, 고정 메시지, 가상 스크롤, 창 이동/크기조절, PIP
 - 연동/저장된 플레이어 대상 1:1 대화 스레드형 메시지함, 안 읽은 배지, 스레드별 보관 설정
 - 타 서버 릴레이 발신자를 기존 웹 DM 대상 검색에서 검색
-- 정확한 계정 허용 목록과 감사 로그를 사용하는 선택형 읽기 전용 관리자 DM 본문 감사
+- `private-chat-super-admins` + 별도 스위치로 제어하는 DM/그룹채팅 읽기 전용 관리자 감사
 - en-US, ko-KR, ja-JP, zh-CN 다국어 UI
 
 ## 연동 플러그인
 
-KWC 5.0.0은 Bukkit/Paper 계열에서 다음 포크 플러그인 연동을 공식 문서화합니다.
+KWC 5.1.0은 Bukkit/Paper 계열에서 다음 포크 플러그인 연동을 공식 문서화합니다.
 
 - [**ImageEmojis-Bero**](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) — `plugins/KOKOTO-WebChat/emojis`를 공용 폴더로 사용하고 웹/히스토리/릴레이에는 정규 `:pack/name:` 토큰을 유지하면서 게임에서는 ImageEmojis glyph로 표시할 수 있습니다. `serverIp` + `webServerPort`(대표적으로 TCP 5000)의 리소스팩 HTTP 서버는 Minecraft 클라이언트에서 접근 가능해야 합니다. [`docs/IMAGEEMOJIS_BERO_1_9_0_KO.md`](docs/IMAGEEMOJIS_BERO_1_9_0_KO.md) 참고. 일반 설치·운영은 [원본 ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)를 따릅니다.
 - [**SimpleNicks-Bero**](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) — `player-display.mode: "display-name"`으로 Bukkit display name에 적용된 닉네임을 KWC에 표시하면서 실제 연결 username/UUID는 별도 identity로 유지합니다. [`docs/SIMPLENICKS_BERO_KO.md`](docs/SIMPLENICKS_BERO_KO.md) 참고. 일반 설치·운영은 [원본 SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks)를 따릅니다.
@@ -56,12 +65,14 @@ KWC 5.0.0은 Bukkit/Paper 계열에서 다음 포크 플러그인 연동을 공�
 
 ## 빌드
 
+### Bukkit / Paper / Spigot
+
 ```bash
 mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.0.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.1.0-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target
@@ -72,7 +83,7 @@ Fabric은 16개 Minecraft 버전별 exact-target JAR로 빌드합니다. 스크�
 kwc-platform-fabric\build-all.bat
 ```
 
-대상: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.0.0-Fabric-<Minecraft>.jar`입니다.
+대상: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.1.0-Fabric-<Minecraft>.jar`입니다.
 
 ### NeoForge exact-target
 
@@ -82,7 +93,7 @@ NeoForge는 12개 Minecraft 버전별 exact-target JAR로 빌드합니다. 1.20.
 kwc-platform-neoforge\build-all.bat
 ```
 
-대상: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.0.0-NeoForge-<Minecraft>.jar`입니다.
+대상: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.1.0-NeoForge-<Minecraft>.jar`입니다.
 
 ### Forge exact-target
 
@@ -92,11 +103,22 @@ Forge는 범용 JAR 하나가 아니라 16개 Minecraft 버전별 exact-target J
 kwc-platform-forge\build-all.bat
 ```
 
-스크립트가 각 대상에 맞춰 JDK 17/21/25를 선택하고 `KOKOTO-WebChat-5.0.0-Forge-<Minecraft>.jar`을 각 target의 `build/libs/` 아래에 생성합니다.
+스크립트가 각 대상에 맞춰 JDK 17/21/25를 선택하고 `KOKOTO-WebChat-5.1.0-Forge-<Minecraft>.jar`을 각 target의 `build/libs/` 아래에 생성합니다.
 
 ### Windows 최종 릴리스 검증
 
-소스 루트에서 `validate-release-windows.bat`를 실행하면 Bukkit, Fabric 16개 target, NeoForge 12개 target, Forge 16개 target을 연속 빌드합니다. `FINAL RELEASE BUILD PASS`가 출력되고 `release-5.0.0/`에 배포용 JAR이 정확히 45개 모이며 `SHA256SUMS.txt`가 생성되어야 실제 빌드까지 최종 검증된 것으로 판정합니다.
+소스 루트에서 `validate-release-windows.bat`를 실행하면 Bukkit, Fabric 16개 target, NeoForge 12개 target, Forge 16개 target을 연속 빌드합니다. `FINAL RELEASE BUILD PASS`가 출력되고 `release-5.1.0/`에 배포용 JAR이 정확히 45개 모이며 `SHA256SUMS.txt`가 생성되어야 실제 빌드까지 최종 검증된 것으로 판정합니다.
+
+Windows 반복 빌드에서는 같은 스크립트로 플랫폼 선택, 증분 캐시, 플랫폼 병렬 빌드와 실시간 진행률을 사용할 수 있습니다.
+
+```bat
+validate-release-windows.bat --bukkit
+validate-release-windows.bat --bukkit --fast
+validate-release-windows.bat --fabric --forge --fast
+validate-release-windows.bat --parallel
+```
+
+플랫폼 옵션은 조합할 수 있습니다. `--bukkit`은 Bukkit/Paper 산출물과 필요한 Maven reactor 의존 모듈만 빌드합니다. `--fast`는 `clean`을 생략하고 기존 Maven/Gradle 산출물과 dependency cache를 재사용하며 Gradle build cache를 활성화합니다. `--parallel`은 선택된 빌드 모드는 그대로 유지하면서 Bukkit이 선택되어 있으면 Bukkit을 먼저 빌드하고, Bukkit이 통과한 뒤 나머지 Fabric/NeoForge/Forge를 병렬 실행합니다. 따라서 `validate-release-windows.bat --parallel`은 clean 45-target 최종 검증이며 성공하면 `FINAL RELEASE BUILD PASS`가 출력됩니다. 콘솔에는 경과시간, 전체 완료 target 수, 플랫폼별 완료 수와 현재 Minecraft target이 계속 표시되고 전체 로그는 `validation-logs/`에 남습니다. 부분 빌드 또는 `--fast` 빌드는 `build-5.1.0/`에 저장되며 최종 릴리스 검증으로 취급하지 않습니다. 루트의 `mvn clean package`도 계속 Bukkit 전용 Maven 빌드입니다.
 
 ## 기본 설치
 
@@ -114,7 +136,7 @@ kwc-platform-forge\build-all.bat
 12. 서버 재시작 또는 `/kchat reload`를 실행합니다. BlueMap은 `bluemap reload light`를 자동 요청하고, squaremap/Dynmap/Pl3xMap/LiveAtlas/uNmINeD/Overviewer는 KWC가 웹 파일을 직접 다시 확인합니다. 지도/사이트 생성기가 웹 파일을 다시 만들었다면 `/kchat reload`를 다시 실행합니다.
 
 
-기존 설정값은 보존하지만 migration 중에는 기존 config의 주석/레이아웃을 이어 붙이지 않습니다. 실행 중인 JAR의 기본 `config.yml`이 유일한 migration 템플릿이며, KWC가 최신 기본 config를 새로 만든 뒤 기존 사용자 설정값만 그 위에 덮어씁니다. 따라서 구버전 주석·순서·공백·들여쓰기는 버리고 최신 번들 주석/레이아웃으로 통일됩니다. `<KWC data dir>/config-reference-5.0.0.yml`은 관리자가 전체 기본 설정을 확인하기 위한 번들 기본 config의 정확한 복사본일 뿐 migration 입력으로 사용하지 않습니다. 이전 marker에 `_auto_migration`이 없었다면 고정된 설정으로 보고 실제 버전 업그레이드 전에 기존 `config.yml`을 백업합니다. migration 결과는 `config-version: "5.0.0_auto_migration"`이며 이 marker가 남아 있는 동안 startup/reload마다 같은 재구성을 반복합니다. 정확한 `config-version: "5.0.0"`은 같은 버전 설정을 고정하여 `config.yml`을 수정하지 않습니다. 기본값 변경은 `config-migration-5.0.0.yml` 검토 항목으로 남기고, 이전 버전의 생성된 reference/migration/upgrade 파일은 자동 삭제합니다. 번들 UTF-8 기본 차단 목록 `filter-lists/ko-KR.txt`, `en-US.txt`, `ja-JP.txt`, `zh-CN.txt`는 기본 목록 초기화 마커가 없을 때 한 번 초기화되므로 이 기능이 추가되기 전부터 사용하던 데이터 폴더에서도 생성됩니다. 이미 존재하거나 비활성화된 목록 파일은 절대 덮어쓰지 않으며, 초기화가 끝난 뒤 관리자가 삭제한 기본 목록은 재시작해도 다시 만들지 않습니다.
+기존에 파싱된 운영 설정값은 그대로 보존하고, migration 시 주석과 레이아웃은 `ui.language`가 선택한 번들 표시 템플릿으로 다시 구성합니다. `en-US`는 `config.yml`, `ko-KR`·`ja-JP`·`zh-CN`은 각 언어의 번들 템플릿을 사용하며 지원하지 않는/custom UI 언어는 영문 config 표시를 사용합니다. `<KWC data dir>/config-reference-5.1.0.yml`은 같은 내장 언어로 렌더링한 관리자용 최신 기본 설정이며 migration 입력으로는 절대 사용하지 않습니다. 고정된 이전 버전 config는 실제 버전 migration 전에 백업합니다. migration 결과는 `config-version: "5.1.0_auto_migration"`이며 이 marker가 남아 있는 동안 startup/reload마다 선택된 최신 템플릿을 다시 만들고 기존 파싱 값을 overlay하여 새 설정과 현재 주석/레이아웃을 유지합니다. 정확한 `config-version: "5.1.0"`은 일반적인 same-version 자동 설정 재구성을 중지하지만, `ui.language`를 변경하면 모든 파싱 값을 보존한 채 주석/레이아웃 표시 언어만 다시 구성할 수 있습니다. `config-migration-5.1.0.yml`의 Difference는 주석·공백·따옴표·줄 위치·키 순서가 아니라 파싱된 YAML path/value 의미를 비교합니다. 이전 버전의 생성된 reference/migration/upgrade 파일은 자동 삭제합니다. 번들 UTF-8 기본 차단 목록 `filter-lists/ko-KR.txt`, `en-US.txt`, `ja-JP.txt`, `zh-CN.txt`는 기본 목록 초기화 마커가 없을 때 한 번 초기화되므로 이 기능이 추가되기 전부터 사용하던 데이터 폴더에서도 생성됩니다. 이미 존재하거나 비활성화된 목록 파일은 덮어쓰지 않으며, 초기화가 끝난 뒤 관리자가 삭제한 기본 목록은 재시작해도 다시 만들지 않습니다.
 
 ## 5.0.0 KOKOTO WebChat 구조 및 이름 전환
 
@@ -125,7 +147,7 @@ kwc-platform-forge\build-all.bat
 > **BMWC HTTPS 마이그레이션:** BMWC의 표준 `/bmwc/api` 및 `/bmwc/chat` 공개 구조는 KWC의 새 기본 `/chat` 구조로 바뀝니다. 표준 BMWC API URL 설정은 빈 자동값으로 변환되지만 Caddy/nginx 설정 파일은 자동 변경되지 않으므로 `/chat` prefix 제거 방식으로 직접 수정해야 합니다.
 
 
-릴레이 protocol v1은 기존 BMWC 서버와 연결하기 위해 wire header `X-BMWC-Relay-*`를 그대로 유지합니다. 이것은 제품 식별자가 아니라 레거시 프로토콜 namespace이며, `server-id`, peer URL, shared secret이 맞으면 KWC와 BMWC 4.x 사이에서도 릴레이할 수 있습니다.
+KOKOTO WebChat 5.1.0은 명시적인 `groups -> peers`, group별 shared secret, handshake 선행조건 없는 요청별 peer 인증, HKDF-SHA256 방향별 key와 AES-256-GCM hop-by-hop payload 보호를 사용하는 Relay Protocol v2로 전환했습니다. Relay v1/BMWC endpoint는 더 이상 상호운용되지 않고 HTTP 426을 반환합니다. 자세한 내용은 `docs/SERVER_RELAY_KO.md`를 참고하세요.
 
 ## 4.7.0 이모지 다중 업로드 및 호환 범위 확대
 
@@ -137,7 +159,7 @@ Bukkit/Spigot API 기준을 1.21에서 1.18로 낮추고 Java 17은 그대로 �
 
 ## 4.6.3 관리자 그룹채팅 감사
 
-4.6.3은 그룹채팅 메시지 본문을 확인할 수 있는 선택적 읽기 전용 관리자 감사 기능을 추가합니다. DM 감사와 같은 `private-chat-super-admins` 정확 계정 목록을 사용하지만 `group-chat.admin-audit.enabled`는 독립적으로 켜야 합니다. 감사자는 방에 가입하지 않으며 읽음 상태·미확인 수를 변경하지 않고, 메시지 전송·업로드·숨김·멤버 관리도 할 수 없습니다. 모든 감사 페이지 열람은 본문을 복사하지 않고 `admin.group-audit-read`로 기록됩니다.
+4.6.3은 그룹채팅 메시지 본문을 확인할 수 있는 선택적 읽기 전용 관리자 감사 기능을 추가했습니다. 현재 5.1.0에서는 DM과 그룹채팅 본문 감사를 독립적으로 제어합니다. DM은 `direct-message.admin-audit.enabled`, 그룹은 `group-chat.admin-audit.enabled`를 사용하며 둘 다 `private-chat-super-admins`에 정확히 지정된 계정만 접근할 수 있습니다. 감사 화면은 읽기 전용이고 전송·답글·숨김·읽음 처리나 방 참여를 수행하지 않으며 페이지 열람은 감사 로그에 기록됩니다.
 
 ```yaml
 private-chat-super-admins:
@@ -170,18 +192,7 @@ group-chat:
 
 서버 릴레이 메시지에 플레이어 UUID가 있으면 해당 타 서버 발신자를 기존 DM 새 대화 검색에서 표시합니다. 별도 DM 버튼은 추가하지 않으며, UUID가 없는 게스트·Discord 발신자는 제외합니다.
 
-DM 본문 감사 기능은 기본적으로 꺼져 있습니다. 다음 두 조건을 모두 설정한 계정만 읽기 전용으로 열람할 수 있습니다.
-
-```yaml
-private-chat-super-admins:
-  - "정확한마인크래프트이름또는UUID"
-
-direct-message:
-  admin-audit:
-    enabled: true
-```
-
-일반 ADMIN/MODERATOR 역할만으로는 본문을 볼 수 없습니다. 감사 화면에서는 전송·숨김이 불가능하고, 페이지를 읽을 때마다 대화 ID와 조회 건수가 날짜별 감사 로그에 기록됩니다. 메시지 본문 자체는 감사 로그에 복사하지 않습니다.
+4.6.1에서 도입된 관리자 DM 본문 감사 기능은 5.1.0에서도 유지됩니다. `private-chat-super-admins`에 정확히 지정된 계정만 대상이며 `direct-message.admin-audit.enabled: true`를 함께 켜야 DM 본문을 읽기 전용으로 열 수 있습니다. 각 페이지 열람은 감사 로그에 기록되고, `group-chat.admin-audit.enabled`는 그룹채팅 본문에 대한 별도 읽기 전용 감사 설정입니다.
 
 ## 사용 형태
 
@@ -289,9 +300,11 @@ URL 설정 참고: `http.path-prefix`는 KWC 내부 API 경로이고 `http.publi
 
 ## 그룹 채팅방
 
-`group-chat.enabled`를 켜면 웹 그룹 채팅방 기능을 사용할 수 있습니다. 사용자는 방을 만들고, 공개/비공개를 선택하고, 선택적으로 방 비밀번호를 설정하고, 저장된 플레이어를 초대하고, 초대 수락/거절, 방 나가기, 내 목록에서 방 숨김/다시 표시, 방 설정 변경, 멤버 강퇴/차단/차단 해제, 방장 이전, 웹 메시지 전송을 할 수 있습니다. 공개방은 방 목록에 보이고, 비공개방은 초대받은 사용자만 들어갈 수 있습니다. 방 비밀번호는 평문이 아니라 PBKDF2 해시로 저장됩니다.
+`group-chat.enabled`를 켜면 그룹 채팅방 기능을 사용할 수 있습니다. 사용자는 방을 만들고, 공개/비공개를 선택하고, 선택적으로 방 비밀번호를 설정하고, 저장된 플레이어를 초대하고, 초대 수락/거절, 방 나가기, 내 목록에서 방 숨김/다시 표시, 방 설정 변경, 멤버 강퇴/차단/차단 해제, 방장 이전을 할 수 있으며 Web UI와 게임의 `/kchat group` 명령에서 모두 메시지를 주고받을 수 있습니다. 공개방은 방 목록에 보이고, 비공개방은 초대받은 사용자만 들어갈 수 있습니다. 방 비밀번호는 평문이 아니라 PBKDF2 해시로 저장됩니다.
 
-그룹 채팅은 전용 SQLite 저장소를 사용합니다(`group-chat.sqlite-file`, 기본 `group-messages.db`). `group-chat.retention-days: 0`은 보관 기한 없음이고, 양수 값은 그룹 채팅 제목 옆에 보관 기간으로 표시되며 해당 기간이 지난 그룹 메시지는 물리 삭제됩니다. `group-chat.max-messages-per-room: 0`은 방별 개수 정리 없음입니다. 이번 릴리스는 웹 중심이며, 게임 명령어 `/kchat group`, 방 음소거, 소유자/멤버 동작을 넘어선 세부 역할 관리 UI, 그룹 JSONL 저장은 아직 포함하지 않았습니다.
+각 방에는 멤버 입장/퇴장 알림 옵션이 있습니다. 활성화하면 실제 가입/초대 수락은 입장 이벤트로, 자발적 퇴장/강퇴/차단에 따른 멤버 제거는 퇴장 이벤트로 저장되어 Web/기록/온라인 게임 멤버에게 표시됩니다. 창을 닫거나 다른 방으로 이동하거나 방을 숨기는 동작은 퇴장으로 처리하지 않으며, 멤버십 이벤트에는 Reply할 수 없습니다.
+
+그룹 채팅은 전용 SQLite 저장소를 사용합니다(`group-chat.sqlite-file`, 기본 `group-messages.db`). `group-chat.retention-days: 0`은 보관 기한 없음이고, 양수 값은 그룹 채팅 제목 옆에 보관 기간으로 표시되며 해당 기간이 지난 그룹 메시지는 물리 삭제됩니다. `group-chat.max-messages-per-room: 0`은 방별 개수 정리 없음입니다. 기존 SQLite DB는 5.1.0에서 필요한 선택 컬럼이 없을 경우 제자리에서 확장됩니다.
 
 ## 1:1 메시지함 / DM 스레드
 
@@ -304,19 +317,19 @@ DM은 공개 채팅 기록과 분리된 전용 저장소를 사용합니다. `di
 
 ## 커스텀 이모지와 게임 측 이모지 플러그인
 
-KOKOTO WebChat은 커스텀 이모지를 `<KWC data dir>/emojis` 아래에 저장합니다. 하위 폴더는 이모지 팩으로 처리됩니다.
+KOKOTO WebChat은 커스텀 이모지를 `<KWC data dir>/emojis` 아래에 저장합니다. 하위 폴더는 이모지 팩으로 처리됩니다. 5.1.0부터 팩 디렉터리명과 이모지 파일명 stem 모두 같은 토큰 안전 정규화 규칙을 사용합니다. 공백/사용 불가능 문자는 제거되고 기존 잘못된 이름은 시작 시 일괄 변경되며, 충돌 시 숫자 suffix가 붙습니다. 최종 디스크 경로는 `:팩/이름:` 토큰과 그대로 일치합니다.
 
 기본값에서는 웹→게임 채팅이 `:default/wave:`, `:emoji:default/wave:` 같은 커스텀 이모지 토큰을 그대로 보존합니다. ImageEmojis나 다른 게임 측 이모지 플러그인이 Minecraft 채팅에서 같은 토큰 텍스트를 렌더링한다면 이 기본값을 사용하세요.
 
 `emoji.game-link.enabled`를 켠 경우 `emoji.game-link.mode`는 `preserve`, `link`, `label`을 지원합니다.
 
 - `preserve`: 원래 토큰 텍스트를 변경하지 않습니다.
-- `link`: 설정된 토큰 텍스트와 BM Web Chat 짧은 이미지 링크를 같이 보냅니다.
+- `link`: 설정된 토큰 텍스트와 KOKOTO WebChat 짧은 이미지 링크를 같이 보냅니다.
 - `label`: 설정된 토큰 텍스트만 보냅니다.
 
 `emoji.game-link.*`는 웹→Minecraft 채팅에만 적용됩니다. Discord 이미지 미리보기 링크는 별도 설정으로 분리됩니다. `discordsrv.append-web-emoji-links`는 웹→Discord 메시지용이고, `discordsrv.append-game-emoji-links`는 DiscordSRV가 실제 Discord에 올린 게임 메시지의 `:emoji:` 토큰을 웹→Discord와 동일한 등록 이모지 처리 경로로 넘겨 URL을 붙입니다. 여러 서버가 같은 Discord 채널을 공유할 때 LOWEST 단계에서 잡은 게임 채팅 정보는 원본 서버 판별에만 쓰며, Minecraft용 glyph나 게임 렌더링 결과는 Discord 변환 원본으로 쓰지 않습니다. 수신 릴레이 서버는 해당 메시지를 Discord로 다시 보내지 않습니다. DiscordSRV가 일반 Minecraft 채팅을 릴레이한다면 `discordsrv.game-relay-mode`를 `discordsrv`로 두세요. KWC가 직접 전송하게 하려면 `kwc`를 사용하고 DiscordSRV의 일반 Minecraft 채팅 릴레이는 꺼서 중복 게시를 막습니다.
 
-BM Web Chat은 웹 기록과 서버 릴레이 payload에는 원본 이모지 토큰을 그대로 보존합니다. ImageEmojis 또는 ImageEmojis-Bero가 활성화되어 있으면 공개된 runtime 이모지 저장소를 reflection으로 읽어, 클릭 가능한 Minecraft 컴포넌트를 만들 때 수신 서버의 현재 token→glyph 매핑을 사용합니다. 플러그인 hard dependency나 리소스팩 분석은 필요하지 않으며, 매핑하지 못한 토큰은 기존 게임 측 렌더링 경로로 fallback합니다.
+KOKOTO WebChat은 웹 기록과 서버 릴레이 payload에는 원본 이모지 토큰을 그대로 보존합니다. ImageEmojis 또는 ImageEmojis-Bero가 활성화되어 있으면 공개된 runtime 이모지 저장소를 reflection으로 읽어, 클릭 가능한 Minecraft 컴포넌트를 만들 때 수신 서버의 현재 token→glyph 매핑을 사용합니다. 플러그인 hard dependency나 리소스팩 분석은 필요하지 않으며, 매핑하지 못한 토큰은 기존 게임 측 렌더링 경로로 fallback합니다.
 
 GIF/JPG/JPEG/WEBP 이모지를 업로드하면, PNG만 읽는 게임 측 이모지 플러그인과의 호환을 위해 같은 폴더에 PNG sidecar도 생성합니다.
 
@@ -382,7 +395,7 @@ kwc.update.notify
 
 - `docs/USER_MANUAL_KO.md` - 전체 기능 사용자·운영자 통합 매뉴얼
 - `docs/CONFIGURATION_KO.md` - 설정 참고
-- `docs/SERVER_RELAY_KO.md` - 서버 간 공개 채팅 릴레이
+- `docs/SERVER_RELAY_KO.md` - Relay Protocol v2 공개채팅·서버 간 DM/읽음 확인·신뢰/forwarding 규칙
 - `docs/UPGRADE_5_0_0_KO.md` - 4.7.0→5.0.0 메이저 업그레이드와 migration
 - `docs/UPGRADE_4_6_2_KO.md` - 4.6.1→4.6.2 업그레이드
 - `docs/UPGRADE_4_6_1_KO.md` - 4.6.0→4.6.1 업그레이드
@@ -407,7 +420,7 @@ SQLite 기록 저장소를 사용할 때 채팅 패널 우측 상단 플로팅 �
 
 ### 비공개 채팅 메타데이터 최고관리자
 
-`config.yml`의 `private-chat-super-admins`에 정확한 UUID 또는 마인크래프트 이름을 지정하면 관리/용량 확인용 DM/그룹채팅 메타데이터를 볼 수 있습니다. 기본 화면은 제목/참여자, 메시지 수, 대략적인 저장 용량, 보관기간 상태와 정리 미리보기를 표시합니다. `direct-message.admin-audit.enabled: true`를 함께 설정한 경우 같은 명시 계정이 DM 본문을 읽기 전용으로 열 수 있습니다. 4.6.3에서는 `group-chat.admin-audit.enabled: true`를 별도로 켜면 같은 명시 계정이 방에 참여하거나 읽음 상태를 변경하지 않고 그룹채팅 본문도 읽기 전용으로 열 수 있습니다. 일반 ADMIN/MODERATOR 역할은 자동으로 대상이 되지 않으며 감사 페이지 열람은 모두 감사 로그에 기록됩니다. 최고관리자는 DM/그룹 세션 잠금과 자동삭제 제외도 관리할 수 있습니다.
+`config.yml`의 `private-chat-super-admins`에 정확한 UUID 또는 마인크래프트 이름을 지정하면 관리/용량 확인용 DM/그룹채팅 메타데이터를 볼 수 있습니다. 기본 화면은 제목/참여자, 메시지 수, 대략적인 저장 용량, 보관기간 상태, 정리 미리보기, 잠금과 자동삭제 제외 상태를 표시합니다. `direct-message.admin-audit.enabled: true`를 함께 켜면 같은 명시 계정이 DM 본문을 읽기 전용으로 열 수 있고, `group-chat.admin-audit.enabled: true`는 그룹채팅 본문 감사를 별도로 제어합니다. 일반 ADMIN/MODERATOR 역할만으로는 감사 권한이 생기지 않으며 모든 감사 페이지 열람은 감사 로그에 기록됩니다.
 
 관리적으로 영향을 주는 행동은 기본적으로 `<KWC data dir>/audit` 아래 날짜별 텍스트 로그에 append 됩니다. audit 로그는 서버 운영자 확인용이며 웹 UI에는 표시하지 않습니다.
 
@@ -415,7 +428,7 @@ SQLite 기록 저장소를 사용할 때 채팅 패널 우측 상단 플로팅 �
 참고: `frontend.standalone.app-name`/`frontend.standalone.app-short-name`으로 모바일 홈 화면 웹앱 이름을 바꿀 수 있고, `web-push.notification-title`로 기본 푸시 제목을 바꿀 수 있습니다. `web-push.notification-title`을 비워두면 `frontend.standalone.app-name`을 사용합니다. Android/데스크톱 브라우저는 HTTPS와 Push API 지원이 맞으면 BlueMap addon 또는 standalone 페이지 어디서든 푸시를 켤 수 있습니다. iOS/iPadOS 푸시는 일반 탭이 아니라 홈 화면에 추가한 웹앱에서만 시도하세요.
 
 
-기존 config에 `KOKOTO WebChat` 또는 `KOKOTO WebChat` 같은 예전 기본 이름이 남아 있으면 새 기본 이름처럼 처리해서 푸시 제목에 그대로 노출되지 않게 했습니다.
+기존 config에 `BlueMapWebChat` 또는 `BM WebChat` 같은 레거시 생성 이름이 남아 있으면 기본 placeholder로 처리해 푸시 제목에 그대로 노출되지 않게 했습니다.
 
 
 - Pl3xMap integration: `docs/PL3XMAP_INTEGRATION.md`

@@ -1,6 +1,6 @@
-# BlueMapWebChat 4.x → KOKOTO WebChat 5.0.0 migration
+# BlueMapWebChat 4.x / KWC 5.0.0 → KOKOTO WebChat 5.1.0 migration
 
-KOKOTO WebChat uses a new canonical project identity. The old BlueMapWebChat identity is kept only where it is required to import an existing installation or preserve compatibility with existing command/permission/relay peers.
+KOKOTO WebChat uses a new canonical project identity. The old BlueMapWebChat identity is kept only where it is required to import an existing installation or preserve command/permission migration compatibility. Relay Protocol v1 itself is retired in 5.1.0.
 
 ## Canonical identity
 
@@ -19,7 +19,7 @@ When `plugins/BlueMapWebChat` exists, KOKOTO WebChat imports it only if `plugins
 
 The generated/reference/migration config files from BMWC are not copied as active KWC configuration. KWC generates its own current `config.yml` and maps values from the legacy file into the new layout. `.legacy-import-complete` is temporary migration state only: while the BMWC source remains it can record that import was completed or intentionally skipped because KWC data already existed; once `plugins/BlueMapWebChat` is removed, KWC deletes the marker automatically on startup or `/kchat reload`.
 
-When the legacy `config-version` matches a bundled BMWC baseline, values that are still exactly equal to that BMWC version's defaults do not overwrite the current KWC defaults. This keeps a normal BMWC installation aligned with the current 5.0.0 reference while preserving settings the administrator actually changed. Retired keys that no longer exist in the KWC reference are not copied.
+When the legacy `config-version` matches a bundled BMWC baseline, values that are still exactly equal to that BMWC version's defaults do not overwrite the current KWC defaults. This keeps a normal BMWC installation aligned with the current 5.1.0 reference while preserving settings the administrator actually changed. Retired keys that no longer exist in the KWC reference are not copied.
 
 ## Config key migration
 
@@ -29,7 +29,6 @@ When the legacy `config-version` matches a bundled BMWC baseline, values that ar
 - `discordsrv.game-to-discord-format` → `discordsrv.game-relay-format`
 - retired `ui.show-login-only-when-hidden` is not copied
 - legacy local `/bmwc` public URL values → `/chat`
-- `server-relay.peers[].url` is preserved exactly; remote BMWC peers may legitimately remain on `/bmwc/api`
 - legacy `addons/bluemap-web-chat` → `addons/kokoto-web-chat`
 - legacy `bluemapwebchat.*` permission values → `kwc.*`
 - legacy `/bmchat` command values → `/kchat`
@@ -44,16 +43,13 @@ The canonical command is `/kchat` (`/kc` alias). Old `/bmchat`, `/bluemapchat`, 
 
 The canonical addon directory is `addons/kokoto-web-chat`. When patching `webapp.conf`, KWC removes script/style references to the old `addons/bluemap-web-chat` path before installing the current entries so both frontends are not loaded at once.
 
-## Server relay compatibility
+## Server relay migration to Protocol v2
 
-Relay Protocol v1 intentionally keeps the existing wire headers:
+KOKOTO WebChat 5.1.0 intentionally ends Relay Protocol v1 interoperability. Legacy BMWC/KWC v1 relay endpoints return HTTP 426 and request protocol `2` / version `5.1.0`.
 
-- `X-BMWC-Relay-Version`
-- `X-BMWC-Relay-From`
-- `X-BMWC-Relay-Timestamp`
-- `X-BMWC-Relay-Signature`
+The first migration from a pre-5.1.0 configuration does **not** infer v2 groups from the previous flat trust topology. In particular, the old global `server-relay.shared-secret`, flat `server-relay.peers`, legacy forwarding settings, and `server-relay.forward-received-public-chat` are not converted into guessed group membership. Relay is reset to `server-relay.enabled: false`.
 
-These are a legacy protocol namespace, not a product-name check. KWC can therefore continue relaying with BlueMapWebChat 4.x peers when `server-id`, peer URL, protocol version, and shared secret/HMAC settings match. Migration never rewrites `server-relay.peers[].url`; a remote BMWC peer using `/bmwc/api` must keep that URL.
+After migration, define explicit `server-relay.groups`. Each group has one `shared-secret`, its own `forwarding.enabled`, and peers containing only `id`, `url`, and `enabled`. For a new group, an empty `shared-secret` on one server is provisioned at startup/reload as a secure 32-byte URL-safe value; copy the generated value to the other members. Non-empty manual values still require at least 32 characters. Configure reciprocal peers in the same group with the same group secret, then re-enable relay. See `docs/SERVER_RELAY_EN.md` (or the matching language file) for the v2 protocol and trust model.
 
 ## Reverse proxy
 

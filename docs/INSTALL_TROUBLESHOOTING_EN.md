@@ -17,8 +17,18 @@ mvn clean package
 Output:
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.0.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.1.0-Bukkit-1.18-26.2.jar
 ```
+
+On Windows, the root validator can also be used as a convenient platform build helper:
+
+```bat
+validate-release-windows.bat --bukkit
+validate-release-windows.bat --bukkit --fast
+validate-release-windows.bat --parallel
+```
+
+`--fast` skips `clean` and reuses existing outputs/caches for iteration. `--parallel` preserves clean/fast semantics; when Bukkit is selected it builds Bukkit first, then starts the remaining selected loaders concurrently after Bukkit passes. `validate-release-windows.bat --parallel` is therefore still a clean full release validation. The console shows live overall/platform target progress while detailed logs remain in `validation-logs/`.
 
 ## Install or upgrade
 
@@ -39,9 +49,9 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 The entries should include the current version query, for example:
 
 ```text
-addons/kokoto-web-chat/config.js?v=5.0.0-<cache-token>
-addons/kokoto-web-chat/chat.js?v=5.0.0-<cache-token>
-addons/kokoto-web-chat/chat.css?v=5.0.0-<cache-token>
+addons/kokoto-web-chat/config.js?v=5.1.0-<cache-token>
+addons/kokoto-web-chat/chat.js?v=5.1.0-<cache-token>
+addons/kokoto-web-chat/chat.css?v=5.1.0-<cache-token>
 ```
 
 Also verify the actual web files were updated:

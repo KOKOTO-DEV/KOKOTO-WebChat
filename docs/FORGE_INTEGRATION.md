@@ -1,6 +1,6 @@
 # KOKOTO WebChat - Forge Stage 1
 
-Server-side Forge platform for KOKOTO WebChat 5.0.0. Forge is built as **exact Minecraft-version JARs** rather than one broad-range binary because Forge/Minecraft APIs changed across the supported span.
+Server-side Forge platform for KOKOTO WebChat 5.1.0. Forge is built as **exact Minecraft-version JARs** rather than one broad-range binary because Forge/Minecraft APIs changed across the supported span.
 
 ## Targets
 
@@ -16,14 +16,14 @@ Server-side Forge platform for KOKOTO WebChat 5.0.0. Forge is built as **exact M
 | 1.21.1 | 52.1.16 | Java 21 | `compatClassic` | filesystem adapters |
 | 1.21.3 | 53.1.0 | Java 21 | `compatClassic` | filesystem adapters |
 | 1.21.4 | 54.1.14 | Java 21 | `compatClassic` | filesystem adapters |
-| 1.21.5 | 55.1.0 | Java 21 | `compatClassic` | filesystem adapters |
+| 1.21.5 | 55.1.0 | Java 21 | `compat1215` | filesystem adapters |
 | 1.21.8 | 58.1.0 | Java 21 | `compatModern` | filesystem adapters |
 | 1.21.10 | 60.1.0 | Java 21 | `compatModern` | filesystem adapters |
 | 1.21.11 | 61.2.0 | Java 21 | `compatModern` | filesystem adapters |
 | 26.1.2 | 64.1.0 | Java 25 | `compat26` | BlueMapAPI + filesystem adapters |
 | 26.2 | 65.1.0 | Java 25 | `compat26` | BlueMapAPI + filesystem adapters |
 
-`src/common` contains KWC runtime/storage/auth/relay/map host code. `compat118`, `compatClassic`, `compatModern`, and `compat26` isolate Minecraft/Forge API changes. The classic Forge event bus remains in use through 1.21.5; `compatModern` starts at 1.21.8, where Forge uses per-event static buses. Its profile/operator helpers use reflective bridging across the 1.21.8 -> 1.21.9 auth/profile API transition.
+`src/common` contains KWC runtime/storage/auth/relay/map host code. `compat118`, `compatClassic`, `compat1215`, `compatModern`, and `compat26` isolate Minecraft/Forge API changes. `compat1215` keeps the classic Forge event bus but uses the 1.21.5 chat-event API. `compatModern` starts at 1.21.8, where Forge uses per-event static buses. Its profile/operator helpers use reflective bridging across the 1.21.8 -> 1.21.9 auth/profile API transition.
 
 BlueMap direct API integration is compiled only for Forge 26.1.2 and 26.2. Older targets still support the loader-neutral filesystem/static map adapters (squaremap/Dynmap/LiveAtlas/uNmINeD/Overviewer where the corresponding map files exist).
 
@@ -59,13 +59,15 @@ Build all declared targets:
 build-all.bat
 ```
 
+For repeat Windows builds, append `--fast` to `build-all.bat` or `build-target.bat <minecraft-version>` to skip `clean` and enable the Gradle build cache. The root `validate-release-windows.bat --parallel` option is the clean full-matrix path that builds Bukkit first and then runs Fabric/NeoForge/Forge concurrently with live progress.
+
 ```bash
 ./build-all.sh
 ```
 
 `./gradlew buildAllForge` remains available and delegates each target to the same JDK-selecting helper instead of running every ForgeGradle generation inside one JVM. Do not run old ForgeGradle targets with the system Java 25 directly: Gradle 7.6.4 cannot run on Java 25 and fails with `Unsupported class file major version 69`.
 
-The deployable Jar-in-Jar artifact is `KOKOTO-WebChat-5.0.0-Forge-<Minecraft>.jar`. ForgeGradle 6/7 targets also produce `KOKOTO-WebChat-5.0.0-Forge-<Minecraft>-slim.jar` as the plain input JAR used to create the final Jar-in-Jar artifact; do not deploy the `-slim.jar` file.
+The deployable Jar-in-Jar artifact is `KOKOTO-WebChat-5.1.0-Forge-<Minecraft>.jar`. ForgeGradle 6/7 targets also produce `KOKOTO-WebChat-5.1.0-Forge-<Minecraft>-slim.jar` as the plain input JAR used to create the final Jar-in-Jar artifact; do not deploy the `-slim.jar` file.
 
 ## Runtime
 

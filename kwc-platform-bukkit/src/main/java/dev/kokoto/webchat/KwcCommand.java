@@ -131,6 +131,14 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
         String gameDisplayBody = stripForDm(commandBodyFromArguments(args, 2), replyMaxLength);
         if (gameDisplayBody.isBlank()) gameDisplayBody = body;
 
+        String targetId = String.valueOf(args[1] == null ? "" : args[1]).trim();
+        if (targetId.regionMatches(true, 0, "dm-", 0, 3)) {
+            return replyDm(sender, player, targetId.substring(3), body, gameDisplayBody);
+        }
+        if (targetId.regionMatches(true, 0, "group-", 0, 6)) {
+            return replyGroup(sender, player, targetId.substring(6), body, gameDisplayBody);
+        }
+
         WebChatServer server = plugin.webServer();
         ChatMessage created = server == null ? null : server.publishReplyFromGame(
                 plugin.displayPlayerName(player), player.getName(), player.getUniqueId().toString(),
@@ -197,7 +205,19 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         sender.sendMessage(green(msg("configReloaded", "KOKOTO WebChat configuration reloaded.")));
+        sendTransportSecurityWarnings(sender);
         return true;
+    }
+
+    private void sendTransportSecurityWarnings(CommandSender sender) {
+        List<String> warnings = plugin.currentTransportSecurityWarnings();
+        if (warnings == null || warnings.isEmpty()) return;
+
+        for (String warning : warnings) {
+            for (String line : TransportSecurityWarnings.splitForCommandOutput(warning)) {
+                if (!line.isBlank()) sender.sendMessage(yellow(line));
+            }
+        }
     }
 
     private boolean status(CommandSender sender) {
@@ -368,17 +388,85 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(red(msg("dmDirectInputRequired", "Direct messages must be typed directly by the player.")));
             return true;
         }
-        String rawDmMessage = stripForDm(message, config.directMessageMaxMessageLength);
-        message = plugin.applyMessageTokens(rawDmMessage);
-        String gameMessage = plugin.applyMessageTokensForGame(rawDmMessage);
+        return sendDirectMessage(sender, player, senderUuid, target, message, null);
+    }
+
+    private boolean replyDm(CommandSender sender, Player player, String rawId, String body, String gameDisplayBody) {
+        ConfigValues config = plugin.configValues();
+        if (config == null || !config.directMessageEnabled || !config.directMessageAllowGameSend
+                || plugin.directMessages() == null || !plugin.directMessages().available()
+                || !PermissionCompat.has(sender, "kwc.dm")) {
+            sender.sendMessage(red(msg("replyTargetNotFound", "The referenced message could not be found.")));
+            return true;
+        }
+        long messageId = parsePrivateReplyId(rawId);
+        String senderUuid = player.getUniqueId().toString();
+        DirectMessageMessage original = messageId <= 0L ? null : plugin.directMessages().messageForUser(senderUuid, messageId);
+        if (original == null) {
+            sender.sendMessage(red(msg("replyTargetNotFound", "The referenced message could not be found.")));
+            return true;
+        }
+        String otherUuid = plugin.directMessages().otherParticipantUuid(original.threadId, senderUuid);
+        PlayerIdentity target = plugin.storage().findKnownPlayerByUuid(otherUuid);
+        if (target == null) target = new PlayerIdentity(otherUuid, "", "");
+        return sendDirectMessage(sender, player, senderUuid, target, body,
+                stripForDm(gameDisplayBody, config.directMessageMaxMessageLength), original.id);
+    }
+
+    private boolean replyGroup(CommandSender sender, Player player, String rawId, String body, String gameDisplayBody) {
+        ConfigValues config = plugin.configValues();
+        if (config == null || !config.groupChatEnabled || plugin.groupChats() == null
+                || !PermissionCompat.has(sender, "kwc.group")) {
+            sender.sendMessage(red(msg("replyTargetNotFound", "The referenced message could not be found.")));
+            return true;
+        }
+        long messageId = parsePrivateReplyId(rawId);
+        String senderUuid = player.getUniqueId().toString();
+        GroupMessage original = messageId <= 0L ? null : plugin.groupChats().messageForUser(senderUuid, messageId);
+        if (original == null) {
+            sender.sendMessage(red(msg("replyTargetNotFound", "The referenced message could not be found.")));
+            return true;
+        }
+        GroupRoom room = findGroupRoomForCommand(senderUuid, original.roomId);
+        if (room == null) {
+            sender.sendMessage(red(msg("replyTargetNotFound", "The referenced message could not be found.")));
+            return true;
+        }
+        return groupSend(sender, player, senderUuid, room, body,
+                stripForDm(gameDisplayBody, config.groupChatMaxMessageLength), original.id);
+    }
+
+    private boolean sendDirectMessage(CommandSender sender, Player player, String senderUuid, PlayerIdentity target,
+                                      String rawMessage, String gameDisplayOverride) {
+        return sendDirectMessage(sender, player, senderUuid, target, rawMessage, gameDisplayOverride, 0L);
+    }
+
+    private boolean sendDirectMessage(CommandSender sender, Player player, String senderUuid, PlayerIdentity target,
+                                      String rawMessage, String gameDisplayOverride, long replyToId) {
+        ConfigValues config = plugin.configValues();
+        if (target == null || target.uuid == null || target.uuid.isBlank()) {
+            sender.sendMessage(red(msg("dmPlayerNotFound", "Player not found. The player must have joined at least once.")));
+            return true;
+        }
+        RemotePlayerRef remoteTarget = RemotePlayerRef.parse(target.uuid);
+        ServerRelay relay = plugin.serverRelay();
+        if (remoteTarget != null && (relay == null || !relay.canRouteDirectMessage(remoteTarget.serverId))) {
+            sender.sendMessage(red(msg("dmRemoteServerUnavailable", "The target server is unavailable.")));
+            return true;
+        }
+        String rawDmMessage = stripForDm(rawMessage, config.directMessageMaxMessageLength);
+        String message = plugin.applyMessageTokens(rawDmMessage);
+        String gameMessage = gameDisplayOverride == null || gameDisplayOverride.isBlank()
+                ? plugin.applyMessageTokensForGame(rawDmMessage)
+                : gameDisplayOverride;
         if (message.isBlank()) {
             sender.sendMessage(red(msg("dmEmpty", "Message is empty.")));
             return true;
         }
         String relayId = remoteTarget == null ? "" : relay.createDirectMessageRelayId();
         DirectMessageStore.SendResult result = remoteTarget == null
-                ? plugin.directMessages().send(senderUuid, target.uuid, message)
-                : plugin.directMessages().sendPendingRemote(senderUuid, target.uuid, message, relayId, remoteTarget.serverId, "");
+                ? plugin.directMessages().send(senderUuid, target.uuid, message, replyToId)
+                : plugin.directMessages().sendPendingRemote(senderUuid, target.uuid, message, relayId, remoteTarget.serverId, "", replyToId);
         if (!result.ok) {
             sender.sendMessage(red(msg("dmFailed", "Direct message failed: {error}", "error", result.error)));
             return true;
@@ -399,7 +487,10 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
                             remoteTarget.serverId, remoteTarget.playerUuid,
                             target.username == null ? "" : target.username,
                             target.displayName == null ? "" : target.displayName,
-                            message, gameMessage)
+                            message, gameMessage,
+                            result.message == null ? "" : result.message.replyToRelayId,
+                            result.message == null ? "" : result.message.replyToSender,
+                            result.message == null ? "" : result.message.replyToPreview)
                     .whenComplete((delivery, error) -> {
                         boolean delivered = error == null && delivery != null && delivery.delivered;
                         String errorCode = delivered ? "" : (delivery == null ? "dm_transport_error" : delivery.error);
@@ -416,10 +507,24 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
                         }
                     });
         } else {
-            notifyOnlineRecipient(player, target, gameMessage);
+            notifyOnlineRecipient(player, target, gameMessage, result.message);
         }
-        sendTokenGameLines(sender, sentEchoLineForGame(player, target.label(), gameMessage));
+        sendPrivateInteractiveWithReply(sender,
+                sentEchoLineForGame(player, target.label(), gameMessage),
+                target.label(), msg("dmClickHint", "Click to write a DM to {player}", "player", target.label()),
+                "/kchat dm " + dmCommandTarget(target) + " ",
+                colorizeForGame(trim(gameMessage, 100)), msg("privateReplyClickHint", "Click the message to reply"),
+                "/kchat reply dm-" + messageId + " ",
+                result.message == null ? 0L : result.message.replyToId,
+                result.message == null ? "" : result.message.replyToRelayId,
+                result.message == null ? "" : result.message.replyToSender,
+                result.message == null ? "" : result.message.replyToPreview);
         return true;
+    }
+
+    private static long parsePrivateReplyId(String raw) {
+        try { return Long.parseLong(String.valueOf(raw == null ? "" : raw).trim()); }
+        catch (NumberFormatException ignored) { return 0L; }
     }
 
     private PlayerIdentity findDirectMessageTarget(String rawInput) {
@@ -483,44 +588,53 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(red(msg("groupDirectInputRequired", "Group messages must be typed directly by the player.")));
             return true;
         }
+        String originalGroupTail = groupCommandTailFromOriginal(playerInputCommand);
 
         if (args.length < 2 || "list".equalsIgnoreCase(args[1]) || "rooms".equalsIgnoreCase(args[1])) {
             return groupListShow(sender, senderUuid);
         }
         if ("read".equalsIgnoreCase(args[1]) || "view".equalsIgnoreCase(args[1])) {
-            return groupRead(sender, senderUuid, args);
+            return groupRead(sender, senderUuid, stripLeadingWord(originalGroupTail, args[1]));
         }
         if ("next".equalsIgnoreCase(args[1]) || "prev".equalsIgnoreCase(args[1]) || "previous".equalsIgnoreCase(args[1])) {
             return groupReadMove(sender, senderUuid, args[1].toLowerCase(java.util.Locale.ROOT).startsWith("p") ? -1 : 1);
         }
         if ("send".equalsIgnoreCase(args[1])) {
-            if (args.length < 4) {
-                sender.sendMessage(yellow("/kchat group send <room> <message>"));
-                return true;
-            }
-            GroupRoom room = findGroupRoomForCommand(senderUuid, args[2]);
-            if (room == null || room.id == null || room.id.isBlank()) {
+            GroupCommandTargetResolver.Result target = resolveGroupCommandTarget(senderUuid, stripLeadingWord(originalGroupTail, args[1]));
+            if (target == null || target.room == null || target.room.id == null || target.room.id.isBlank()) {
                 sender.sendMessage(red(msg("groupRoomNotFound", "Group chat room not found or you are not a member.")));
                 return true;
             }
-            return groupSend(sender, player, senderUuid, room, groupMessageBodyFromOriginalCommand(playerInputCommand, args, 3));
+            if (target.remainder.isBlank()) {
+                sender.sendMessage(yellow("/kchat group send <room> <message>"));
+                return true;
+            }
+            return groupSend(sender, player, senderUuid, target.room, target.remainder);
         }
 
-        if (args.length < 3) {
+        GroupCommandTargetResolver.Result target = resolveGroupCommandTarget(senderUuid, originalGroupTail);
+        if (target == null || target.room == null || target.room.id == null || target.room.id.isBlank()) {
+            sender.sendMessage(red(msg("groupRoomNotFound", "Group chat room not found or you are not a member.")));
+            return true;
+        }
+        if (target.remainder.isBlank()) {
             sender.sendMessage(yellow("/kchat group <room> <message>"));
             sender.sendMessage(yellow("/kchat group list"));
             sender.sendMessage(yellow("/kchat group read <room> [pageSize]"));
             return true;
         }
-        GroupRoom room = findGroupRoomForCommand(senderUuid, args[1]);
-        if (room == null || room.id == null || room.id.isBlank()) {
-            sender.sendMessage(red(msg("groupRoomNotFound", "Group chat room not found or you are not a member.")));
-            return true;
-        }
-        return groupSend(sender, player, senderUuid, room, groupMessageBodyFromOriginalCommand(playerInputCommand, args, 2));
+        return groupSend(sender, player, senderUuid, target.room, target.remainder);
     }
 
     private boolean groupSend(CommandSender sender, Player player, String senderUuid, GroupRoom room, String message) {
+        return groupSend(sender, player, senderUuid, room, message, null);
+    }
+
+    private boolean groupSend(CommandSender sender, Player player, String senderUuid, GroupRoom room, String message, String gameDisplayOverride) {
+        return groupSend(sender, player, senderUuid, room, message, gameDisplayOverride, 0L);
+    }
+
+    private boolean groupSend(CommandSender sender, Player player, String senderUuid, GroupRoom room, String message, String gameDisplayOverride, long replyToId) {
         ConfigValues config = plugin.configValues();
         if (message == null) {
             sender.sendMessage(red(msg("groupDirectInputRequired", "Group messages must be typed directly by the player.")));
@@ -528,12 +642,14 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
         }
         String rawGroupMessage = stripForDm(message, config == null ? 500 : config.groupChatMaxMessageLength);
         message = plugin.applyMessageTokens(rawGroupMessage);
-        String gameMessage = plugin.applyMessageTokensForGame(rawGroupMessage);
+        String gameMessage = gameDisplayOverride == null || gameDisplayOverride.isBlank()
+                ? plugin.applyMessageTokensForGame(rawGroupMessage)
+                : gameDisplayOverride;
         if (message.isBlank()) {
             sender.sendMessage(red(msg("groupEmpty", "Message is empty.")));
             return true;
         }
-        GroupChatStore.SendResult result = plugin.groupChats().send(senderUuid, room.id, message);
+        GroupChatStore.SendResult result = plugin.groupChats().send(senderUuid, room.id, message, replyToId);
         if (!result.ok) {
             sender.sendMessage(red(msg("groupFailed", "Group chat failed: {error}", "error", result.error)));
             return true;
@@ -543,10 +659,18 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             server.publishGroupChatUpdate(room.id);
             server.dispatchWebPushGroupMessage(senderUuid, plugin.displayPlayerName(player), room, result.message, room.id);
         }
-        sendTokenGameLines(sender, ChatColor.GRAY + colorizeForGame(msg("groupSentEcho", "to group {room}: {message}",
-                "room", ChatColor.RESET + room.name + ChatColor.GRAY,
-                "message", ChatColor.RESET + gameMessage)));
-        notifyOnlineGroupMembers(player, room.id, room.name, gameMessage);
+        sendPrivateInteractiveWithReply(sender,
+                ChatColor.GRAY + colorizeForGame(msg("groupSentEcho", "to group {room}: {message}",
+                        "room", ChatColor.RESET + room.name + ChatColor.GRAY,
+                        "message", ChatColor.RESET + gameMessage)),
+                room.name, msg("groupClickHint", "Click to write to group {room}", "room", room.name),
+                "/kchat group " + shortRoomId(room.id) + " ",
+                colorizeForGame(trim(gameMessage, 100)), msg("privateReplyClickHint", "Click the message to reply"),
+                "/kchat reply group-" + (result.message == null ? 0L : result.message.id) + " ",
+                result.message == null ? 0L : result.message.replyToId, "",
+                result.message == null ? "" : result.message.replyToSender,
+                result.message == null ? "" : result.message.replyToPreview);
+        notifyOnlineGroupMembers(player, room.id, room.name, gameMessage, result.message);
         return true;
     }
 
@@ -570,22 +694,20 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    private boolean groupRead(CommandSender sender, String senderUuid, String[] args) {
-        if (args.length < 3) {
-            sender.sendMessage(yellow("/kchat group read <room> [pageSize]"));
-            return true;
-        }
-        GroupRoom room = findGroupRoomForCommand(senderUuid, args[2]);
-        if (room == null || room.id == null || room.id.isBlank()) {
+    private boolean groupRead(CommandSender sender, String senderUuid, String targetText) {
+        GroupCommandTargetResolver.Result target = resolveGroupCommandTarget(senderUuid, targetText);
+        if (target == null || target.room == null || target.room.id == null || target.room.id.isBlank()) {
             sender.sendMessage(red(msg("groupRoomNotFound", "Group chat room not found or you are not a member.")));
             return true;
         }
+        GroupRoom room = target.room;
         GroupReadCursor cursor = new GroupReadCursor();
         cursor.roomId = room.id;
         cursor.roomName = room.name;
         cursor.pageSize = 20;
-        if (args.length >= 4) {
-            try { cursor.pageSize = Integer.parseInt(args[3]); } catch (NumberFormatException ignored) {}
+        if (!target.remainder.isBlank()) {
+            String page = target.remainder.split("\\s+", 2)[0];
+            try { cursor.pageSize = Integer.parseInt(page); } catch (NumberFormatException ignored) {}
         }
         cursor.pageSize = Math.max(1, Math.min(100, cursor.pageSize));
         cursor.beforeId = 0L;
@@ -647,11 +769,22 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             String senderName = message.senderUuid != null && message.senderUuid.equalsIgnoreCase(senderUuid)
                     ? msg("dmMe", "me")
                     : formatCommandPlayer(message.senderDisplayName, message.senderUsername, message.senderUuid);
+            if ("member_join".equals(message.eventType) || "member_leave".equals(message.eventType)) {
+                String key = "member_leave".equals(message.eventType) ? "groupMemberLeft" : "groupMemberJoined";
+                String fallback = "member_leave".equals(message.eventType) ? "{player} left group {room}." : "{player} joined group {room}.";
+                sender.sendMessage(ChatColor.DARK_GRAY + "#" + message.id + " " + ChatColor.GRAY
+                        + msg(key, fallback, "player", senderName, "room", cursor.roomName));
+                continue;
+            }
             String body = transformForCommandDisplay((sender instanceof Player) ? (Player) sender : null, message.body, 0);
-            sender.sendMessage(ChatColor.DARK_GRAY + "#" + message.id + " "
-                    + ChatColor.RESET + senderName
-                    + ChatColor.DARK_GRAY + ": "
-                    + ChatColor.RESET + body);
+            sendPrivateInteractiveWithReply(sender,
+                    ChatColor.DARK_GRAY + "#" + message.id + " " + ChatColor.RESET + senderName
+                            + ChatColor.DARK_GRAY + ": " + ChatColor.RESET + body,
+                    senderName, msg("groupClickHint", "Click to write to group {room}", "room", cursor.roomName),
+                    "/kchat group " + shortRoomId(cursor.roomId) + " ",
+                    body, msg("privateReplyClickHint", "Click the message to reply"),
+                    "/kchat reply group-" + message.id + " ",
+                    message.replyToId, "", message.replyToSender, message.replyToPreview);
         }
         sender.sendMessage(ChatColor.GRAY + msg("groupReadNavHint", "Use /kchat group prev for newer messages, /kchat group next for older messages."));
         sender.sendMessage(ChatColor.GRAY + msg("groupReadHint", "Send: /kchat group {room} <message>", "room", cursor.roomName));
@@ -672,6 +805,28 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             if (room != null && room.member && room.name != null && room.name.equalsIgnoreCase(needle)) return room;
         }
         return null;
+    }
+
+    private GroupCommandTargetResolver.Result resolveGroupCommandTarget(String userUuid, String input) {
+        return GroupCommandTargetResolver.resolve(plugin.groupChats().listRooms(userUuid, 200), input);
+    }
+
+    private String groupCommandTailFromOriginal(String original) {
+        String text = String.valueOf(original == null ? "" : original).trim();
+        if (text.startsWith("/")) text = text.substring(1);
+        String[] parts = text.split("\\s+", 3);
+        if (parts.length < 3) return "";
+        if (!isKwcCommandRoot(parts[0].toLowerCase(java.util.Locale.ROOT))) return "";
+        if (!("group".equalsIgnoreCase(parts[1]) || "gc".equalsIgnoreCase(parts[1]))) return "";
+        return parts[2].trim();
+    }
+
+    private String stripLeadingWord(String value, String expected) {
+        String text = String.valueOf(value == null ? "" : value).trim();
+        if (text.isBlank()) return "";
+        String[] parts = text.split("\\s+", 2);
+        if (!parts[0].equalsIgnoreCase(String.valueOf(expected == null ? "" : expected))) return text;
+        return parts.length < 2 ? "" : parts[1].trim();
     }
 
     private String groupMessageBodyFromOriginalCommand(String original, String[] args, int firstMessageArgIndex) {
@@ -777,12 +932,13 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
         }
 
         if ("read".equals(action) || "view".equals(action)) {
-            String[] parts = normalized.split("\\s+", 5);
+            String[] parts = normalized.split("\\s+", 4);
             if (parts.length < 3 || !parts[2].equalsIgnoreCase(args[1])) return false;
             if (args.length < 3) return parts.length == 3;
-            if (parts.length < 4 || !parts[3].equalsIgnoreCase(args[2])) return false;
-            if (args.length < 4) return true;
-            return parts.length >= 5 && parts[4].equalsIgnoreCase(args[3]);
+            // The room name may itself span multiple Bukkit args. The captured command
+            // belongs to this immediate player dispatch, so keep the full original tail
+            // and let GroupCommandTargetResolver determine the room boundary.
+            return parts.length >= 4;
         }
 
         String[] parts = normalized.split("\\s+", 4);
@@ -992,10 +1148,16 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
                     : formatCommandPlayer(message.senderDisplayName, message.senderUsername, message.senderUuid);
             if (senderName == null || senderName.isBlank()) senderName = message.senderUuid;
             String body = transformForCommandDisplay((sender instanceof Player) ? (Player) sender : null, message.body, 0);
-            sender.sendMessage(ChatColor.DARK_GRAY + "#" + message.id + " "
-                    + ChatColor.RESET + senderName
-                    + ChatColor.DARK_GRAY + ": "
-                    + ChatColor.RESET + body);
+            PlayerIdentity conversationTarget = plugin.storage().findKnownPlayerByUuid(cursor.otherUuid);
+            if (conversationTarget == null) conversationTarget = new PlayerIdentity(cursor.otherUuid, cursor.otherUsername, cursor.otherDisplayName);
+            sendPrivateInteractiveWithReply(sender,
+                    ChatColor.DARK_GRAY + "#" + message.id + " " + ChatColor.RESET + senderName
+                            + ChatColor.DARK_GRAY + ": " + ChatColor.RESET + body,
+                    senderName, msg("dmClickHint", "Click to write a DM to {player}", "player", playerLabel),
+                    "/kchat dm " + dmCommandTarget(conversationTarget) + " ",
+                    body, msg("privateReplyClickHint", "Click the message to reply"),
+                    "/kchat reply dm-" + message.id + " ",
+                    message.replyToId, message.replyToRelayId, message.replyToSender, message.replyToPreview);
         }
         sender.sendMessage(ChatColor.GRAY + msg("dmReadNavHint", "Use /kchat dm prev for newer messages, /kchat dm next for older messages."));
         sender.sendMessage(ChatColor.GRAY + msg("dmHideHint", "Hide one from your view: /kchat dm hide <messageId>"));
@@ -1080,35 +1242,104 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
                 "message", ChatColor.RESET + body);
     }
 
-    private void notifyOnlineRecipient(Player sender, PlayerIdentity target, String message) {
+    private void notifyOnlineRecipient(Player sender, PlayerIdentity target, String message, DirectMessageMessage stored) {
         ConfigValues config = plugin.configValues();
         if (config == null || !config.directMessageNotifyOnMessage) return;
         try {
             Player recipient = plugin.getServer().getPlayer(UUID.fromString(target.uuid));
             if (recipient == null || !recipient.isOnline()) return;
             String senderName = plugin.displayPlayerName(sender);
-            sendTokenGameLines(recipient, incomingLineForGame(senderName, message));
+            String line = incomingLineForGame(senderName, message);
+            String displayBody = colorizeForGame(trim(message, 100));
+            PlayerIdentity replyTarget = new PlayerIdentity(sender.getUniqueId().toString(), sender.getName(), senderName);
+            sendPrivateInteractiveWithReply(recipient, line, senderName,
+                    msg("dmClickHint", "Click to write a DM to {player}", "player", senderName),
+                    "/kchat dm " + dmCommandTarget(replyTarget) + " ",
+                    displayBody, msg("privateReplyClickHint", "Click the message to reply"),
+                    "/kchat reply dm-" + (stored == null ? 0L : stored.id) + " ",
+                    stored == null ? 0L : stored.replyToId,
+                    stored == null ? "" : stored.replyToRelayId,
+                    stored == null ? "" : stored.replyToSender,
+                    stored == null ? "" : stored.replyToPreview);
         } catch (IllegalArgumentException ignored) {
         }
     }
 
-    private void notifyOnlineGroupMembers(Player sender, String roomId, String roomName, String message) {
+    private void notifyOnlineGroupMembers(Player sender, String roomId, String roomName, String message, GroupMessage stored) {
         if (plugin.groupChats() == null) return;
         String senderUuid = sender.getUniqueId().toString();
         String senderName = plugin.displayPlayerName(sender);
         String body = colorizeForGame(trim(message, 100));
+        String roomLabel = String.valueOf(roomName == null ? "" : roomName);
         String line = ChatColor.AQUA + msg("groupIncoming", "Group {room} from {player}: {message}",
-                "room", ChatColor.RESET + String.valueOf(roomName == null ? "" : roomName) + ChatColor.AQUA,
+                "room", ChatColor.RESET + roomLabel + ChatColor.AQUA,
                 "player", ChatColor.RESET + senderName + ChatColor.AQUA,
                 "message", ChatColor.RESET + body);
         for (String memberUuid : plugin.groupChats().memberUuids(roomId)) {
             if (memberUuid == null || memberUuid.equalsIgnoreCase(senderUuid)) continue;
             try {
                 Player recipient = plugin.getServer().getPlayer(UUID.fromString(memberUuid));
-                if (recipient != null && recipient.isOnline()) sendTokenGameLines(recipient, line);
+                if (recipient != null && recipient.isOnline()) {
+                    sendPrivateInteractiveWithReply(recipient, line, roomLabel,
+                            msg("groupClickHint", "Click to write to group {room}", "room", roomLabel),
+                            "/kchat group " + shortRoomId(roomId) + " ",
+                            body, msg("privateReplyClickHint", "Click the message to reply"),
+                            "/kchat reply group-" + (stored == null ? 0L : stored.id) + " ",
+                            stored == null ? 0L : stored.replyToId, "",
+                            stored == null ? "" : stored.replyToSender,
+                            stored == null ? "" : stored.replyToPreview);
+                }
             } catch (IllegalArgumentException ignored) {
             }
         }
+    }
+
+    private void sendPrivateInteractiveWithReply(CommandSender recipient, String text, String senderTarget, String senderHover,
+                                                 String senderCommand, String replyTarget, String replyHover, String replyCommand,
+                                                 long replyToId, String replyToStableId, String replyToSender, String replyToPreview) {
+        if (!(recipient instanceof Player player) || plugin.platformAdapter() == null) {
+            if (recipient != null) recipient.sendMessage(text);
+            return;
+        }
+        WebChatServer server = plugin.webServer();
+        if (server == null) {
+            sendPrivateInteractive(recipient, text, senderTarget, senderHover, senderCommand, replyTarget, replyHover, replyCommand);
+            return;
+        }
+        server.sendPrivateClickableGameMessage(java.util.List.of(player.getUniqueId()), privateMessageId(replyCommand),
+                text, replyTarget,
+                senderTarget, senderHover, senderCommand,
+                replyToId, replyToStableId, replyToSender, replyToPreview);
+    }
+
+    private static String privateMessageId(String replyCommand) {
+        String command = String.valueOf(replyCommand == null ? "" : replyCommand).trim();
+        String prefix = "/kchat reply ";
+        if (!command.regionMatches(true, 0, prefix, 0, prefix.length())) return "";
+        String tail = command.substring(prefix.length()).trim();
+        int space = tail.indexOf(' ');
+        return space < 0 ? tail : tail.substring(0, space);
+    }
+
+    private void sendPrivateInteractive(CommandSender recipient, String text, String senderTarget, String senderHover,
+                                        String senderCommand, String replyTarget, String replyHover, String replyCommand) {
+        if (!(recipient instanceof Player player) || plugin.platformAdapter() == null) {
+            if (recipient != null) recipient.sendMessage(text);
+            return;
+        }
+        plugin.platformAdapter().sendInteractiveMessage(List.of(player.getUniqueId()), new PlatformGameMessage(
+                text, true, senderTarget, senderHover, senderCommand, replyTarget, replyHover, replyCommand));
+    }
+
+    private String dmCommandTarget(PlayerIdentity identity) {
+        if (identity == null) return "";
+        RemotePlayerRef remote = RemotePlayerRef.parse(identity.uuid);
+        if (remote != null) {
+            String username = String.valueOf(identity.username == null ? "" : identity.username).trim();
+            return !username.isBlank() ? username + "@" + remote.serverId : remote.key;
+        }
+        String username = String.valueOf(identity.username == null ? "" : identity.username).trim();
+        return !username.isBlank() ? username : String.valueOf(identity.uuid == null ? "" : identity.uuid).trim();
     }
 
     private void sendTokenGameLines(CommandSender recipient, String protectedLine) {

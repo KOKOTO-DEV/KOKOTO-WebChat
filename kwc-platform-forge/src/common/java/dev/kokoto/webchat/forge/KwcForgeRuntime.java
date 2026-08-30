@@ -71,6 +71,7 @@ public final class KwcForgeRuntime {
             installDefaultFilterLists();
             ForgeYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile());
             reconcileConfigMigration();
+            provisionRelaySharedSecrets();
             return ForgeConfigValuesLoader.load(ForgeYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile()));
         } catch (Exception ex) {
             warn("BlueMap adapter config snapshot could not be loaded: " + ex.getMessage());
@@ -107,6 +108,7 @@ public final class KwcForgeRuntime {
             for (String lang : List.of("en-US", "ko-KR", "ja-JP", "zh-CN")) installDefault("lang/" + lang + ".yml");
             ForgeYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile());
             reconcileConfigMigration();
+            provisionRelaySharedSecrets();
             this.configValues = ForgeConfigValuesLoader.load(ForgeYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile()));
         } catch (Exception ex) {
             warn("KOKOTO WebChat config load failed; services were not started: " + ex.getMessage());
@@ -129,6 +131,10 @@ public final class KwcForgeRuntime {
     }
 
     private void startServices() {
+        startServices(true);
+    }
+
+    private void startServices(boolean emitSecurityWarnings) {
         storage = new ForgeStorage(this);
         storage.load();
         enforceCurrentSessionPolicies("startup/reload");
@@ -149,16 +155,21 @@ public final class KwcForgeRuntime {
         new UnminedAdapter(new ForgeUnminedAdapterHost(this)).install();
         new OverviewerAdapter(new ForgeOverviewerAdapterHost(this)).install();
         ensureEmojiDirectory();
-        webServer = new WebChatServer(new ForgeWebChatHost(this));
-        try { webServer.start(); }
-        catch (Exception ex) { warn("Failed to start HTTP chat server: " + ex); webServer = null; }
         serverRelay = new ServerRelay(new ForgeRelayHost(this));
-        serverRelay.start();
+        webServer = new WebChatServer(new ForgeWebChatHost(this));
+        try { webServer.start(false); }
+        catch (Exception ex) { warn("Failed to start HTTP chat server: " + ex); webServer = null; }
+        serverRelay.start(false);
+        if (emitSecurityWarnings) logReloadTransportSecurityWarnings();
         if (configValues.updateCheckEnabled) {
             updateChecker = new PortableUpdateChecker(version(), platformAdapter, langManager, this::info, this::warn);
             updateChecker.start();
         }
         publishAnnouncement("server-start", Map.of("server", serverName()));
+    }
+
+    public void logReloadTransportSecurityWarnings() {
+        TransportSecurityWarnings.logAll(configValues, langManager, CoreLogger.of(this::info, this::warn));
     }
 
     public synchronized boolean reload() {
@@ -168,6 +179,7 @@ public final class KwcForgeRuntime {
         try { ForgeYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile()); }
         catch (Exception ex) { warn("Reload rejected: " + ex.getMessage()); return false; }
         reconcileConfigMigration();
+        provisionRelaySharedSecrets();
         ForgeYamlConfiguration loaded;
         try { loaded = ForgeYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile()); }
         catch (Exception ex) { warn("Reload rejected after config migration: " + ex.getMessage()); return false; }
@@ -180,7 +192,7 @@ public final class KwcForgeRuntime {
         platformAdapter = new ForgePlatformAdapter(this);
         conversationStoreHost = new ForgeConversationStoreHost(this);
         if (configValues.pluginEnabled) {
-            startServices();
+            startServices(false);
         } else {
             new SquaremapAdapter(new ForgeSquaremapAdapterHost(this)).install();
             new DynmapAdapter(new ForgeDynmapAdapterHost(this)).install();
@@ -189,6 +201,9 @@ public final class KwcForgeRuntime {
             new OverviewerAdapter(new ForgeOverviewerAdapterHost(this)).install();
             info("KOKOTO WebChat disabled by reloaded config.");
         }
+        // Emit transport warnings from the reload lifecycle itself so command-bridge
+        // differences cannot suppress HTTP listener/peer warnings.
+        logReloadTransportSecurityWarnings();
         requestBlueMapLightReload();
         return true;
     }
@@ -321,6 +336,18 @@ public final class KwcForgeRuntime {
         } catch (Exception ex) { warn("Failed to create emoji directory: " + ex.getMessage()); }
     }
 
+
+    private void provisionRelaySharedSecrets() {
+        try {
+            ForgeYamlConfiguration yaml = ForgeYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile());
+            RelaySharedSecretProvisioner.provision(
+                    dataDirectory.resolve("config.yml"), yaml.getMapList("server-relay.groups"),
+                    CoreLogger.of(this::info, this::warn));
+        } catch (Exception ex) {
+            warn("Failed to provision Relay v2 group shared-secret: " + ex.getMessage());
+        }
+    }
+
     private void reconcileConfigMigration() {
         try {
             PortableConfigMigration.reconcile(
@@ -384,7 +411,7 @@ public final class KwcForgeRuntime {
     public ServerRelay serverRelay() { return serverRelay; }
     public WebChatServer webServer() { return webServer; }
 
-    public String version() { return "5.0.0"; }
+    public String version() { return "5.1.0"; }
 
     public String serverName() {
         if (configValues != null && configValues.serverRelayServerName != null && !configValues.serverRelayServerName.isBlank()) return configValues.serverRelayServerName;

@@ -120,6 +120,10 @@ public class DirectMessageStore {
                 msg.deliveryError = String.valueOf(m.getOrDefault("deliveryError", ""));
                 msg.relayId = String.valueOf(m.getOrDefault("relayId", "")).trim();
                 msg.clientMessageId = String.valueOf(m.getOrDefault("clientMessageId", "")).trim();
+                msg.replyToId = parseLong(m.get("replyToId"), 0L);
+                msg.replyToSender = String.valueOf(m.getOrDefault("replyToSender", ""));
+                msg.replyToPreview = String.valueOf(m.getOrDefault("replyToPreview", ""));
+                msg.replyToRelayId = String.valueOf(m.getOrDefault("replyToRelayId", "")).trim();
                 if (msg.id > 0 && !msg.threadId.isBlank() && !msg.senderUuid.isBlank()) {
                     jsonlMessages.put(msg.id, msg);
                     jsonlNextMessageId = Math.max(jsonlNextMessageId, msg.id + 1L);
@@ -184,6 +188,10 @@ public class DirectMessageStore {
             m.put("deliveryError", msg.deliveryError == null ? "" : msg.deliveryError);
             m.put("relayId", msg.relayId == null ? "" : msg.relayId);
             m.put("clientMessageId", msg.clientMessageId == null ? "" : msg.clientMessageId);
+            m.put("replyToId", Math.max(0L, msg.replyToId));
+            m.put("replyToSender", msg.replyToSender == null ? "" : msg.replyToSender);
+            m.put("replyToPreview", msg.replyToPreview == null ? "" : msg.replyToPreview);
+            m.put("replyToRelayId", msg.replyToRelayId == null ? "" : msg.replyToRelayId);
             lines.add(JsonUtil.obj(m));
         }
         for (String key : jsonlHiddenMessages) {
@@ -221,6 +229,10 @@ public class DirectMessageStore {
         String deliveryError = "";
         String relayId = "";
         String clientMessageId = "";
+        long replyToId = 0L;
+        String replyToSender = "";
+        String replyToPreview = "";
+        String replyToRelayId = "";
     }
 
     private void initSchema() throws SQLException {
@@ -245,8 +257,16 @@ public class DirectMessageStore {
                     "sender_uuid TEXT NOT NULL," +
                     "body TEXT NOT NULL," +
                     "created_at INTEGER NOT NULL," +
-                    "hidden INTEGER NOT NULL DEFAULT 0" +
+                    "hidden INTEGER NOT NULL DEFAULT 0," +
+                    "reply_to_id INTEGER NOT NULL DEFAULT 0," +
+                    "reply_to_sender TEXT NOT NULL DEFAULT ''," +
+                    "reply_to_preview TEXT NOT NULL DEFAULT ''," +
+                    "reply_to_relay_id TEXT NOT NULL DEFAULT ''" +
                     ")");
+            addColumnIfMissing(st, "dm_messages", "reply_to_id", "INTEGER NOT NULL DEFAULT 0");
+            addColumnIfMissing(st, "dm_messages", "reply_to_sender", "TEXT NOT NULL DEFAULT ''");
+            addColumnIfMissing(st, "dm_messages", "reply_to_preview", "TEXT NOT NULL DEFAULT ''");
+            addColumnIfMissing(st, "dm_messages", "reply_to_relay_id", "TEXT NOT NULL DEFAULT ''");
             st.execute("CREATE INDEX IF NOT EXISTS idx_dm_messages_thread ON dm_messages(thread_id, id)");
             st.execute("CREATE INDEX IF NOT EXISTS idx_dm_messages_created ON dm_messages(created_at)");
             st.execute("CREATE TABLE IF NOT EXISTS dm_thread_state (" +
@@ -479,6 +499,10 @@ public class DirectMessageStore {
         m.deliveryError = msg.deliveryError == null ? "" : msg.deliveryError;
         m.relayId = msg.relayId == null ? "" : msg.relayId;
         m.clientMessageId = msg.clientMessageId == null ? "" : msg.clientMessageId;
+        m.replyToId = Math.max(0L, msg.replyToId);
+        m.replyToSender = msg.replyToSender == null ? "" : msg.replyToSender;
+        m.replyToPreview = msg.replyToPreview == null ? "" : msg.replyToPreview;
+        m.replyToRelayId = msg.replyToRelayId == null ? "" : msg.replyToRelayId;
         applyReadReceiptState(m);
         return m;
     }
@@ -553,20 +577,48 @@ public class DirectMessageStore {
         public String targetServerId = "";
     }
 
+    private static final class ReplyMeta {
+        long id;
+        String sender = "";
+        String preview = "";
+        String relayId = "";
+    }
+
     public synchronized SendResult send(String senderUuid, String targetUuid, String body) {
-        return sendWithDelivery(senderUuid, targetUuid, body, "delivered", "", "", "");
+        return send(senderUuid, targetUuid, body, 0L);
+    }
+
+    public synchronized SendResult send(String senderUuid, String targetUuid, String body, long replyToId) {
+        return sendWithDelivery(senderUuid, targetUuid, body, "delivered", "", "", "", replyToId, "", "", "");
     }
 
     public synchronized SendResult sendWithClientMessageId(String senderUuid, String targetUuid, String body, String clientMessageId) {
-        return sendWithDelivery(senderUuid, targetUuid, body, "delivered", "", "", clientMessageId);
+        return sendWithClientMessageId(senderUuid, targetUuid, body, clientMessageId, 0L);
+    }
+
+    public synchronized SendResult sendWithClientMessageId(String senderUuid, String targetUuid, String body,
+                                                            String clientMessageId, long replyToId) {
+        return sendWithDelivery(senderUuid, targetUuid, body, "delivered", "", "", clientMessageId, replyToId, "", "", "");
     }
 
     public synchronized SendResult sendPendingRemote(String senderUuid, String targetUuid, String body,
                                                      String relayId, String targetServerId, String clientMessageId) {
-        return sendWithDelivery(senderUuid, targetUuid, body, "pending", relayId, targetServerId, clientMessageId);
+        return sendPendingRemote(senderUuid, targetUuid, body, relayId, targetServerId, clientMessageId, 0L);
+    }
+
+    public synchronized SendResult sendPendingRemote(String senderUuid, String targetUuid, String body,
+                                                     String relayId, String targetServerId, String clientMessageId,
+                                                     long replyToId) {
+        return sendWithDelivery(senderUuid, targetUuid, body, "pending", relayId, targetServerId, clientMessageId,
+                replyToId, "", "", "");
     }
 
     public synchronized SendResult receiveRelayed(String senderUuid, String targetUuid, String body, String relayId) {
+        return receiveRelayed(senderUuid, targetUuid, body, relayId, "", "", "");
+    }
+
+    public synchronized SendResult receiveRelayed(String senderUuid, String targetUuid, String body, String relayId,
+                                                   String replyToRelayId, String replyToSender, String replyToPreview) {
         String cleanRelayId = cleanDeliveryId(relayId, 180);
         if (!cleanRelayId.isBlank()) {
             SendResult existing = resultByRelayId(senderUuid, targetUuid, cleanRelayId);
@@ -575,13 +627,17 @@ public class DirectMessageStore {
                 return existing;
             }
         }
-        return sendWithDelivery(senderUuid, targetUuid, body, "delivered", cleanRelayId, "", "");
+        return sendWithDelivery(senderUuid, targetUuid, body, "delivered", cleanRelayId, "", "", 0L,
+                cleanDeliveryId(replyToRelayId, 180), cleanReplyText(replyToSender, 128), cleanReplyText(replyToPreview, 240));
     }
 
     private synchronized SendResult sendWithDelivery(String senderUuid, String targetUuid, String body,
                                                        String deliveryStatus, String relayId,
-                                                       String targetServerId, String clientMessageId) {
-        if (jsonlMode()) return jsonlSend(senderUuid, targetUuid, body, deliveryStatus, relayId, targetServerId, clientMessageId);
+                                                       String targetServerId, String clientMessageId,
+                                                       long requestedReplyToId, String inboundReplyRelayId,
+                                                       String inboundReplySender, String inboundReplyPreview) {
+        if (jsonlMode()) return jsonlSend(senderUuid, targetUuid, body, deliveryStatus, relayId, targetServerId,
+                clientMessageId, requestedReplyToId, inboundReplyRelayId, inboundReplySender, inboundReplyPreview);
         SendResult result = new SendResult();
         if (connection == null) {
             result.error = "dm_unavailable";
@@ -630,13 +686,32 @@ public class DirectMessageStore {
                 result.error = "thread_locked";
                 return result;
             }
+            ReplyMeta reply = null;
+            if (requestedReplyToId > 0L) {
+                reply = resolveLocalReplyMeta(sender, threadId, requestedReplyToId);
+                if (reply == null) {
+                    result.error = "reply_target_not_found";
+                    return result;
+                }
+            } else if (!safeText(inboundReplyRelayId).isBlank()) {
+                reply = resolveRelayReplyMeta(threadId, inboundReplyRelayId, inboundReplySender, inboundReplyPreview);
+                if (reply == null) {
+                    result.error = "reply_target_not_found";
+                    return result;
+                }
+            }
             long messageId;
             try (PreparedStatement ps = connection.prepareStatement(
-                    "INSERT INTO dm_messages(thread_id,sender_uuid,body,created_at,hidden) VALUES(?,?,?,?,0)", Statement.RETURN_GENERATED_KEYS)) {
+                    "INSERT INTO dm_messages(thread_id,sender_uuid,body,created_at,hidden,reply_to_id,reply_to_sender,reply_to_preview,reply_to_relay_id) VALUES(?,?,?,?,0,?,?,?,?)",
+                    Statement.RETURN_GENERATED_KEYS)) {
                 ps.setString(1, threadId);
                 ps.setString(2, sender);
                 ps.setString(3, text);
                 ps.setLong(4, now);
+                ps.setLong(5, reply == null ? 0L : reply.id);
+                ps.setString(6, reply == null ? "" : reply.sender);
+                ps.setString(7, reply == null ? "" : reply.preview);
+                ps.setString(8, reply == null ? "" : reply.relayId);
                 ps.executeUpdate();
                 try (ResultSet keys = ps.getGeneratedKeys()) {
                     messageId = keys.next() ? keys.getLong(1) : 0L;
@@ -668,9 +743,76 @@ public class DirectMessageStore {
         }
     }
 
+    private ReplyMeta resolveLocalReplyMeta(String requestingUser, String expectedThreadId, long replyToId) {
+        DirectMessageMessage original = replyToId <= 0L ? null : messageForUser(requestingUser, replyToId);
+        if (original == null || !expectedThreadId.equals(original.threadId)) return null;
+        ReplyMeta meta = new ReplyMeta();
+        meta.id = original.id;
+        meta.sender = replySenderLabel(original);
+        meta.preview = replyPreview(original.body);
+        meta.relayId = cleanDeliveryId(original.relayId, 180);
+        return meta;
+    }
+
+    private ReplyMeta resolveRelayReplyMeta(String expectedThreadId, String relayId, String senderSnapshot, String previewSnapshot) {
+        DirectMessageMessage original = messageByRelayIdInThread(expectedThreadId, cleanDeliveryId(relayId, 180));
+        if (original == null) return null;
+        ReplyMeta meta = new ReplyMeta();
+        meta.id = original.id;
+        meta.sender = safeText(senderSnapshot).isBlank() ? replySenderLabel(original) : cleanReplyText(senderSnapshot, 128);
+        meta.preview = safeText(previewSnapshot).isBlank() ? replyPreview(original.body) : cleanReplyText(previewSnapshot, 240);
+        meta.relayId = cleanDeliveryId(relayId, 180);
+        return meta;
+    }
+
+    private DirectMessageMessage messageByRelayIdInThread(String threadId, String relayId) {
+        String tid = String.valueOf(threadId == null ? "" : threadId).trim();
+        String rid = cleanDeliveryId(relayId, 180);
+        if (tid.isBlank() || rid.isBlank()) return null;
+        if (jsonlMode()) {
+            for (JsonlMessage msg : jsonlMessages.values()) {
+                if (msg != null && !msg.hidden && tid.equals(msg.threadId) && rid.equals(msg.relayId)) return jsonlToMessage(msg);
+            }
+            return null;
+        }
+        if (connection == null) return null;
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT m.id FROM dm_messages m JOIN dm_delivery_state d ON d.message_id=m.id WHERE m.thread_id=? AND m.hidden=0 AND d.relay_id=? LIMIT 1")) {
+            ps.setString(1, tid);
+            ps.setString(2, rid);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? readMessage(rs.getLong(1)) : null;
+            }
+        } catch (SQLException ex) {
+            return null;
+        }
+    }
+
+    private static String replySenderLabel(DirectMessageMessage message) {
+        if (message == null) return "";
+        String display = safeText(message.senderDisplayName).trim();
+        if (!display.isBlank()) return cleanReplyText(display, 128);
+        String username = safeText(message.senderUsername).trim();
+        if (!username.isBlank()) return cleanReplyText(username, 128);
+        return cleanReplyText(message.senderUuid, 128);
+    }
+
+    private static String replyPreview(String body) {
+        return cleanReplyText(body, 240);
+    }
+
+    private static String cleanReplyText(String value, int max) {
+        String text = safeText(value).replace('\r', ' ').replace('\n', ' ').trim().replaceAll("\\s+", " ");
+        return max > 0 && text.length() > max ? text.substring(0, max) : text;
+    }
+
+    private static String safeText(String value) { return value == null ? "" : value; }
+
     private SendResult jsonlSend(String senderUuid, String targetUuid, String body,
                                  String deliveryStatus, String relayId,
-                                 String targetServerId, String clientMessageId) {
+                                 String targetServerId, String clientMessageId,
+                                 long requestedReplyToId, String inboundReplyRelayId,
+                                 String inboundReplySender, String inboundReplyPreview) {
         SendResult result = new SendResult();
         if (jsonlFile == null) {
             result.error = "dm_unavailable";
@@ -708,10 +850,19 @@ public class DirectMessageStore {
             result.thread = listThreads(sender, 200).stream().filter(t -> existing.threadId.equals(t.id)).findFirst().orElse(null);
             return result;
         }
+        String threadId = threadId(sender, target);
+        ReplyMeta reply = null;
+        if (requestedReplyToId > 0L) {
+            reply = resolveLocalReplyMeta(sender, threadId, requestedReplyToId);
+            if (reply == null) { result.error = "reply_target_not_found"; return result; }
+        } else if (!safeText(inboundReplyRelayId).isBlank()) {
+            reply = resolveRelayReplyMeta(threadId, inboundReplyRelayId, inboundReplySender, inboundReplyPreview);
+            if (reply == null) { result.error = "reply_target_not_found"; return result; }
+        }
         long now = System.currentTimeMillis();
         JsonlMessage msg = new JsonlMessage();
         msg.id = jsonlNextMessageId++;
-        msg.threadId = threadId(sender, target);
+        msg.threadId = threadId;
         msg.senderUuid = sender;
         msg.body = text;
         msg.createdAt = now;
@@ -720,6 +871,10 @@ public class DirectMessageStore {
         msg.deliveryError = "";
         msg.relayId = cleanRelayId;
         msg.clientMessageId = cleanClientMessageId;
+        msg.replyToId = reply == null ? 0L : reply.id;
+        msg.replyToSender = reply == null ? "" : reply.sender;
+        msg.replyToPreview = reply == null ? "" : reply.preview;
+        msg.replyToRelayId = reply == null ? "" : reply.relayId;
         jsonlMessages.put(msg.id, msg);
         try {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -734,6 +889,10 @@ public class DirectMessageStore {
             m.put("deliveryError", "");
             m.put("relayId", msg.relayId);
             m.put("clientMessageId", msg.clientMessageId);
+            m.put("replyToId", Math.max(0L, msg.replyToId));
+            m.put("replyToSender", msg.replyToSender);
+            m.put("replyToPreview", msg.replyToPreview);
+            m.put("replyToRelayId", msg.replyToRelayId);
             m.put("targetServerId", cleanTargetServerId);
             appendJsonlEvent(m);
         } catch (IOException ex) {
@@ -1086,7 +1245,7 @@ public class DirectMessageStore {
 
     private synchronized DirectMessageMessage readMessage(long id) throws SQLException {
         if (connection == null) return null;
-        try (PreparedStatement ps = connection.prepareStatement("SELECT id,thread_id,sender_uuid,body,created_at FROM dm_messages WHERE id=? AND hidden=0")) {
+        try (PreparedStatement ps = connection.prepareStatement("SELECT id,thread_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,reply_to_relay_id FROM dm_messages WHERE id=? AND hidden=0")) {
             ps.setLong(1, id);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) return null;
@@ -1124,6 +1283,22 @@ public class DirectMessageStore {
         JsonlMessage msg = jsonlMessages.get(messageId);
         if (user.isBlank() || msg == null || !jsonlVisibleFor(msg, user)) return "";
         return msg.threadId;
+    }
+
+    /** Returns a visible DM only when the requesting user is a participant in its thread. */
+    public synchronized DirectMessageMessage messageForUser(String userUuid, long messageId) {
+        String threadId = threadIdForMessage(userUuid, messageId);
+        if (threadId.isBlank()) return null;
+        if (jsonlMode()) {
+            JsonlMessage msg = jsonlMessages.get(messageId);
+            return msg == null ? null : jsonlToMessage(msg);
+        }
+        try {
+            return readMessage(messageId);
+        } catch (SQLException ex) {
+            host.warn("Failed to resolve direct message for reply: " + ex.getMessage());
+            return null;
+        }
     }
 
 
@@ -1532,7 +1707,7 @@ public class DirectMessageStore {
         int effectiveLimit = Math.max(1, limit <= 0 ? 100 : limit);
         try {
             if (!isParticipant(tid, user)) return out;
-            String sql = "SELECT id,thread_id,sender_uuid,body,created_at FROM dm_messages WHERE thread_id=? AND hidden=0 " +
+            String sql = "SELECT id,thread_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,reply_to_relay_id FROM dm_messages WHERE thread_id=? AND hidden=0 " +
                     "AND id NOT IN (SELECT message_id FROM dm_message_state WHERE user_uuid=? AND hidden=1) " +
                     (beforeId > 0 ? "AND id<? " : "") +
                     "ORDER BY id DESC LIMIT ?";
@@ -1576,7 +1751,7 @@ public class DirectMessageStore {
         }
         List<DirectMessageMessage> out = new ArrayList<>();
         if (connection == null) return out;
-        String sql = "SELECT id,thread_id,sender_uuid,body,created_at FROM dm_messages WHERE thread_id=? AND hidden=0 "
+        String sql = "SELECT id,thread_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,reply_to_relay_id FROM dm_messages WHERE thread_id=? AND hidden=0 "
                 + (beforeId > 0 ? "AND id<? " : "")
                 + "ORDER BY id DESC LIMIT ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -1683,7 +1858,7 @@ public class DirectMessageStore {
         int offset = Math.max(0, (effectivePage - 1) * effectiveLimit);
         try {
             if (!isParticipant(tid, user)) return out;
-            String sql = "SELECT id,thread_id,sender_uuid,body,created_at FROM dm_messages WHERE thread_id=? AND hidden=0 " +
+            String sql = "SELECT id,thread_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,reply_to_relay_id FROM dm_messages WHERE thread_id=? AND hidden=0 " +
                     "AND id NOT IN (SELECT message_id FROM dm_message_state WHERE user_uuid=? AND hidden=1) " +
                     "ORDER BY id DESC LIMIT ? OFFSET ?";
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -1716,6 +1891,10 @@ public class DirectMessageStore {
         m.senderDisplayName = sender == null ? "" : sender.displayName;
         m.body = rs.getString("body");
         m.createdAt = rs.getLong("created_at");
+        m.replyToId = Math.max(0L, rs.getLong("reply_to_id"));
+        m.replyToSender = String.valueOf(rs.getString("reply_to_sender") == null ? "" : rs.getString("reply_to_sender"));
+        m.replyToPreview = String.valueOf(rs.getString("reply_to_preview") == null ? "" : rs.getString("reply_to_preview"));
+        m.replyToRelayId = String.valueOf(rs.getString("reply_to_relay_id") == null ? "" : rs.getString("reply_to_relay_id"));
         applyDeliveryState(m);
         applyReadReceiptState(m);
         return m;

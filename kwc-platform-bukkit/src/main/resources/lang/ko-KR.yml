@@ -229,7 +229,6 @@ web:
       auth-password-login: '비밀번호 로그인'
       auth-remember-session-days: '일반 세션 기간(일)'
       admin-admin-session-expire-hours: '관리자 세션 기간(시간)'
-      moderation-enabled: '관리 기능'
       upload-enabled: '파일 업로드'
       upload-allow-guest-upload: '게스트 업로드'
       upload-allow-user-upload: '일반 사용자 업로드'
@@ -358,6 +357,7 @@ web:
   prompt:
     createEmojiPack: 새 폴더 이름
     renameEmoji: 새 이모지 이름
+    androidPhotoPickerEmojiName: "Android 사진 선택기에서 원래 파일명을 제공하지 않았습니다. 사용할 이모지 이름을 입력하세요. 이미지 확장자는 자동으로 유지됩니다."
     renameEmojiPack: 새 폴더 이름
   login:
     title: KOKOTO WebChat 로그인
@@ -613,7 +613,6 @@ web:
     dmSendFailed: '메시지를 보내지 못했습니다: {error}'
     dmHideFailed: '메시지를 숨기지 못했습니다: {error}'
     dm_disabled: 메시지함이 비활성화되어 있습니다
-    dm_audit_disabled: DM 본문 감사 기능이 비활성화되어 있습니다
     web_send_disabled: 웹 메시지 전송이 비활성화되어 있습니다
     player_not_found: 플레이어를 찾을 수 없습니다
     remote_server_unavailable: 대상 서버에 연결할 수 없습니다
@@ -663,6 +662,9 @@ web:
     passwordProtected: '비밀번호'
     passwordOptionalLabel: '비밀번호 (선택)'
     passwordSettingsLabel: '비밀번호 (비우면 제거)'
+    membershipEvents: '멤버 입장/퇴장 알림 표시'
+    memberJoined: '{player}님이 방에 들어왔습니다.'
+    memberLeft: '{player}님이 방에서 나갔습니다.'
     membersShort: '명'
     join: '입장'
     invite: '초대'
@@ -805,6 +807,9 @@ web:
     helpDmRead: 1:1 대화 스레드 읽기
     helpReply: 공개 KWC 메시지에 댓글 보내기
     replyClickHint: "클릭하여 답글 작성 (#{id})"
+    dmClickHint: "{player}에게 DM을 쓰려면 클릭하세요"
+    groupClickHint: "그룹 {room}에 메시지를 쓰려면 클릭하세요"
+    privateReplyClickHint: "이 메시지에 답글을 쓰려면 클릭하세요"
     helpGroup: '그룹채팅 메시지 보내기'
     helpGroupList: '참여 중인 그룹채팅 목록 보기'
     helpGroupRead: '그룹채팅 읽기'
@@ -824,6 +829,8 @@ web:
     groupReadFirstPage: '이미 최신 그룹채팅 페이지입니다.'
     groupReadLastPage: '이미 가장 오래된 그룹채팅 페이지입니다.'
     groupIncoming: '그룹 {room} / {player}: {message}'
+    groupMemberJoined: '{player}님이 그룹 {room}에 들어왔습니다.'
+    groupMemberLeft: '{player}님이 그룹 {room}에서 나갔습니다.'
     dmDisabled: 메시지함이 비활성화되어 있습니다.
     dmTitle: '메시지함: 읽지 않은 메시지 {count}개'
     dmTitlePage: '메시지함: 읽지 않은 메시지 {count}개 ({page}/{pages}페이지)'
@@ -887,6 +894,11 @@ web:
     failed: '명령어 실행 실패: {error}'
     tooLong: 명령어가 너무 깁니다. 최대 {max}자입니다.
     maxLengthHint: 최대 {max}자
+  security:
+    httpServerWarning: "[경고] KOKOTO WebChat이 HTTP로 설정되어 있습니다 ({url}). 로그인 정보와 채팅 내용이 네트워크에서 평문으로 노출될 수 있습니다. 가능하면 리버스 프록시를 통해 HTTPS를 사용하세요."
+    relayHttpPeerWarning: "[경고] Relay peer '{peer}'가 HTTP를 사용합니다 ({url}). Direct Relay는 허용되지만 해당 peer는 forwarding에서 제외됩니다. HTTPS 사용을 강력히 권장합니다."
+    relayForwardingHttpBlocked: "[경고] Relay peer '{peer}'가 HTTP를 사용하므로 해당 peer를 통한 forwarding만 차단합니다 ({url}). 같은 group의 다른 HTTPS peer는 계속 forwarding할 수 있습니다."
+
   update:
     available: '새 버전 {latest}이(가) 있습니다. 현재 버전: {current}'
     openDownload: 다운로드 페이지 열기

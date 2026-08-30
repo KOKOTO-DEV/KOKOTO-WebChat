@@ -1,0 +1,31 @@
+digraph G {
+
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=LR;
+  subgraph cluster_client { label="Clients"; color="#CBD5E1"; style="rounded";
+    browser [label="Web browser\nChat UI / Admin UI", fillcolor="#E0F2FE"];
+    game [label="Minecraft server\nBukkit / Fabric / Forge / NeoForge", fillcolor="#DCFCE7"];
+    discord [label="DiscordSRV", fillcolor="#F3E8FF"];
+  }
+  proxy [label="Optional reverse proxy\nCaddy / NGINX\nHTTPS + trusted proxy boundary", fillcolor="#FEF3C7"];
+  core [label="kwc-core\nCoreHttpServer + REST handlers\nSseHub + auth/security", fillcolor="#DBEAFE", penwidth=2];
+  services [label="Chat services\npublic / DM / group / reply\nupload / emoji / notifications", fillcolor="#ECFEFF"];
+  db [label="Persistence\nSQLite WAL\npublic + DM + group", fillcolor="#F1F5F9"];
+  adapters [label="Adapters\nplatform + map adapters\nstandalone frontend", fillcolor="#DCFCE7"];
+  relay [label="Relay Protocol v2\ngroups → peers\nHKDF + AES-GCM + HMAC", fillcolor="#FCE7F3"];
+  peers [label="Configured peer servers", fillcolor="#FCE7F3"];
+
+  browser -> proxy [label="HTTPS"];
+  proxy -> core [label="HTTP/HTTPS"];
+  browser -> core [style=dashed,label="direct mode"];
+  game -> adapters -> core;
+  discord -> core [label="integration"];
+  core -> services;
+  services -> db [dir=both,label="read/write"];
+  core -> relay -> peers [dir=both,label="authenticated envelopes"];
+  core -> browser [style=dashed,label="SSE live updates"];
+
+}

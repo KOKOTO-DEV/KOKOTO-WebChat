@@ -98,7 +98,7 @@ public final class ForgePlatformAdapter implements PlatformAdapter {
         if (message == null) return;
         Collection<UUID> ids = recipients == null ? null : new ArrayList<>(recipients);
         runMainThread(() -> {
-            Component c = ForgeCompat.text(message.text());
+            Component c = ForgeGameMessageRenderer.interactive(message);
             if (ids == null) {
                 for (ServerPlayer p : server().getPlayerList().getPlayers()) ForgeCompat.sendPlayerMessage(p, c);
             } else {
@@ -112,7 +112,14 @@ public final class ForgePlatformAdapter implements PlatformAdapter {
 
     @Override public void broadcastInteractiveMessage(PlatformGameMessage message) {
         if (message == null) return;
-        broadcastPlainMessage(message.text());
+        Runnable delivery = () -> {
+            Component component = ForgeGameMessageRenderer.interactive(message);
+            for (ServerPlayer player : server().getPlayerList().getPlayers()) {
+                if (player != null) ForgeCompat.sendPlayerMessage(player, component);
+            }
+            runtime.info(message.text());
+        };
+        if (server().isSameThread()) delivery.run(); else server().execute(delivery);
     }
 
     @Override public Map<String,String> imageEmojiRuntimeSymbols() { return Map.of(); }

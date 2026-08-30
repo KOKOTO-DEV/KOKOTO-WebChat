@@ -89,8 +89,8 @@ commands:
 
 ```yaml
 security:
-  max-sse-connections-per-ip: 5
-  max-sse-connections-total: 200
+  max-sse-connections-per-ip: 10
+  max-sse-connections-total: 500
 ```
 
 任一值设为 `0` 即禁用对应限制。被限制的客户端会收到 `too_many_stream_connections`。

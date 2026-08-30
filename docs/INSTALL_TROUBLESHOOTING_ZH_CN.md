@@ -17,8 +17,18 @@ mvn clean package
 输出:
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.0.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.1.0-Bukkit-1.18-26.2.jar
 ```
+
+Windows 下也可以把根目录 validator 作为平台构建辅助脚本使用：
+
+```bat
+validate-release-windows.bat --bukkit
+validate-release-windows.bat --bukkit --fast
+validate-release-windows.bat --parallel
+```
+
+`--fast` 会跳过 `clean` 并复用已有构建输出/缓存，仅用于迭代开发。`--parallel` 不改变 clean/fast 语义。如果选择了 Bukkit，会先构建 Bukkit，Bukkit 通过后再并行运行其余选中的 loader，因此 `validate-release-windows.bat --parallel` 仍可作为 clean 的完整发布验证。控制台会实时显示总进度、各平台 target 数量和当前 Minecraft target，详细日志保留在 `validation-logs/`。
 
 ## 安装或升级
 
@@ -39,9 +49,9 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 条目应包含当前版本 query。
 
 ```text
-addons/kokoto-web-chat/config.js?v=5.0.0-<cache-token>
-addons/kokoto-web-chat/chat.js?v=5.0.0-<cache-token>
-addons/kokoto-web-chat/chat.css?v=5.0.0-<cache-token>
+addons/kokoto-web-chat/config.js?v=5.1.0-<cache-token>
+addons/kokoto-web-chat/chat.js?v=5.1.0-<cache-token>
+addons/kokoto-web-chat/chat.css?v=5.1.0-<cache-token>
 ```
 
 同时确认实际 Web 文件已更新。
@@ -52,7 +62,17 @@ find /opt/minecraft/server -path "*addons/kokoto-web-chat/chat.js" -printf "%p  
 
 ## BlueMap webroot 不匹配
 
-如果 `/api/config` 正常但聊天面板不显示，BlueMap 可能正在提供另一个 webroot。请确认 `adapters.bluemap.bluemap-web-root`, `adapters.bluemap.bluemap-webapp-conf`, `adapters.bluemap.addon-path` 与实际路径一致。
+如果 `/api/config` 正常但聊天面板没有出现，BlueMap 可能正在提供另一个 webroot。请让实际路径与以下设置一致。
+
+```yaml
+adapters:
+  bluemap:
+    bluemap-web-root: ""
+    bluemap-webapp-conf: ""
+    addon-path: "addons/kokoto-web-chat"
+```
+
+空路径表示自动探测。如果自动探测到的目录不是实际运行中的 BlueMap 实例，请明确填写绝对路径。
 
 ## 浏览器缓存
 

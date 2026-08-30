@@ -1,0 +1,1318 @@
+# =============================================================================
+# 核心设置
+# =============================================================================
+
+# KOKOTO WebChat 5.1.0
+# KWC config-comment-language: zh-CN
+
+
+# 配置版本。旧版本迁移时会尽量保留现有设置值。
+# <version>_auto_migration 状态会继续应用同版本模板补全。
+# 修改 ui.language 时可保留设置值，只重新生成注释/布局语言。
+config-version: "5.1.0"
+
+# 总开关。false 时仍可使用 /kchat reload，但不会启动 Web/聊天服务。
+# 新配置默认生成为 false，便于检查后再启用。
+enabled: false
+
+update-check:
+  # 检查 Modrinth 最新正式版本。项目名称迁移期间可使用现有 BlueMap WebChat listing
+  # 作为 fallback 更新来源。
+  enabled: true
+
+# =============================================================================
+# 网络与 Web 托管
+# =============================================================================
+
+http:
+  # KWC HTTP 服务绑定地址。
+  # 直接监听时可用 0.0.0.0；若同主机 HTTPS 反向代理是唯一公网入口，建议使用 127.0.0.1。
+  host: "0.0.0.0"
+  # KWC HTTP 服务内部监听的 TCP 端口，不必与反向代理/NAT 的外部端口相同。
+  port: 8899
+  # KWC HTTP 服务注册的内部 API 路径前缀，通常为 /api。
+  # 不要在这里重复外部反向代理前缀。
+  path-prefix: "/api"
+  # 浏览器可见的反向代理路径前缀。
+  # 它只用于计算公开 URL，不会注册为 KWC 内部 HTTP 路由；
+  # 空字符串表示发布在站点根路径。
+  public-prefix: "/chat"
+  # 跨 Origin API 请求允许的浏览器 Origin。
+  # 简单直连/个人使用可用 "*"；通过 HTTPS 代理使用 credential/cookie 时，应填写实际公开
+  # Origin。
+  cors-origin: "*"
+  # 允许提供 X-Forwarded-For 的可信反向代理 IP/CIDR 列表。
+  # 空列表会忽略客户端自行发送的 X-Forwarded-For，并使用直接套接字地址，
+  # 防止任意伪造该头。
+  # [] = 不信任任何代理；忽略客户端提供的 X-Forwarded-For，使用直接套接字 IP。
+  # 示例：["127.0.0.1", "::1", "10.0.0.0/8"]
+  # 匹配器也接受 "*"，但不要在面向互联网的服务器上使用；这会信任所有直接来源提供的
+  # X-Forwarded-For。
+  # 配置示例（把 trusted-proxies: [] 这一行替换为下面的块）:
+  # trusted-proxies:
+  #   - "127.0.0.1"
+  #   - "::1"
+  #   - "10.0.0.0/8"
+  trusted-proxies: []
+  # 临时诊断日志，记录套接字 IP、X-Forwarded-For 信任判定、最终 client IP 和请求路径。
+  # 仅在排查代理/IP 解析时开启，正常运行时应关闭。
+  log-client-ip-resolution: false
+frontend:
+  standalone:
+    # 除可选地图集成外，还由插件 HTTP 服务提供独立 KWC 聊天/PWA。
+    enabled: true
+    # 独立页面的内部服务路由。
+    # 浏览器可见的反向代理前缀由 http.public-prefix 单独设置。
+    path: "/"
+    # 独立页面/PWA 的完整应用名称，也作为通知标题的回退值。
+    # 添加到主屏幕后再更改，可能需要重新安装 PWA。
+    app-name: "KOKOTO WebChat"
+    # 浏览器/启动器标签空间有限时使用的 PWA 短名称。
+    app-short-name: "KWC"
+    # 独立前端使用的公开 API base。
+    # 为空时根据当前 Origin 与 KWC 公开/内部前缀自动计算，也可用绝对路径、
+    # 相对路径或完整 URL 覆盖。
+    api-base-url: ""
+adapters:
+  bluemap:
+    # 启用把 KWC 前端嵌入 BlueMap 的集成。
+    # 它不会替代 KWC 独立模式，也不使用地图产品自身的聊天传输。
+    enabled: false
+    # Bukkit 会把 KWC 资源复制到 BlueMap web root；Fabric/NeoForge 的 BlueMap 集成通过 BlueMapAPI 获取
+    # web root。
+    auto-install: true
+    # 只维护 BlueMap webapp.conf 中由 KWC 标记的集成块；地图前端重新生成文件后，可在
+    # startup/reload 时恢复该块。
+    auto-patch-webapp-conf: true
+    # 仅供 BlueMap 嵌入前端使用的 KWC 公开 API base。
+    # 为空时自动解析当前公开 API；若外部 NAT 端口或 API 主机不同，
+    # 应明确填写实际路径/URL。
+    api-base-url: ""
+    # BlueMap Web 前端的可选文件系统根目录。
+    # 支持的适配器在为空时不会创建站点，而是从已知配置/常用路径谨慎检测。
+    bluemap-web-root: "bluemap/web"
+    # Bukkit 文件系统集成中用于写入 KWC addon 标记块的 BlueMap webapp.conf 路径。
+    # Fabric/NeoForge 的 BlueMapAPI 集成不会修改此文件。
+    bluemap-webapp-conf: "plugins/BlueMap/webapp.conf"
+    # 相对于 BlueMap web root 的 KWC 前端资源目录。
+    addon-path: "addons/kokoto-web-chat"
+  squaremap:
+    # 启用把 KWC 前端嵌入 squaremap 的集成。
+    # 它不会替代 KWC 独立模式，也不使用地图产品自身的聊天传输。
+    enabled: false
+    # 仅在检测到现有 squaremap Web 目录时安装 KWC 资源，不会创建 squaremap 本身。
+    auto-install: true
+    # 只维护 squaremap index.html 中由 KWC 标记的集成块；地图前端重新生成文件后，可在
+    # startup/reload 时恢复该块。
+    auto-patch-index: true
+    # 仅供 squaremap 嵌入前端使用的 KWC 公开 API base。
+    # 为空时自动解析当前公开 API；若外部 NAT 端口或 API 主机不同，
+    # 应明确填写实际路径/URL。
+    api-base-url: ""
+    # squaremap Web 前端的可选文件系统根目录。
+    # 支持的适配器在为空时不会创建站点，而是从已知配置/常用路径谨慎检测。
+    web-root: ""
+    # 相对于 squaremap web root 的 KWC 前端资源目录。
+    addon-path: "kokoto-web-chat"
+  dynmap:
+    # 启用把 KWC 前端嵌入 Dynmap 的集成。
+    # 它不会替代 KWC 独立模式，也不使用地图产品自身的聊天传输。
+    enabled: false
+    # 集成启用时，把 KWC 前端资源复制到检测到或指定的 Dynmap web root。
+    auto-install: true
+    # 只维护 Dynmap index.html 中由 KWC 标记的集成块；地图前端重新生成文件后，可在
+    # startup/reload 时恢复该块。
+    auto-patch-index: true
+    # 仅供 Dynmap 嵌入前端使用的 KWC 公开 API base。
+    # 为空时自动解析当前公开 API；若外部 NAT 端口或 API 主机不同，
+    # 应明确填写实际路径/URL。
+    api-base-url: ""
+    # Dynmap Web 前端的可选文件系统根目录。
+    # 支持的适配器在为空时不会创建站点，而是从已知配置/常用路径谨慎检测。
+    web-root: ""
+    # 相对于 Dynmap web root 的 KWC 前端资源目录。
+    addon-path: "kokoto-web-chat"
+  pl3xmap:
+    # 启用把 KWC 前端嵌入 Pl3xMap 的集成。
+    # 它不会替代 KWC 独立模式，也不使用地图产品自身的聊天传输。
+    enabled: false
+    # 集成启用时，把 KWC 前端资源复制到检测到或指定的 Pl3xMap web root。
+    auto-install: true
+    # 只维护 Pl3xMap index.html 中由 KWC 标记的集成块；地图前端重新生成文件后，可在
+    # startup/reload 时恢复该块。
+    auto-patch-index: true
+    # 仅供 Pl3xMap 嵌入前端使用的 KWC 公开 API base。
+    # 为空时自动解析当前公开 API；若外部 NAT 端口或 API 主机不同，
+    # 应明确填写实际路径/URL。
+    api-base-url: ""
+    # Pl3xMap Web 前端的可选文件系统根目录。
+    # 支持的适配器在为空时不会创建站点，而是从已知配置/常用路径谨慎检测。
+    web-root: ""
+    # 相对于 Pl3xMap web root 的 KWC 前端资源目录。
+    addon-path: "kokoto-web-chat"
+  liveatlas:
+    # 启用把 KWC 前端嵌入 LiveAtlas 的集成。
+    # 它不会替代 KWC 独立模式，也不使用地图产品自身的聊天传输。
+    enabled: false
+    # 集成启用时，把 KWC 前端资源复制到检测到或指定的 LiveAtlas web root。
+    auto-install: true
+    # 只维护 LiveAtlas index.html 中由 KWC 标记的集成块；地图前端重新生成文件后，可在
+    # startup/reload 时恢复该块。
+    auto-patch-index: true
+    # 仅供 LiveAtlas 嵌入前端使用的 KWC 公开 API base。
+    # 为空时自动解析当前公开 API；若外部 NAT 端口或 API 主机不同，
+    # 应明确填写实际路径/URL。
+    api-base-url: ""
+    # LiveAtlas Web 前端的可选文件系统根目录。
+    # 支持的适配器在为空时不会创建站点，而是从已知配置/常用路径谨慎检测。
+    web-root: ""
+    # 相对于 LiveAtlas web root 的 KWC 前端资源目录。
+    addon-path: "kokoto-web-chat"
+  unmined:
+    # 启用把 KWC 前端嵌入 uNmINeD 的集成。
+    # 它不会替代 KWC 独立模式，也不使用地图产品自身的聊天传输。
+    enabled: false
+    # 集成启用时，把 KWC 前端资源复制到检测到或指定的 uNmINeD web root。
+    auto-install: true
+    # 只维护 uNmINeD index.html 中由 KWC 标记的集成块；地图前端重新生成文件后，可在
+    # startup/reload 时恢复该块。
+    auto-patch-index: true
+    # 仅供 uNmINeD 嵌入前端使用的 KWC 公开 API base。
+    # 为空时自动解析当前公开 API；若外部 NAT 端口或 API 主机不同，
+    # 应明确填写实际路径/URL。
+    api-base-url: ""
+    # uNmINeD Web 前端的可选文件系统根目录。
+    # 支持的适配器在为空时不会创建站点，而是从已知配置/常用路径谨慎检测。
+    web-root: ""
+    # 相对于 uNmINeD web root 的 KWC 前端资源目录。
+    addon-path: "kokoto-web-chat"
+  overviewer:
+    # 启用把 KWC 前端嵌入 Minecraft Overviewer 的集成。
+    # 它不会替代 KWC 独立模式，也不使用地图产品自身的聊天传输。
+    enabled: false
+    # 集成启用时，把 KWC 前端资源复制到检测到或指定的 Minecraft Overviewer web root。
+    auto-install: true
+    # 只维护 Minecraft Overviewer index.html 中由 KWC 标记的集成块；地图前端重新生成文件后，
+    # 可在 startup/reload 时恢复该块。
+    auto-patch-index: true
+    # 仅供 Minecraft Overviewer 嵌入前端使用的 KWC 公开 API base。
+    # 为空时自动解析当前公开 API；若外部 NAT 端口或 API 主机不同，
+    # 应明确填写实际路径/URL。
+    api-base-url: ""
+    # Minecraft Overviewer Web 前端的可选文件系统根目录。
+    # 支持的适配器在为空时不会创建站点，而是从已知配置/常用路径谨慎检测。
+    web-root: ""
+    # 相对于 Minecraft Overviewer web root 的 KWC 前端资源目录。
+    addon-path: "kokoto-web-chat"
+
+# =============================================================================
+# 聊天、消息与私密会话
+# =============================================================================
+
+chat:
+  # 公开聊天历史存储后端。
+  # sqlite 是推荐的持久后端；jsonl 是旧式单文件后端；memory 会在重启后丢失。
+  # 未知值会归一化为 sqlite。
+  history-storage: "sqlite"
+  # 按数量保留的公开聊天历史最大行数，与按时间保留策略同时生效。
+  # 0 表示不限制数量。
+  history-size: 0
+  # 公开聊天历史的按时间保留天数。
+  # 0 表示不按时间过期。
+  history-retention-days: 5
+  # 选择 jsonl 后端时使用的公开聊天历史 JSONL 文件名/路径。
+  history-file: "history.jsonl"
+  # 持久公开聊天历史使用的 SQLite 数据库文件名/路径。
+  history-sqlite-file: "history.db"
+  # 首次使用 SQLite 时，若尚未完成导入，会导入现有旧式 JSONL 公开聊天历史。
+  history-sqlite-migrate-jsonl: true
+  # 每页默认请求的历史消息数量。
+  # 设为 0 时，memory/JSONL 历史不设置显式分页上限，但 SQLite 仍应用内置的 500
+  # 行查询安全上限。
+  history-page-size: 80
+  # KWC 接受的普通公开聊天消息最大长度。
+  # 0 表示不限制此长度。
+  max-message-length: 120
+  # 包含 URL 的公开聊天消息最大长度。
+  # 若为正数，会保证不小于正数的普通消息长度限制。
+  # 0 表示不限制此长度。
+  max-url-message-length: 2048
+  # 已登录 Web 用户公开消息转发到 Minecraft 的格式。
+  # placeholder：{player}、{message}。
+  web-user-to-game-format: "[Web] {player}: {message}"
+  # 访客公开消息转发到 Minecraft 的格式。
+  # placeholder：{guest}、{message}。
+  web-guest-to-game-format: "[Web Guest] {guest}: {message}"
+  # Web 管理员公开消息转发到 Minecraft 的格式。
+  # placeholder：{player}、{message}。
+  web-admin-to-game-format: "[Web Admin] {player}: {message}"
+  # 把已接受的 Web 来源公开消息广播给已连接 Web 客户端，并在适用时包含发送者。
+  broadcast-web-chat-to-web: true
+  # 把捕获的 Minecraft 公开聊天发布到已连接的 KWC Web 客户端。
+  broadcast-ingame-chat-to-web: true
+  # 把已接受的 KWC Web 公开消息转发到 Minecraft 聊天。
+  send-web-chat-to-game: true
+  # 让 KWC 投递到 Minecraft 的聊天中的 URL 片段可点击打开，同时保留非 URL 正文供 Reply
+  # 等其他点击动作使用。
+  clickable-urls-in-game: true
+  game-name-hover:
+    # 在 Minecraft 聊天中悬停已绑定 Web 发送者名称时显示配置的信息。
+    enabled: false
+    # 已绑定 Web 发送者名称的 Minecraft 悬停文本。
+    # 支持 placeholder：{display}、{real}、{uuid}、{source}。
+    text: "&f{real}"
+message-tokens:
+  # 启用服务器端消息 token 展开，包括 newline、blank-line、tab 和 custom 替换。
+  enabled: true
+  # 单条消息最多执行的 token 替换次数，用于限制替换工作量。
+  # 0 表示不限制数量。
+  max-replacements-per-message: 24
+  newline:
+    # 识别为单次换行 token 的别名列表。
+    aliases:
+      - enter
+      - newline
+      - nextline
+      - linebreak
+      - br
+  blank-line:
+    # 识别为有意空行/段落分隔 token 的别名列表。
+    aliases:
+      - blankline
+      - emptyline
+      - paragraphbreak
+  tab:
+    # 识别为 tab/缩进 token 的别名列表。
+    aliases:
+      - tab
+      - indent
+    # 展开 tab token 时插入的空格数。
+    # 运行时范围为 1-16，超出范围会钳制到边界值。
+    spaces: 4
+  # 自定义 token→文本替换 map。
+  # key 是 token，value 是服务器端替换文本；空 map 表示不添加自定义替换。
+  # 每项可选 aliases: [name1, name2]，并必须把 replacement: "要输出的普通文本" 指定为字符串。
+  # 省略 aliases 或设为空时使用父 key 作为 alias。聊天中以 :alias: 输入；alias 不区分大小写，
+  # 最长 80 字符，不能包含冒号或换行。
+  # replacement 中的控制字符会被移除；处理后为空字符串的定义会被忽略。
+  # 示例：
+  # custom:
+  #   separator:
+  #     aliases:
+  #       - separator
+  #       - divider
+  #     replacement: "────────────"
+  #   bullet:
+  #     aliases:
+  #       - bullet
+  #     replacement: "• "
+  custom: {}
+search:
+  # 启用面向有权限用户的公开历史搜索端点/UI。
+  enabled: true
+  # 单次公开历史搜索请求返回的最大行数。
+  # 运行时最小值为 1；更小的值会提高到最小值。
+  result-limit: 50
+# Announcement 通用输入格式：
+# enabled: true | false
+# message: 带引号的 text/format 字符串；只使用下方各事件说明中列出的 placeholder。
+announcements:
+  # 将已启用的系统公告同时发送到公开 Web 聊天；false 时只在游戏内显示。
+  broadcast-to-web-chat: true
+  # 每个事件使用 enabled + message。没有匹配的 i18n 文本时，message 作为回退/自定义文本。
+  # 通用：{server}、{event}；玩家事件：{player}、{name}、{real_player}、{real_name}、{uuid}、{world}。
+  # 事件专用：death {message}/{killer}，advancement {advancement}/{advancement_key}；
+  # 世界/游戏模式/等级变更使用对应的 from_/to_ placeholder，Web 登录/登出使用 {name}/{player}。
+
+  minecraft-join:
+    enabled: true
+    message: "🟢 {player} joined the server."
+  minecraft-quit:
+    enabled: true
+    message: "🔴 {player} left the server."
+  first-join:
+    enabled: true
+    message: "✨ {player} joined the server for the first time."
+  death:
+    enabled: true
+    message: "☠ {message}"
+  advancement:
+    enabled: true
+    message: "🏆 {player} completed the advancement [{advancement}]."
+  server-start:
+    enabled: true
+    message: "🟢 Server started."
+  server-stop:
+    enabled: true
+    message: "🔴 Server is stopping."
+
+  world-change:
+    enabled: false
+    message: "🌍 {player} moved to {to_world}."
+  gamemode-change:
+    enabled: false
+    message: "🎮 {player} changed game mode to {to_gamemode}."
+  level-change:
+    enabled: false
+    message: "⭐ {player} changed level from {old_level} to {new_level}."
+  bed-enter:
+    enabled: false
+    message: "💤 {player} entered a bed."
+  web-login:
+    enabled: false
+    message: "🌐 {name} logged in to web chat."
+  web-logout:
+    enabled: false
+    message: "🌐 {name} logged out of web chat."
+
+reply:
+  game-click:
+    # 允许点击符合条件的 Minecraft 聊天消息正文来准备 /kchat reply 目标；URL
+    # 片段仍保留打开链接动作。
+    enabled: true
+    # 除 KWC 来源消息外，也给本地捕获的 Minecraft 公开聊天添加 Reply 点击动作。
+    # 若与其他聊天格式插件的 click event 冲突，可关闭。
+    local-game-chat: true
+  # 公开聊天 Reply 目标使用的 Minecraft component 文本。
+  # placeholder：{player}、{message}。
+  game-command-format: "&8[&dReply&8] &f{player}&7: &f{message}"
+  game-preview:
+    # 在 Minecraft 中渲染 Reply 时显示原消息的简短引用预览。
+    enabled: true
+    # Minecraft Reply 引用预览格式。
+    # placeholder：{sender}、{preview}。
+    format: "&7{sender}: {preview}"
+    # Minecraft Reply 引用预览中显示的原文最大长度。
+    # 0 表示不截断预览。
+    max-length: 120
+  game-prefix:
+    # 在 Minecraft 显示引用较早消息的 Reply 时，在前面加上配置的 Reply 标记。
+    enabled: true
+    # 带 Reply metadata 的 Minecraft 消息前添加的前缀文本。
+    text: "↪ [Reply] "
+pinned:
+  # 启用公开聊天 pin/unpin 存储及置顶消息 UI。
+  enabled: true
+  # 同时保持置顶状态的公开消息最大数量。
+  # 0 表示不限制数量。
+  max-pins: 20
+  # 允许未登录/访客查看置顶消息区域；管理置顶仍需正常权限校验。
+  show-to-logged-out: true
+  # 把置顶消息引用的文件视为保留引用，避免被普通未引用上传清理删除。
+  preserve-uploads: true
+direct-message:
+  # 持久化 1:1 DM。由于会保存私密消息正文，默认值为 false。
+  # 跨服务器游戏目标: /kchat dm <player>@<server-id> <message>；请先配置 server-relay。
+  enabled: false
+  # DM 存储后端。
+  # auto 选择兼容的持久后端，除配置的历史后端需要旧式 JSONL 路径外优先 SQLite；
+  # 也支持明确指定 sqlite/jsonl。
+  storage: "auto"
+  # 已存储 DM 消息的按时间保留天数。
+  # 0 表示不按时间过期。
+  retention-days: 0
+  # 每个 DM thread 按数量保留的最大消息数。
+  # 0 表示不限制数量。
+  max-messages-per-thread: 0
+  # Web/游戏发送可接受的 DM 消息最大长度。
+  # 0 表示不限制此长度。
+  max-message-length: 500
+  # 允许已认证 KWC Web 用户发送 DM。
+  allow-web-send: true
+  # 允许具备所需 KWC 权限的 Minecraft 玩家通过 KWC 游戏命令/click 动作发送 DM。
+  allow-game-send: true
+  # 在可解析发送者/目标时，把支持的 Minecraft 私聊命令捕获到 KWC DM 历史/会话中。
+  capture-game-whispers: true
+  # 可选的管理员私信正文审计，默认关闭。
+  # 即使启用，也只有在 private-chat-super-admins 中明确列出的账号可以访问。
+  # 审计视图只读，不能发送、回复、隐藏消息或更新已读状态。
+  # 每次分页读取都会写入审计日志，但不会把消息正文复制到日志中。
+  admin-audit:
+    enabled: false
+  # 绑定用户登录时显示待处理/未读 DM 通知状态。
+  notify-on-login: true
+  # 新私信到达时生成 DM 通知更新。
+  notify-on-message: true
+  # 在 Web UI 显示未读 DM 数量/badge。
+  web-unread-badge: true
+  # 从当前用户会话列表隐藏 DM 会话前要求确认。
+  confirm-hide: true
+  # 选择 jsonl 后端时使用的旧式 DM JSONL 存储文件。
+  jsonl-file: "direct-messages.jsonl"
+  # 用于持久 DM 存储（包括 Reply metadata）的 SQLite 数据库文件。
+  sqlite-file: "direct-messages.db"
+group-chat:
+  # 持久化多人聊天房间。由于会保存私密消息正文，默认值为 false。
+  enabled: false
+  # 允许已认证 KWC Web 用户在当前所属群组房间发送消息。
+  allow-web-send: true
+  # 允许创建/使用按正常房间规则无需私密邀请即可发现/加入的 public 群组房间。
+  allow-public-rooms: true
+  # 允许群组房间在成员/邀请控制之外使用房间密码。
+  allow-room-passwords: true
+  # 当前用户离开群组房间前要求确认。
+  confirm-leave: true
+  # 从当前用户会话列表隐藏群组房间前要求确认。
+  confirm-hide: true
+  admin-audit:
+    # 允许有权限的管理员审计查看群组房间记录；普通用户仍受正常房间成员校验。
+    enabled: false
+  # 已存储群组房间消息的按时间保留天数。
+  # 0 表示不按时间过期。
+  retention-days: 30
+  # 每个群组房间按数量保留的最大消息数。
+  # 0 表示不限制数量。
+  max-messages-per-room: 1000
+  # 群组房间可接受的消息最大长度。
+  # 0 表示不限制此长度。
+  max-message-length: 500
+  # 房间管理校验中，单个用户可拥有/加入的群组房间最大数量。
+  # 0 表示不限制数量。
+  max-rooms-per-user: 20
+  # 单个群组房间允许的最大成员数。
+  # 0 表示不限制数量。
+  max-members-per-room: 50
+  # 群组房间名称最大长度。
+  # 运行时最小值为 1；更小的值会提高到最小值。
+  max-room-name-length: 32
+  # 群组房间邀请有效期（小时）。
+  # 0 并不表示无限期。
+  # 运行时最小值为 1；更小的值会提高到最小值。
+  invite-expire-hours: 72
+  # 用于存储群组房间、成员、邀请、消息及私密 Reply metadata 的 SQLite 数据库。
+  sqlite-file: "group-messages.db"
+# 服务器间公开聊天和 1:1 DM Relay 设置。
+server-relay:
+  # 所有参与服务器的 group/peer 配置完成后再启用。
+  enabled: false
+  # 本服务器唯一 ID。使用小写 a-z、0-9、点、下划线或连字符。
+  server-id: "server-1"
+  # 显示来自本服务器消息时使用的名称。
+  server-name: "Server 1"
+  # peer 连接超时（秒）。最小 1。
+  connect-timeout-seconds: 5
+  # Relay 请求超时（秒）。最小 1。
+  request-timeout-seconds: 10
+  # Relay 请求允许的时钟偏差（秒）。最小 1。
+  max-clock-skew-seconds: 60
+  # 重复/replay ID 保留时间（秒）。最小 30。
+  dedupe-seconds: 300
+  # forwarding 最大 hop 数。范围 1-32。
+  max-hops: 8
+
+  # 允许发送到 Relay 的本地公开消息来源。
+  sources:
+    game: true
+    web: true
+    guest: true
+    # Discord 联动可能形成 Relay 循环时保持 false。
+    discord: false
+    # 同时 Relay 本地 system/announcement 消息。
+    system: false
+
+  # 接收到的公开 Relay 消息投递位置。DM 单独处理。
+  delivery:
+    web: true
+    game: true
+
+  # 可用: {server}, {server_id}, {source}, {sender}, {real_sender}, {uuid}, {role}, {message}
+  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
+
+  # groups 和 peers 都是 YAML 列表，每项必须以 "- id:" 开头。
+  # 首次设置时，在一台服务器上保留 shared-secret: ""，然后 reload/重启。
+  # 把生成值复制到同一 group 的所有服务器。
+  # 各服务器使用相同 group id 和 secret 把对方登记为 peer。
+  # peer url 填写对方服务器的 KWC API 基础 URL，例如 https://server2.example.com/api。
+  # http:// peer 会显示警告，可用于 direct Relay，但不会作为 forwarding hop。
+  # 示例:
+  # groups:
+  #   - id: "main"
+  #     shared-secret: ""
+  #     forwarding:
+  #       enabled: false
+  #     peers:
+  #       - id: "server-2"
+  #         url: "https://server2.example.com/api"
+  #         enabled: true
+  groups: []
+player-display:
+  # KWC 显示玩家身份的来源：name=Minecraft 账号名，display-name=服务器显示名，
+  # custom-name=已保存自定义名；无效值回退到 name。
+  mode: "name"
+  # 在把玩家显示名暴露到 Web/plain-text 环境前移除 Minecraft 格式/颜色代码。
+  strip-colors: true
+
+# =============================================================================
+# 账号、安全与管理
+# =============================================================================
+
+guest:
+  # 允许未认证浏览器访客在 guest/captcha/rate-limit 规则下使用访客公开聊天。
+  enabled: true
+  # 允许访客自行选择显示名称，而不是始终使用自动生成的前缀/名称。
+  allow-custom-name: true
+  # KWC 自动生成访客名称时使用的前缀。
+  name-prefix: "Guest-"
+  # 同一 resolved client identity/IP 连续发送访客消息的最小间隔（秒）。
+  # 0 表示关闭此 cooldown 限制项。
+  cooldown-seconds: 6
+  # 对同一 resolved client identity/IP 应用的每分钟访客消息限制。
+  # 0 表示关闭此每分钟限制项。
+  max-messages-per-minute: 50
+  # 在 KWC 访客名称校验中拒绝冒充已知 Minecraft 玩家名称的访客名。
+  block-player-name-spoofing: true
+  # 用于保护管理员/服务器等身份的额外访客保留名称列表，比较时不区分大小写。
+  blocked-names:
+    - "admin"
+    - "administrator"
+    - "server"
+    - "op"
+    - "console"
+    - "moderator"
+    - "owner"
+captcha:
+  # 访客验证码模式。
+  # 只有 math 会启用内置算术验证码；包括 off 在内的非 math 值都会关闭验证码校验。
+  mode: "math"
+  # 每个已签发验证码题目的有效期（秒）。
+  # 该值不钳制；0/负数会让新题立即或几乎立即过期。
+  expire-seconds: 120
+  # 不复用仍有效的验证码通过状态，而是要求每条访客消息都重新通过验证码。
+  require-on-each-message: false
+  # 未要求每条消息验证码时，一次成功的验证码状态可复用的时间（分钟）。
+  # 运行时最小值为 1；更小的值会提高到最小值。
+  pass-valid-minutes: 120
+auth:
+  # 账号/登录设置确认用的可选使用示例：
+  # - Web 账号关联：在 Web UI 申请 code，然后在 Minecraft 执行 /kchat auth <code>。
+  # - 密码登录：用 /kchat password <newPassword> 设置/修改已关联账号密码。
+  # - /kchat status 查看当前关联状态。auto-admin-from-permission 可把拥有指定 permission
+  #   的已关联玩家自动提升。
+  # 密码会以 hash 保存，但通过 HTTP 暴露时登录流量本身仍是明文。
+  # 任何不可信/公网环境都应使用 HTTPS。
+  # 启用 Minecraft 账号绑定和已认证 KWC Web 会话。
+  enabled: true
+  # 生成游戏账号绑定码时使用的字符/数字长度。
+  # 运行时最小值为 4；更小的值会提高到最小值。
+  link-code-length: 6
+  # 新签发账号绑定码的有效期（秒）。
+  # 运行时最小值为 30；更小的值会提高到最小值。
+  link-code-expire-seconds: 180
+  # 同一 client/user 重复签发账号绑定码的最小间隔（秒）。
+  # 0 表示关闭此限制项。
+  link-code-cooldown-seconds: 3
+  # 签发 rate limiter 中每分钟允许生成的账号绑定码最大次数。
+  # 0 表示关闭此限制项。
+  link-code-max-per-minute: 10
+  # 允许已绑定账号在 link-code 设置后使用 KWC 密码登录 Web 聊天。
+  password-login: true
+  # 普通 USER/MODERATOR Web 会话的过期天数。
+  # <=0 时不设置 expiry timestamp。
+  remember-session-days: 30
+  # 自动把当前拥有 auth.admin-permission 的已绑定 Minecraft 账号映射/授予 KWC ADMIN 角色。
+  auto-admin-from-permission: true
+  # KWC 管理员角色自动映射使用的 Minecraft permission node。
+  admin-permission: "kwc.admin"
+security:
+  # 在配置的失败统计窗口内触发基于 IP 临时锁定的登录失败次数。
+  # 0 表示关闭此限制项。
+  login-fail-limit: 5
+  # 用于统计登录失败次数并判定锁定的滚动时间窗口（秒）。
+  # 运行时最小值为 1；更小的值会提高到最小值。
+  login-fail-window-seconds: 300
+  # 超过登录失败限制后，基于 IP 的登录锁定持续时间（秒）。
+  # 0 表示关闭此限制项。
+  login-lock-seconds: 600
+  # 单个 resolved client IP 允许的并发 /stream SSE 连接最大数量。
+  # 使用反向代理时应正确配置 http.trusted-proxies，避免所有客户端都显示为代理 IP。
+  # 0 表示关闭此限制项。
+  max-sse-connections-per-ip: 10
+  # 整个 KWC 服务器允许的并发 /stream SSE 连接最大数量。
+  # 0 表示关闭此限制项。
+  max-sse-connections-total: 500
+admin:
+  # 允许不绑定 Minecraft UUID 的 KWC 本地 Web 管理员账号。
+  allow-local-admin-accounts: true
+  # ADMIN Web 会话过期时间（小时）。
+  # <=0 时管理员会话不设置 expiry timestamp。
+  admin-session-expire-hours: 12
+  # 管理员登录的可选 IP/CIDR allowlist。
+  # 空列表表示不限制 IP；应结合 trusted proxy 设置按 resolved client IP 判断。
+  # [] = 不限制管理员登录 IP。示例：["127.0.0.1", "10.0.0.0/8", "2001:db8::/32"]
+  # 匹配器把 "*" 视为所有地址。若确实不限制请使用 []；需要限制时只填写明确的 IP/CIDR。
+  # 配置示例（把 allow-admin-login-from: [] 这一行替换为下面的块）:
+  # allow-admin-login-from:
+  #   - "127.0.0.1"
+  #   - "10.0.0.0/8"
+  #   - "2001:db8::/32"
+  allow-admin-login-from: []
+# 额外授予私密聊天管理/容量检查元数据权限的 KWC 账号标识列表。
+# 空列表不增加任何身份；正常 ADMIN/audit 规则仍然生效。
+# [] = 不额外授予任何 private-chat super-admin 身份。
+# 仅列入此处不能打开正文。DM 正文还需启用 direct-message.admin-audit.enabled，
+# 群聊正文还需启用 group-chat.admin-audit.enabled，且两种审计视图均为只读。
+# 每次审计分页读取都会写入 audit log，但不会复制消息正文。
+# 示例：["00000000-0000-0000-0000-000000000000", "AdminName"]
+# 配置示例（把 private-chat-super-admins: [] 这一行替换为下面的块）:
+# private-chat-super-admins:
+#   - "00000000-0000-0000-0000-000000000000"
+#   - "AdminName"
+private-chat-super-admins: []
+audit:
+  # 启用受支持管理/安全操作的 KWC audit logging。
+  enabled: true
+  # KWC audit log 文件写入的数据目录相对文件夹。
+  directory: "audit"
+moderation:
+  # KWC moderation 服务总开关。
+  # 此设置仅限 config，故意不在 Web Admin 中公开。
+  enabled: true
+  # moderation 启用时允许 Web Admin 面板中的 moderation 功能。
+  # 此策略开关仅限 config。
+  allow-web-admin-panel: true
+  # 允许 MODERATOR 角色在满足其他权限条件时通过 moderation API 删除消息。
+  # 此策略开关仅限 config。
+  allow-moderator-message-delete: true
+  # 允许 MODERATOR 角色通过 moderation 控件对 guest/IP 执行 mute/unmute。
+  # 此策略开关仅限 config。
+  allow-moderator-guest-mute: true
+  # 未指定时默认禁言时长（分钟）。
+  # <=0 表示永久禁言；此设置仅限 config。
+  default-mute-minutes: 60
+content-filter:
+  # Content Filter 运行说明：
+  # - scopes.public / group / dm 决定检查哪些会话类型。
+  #   DM 过滤考虑隐私默认关闭。
+  # - 下方 rules 是 config.yml 内联规则；filter-lists 从 filter-lists 目录载入较大的 UTF-8 词表。
+  #   两种来源使用同一过滤引擎。
+  # - action=block 拒绝消息，mask 隐藏命中内容，replace 按配置 replacement/mapping 替换。
+  # - 建议流程：先配置并测试 rule/list，再选择需要的 scope，最后开启 content-filter.enabled。
+  #   anti-evasion 越宽松越可能增加误报，应有意调整。
+  # content-filter.rules 正上方提供了完整的 inline replace rule 示例。
+  # KWC 共用 content-filter engine 总开关。
+  # 关闭时不会把配置的 rule/list 应用于聊天内容。
+  enabled: false
+  scopes:
+    # 把 content filter 应用于公开聊天入口。
+    public: true
+    # 把 content filter 应用于群组房间消息入口。
+    group: true
+    # 把 content filter 应用于私密 DM 入口。
+    # 默认关闭，因此必须明确启用 private-chat filtering。
+    dm: false
+  block:
+    # 阻止内容时，在允许的用户/管理员反馈中包含命中的词/rule 信息，
+    # 而不是只显示通用阻止提示。
+    show-matched-word: true
+  mask:
+    # content-filter 规则选择遮罩而非整条阻止时，用于替换命中内容的文本。
+    text: "***"
+  anti-evasion:
+    # 过滤匹配前规范化 Unicode 形式，降低利用视觉/兼容等价字符绕过规则的可能。
+    unicode-normalization: true
+    # 同时匹配按过滤引擎规则移除可忽略分隔/空白后的 compact 形式，以捕获拆词绕过。
+    compact-match: true
+    # 启用 interleave 字符匹配，使在禁词字符之间插入其他字符的情况仍可按 gap
+    # 策略被检测。
+    interleave-match: true
+    # 有界 interleave 匹配中，相邻目标字符之间允许插入的最大字符 gap。
+    interleave-max-gap: 2
+    # 启用后取消 interleave gap 上限。
+    # 大跨度匹配会增加误报/处理开销风险，应谨慎使用。
+    interleave-unlimited-gap: false
+    # 比较前折叠过多重复字符，使重复字符式绕过仍能与规则匹配。
+    collapse-repeats: false
+    # 启用 collapse-repeats 时，同一字符重复序列保留的最大连续数量。
+    # 运行时最小值为 1；更小的值会提高到最小值。
+    repeat-limit: 1
+  # 内联 content-filter rule 列表。
+  # 每条规则定义匹配词/mode/action，并与 filter-lists 目录中启用的 UTF-8 词表共同生效。
+  # Rule 字段：id（可选，规范化为 [a-z0-9._-]，最长 64 字符）、enabled（true|false，默认
+  # true）、action（block|mask|replace）、words（字符串列表）。
+  # action=replace 时，replacements 为字符串列表，replacement-mode 为 first|random（默认 first），
+  # mappings 是可选的 word -> replacement YAML map；mappings 的 key 也会自动加入匹配词。
+  # 示例：
+  # rules:
+  #   - id: "example-replace"
+  #     enabled: true
+  #     action: "replace"
+  #     words:
+  #       - "word1"
+  #       - "word2"
+  #     replacements:
+  #       - "较温和的表达"
+  #       - "其他表达"
+  #     replacement-mode: "first"
+  #     mappings:
+  #       "word2": "指定表达"
+  rules: []
+commands:
+  # 从 KWC Web UI 执行允许的 Minecraft/server 命令的总开关。
+  enabled: false
+  # 通过角色/确认校验后允许执行任意 command text，而不限于配置的 preset。
+  # 仅应在可信管理员环境启用。
+  allow-all: false
+  # 使用 Web 命令执行所需的最低已认证 KWC 角色。
+  # 支持：USER、MODERATOR、ADMIN。
+  min-role: "ADMIN"
+  # 当前用户可使用 Web 命令执行时显示命令执行按钮/控件。
+  show-button: true
+  # 允许把普通聊天输入框中以 slash 开头的文本送入 Web 命令执行流程，
+  # 而不是作为聊天发送。
+  run-from-chat-input: false
+  # 普通聊天输入以 / 开头时显示命令相关 UI 提示/控件。
+  show-when-input-starts-with-slash: true
+  # 执行 Web 请求的命令前要求明确确认步骤。
+  require-confirm: true
+  # Web 命令执行接受的命令文本最大长度。
+  # 0 表示不限制此长度。
+  max-length: 0
+  # true = 将 Web 命令执行通知发布到公开 Web 聊天并显示给当前在线游戏玩家。
+  # false = 仅保留命令 response/control 以及现有控制台和审计日志处理。
+  broadcast-result-to-web-chat: false
+  # Web 命令 UI 中显示/允许的可选 preset 定义。
+  # null/empty 表示没有 preset；任意命令是否可用仍取决于 commands.allow-all。
+  # Preset 字段：id（可选；规范化为 [a-z0-9._-]，最长 64 字符）、label（可选）、
+  # description（可选）、command（必填）、enabled（true|false，默认 true）、confirm（true|false，
+  # 默认 true）。
+  # command 开头的 / 会被移除；包含换行/CR/NUL 的 command 会被忽略。
+  # 实际示例（取消注释后放在下方 presets: 之下使用）：
+  # - id: "day"
+  #   label: "设为白天"
+  #   description: "把当前世界时间设为白天。"
+  #   command: "time set day"
+  #   confirm: true
+  # - id: "weather-clear"
+  #   label: "清除天气"
+  #   command: "weather clear"
+  #   confirm: true
+  presets:
+
+# =============================================================================
+# Web UI 与通知
+# =============================================================================
+
+ui:
+  # 默认 Web UI 语言，同时决定 config/reference/migration 注释展示语言。
+  # 内置支持：en-US、ko-KR、ja-JP、zh-CN；自定义 UI 语言使用英文 config 展示。
+  language: "en-US"
+  # 所选 UI 语言缺少翻译 key 时使用的 Web 翻译回退语言。
+  # 内置支持：en-US、ko-KR、ja-JP、zh-CN。
+  language-fallback: "en-US"
+  # Web 聊天时间戳使用的时区。
+  # local 使用浏览器/设备时区；可用 UTC、Asia/Seoul 等有效 Java/IANA zone id；无效值回退到
+  # local。
+  time-zone: "local"
+  # 默认 Web 主题。
+  # 支持：system、dark、light、high-contrast。
+  # 启用用户设置控制时，个人 preference 可覆盖它。
+  theme: "system"
+  # KWC 嵌入 BlueMap 时，在支持范围内跟随 BlueMap 的 light/dark 主题信号，
+  # 而不是保持独立主题。
+  sync-bluemap-theme: true
+  # 应用于 KWC Web surface 的基础不透明度。
+  # 运行时范围为 0.2-1.0，超出范围会钳制到边界值。
+  opacity: 0.92
+  # 在安全渲染后的 Web 聊天正文中，把识别到的 URL 文本转换为可点击链接。
+  linkify-urls: true
+  # 允许支持的图片 URL/上传内容在 Web 聊天中显示 inline 图片预览。
+  image-preview-enabled: true
+  # 单条消息渲染的 inline 图片预览最大数量。
+  # 0 表示不限制数量。
+  image-preview-max-per-message: 3
+  # 图片预览的配置高度上限（px）。
+  # 即使为正数也仍受聊天 viewport 安全上限约束；0 只取消此明确 px 上限并改用自动 viewport
+  # 上限，因此并非真正无限。
+  image-preview-max-height: 720
+  # 把支持的 Google Drive 分享链接识别为 Web 聊天图片预览候选。
+  google-drive-image-preview: false
+  # Google Drive 预览 URL 模式。
+  # uc 保留 uc-style 路径；其他值都会归一化为 thumbnail。
+  google-drive-preview-mode: "thumbnail"
+  # 访客聊天关闭时，对未登录访问者隐藏公开聊天 UI，
+  # 而不是显示无法使用的访客输入框。
+  hide-chat-for-guests-when-guest-disabled: true
+  # 在宿主 layout 支持时允许用户调整 floating/embedded KWC 聊天面板大小。
+  resizable: true
+  # 把用户最后调整的 KWC 面板尺寸保存到浏览器端 preference 并恢复。
+  remember-window-size: true
+  # 应用已记忆/用户专属尺寸前的 KWC 面板默认宽度（px）。
+  default-width: 372
+  # 应用已记忆/用户专属尺寸前的 KWC 面板默认高度（px）。
+  default-height: 462
+  # 用户可调整的 KWC 面板最小宽度（px）。
+  min-width: 280
+  # 用户可调整的 KWC 面板最小高度（px）。
+  min-height: 240
+  # 配置的 KWC 面板最大宽度（px）。
+  # 0 仅取消配置的最大值；浏览器/viewport 限制仍可能生效。
+  max-width: 640
+  # 配置的 KWC 面板最大高度（px）。
+  # 0 仅取消配置的最大值；浏览器/viewport 限制仍可能生效。
+  max-height: 720
+  # 没有更具体 font-size 设置的 Web UI 元素使用的基础字体大小（px）。
+  font-size: 13
+  # Web 聊天消息正文的字体大小（px）。
+  message-font-size: 13
+  # 聊天输入框/composer 的字体大小（px）。
+  input-font-size: 13
+  # 聊天消息文本颜色的可选覆盖值。
+  # 为空时跟随当前主题。
+  text-color: ""
+  # 普通 UI/控件文本颜色的可选覆盖值。
+  # 为空时跟随当前主题。
+  ui-text-color: ""
+  # Web UI 文本阴影预设。
+  # 支持：none、auto、dark、light、custom；无效值归一化为 auto。
+  text-shadow-mode: "auto"
+  # 仅在 custom 模式使用的 CSS text-shadow 值。
+  # KWC 会清理并限制长度/允许字符范围，且拒绝 url(...) 内容。
+  text-shadow-custom: "0 1px 2px rgba(0, 0, 0, 0.85)"
+  # 聊天输入框/composer 背景色的可选覆盖值。
+  # 为空时跟随当前主题。
+  input-background-color: ""
+  # KWC 按钮和紧凑控件使用的字体大小（px）。
+  button-font-size: 12
+  # 未读/status badge 使用的字体大小（px）。
+  badge-font-size: 10
+  # KWC 默认 CSS font-family。
+  # 为空时使用内置 browser/system 字体栈；本地字体名称由每个用户设备解析，不是在
+  # Minecraft 服务器上解析。
+  font-family: ""
+  # 允许用户在 Chat settings UI 中修改支持的浏览器级/账号级聊天外观和行为 preference。
+  user-preferences-control: true
+  user-profiles:
+    # 启用已认证用户的命名服务器端 preference 配置档。
+    enabled: true
+    # 每个账号可在服务器保存的 preference 配置档最大数量。
+    # 运行时范围为 0-20，超出范围会钳制到边界值。
+    # 0 表示关闭服务器端保存的配置档。
+    max-profiles: 5
+    # 允许 preference 配置档 JSON 导出/导入。
+    # 导入数据会进行严格 schema 校验，值必须位于支持范围内。
+    allow-import-export: true
+  picture-in-picture:
+    # 浏览器提供所需能力时启用受支持的 KWC picture-in-picture/floating view 行为。
+    enabled: false
+  # Chat settings 中显示的 font-family 选项。
+  # 空字符串表示 browser/system 默认值；支持时用户也可直接输入已安装本地字体名称。
+  user-font-options:
+    - ""
+    - "system-ui, sans-serif"
+    - "Arial, sans-serif"
+    - "Verdana, sans-serif"
+    - "Georgia, serif"
+    - "monospace"
+  virtual-scroll:
+    # 启用虚拟化聊天消息渲染，使长历史记录只在 DOM 中保留有限可见窗口。
+    enabled: true
+    # virtual-scroll 可见窗口上下额外渲染的 viewport 屏幕距离。
+    # 0 是有效的最小行为值。
+    overscan-screens: 0.75
+    # 即使 viewport 计算需要更少，也保持渲染的最小消息行数。
+    # 0 是有效的最小行为值。
+    min-rendered-messages: 30
+  history-preload:
+    # 距离顶部/底部多少个 viewport 屏幕时触发额外历史 preload。
+    # 运行时范围为 0-5，超出范围会钳制到边界值。
+    screens: 0.70
+    # 与 history-preload 屏幕距离配合使用的最小像素阈值，使历史加载可在到达边缘前开始。
+    # 运行时范围为 0-1000，超出范围会钳制到边界值。
+    min-px: 200
+  # 自动跟随最新消息时，仍视为处于底部跟随状态的底部距离（px）。
+  # 运行时范围为 2-300，超出范围会钳制到边界值。
+  auto-follow-bottom-threshold-px: 80
+  # 用户直接滚动后，自动 scroll/follow 逻辑可恢复前的静默时间（ms）。
+  # 运行时范围为 50-1000，超出范围会钳制到边界值。
+  scroll-interaction-idle-ms: 160
+  resume-refresh:
+    # 后台/挂起页面重新激活时，根据 interval/unchanged guard 刷新相关聊天/config 状态。
+    enabled: true
+    # 自动 resume-refresh 执行之间的最小间隔（秒）。
+    # 运行时范围为 1-300，超出范围会钳制到边界值。
+    min-interval-seconds: 5
+    # 服务器状态 marker 显示相关数据未变化时，跳过较重的 resume-refresh 工作。
+    skip-unchanged: true
+notifications:
+  # KWC 页面打开时浏览器通知生成的总开关。
+  # 各通知类别和用户 preference 还能进一步缩小投递范围。
+  enabled: true
+  # 把页面内浏览器通知限制为仅在标签页/窗口隐藏、最小化或未聚焦时发送；不控制后台
+  # Web Push。
+  only-when-hidden: true
+  # 允许普通公开聊天消息产生浏览器通知。
+  notify-normal-chat: true
+  # 允许新 DM 产生浏览器通知。
+  notify-dm: true
+  # 允许新群组房间消息产生浏览器通知。
+  notify-group-chat: true
+  # 按 KWC mention 匹配当前用户被提及时允许浏览器通知。
+  notify-mentions: true
+  # 有消息 Reply 当前用户相关消息/会话时允许浏览器通知。
+  notify-replies: true
+  # 允许服务器/system announcement 通知。
+  # 支持时用户设置还可进一步选择 all、仅 join/leave 或 off。
+  notify-system: true
+  # 允许由用户/管理员关键词通知规则触发的浏览器通知。
+  notify-keywords: true
+  # 在符合条件的浏览器通知中包含安全的消息文本预览，而不是只有标题/类别。
+  show-message-preview: true
+web-push:
+  # 创建 Web Push subscription 使用的 VAPID public key。
+  # 为空时由 KWC 在需要 Web Push 时生成/管理密钥对。
+  vapid-public-key: ""
+  # 与 web-push.vapid-public-key 配对的 VAPID private key。
+  # 必须保密；为空时由 KWC 按需生成/管理密钥对。
+  vapid-private-key: ""
+  # Web Push 认证中携带的 VAPID contact subject，通常使用 mailto: 或 https: 管理员联系 URI。
+  subject: "mailto:admin@example.com"
+  # server/test/background Web Push 通知的默认标题。
+  # 为空时回退到 frontend.standalone.app-name。
+  notification-title: ""
+  # 存储 KWC 管理的浏览器 Web Push subscription endpoint/key 的 JSONL 数据文件。
+  # 应视为应用数据而非公开 Web 资源。
+  subscriptions-file: "web-push-subscriptions.jsonl"
+  # 提交给 push service 的排队 Web Push 投递 time-to-live（秒）。
+  # 运行时范围为 30-86400，超出范围会钳制到边界值。
+  ttl-seconds: 300
+web-fonts:
+  # 启用来自 web-fonts.items 和指定字体目录的服务器托管 Web 字体定义。
+  enabled: false
+  # 存放配置的 web-font item 所引用字体文件的数据目录相对文件夹。
+  directory: "fonts"
+  # 把 font-family metadata 映射到服务器托管文件的 Web 字体定义列表。
+  # 空列表不注册额外服务器字体。
+  # 项目字段：family（必填 CSS font-family 名称）、file（必填，相对 web-fonts.directory；仅
+  # woff2|woff|ttf|otf）、weight（100-900，默认 400）、style（normal|italic|oblique，默认 normal）。
+  # 绝对路径、包含 ".." 的路径、不支持的扩展名或缺少 family/file 的项目会被忽略。
+  # 无效 weight/style 会回退为 400/normal。
+  # 示例：
+  # items:
+  #   - family: "Pretendard"
+  #     file: "Pretendard.woff2"
+  #     weight: 400
+  #     style: "normal"
+  items: []
+
+# =============================================================================
+# 外部集成
+# =============================================================================
+
+discordsrv:
+  # DiscordSRV 配置示例：
+  # - 先单独安装/配置 DiscordSRV，再把 channel 设为其 Channels mapping 的逻辑名称（通常为
+  #   "global"）。
+  # - 如果 DiscordSRV 已经负责普通 Minecraft chat -> Discord，请保持 game-relay-mode: "discordsrv"，避免
+  #   KWC 重复发送。
+  # - 只有需要 KWC 直接负责 Minecraft -> Discord 时才使用 game-relay-mode: "kwc"，并关闭 DiscordSRV
+  #   中冲突的普通聊天 relay。
+  # - 从其他服务器通过 Relay 收到的公开聊天不会再次发送到 Discord，从而避免 server/source
+  #   前缀重复和 bridge loop。
+  # 启用 KWC 的可选 DiscordSRV bridge 功能。
+  # DiscordSRV 本身必须另行安装和配置。
+  enabled: false
+  # 普通 KWC Discord relay 使用的 DiscordSRV logical channel 名称。
+  channel: "global"
+  # 把已接受的 KWC Web 公开聊天消息 relay 到 Discord。
+  web-to-discord: true
+  # 选择谁把 Minecraft 公开聊天发送到 Discord：discordsrv 使用 DiscordSRV 原生 relay 并由 KWC
+  # 增强；kwc 由 KWC 按
+  # game-relay-format 直接发送。
+  # 无效值回退到 discordsrv，并应避免两个 relay 同时发送造成重复。
+  game-relay-mode: "discordsrv"
+  # 把配置 DiscordSRV channel 中符合条件的 Discord 消息发布到 KWC Web 公开聊天。
+  discord-to-web: true
+  # 接收 Discord→KWC 聊天时忽略机器人发送的消息，降低 bot loop/echo 风险。
+  ignore-bot-messages: true
+  # 同一 Minecraft 聊天又通过 DiscordSRV/native relay 关联被观察到时，抑制 Discord→web
+  # 重复投递。
+  suppress-game-echo: true
+  # 用于在 DiscordSRV relay 前后关联/抑制重复游戏聊天 echo 的时间窗口（秒）。
+  suppress-game-echo-seconds: 5
+  # web→Discord relay 启用时允许把已认证 Web 用户公开消息发送到 Discord。
+  send-web-user-chat-to-discord: true
+  # web→Discord relay 启用时允许把访客公开消息发送到 Discord。
+  send-web-guest-chat-to-discord: false
+  # web→Discord relay 启用时允许把 Web 管理员公开消息发送到 Discord。
+  send-web-admin-chat-to-discord: true
+  # 给 web→Discord 消息中识别到的 KWC custom-emoji token 附加公网可访问图片 URL，使 Discord
+  # 可预览图片。
+  append-web-emoji-links: true
+  # Minecraft→Discord relay 中，把 Discord 帖子使用的原始 emoji-token 文本走 KWC token→image-link
+  # 路径；不会用已渲染的
+  # Minecraft glyph 作为转换源。
+  append-game-emoji-links: true
+  # 单条 Discord 消息附加的 custom-emoji 图片 URL 最大数量。
+  # 与 emoji.game-link.max-links-per-message 不同，本设置中的 0 表示禁用。
+  # 0 表示不向 Discord 附加 emoji 图片 URL。
+  max-emoji-links-per-message: 4
+  reply-relay:
+    # 把支持的消息 relay 到 Discord 时保留/转发 KWC Reply context，而不是只发送新消息正文。
+    enabled: false
+    # KWC Reply context relay 到 Discord 时添加配置/默认 Reply marker/prefix。
+    prefix-enabled: true
+    # 在 Discord relay 展示中包含被回复原消息的简短 preview。
+    preview-enabled: true
+    # Discord Reply preview 中包含的被回复原文最大长度。
+    # 0 表示不截断预览。
+    preview-max-length: 120
+  # KWC Web 来源 relay 消息的 Discord 文本格式。
+  # 支持 {server}、{server_id}、{sender}、{name}、{role}、{source}、{message}、{channel} 等；启用 relay
+  # 时，缺少服务器身份的旧格式可能会自动加前缀。
+  web-to-discord-format: "[{server}] [Web] {sender}: {message}"
+  # discordsrv.game-relay-mode=kwc 时 KWC 直接发送 Minecraft 聊天到 Discord 使用的文本格式。
+  game-relay-format: "[{server}] {sender}: {message}"
+  # Web 聊天中 Discord 来源消息的 KWC sender label 格式。
+  # placeholder：{sender}。
+  discord-to-web-sender-format: "Discord:{sender}"
+  # Web 聊天中 Discord 来源消息的 KWC 正文格式。
+  # placeholder：{message}。
+  discord-to-web-message-format: "{message}"
+admin-alerts:
+  discord:
+    # 启用通过配置的 DiscordSRV channel 发送 Discord 管理员关键词警报。
+    enabled: false
+    # 管理员警报使用的 DiscordSRV logical channel。
+    # 为空时复用 discordsrv.channel；只有没有 logical mapping 时才把 raw channel id 作为仅 ID 回退。
+    channel: ""
+    sources:
+      # 扫描本地公开聊天消息中的已配置管理员警报关键词。
+      public-chat: true
+      # 扫描已接受的服务器间 Relay 公开聊天消息中的管理员警报关键词。
+      relay-chat: false
+      # 明确启用时扫描私密 DM 内容中的管理员警报关键词；
+      # 若不希望检查私聊关键词应保持关闭。
+      dm: false
+      # 明确启用时扫描群组房间消息中的管理员警报关键词。
+      group-chat: false
+    # 管理员警报附加的 Discord mention 模式。
+    # 支持：none、here、everyone；无效值归一化为 none。
+    mention: "none"
+    # 使管理员警报关键词匹配区分大小写，而不是默认不区分大小写。
+    case-sensitive: false
+    # 逗号/换行分隔的管理员警报关键词。
+    # 条目会 trim、移除控制字符，按 case-sensitive 策略匹配，并去重且受 KWC 安全限制约束。
+    keywords: ""
+
+# =============================================================================
+# 上传、媒体与表情
+# =============================================================================
+
+upload:
+  # 上传运行/安全说明：
+  # - 文件保存在 KWC data directory 下的 upload.directory。
+  #   除非有意从独立公开 URL 提供文件，否则建议保持 public-base-url 为空。
+  # - Guest 上传默认关闭。单文件/总容量限制使用 MiB；0 只取消对应配置的 quota。
+  # - allowed-extensions 是 allow-list，但 KWC 仍会额外拒绝危险的 executable/web 扩展名。
+  #   不能把扩展名过滤当作普通服务器/网络安全的替代品。
+  # - Retention cleanup 只删除过期且未被引用的上传；仍被保留消息/pin
+  #   引用的文件会按相关保留设置继续保存。
+  # KWC 文件上传端点及 composer 上传控件的总开关。
+  enabled: true
+  # 允许未认证访客上传文件。
+  # 由于增加垃圾信息/存储滥用风险，默认关闭。
+  allow-guest-upload: false
+  # 允许已认证 USER 角色账号上传文件。
+  allow-user-upload: true
+  # 允许已认证 MODERATOR 角色账号上传文件。
+  allow-moderator-upload: true
+  # 允许已认证 ADMIN 角色账号上传文件。
+  allow-admin-upload: true
+  # 同一 resolved client IP 两次上传尝试之间的最小间隔（秒）。
+  # 0 表示关闭此限制项。
+  cooldown-seconds: 5
+  # 单个 resolved client IP 每分钟上传尝试限制。
+  # 0 表示关闭此限制项。
+  max-uploads-per-minute: 4
+  # 单个上传文件允许的最大大小（MiB）。
+  # 0 表示不限制此大小/配额。
+  max-file-size-mb: 20
+  # upload.directory 的总存储配额（MiB）。
+  # 超额时先删除最旧的未引用上传；若仍无法腾出足够空间，则拒绝新上传。
+  # 0 表示不限制此大小/配额。
+  max-total-size-mb: 0
+  # 一次 composer 上传操作可选择/附加的最大文件数。
+  # 0 表示不限制数量。
+  max-files-per-message: 3
+  # KWC 存储上传文件的数据目录相对文件夹。
+  directory: "uploads"
+  # 存储文件名策略：random 用生成的 storage name 隐藏原名；original 保留清理后的 Unicode
+  # 原文件名，冲突时添加数字后缀。
+  # 无效值归一化为 random。
+  filename-mode: "random"
+  # 上传文件的公开 URL base。
+  # 为空时使用当前 KWC 公开 API base + /uploads；显式 API-base 路径、直接上传路径、
+  # 相对路径和完整 URL 会按兼容规则规范化。
+  public-base-url: ""
+  # 仅删除超过此天数且已不再被保留消息/pin 引用的上传文件。
+  # 0 表示关闭按时间清理。
+  retention-days: 5
+  # 允许上传的文件扩展名列表。
+  # 空列表不会允许所有扩展名，而是回退到 KWC 内置的安全媒体扩展名列表。
+  allowed-extensions:
+    - png
+    - jpg
+    - jpeg
+    - gif
+    - webp
+    - mp4
+    - webm
+    - mp3
+    - m4a
+    - ogg
+    - wav
+    - flac
+  # 允许把浏览器剪贴板粘贴的图片 blob 通过 KWC composer 上传路径上传。
+  clipboard-upload-enabled: true
+  # 剪贴板图片上传后的动作：insert 把上传 URL 放入当前 composer；send 立即发送。
+  # 无效值归一化为 insert。
+  clipboard-upload-send-mode: "insert"
+  # 浏览器未提供可用文件名/扩展名时，粘贴图片 blob 使用的回退扩展名。
+  clipboard-image-default-extension: "png"
+  # 允许已上传图片 URL/文件使用 inline 图片预览 renderer。
+  preview-images: true
+  # 允许已上传视频 URL/文件使用 inline 视频预览/播放器 renderer。
+  preview-videos: true
+  # 允许已上传音频 URL/文件使用 inline 音频播放器 renderer。
+  preview-audio: true
+preview:
+  # 识别支持的 YouTube URL 并在 Web 聊天中渲染 YouTube embed。
+  youtube-embed-enabled: true
+  # 在用户点击前不加载 YouTube embed，减少自动第三方请求和资源消耗。
+  youtube-click-to-load: true
+  # 对于支持延迟加载的 inline 媒体预览/播放器，在用户操作前不加载。
+  media-click-to-load: true
+  # 支持时使用 YouTube privacy-enhanced/no-cookie embed 端点。
+  youtube-nocookie: true
+  # 支持时按用户/浏览器记忆 YouTube 预览展开/折叠状态。
+  youtube-remember-expanded: true
+  # 明确打开 YouTube 预览时请求 autoplay；浏览器自动播放策略仍可能阻止实际播放。
+  youtube-autoplay-on-open: false
+  # 单条消息渲染的 YouTube embed 最大数量。
+  # 0 表示不限制数量。
+  youtube-max-embeds-per-message: 1
+  social-embeds:
+    # 支持的非 YouTube 社交 embed（如已启用 TikTok/X provider）的总开关。
+    enabled: true
+    # 在用户点击前延迟加载支持的社交 embed，减少自动第三方请求。
+    click-to-load: true
+    # 单条消息渲染的受支持社交 embed 最大数量。
+    # 0 表示不限制数量。
+    max-embeds-per-message: 2
+    tiktok:
+      # 在 social-embed 总开关下启用 TikTok URL 识别/embed 渲染。
+      enabled: false
+    x:
+      # 在 social-embed 总开关下启用 X/Twitter URL 识别/embed 渲染。
+      enabled: false
+      # X/Twitter embed 请求的主题：auto、light、dark；无效值归一化为 auto。
+      theme: "auto"
+      # 在 provider 支持的 X/Twitter embed 配置中请求 Do-Not-Track 行为。
+      dnt: true
+      # embed API 支持时请求 X/Twitter embed 隐藏附加媒体。
+      hide-media: false
+      # 支持时请求 X/Twitter embed 隐藏周边 thread/conversation 上下文。
+      hide-thread: true
+  # 启用 KWC 外部媒体本地缓存，主要用于保留第三方 URL 可能过期的附件。
+  external-media-cache-enabled: true
+  # 允许在源 URL 过期前把符合条件的 Discord CDN 附件 URL 复制到 KWC external-media cache。
+  cache-discord-cdn: true
+  # 存储受支持外部媒体缓存副本的数据目录相对文件夹。
+  external-media-cache-directory: "uploads/external-media-cache"
+  # KWC 会获取/缓存的单个外部媒体对象最大大小（MiB）。
+  # 0 表示不限制此大小/配额。
+  external-media-cache-max-size-mb: 20
+  # 删除未引用 external-media cache 文件的按时间天数。
+  # 0 表示关闭按时间清理。
+  external-media-cache-retention-days: 5
+  # 下载外部媒体到本地缓存时的 fetch/connect 超时（秒）。
+  # 运行时最小值为 1；更小的值会提高到最小值。
+  external-media-cache-timeout-seconds: 6
+emoji:
+  # 自定义 Emoji 设置确认用的可选使用示例：
+  # - 文件直接放在 emoji.directory 下即为 default/root emoji；放入子目录则形成 pack。
+  #   Web Admin emoji manager 使用同一 managed storage。
+  # - Picker 默认插入 :pack/name: token；root 中名称无歧义时也可使用 :name:。
+  #   token-format=legacy 会插入 :emoji:pack/name:，两种形式解析时都支持。
+  # - 同一 pack 的名称冲突会使用稳定 suffix 区分，不同 pack 相互隔离。
+  #   GIF 动画在 Web UI 中保留。
+  # - game-link.enabled=false 会保留原 token 供游戏侧 emoji 插件处理。
+  #   只有需要 KWC 自行把 Web emoji 转换为 Minecraft 显示时才开启。
+  # - max-file-size-kb 使用 KiB，max-total-size-mb 使用 MiB；0 表示取消对应限制。
+  # 启用服务器管理的 KWC custom emoji catalog、渲染及相关 admin/upload API。
+  # emoji 文件可直接放在目录中，也可放入作为 pack 的子文件夹。
+  enabled: true
+  # emoji 功能可用时在 Web 聊天 composer 中显示 custom emoji picker 按钮。
+  show-button: true
+  # KWC custom emoji 文件及 pack 子目录扫描/存储使用的数据目录相对文件夹。
+  directory: "emojis"
+  # custom emoji 文件的公开 URL base。
+  # 为空时使用当前 KWC 公开 API base + /emojis；显式 API-base 路径、emoji 路径、相对路径和完整
+  # URL 会按兼容规则规范化。
+  public-base-url: ""
+  # 单个 custom emoji 文件大小限制（KiB）；超出时会根据所用流程在管理 catalog
+  # 操作中被拒绝/忽略。
+  # 0 表示不限制此大小/配额。
+  max-file-size-kb: 512
+  # 管理 emoji 文件的总 storage/catalog 配额（MiB）。
+  # 超过配额的上传会被拒绝，catalog 扫描也不会暴露超出总限制的文件。
+  # 0 表示不限制此大小/配额。
+  max-total-size-mb: 64
+  # 在管理员 emoji manager 中显示当前管理 emoji 存储使用量。
+  show-storage-usage: true
+  # 在管理员 emoji manager 中显示配置的 emoji 总存储限制。
+  show-storage-limit: true
+  # 聊天消息中 custom emoji 的显示大小（px）；animated GIF 在浏览器中保持动画。
+  # 运行时范围为 16-1024，超出范围会钳制到边界值。
+  render-size-px: 32
+  # emoji picker 中条目的显示大小（px），不会改变消息中的渲染大小。
+  # 运行时范围为 24-1024，超出范围会钳制到边界值。
+  picker-size-px: 44
+  # 单条消息允许的 custom emoji token 最大数量。
+  # token 可包含规范化的 pack/name 路径。
+  # 0 表示不限制数量。
+  message-token-limit: 12
+  # Web emoji picker 插入的 token 格式：short=:pack/name:，legacy=:emoji:pack/name:；parser 两种都接受。
+  # legacy/prefixed/emoji 别名归一化为 legacy，其他值归一化为 short。
+  token-format: "short"
+  # 允许的 custom emoji 图片扩展名列表。
+  # 空列表不会允许任意文件，而是回退到 KWC 内置支持的图片扩展名列表。
+  allowed-extensions:
+    - png
+    - jpg
+    - jpeg
+    - gif
+    - webp
+  game-link:
+    # 启用 KWC Web→Minecraft custom-emoji 转换。
+    # 关闭时保留原 token 文本供游戏侧 emoji 插件渲染；开启时应用 emoji.game-link.mode。
+    enabled: false
+    # 启用时 Web→Minecraft emoji 转换模式：link=标签+短图片 URL，label=仅标签，preserve=保留原
+    # token。
+    # preserve/token/original/none 归一化为 preserve，label/template/text 归一化为 label，其余归一化为
+    # link。
+    mode: "link"
+    # 构建游戏内 emoji 图片短链接使用的公开 KWC API base。
+    # 为空时根据已配置 adapter/standalone/origin 信息自动解析；HTTPS
+    # 反向代理环境可明确填写公开 API URL 以避免歧义。
+    public-api-base-url: ""
+    # Web→game emoji 转换使用的文本标签格式。
+    # placeholder：{id}、{name}、{pack}；需要保留 pack identity 时应使用 {id}。
+    label-format: ":{id}:"
+    # link 模式下单条游戏消息附加的 emoji 图片链接最大数量。
+    # 0 表示不限制数量。
+    max-links-per-message: 4
+    # 当同名 emoji 存在于多个 pack 时，用于消解 flat token/name 歧义的优先 pack。
+    # 为空时不设置额外优先 pack。
+    default-pack: ""
+    # 用于 Web/game token 兼容的显式 flat/custom alias→canonical pack/name 映射。
+    # 空 map 不定义额外 alias；相同 emoji 名仍可独立存在于不同 pack。
+    # alias key 可使用 wave 这样的普通名称，也可使用加引号的 :wave: token；
+    # 匹配时还会规范化大小写/NFC/NFKC 变体。目标 id 不存在于当前 emoji catalog 时，
+    # 该映射会被忽略。
+    # 显式映射优先于自动 flat-name 匹配。
+    # 示例：
+    # aliases:
+    #   wave: "default/wave"
+    #   ":party:": "global/party"
+    aliases: {}

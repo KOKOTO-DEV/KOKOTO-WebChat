@@ -15,26 +15,28 @@ public final class BukkitRelayHost implements RelayHost {
     public RelaySettings relaySettings() {
         ConfigValues c = plugin.configValues();
         if (c == null) return null;
-        List<RelaySettings.Peer> peers = new ArrayList<>();
-        if (c.serverRelayPeers != null) {
-            for (ConfigValues.RelayPeer peer : c.serverRelayPeers) {
-                if (peer == null) {
-                    peers.add(null);
-                } else {
-                    peers.add(new RelaySettings.Peer(peer.id, peer.url, peer.secret, peer.enabled));
+        List<RelaySettings.Group> groups = new ArrayList<>();
+        if (c.serverRelayGroups != null) {
+            for (ConfigValues.RelayGroup group : c.serverRelayGroups) {
+                if (group == null) { groups.add(null); continue; }
+                List<RelaySettings.Peer> peers = new ArrayList<>();
+                if (group.peers != null) for (ConfigValues.RelayPeer peer : group.peers) {
+                    peers.add(peer == null ? null : new RelaySettings.Peer(peer.id, peer.url, peer.enabled));
                 }
+                groups.add(new RelaySettings.Group(group.id, group.sharedSecret, group.forwardingEnabled, peers));
             }
         }
         return new RelaySettings(
-                c.serverRelayEnabled, c.serverRelayServerId, c.serverRelayServerName, c.serverRelaySharedSecret,
+                c.serverRelayEnabled, c.serverRelayServerId, c.serverRelayServerName,
                 c.serverRelayConnectTimeoutSeconds, c.serverRelayRequestTimeoutSeconds, c.serverRelayMaxClockSkewSeconds,
-                c.serverRelayDedupeSeconds, c.serverRelayMaxHops, c.serverRelayForwardReceivedPublicChat,
+                c.serverRelayDedupeSeconds, c.serverRelayMaxHops,
                 c.serverRelayGameChat, c.serverRelayWebChat, c.serverRelayGuestChat,
                 c.serverRelayDiscordChat, c.serverRelaySystemEvents,
-                c.serverRelayDeliverToWeb, c.serverRelayDeliverToGame, c.serverRelayGameFormat, peers);
+                c.serverRelayDeliverToWeb, c.serverRelayDeliverToGame, c.serverRelayGameFormat, groups);
     }
 
     @Override public String defaultServerName() { return plugin.getServer().getName(); }
+    @Override public WebChatLanguage language() { return plugin.langManager(); }
     @Override public void info(String message) { plugin.getLogger().info(message); }
     @Override public void warn(String message) { plugin.getLogger().warning(message); }
 
@@ -66,7 +68,8 @@ public final class BukkitRelayHost implements RelayHost {
                 message.relayId, message.originServerId, message.originServerName,
                 message.senderUuid, message.senderUsername, message.senderDisplayName,
                 message.targetUuid, message.targetUsername, message.targetDisplayName,
-                message.message, message.gameMessage);
+                message.message, message.gameMessage,
+                message.replyToRelayId, message.replyToSender, message.replyToPreview);
     }
 
     @Override

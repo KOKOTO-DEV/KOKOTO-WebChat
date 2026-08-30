@@ -1,5 +1,8 @@
 # KOKOTO WebChat Caddy HTTPS 配置指南
 
+
+![KWC 反向代理部署结构](assets/deployment-modes.svg)
+
 本指南说明如何让 BlueMap 和 KOKOTO WebChat 继续作为本地 HTTP 服务运行，并通过 Caddy 以 HTTPS 对外提供服务。
 
 ## 推荐结构
@@ -24,7 +27,7 @@ https://map.example.com/chat
 
 ## 从 BMWC 迁移到 KWC 时的 HTTPS 路径变化
 
-BlueMapWebChat 的标准 HTTPS 配置通常将公开 `/bmwc/api` 代理到内部 `:8899/api`，并将公开 `/bmwc/chat` 代理到内部 standalone `/chat`。KOKOTO WebChat 5.0.0 不再沿用该布局。迁移时，BMWC 的标准公开路径值会规范化为 KWC 新的自动值。
+BlueMapWebChat 的标准 HTTPS 配置通常将公开 `/bmwc/api` 代理到内部 `:8899/api`，并将公开 `/bmwc/chat` 代理到内部 standalone `/chat`。KOKOTO WebChat 5.0.0 及之后版本不再沿用该布局。迁移时，BMWC 的标准公开路径值会规范化为 KWC 新的自动值。
 
 ```text
 BMWC
@@ -32,7 +35,7 @@ BMWC
   Standalone:  https://map.example.com/bmwc/chat
   API:         https://map.example.com/bmwc/api
 
-KWC 5.0.0
+KWC 5.0.0 及之后版本
   BlueMap:     https://map.example.com/
   Standalone:  https://map.example.com/chat
   API:         https://map.example.com/chat/api
@@ -126,6 +129,34 @@ map.example.com {
 设置 `http.public-prefix: ""`，保持 `frontend.standalone.path: "/"`，adapter/frontend 的 `api-base-url` 通常保持为空。最终 URL 为 KWC `/`、KWC API `/api`、BlueMap `/chat/`。
 
 
+### 在同一域名下使用 BlueMap + squaremap + standalone
+
+如果三个 frontend 都启用，应让一个地图占用 `/`，并给另一个地图分配独立前缀。例如 squaremap 位于 `127.0.0.1:8080`、BlueMap 位于 `127.0.0.1:8100`、KWC 位于 `127.0.0.1:8899` 时：
+
+```caddyfile
+map.example.com {
+  encode zstd gzip
+
+  @chat path /chat /chat/*
+  handle @chat {
+    uri strip_prefix /chat
+    reverse_proxy 127.0.0.1:8899
+  }
+
+  @bluemap path /bluemap /bluemap/*
+  handle @bluemap {
+    uri strip_prefix /bluemap
+    reverse_proxy 127.0.0.1:8100
+  }
+
+  handle {
+    reverse_proxy 127.0.0.1:8080
+  }
+}
+```
+
+该配置会把 squaremap 发布在 `/`、BlueMap 发布在 `/bluemap/`、standalone KWC 发布在 `/chat`，KWC API 发布在 `/chat/api`。如果希望 BlueMap 使用根路径，请交换根地图与带前缀地图的 handler。
+
 ## 3. KOKOTO WebChat config.yml
 
 ```yaml
@@ -161,9 +192,13 @@ ui:
 
 请将 `map.example.com` 替换为实际域名。
 
-为了保持滚动稳定，建议保留媒体预览 max-height 限制。推荐值为 `640-720`。`0` 表示无限制，在媒体较多的 virtual scroll 场景中可能导致滚动跳动。
+为了保持滚动稳定，建议保留媒体预览 max-height 限制。推荐值为 `640-720`。`0` 只会取消显式像素上限，浏览器仍会应用基于 viewport 的安全上限，因此并不代表完全无限的显示高度。
 
-## 4. 防火墙建议
+## 4. BlueMap
+
+BlueMap 可以继续使用现有 Web 端口，常见为 `8100`。公开部署时建议只向互联网开放 Caddy 的 `80/tcp` 与 `443/tcp`，不要直接暴露 BlueMap 与 KOKOTO WebChat 的内部端口。
+
+## 5. 防火墙建议
 
 ```text
 允许从互联网访问: 80/tcp, 443/tcp
@@ -172,7 +207,7 @@ ui:
 
 如果 Caddy 和 Minecraft 在同一台主机上，建议将 KOKOTO WebChat API 只绑定到 `127.0.0.1`。
 
-## 5. 应用步骤
+## 6. 应用步骤
 
 1. 将域名 A/AAAA 记录指向服务器 IP。
 2. 在防火墙中允许 `80/tcp` 和 `443/tcp`。
@@ -185,7 +220,7 @@ ui:
 9. `/kchat reload` 会在更新 BlueMap adapter 后自动请求 `bluemap reload light`。自动执行失败时请手动运行 `/bluemap reload light`。
 10. 在浏览器中打开 `https://map.example.com/` 或 `https://map.example.com/chat`。
 
-## 6. HTTP 页面 + HTTPS API 注意事项
+## 7. HTTP 页面 + HTTPS API 注意事项
 
 只让聊天 API 使用 HTTPS，而 BlueMap 页面仍通过 HTTP 提供，并不是完整的安全边界。公开服务器应将 BlueMap 和 KOKOTO WebChat 都放在同一个 HTTPS origin 下。
 
@@ -196,3 +231,11 @@ ui:
 ### URL 设置解析规则
 
 HTTPS 公开 API 的基准是 `http.public-prefix + http.path-prefix`，默认值为 `/chat/api`。adapter 与 standalone 的 `api-base-url` 是彼此独立的可选 override，通常保持为空。upload/emoji 留空时会基于统一公开 API 分别追加 `/uploads`、`/emojis`。绝对路径、相对值和完整 `https://...` URL 仅在需要独立公开 URL 时使用。
+
+## 官方参考文档
+
+- [Caddy `reverse_proxy`](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+- [Caddy reverse-proxy quick start](https://caddyserver.com/docs/quick-starts/reverse-proxy)
+- [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
+
+KWC 特有的 path-prefix、trusted-proxy、SSE、上传和认证行为应以 KWC 5.1.0 源码与配置为准，而不是由这些外部文档定义。

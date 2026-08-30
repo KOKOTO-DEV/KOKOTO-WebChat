@@ -1,5 +1,8 @@
 # 4.6.0 から 4.6.1 へのアップグレード
 
+**5.1.0 注記:** この管理者 DM 本文監査の動作は 5.1.0 でも維持されています。`direct-message.admin-audit.enabled` と `private-chat-super-admins` を併用し、監査 view は read-only です。
+
+
 ## 主な変更
 
 - relay message に player UUID がある場合、remote server の player を既存 web DM recipient search から検索できます。

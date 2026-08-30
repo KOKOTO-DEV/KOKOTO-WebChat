@@ -1,5 +1,8 @@
 # KOKOTO WebChat Caddy HTTPS 구성 가이드
 
+
+![KWC 리버스 프록시 배포 구성](assets/deployment-modes.svg)
+
 이 가이드는 BlueMap과 KOKOTO WebChat을 로컬 HTTP 서비스로 유지하고, Caddy를 통해 HTTPS로 공개하는 방법을 설명합니다.
 
 ## 권장 구조
@@ -26,7 +29,7 @@ https://map.example.com/chat
 
 ## BMWC에서 KWC로 이전할 때 HTTPS 경로 변경
 
-BlueMapWebChat의 표준 HTTPS 구성은 보통 공개 `/bmwc/api`를 내부 `:8899/api`로, 공개 `/bmwc/chat`을 내부 standalone `/chat`으로 전달했습니다. KOKOTO WebChat 5.0.0은 이 구조를 그대로 사용하지 않습니다. 마이그레이션 시 BMWC의 표준 공개 경로 값은 KWC의 새 자동값으로 정규화됩니다.
+BlueMapWebChat의 표준 HTTPS 구성은 보통 공개 `/bmwc/api`를 내부 `:8899/api`로, 공개 `/bmwc/chat`을 내부 standalone `/chat`으로 전달했습니다. KOKOTO WebChat 5.0.0 이후 버전은 이 구조를 그대로 사용하지 않습니다. 마이그레이션 시 BMWC의 표준 공개 경로 값은 KWC의 새 자동값으로 정규화됩니다.
 
 ```text
 BMWC
@@ -34,7 +37,7 @@ BMWC
   Standalone:  https://map.example.com/bmwc/chat
   API:         https://map.example.com/bmwc/api
 
-KWC 5.0.0
+KWC 5.0.0 이후
   BlueMap:     https://map.example.com/
   Standalone:  https://map.example.com/chat
   API:         https://map.example.com/chat/api
@@ -128,6 +131,34 @@ map.example.com {
 `http.public-prefix: ""`로 설정하고 `frontend.standalone.path: "/"`는 그대로 둡니다. adapter/frontend의 `api-base-url`도 보통 비워둡니다. 결과는 KWC `/`, KWC API `/api`, BlueMap `/chat/`입니다.
 
 
+### BlueMap + squaremap + standalone을 한 도메인에서 사용
+
+세 frontend를 모두 켜는 경우 한 map을 `/`에 두고 다른 map에는 별도 prefix를 주는 방식이 안전합니다. 예를 들어 squaremap `127.0.0.1:8080`, BlueMap `127.0.0.1:8100`, KWC `127.0.0.1:8899`이면:
+
+```caddyfile
+map.example.com {
+  encode zstd gzip
+
+  @chat path /chat /chat/*
+  handle @chat {
+    uri strip_prefix /chat
+    reverse_proxy 127.0.0.1:8899
+  }
+
+  @bluemap path /bluemap /bluemap/*
+  handle @bluemap {
+    uri strip_prefix /bluemap
+    reverse_proxy 127.0.0.1:8100
+  }
+
+  handle {
+    reverse_proxy 127.0.0.1:8080
+  }
+}
+```
+
+이 구성은 squaremap을 `/`, BlueMap을 `/bluemap/`, standalone KWC를 `/chat`, KWC API를 `/chat/api`에 공개합니다. BlueMap을 루트로 사용하려면 root map과 prefixed map handler를 서로 바꾸세요.
+
 ## 3. KOKOTO WebChat config.yml
 
 ```yaml
@@ -163,7 +194,7 @@ ui:
 
 `map.example.com`은 실제 도메인으로 바꾸세요.
 
-스크롤 안정성을 위해 미디어 미리보기 max-height 제한을 유지하는 것을 권장합니다. 권장값은 `640-720`입니다. `0`은 무제한이며 미디어가 많은 virtual scroll에서 스크롤 튐이 발생할 수 있습니다.
+스크롤 안정성을 위해 미디어 미리보기 max-height 제한을 유지하는 것을 권장합니다. 권장값은 `640-720`입니다. `0`은 명시적인 픽셀 상한만 해제하며 브라우저의 viewport 기반 안전 상한은 계속 적용되므로 완전한 무제한 높이는 아닙니다.
 
 ## 4. BlueMap
 
@@ -204,3 +235,11 @@ Caddy 대신 nginx를 사용한다면 `docs/NGINX_HTTPS_KO.md`와 `examples/ngin
 ### URL 설정 해석 규칙
 
 HTTPS 공개 API의 기준은 `http.public-prefix + http.path-prefix`이며 기본값은 `/chat/api`입니다. adapter와 standalone의 `api-base-url`은 서로 독립적인 선택 override이고 보통 비워둡니다. upload/emoji를 비워두면 공통 공개 API에 각각 `/uploads`, `/emojis`를 붙입니다. 절대 경로, 상대값, 전체 `https://...` URL은 별도 공개 URL이 필요할 때만 사용합니다.
+
+## 공식 참조 문서
+
+- [Caddy `reverse_proxy`](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+- [Caddy reverse-proxy quick start](https://caddyserver.com/docs/quick-starts/reverse-proxy)
+- [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
+
+KWC 고유의 path-prefix, trusted-proxy, SSE, 업로드, 인증 동작은 외부 문서가 아니라 KWC 5.1.0 소스와 설정을 기준으로 합니다.

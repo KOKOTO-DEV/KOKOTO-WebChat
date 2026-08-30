@@ -1,0 +1,1452 @@
+# =============================================================================
+# コア設定
+# =============================================================================
+
+# KOKOTO WebChat 5.1.0
+# KWC config-comment-language: ja-JP
+
+
+# 設定バージョンです。旧バージョンは可能な限り既存設定値を保持して移行します。
+# <version>_auto_migration 中は同一バージョンのテンプレート補完を継続します。
+# ui.language 変更時は設定値を保持したままコメント/レイアウト言語だけ再構成できます。
+config-version: "5.1.0"
+
+# 全機能のスイッチです。false でも /kchat reload は使用できます。
+# 新規設定ファイルは確認後に有効化できるよう false で生成されます。
+enabled: false
+
+update-check:
+  # Modrinth の最新 stable release を確認します。プロジェクト名移行中は既存 BlueMap WebChat
+  # listing を fallback 更新元として使用できます。
+  enabled: true
+
+# =============================================================================
+# ネットワークと Web ホスティング
+# =============================================================================
+
+http:
+  # KWC HTTP サーバーのバインドアドレスです。
+  # 直接待受する場合は 0.0.0.0、同一ホストの HTTPS
+  # リバースプロキシだけを公開入口にする場合は 127.0.0.1 を推奨します。
+  host: "0.0.0.0"
+  # KWC HTTP サーバーが内部で待受する TCP ポートです。
+  # リバースプロキシ/NAT の外部ポートと同じである必要はありません。
+  port: 8899
+  # KWC HTTP サーバーに登録する内部 API パスプレフィックスで、通常は /api です。
+  # 外部リバースプロキシのプレフィックスを重複して入れません。
+  path-prefix: "/api"
+  # ブラウザー向けリバースプロキシのパスプレフィックスです。
+  # 公開 URL の計算に使われ、KWC 内部 HTTP ルートには登録されません。
+  # 空文字列ならサイトルートで公開します。
+  public-prefix: "/chat"
+  # クロス Origin API 要求を許可するブラウザー Origin です。
+  # 単純な直接/個人利用では "*" を使えますが、HTTPS プロキシで credential/cookie
+  # を使う場合は実際の公開 Origin を指定します。
+  cors-origin: "*"
+  # X-Forwarded-For を提供してよいリバースプロキシ IP/CIDR 一覧です。
+  # 空一覧ではクライアント送信の X-Forwarded-For を無視して直接ソケットアドレスを使い、
+  # 任意ヘッダー偽装を防ぎます。
+  # [] = 信頼するプロキシなし。クライアント送信の X-Forwarded-For を無視し、直接ソケット
+  # IP を使用します。
+  # 例: ["127.0.0.1", "::1", "10.0.0.0/8"]
+  # マッチャーは "*" も受理しますが、インターネット公開サーバーでは使用しないでくだ
+  # さい。すべての直接接続元の X-Forwarded-For を信頼することになります。
+  # 設定例（trusted-proxies: [] の1行を次のブロックへ置き換えます）:
+  # trusted-proxies:
+  #   - "127.0.0.1"
+  #   - "::1"
+  #   - "10.0.0.0/8"
+  trusted-proxies: []
+  # ソケット IP、X-Forwarded-For の信頼判定、最終 client IP、
+  # 要求パスを記録する一時診断ログです。
+  # プロキシ/IP 判定を調べる時だけ有効にし、通常運用では無効にします。
+  log-client-ip-resolution: false
+frontend:
+  standalone:
+    # 任意のマップ連携とは別に、プラグイン HTTP サーバーからスタンドアロン KWC
+    # チャット/PWA を配信します。
+    enabled: true
+    # スタンドアロンページを配信する内部ルートです。
+    # ブラウザー向けリバースプロキシのプレフィックスは http.public-prefix
+    # で別に設定します。
+    path: "/"
+    # スタンドアロンページ/PWA の正式アプリ名で、通知タイトルの fallback
+    # にも使われます。
+    # ホーム画面へインストール後に変更すると PWA
+    # の再インストールが必要になる場合があります。
+    app-name: "KOKOTO WebChat"
+    # ブラウザー/ランチャーで表示領域が狭い場合に使う PWA の短縮アプリ名です。
+    app-short-name: "KWC"
+    # スタンドアロンフロントエンドが使う公開 API base です。
+    # 空なら現在の Origin と KWC の公開/内部プレフィックスから自動計算し、
+    # 絶対パス・相対パス・完全 URL で上書きできます。
+    api-base-url: ""
+adapters:
+  bluemap:
+    # BlueMap に KWC フロントエンドを埋め込む連携を有効にします。
+    # KWC スタンドアロンを置き換えず、マップ製品自身のチャット転送も使いません。
+    enabled: false
+    # Bukkit では KWC 資産を BlueMap web root へコピーし、Fabric/NeoForge の BlueMap 連携は BlueMapAPI
+    # から web
+    # root を取得します。
+    auto-install: true
+    # BlueMap webapp.conf 内の KWC マーク付き連携ブロックだけを管理し、
+    # マップフロントエンドがファイルを再生成した後も startup/reload で復元できます。
+    auto-patch-webapp-conf: true
+    # BlueMap 埋め込みフロントエンドだけが使う KWC 公開 API base です。
+    # 空なら有効な公開 API base を自動計算し、外部 NAT ポートや API
+    # ホストが異なる場合は実際のパス/URL を指定します。
+    api-base-url: ""
+    # BlueMap Web フロントエンドの任意ファイルシステム root です。
+    # 対応アダプターで空の場合はサイトを作らず、
+    # 既知の設定/一般パスから保守的に検出します。
+    bluemap-web-root: "bluemap/web"
+    # Bukkit ファイルシステム連携で KWC addon のマーク付きブロックを入れる BlueMap webapp.conf
+    # パスです。
+    # Fabric/NeoForge の BlueMapAPI 連携はこのファイルを編集しません。
+    bluemap-webapp-conf: "plugins/BlueMap/webapp.conf"
+    # BlueMap web root からの KWC フロントエンド資産ディレクトリです。
+    addon-path: "addons/kokoto-web-chat"
+  squaremap:
+    # squaremap に KWC フロントエンドを埋め込む連携を有効にします。
+    # KWC スタンドアロンを置き換えず、マップ製品自身のチャット転送も使いません。
+    enabled: false
+    # 既存の squaremap Web ディレクトリを検出した場合だけ KWC 資産を導入し、squaremap
+    # 自体は作成しません。
+    auto-install: true
+    # squaremap index.html 内の KWC マーク付き連携ブロックだけを管理し、
+    # マップフロントエンドがファイルを再生成した後も startup/reload
+    # で復元できます。
+    auto-patch-index: true
+    # squaremap 埋め込みフロントエンドだけが使う KWC 公開 API base です。
+    # 空なら有効な公開 API base を自動計算し、外部 NAT ポートや API
+    # ホストが異なる場合は実際のパス/URL を指定します。
+    api-base-url: ""
+    # squaremap Web フロントエンドの任意ファイルシステム root です。
+    # 対応アダプターで空の場合はサイトを作らず、
+    # 既知の設定/一般パスから保守的に検出します。
+    web-root: ""
+    # squaremap web root からの KWC フロントエンド資産ディレクトリです。
+    addon-path: "kokoto-web-chat"
+  dynmap:
+    # Dynmap に KWC フロントエンドを埋め込む連携を有効にします。
+    # KWC スタンドアロンを置き換えず、マップ製品自身のチャット転送も使いません。
+    enabled: false
+    # 連携が有効な時、検出または指定した Dynmap web root へ KWC
+    # フロントエンド資産をコピーします。
+    auto-install: true
+    # Dynmap index.html 内の KWC マーク付き連携ブロックだけを管理し、
+    # マップフロントエンドがファイルを再生成した後も startup/reload で復元できます。
+    auto-patch-index: true
+    # Dynmap 埋め込みフロントエンドだけが使う KWC 公開 API base です。
+    # 空なら有効な公開 API base を自動計算し、外部 NAT ポートや API
+    # ホストが異なる場合は実際のパス/URL を指定します。
+    api-base-url: ""
+    # Dynmap Web フロントエンドの任意ファイルシステム root です。
+    # 対応アダプターで空の場合はサイトを作らず、
+    # 既知の設定/一般パスから保守的に検出します。
+    web-root: ""
+    # Dynmap web root からの KWC フロントエンド資産ディレクトリです。
+    addon-path: "kokoto-web-chat"
+  pl3xmap:
+    # Pl3xMap に KWC フロントエンドを埋め込む連携を有効にします。
+    # KWC スタンドアロンを置き換えず、マップ製品自身のチャット転送も使いません。
+    enabled: false
+    # 連携が有効な時、検出または指定した Pl3xMap web root へ KWC
+    # フロントエンド資産をコピーします。
+    auto-install: true
+    # Pl3xMap index.html 内の KWC マーク付き連携ブロックだけを管理し、
+    # マップフロントエンドがファイルを再生成した後も startup/reload で復元できます。
+    auto-patch-index: true
+    # Pl3xMap 埋め込みフロントエンドだけが使う KWC 公開 API base です。
+    # 空なら有効な公開 API base を自動計算し、外部 NAT ポートや API
+    # ホストが異なる場合は実際のパス/URL を指定します。
+    api-base-url: ""
+    # Pl3xMap Web フロントエンドの任意ファイルシステム root です。
+    # 対応アダプターで空の場合はサイトを作らず、
+    # 既知の設定/一般パスから保守的に検出します。
+    web-root: ""
+    # Pl3xMap web root からの KWC フロントエンド資産ディレクトリです。
+    addon-path: "kokoto-web-chat"
+  liveatlas:
+    # LiveAtlas に KWC フロントエンドを埋め込む連携を有効にします。
+    # KWC スタンドアロンを置き換えず、マップ製品自身のチャット転送も使いません。
+    enabled: false
+    # 連携が有効な時、検出または指定した LiveAtlas web root へ KWC
+    # フロントエンド資産をコピーします。
+    auto-install: true
+    # LiveAtlas index.html 内の KWC マーク付き連携ブロックだけを管理し、
+    # マップフロントエンドがファイルを再生成した後も startup/reload
+    # で復元できます。
+    auto-patch-index: true
+    # LiveAtlas 埋め込みフロントエンドだけが使う KWC 公開 API base です。
+    # 空なら有効な公開 API base を自動計算し、外部 NAT ポートや API
+    # ホストが異なる場合は実際のパス/URL を指定します。
+    api-base-url: ""
+    # LiveAtlas Web フロントエンドの任意ファイルシステム root です。
+    # 対応アダプターで空の場合はサイトを作らず、
+    # 既知の設定/一般パスから保守的に検出します。
+    web-root: ""
+    # LiveAtlas web root からの KWC フロントエンド資産ディレクトリです。
+    addon-path: "kokoto-web-chat"
+  unmined:
+    # uNmINeD に KWC フロントエンドを埋め込む連携を有効にします。
+    # KWC スタンドアロンを置き換えず、マップ製品自身のチャット転送も使いません。
+    enabled: false
+    # 連携が有効な時、検出または指定した uNmINeD web root へ KWC
+    # フロントエンド資産をコピーします。
+    auto-install: true
+    # uNmINeD index.html 内の KWC マーク付き連携ブロックだけを管理し、
+    # マップフロントエンドがファイルを再生成した後も startup/reload で復元できます。
+    auto-patch-index: true
+    # uNmINeD 埋め込みフロントエンドだけが使う KWC 公開 API base です。
+    # 空なら有効な公開 API base を自動計算し、外部 NAT ポートや API
+    # ホストが異なる場合は実際のパス/URL を指定します。
+    api-base-url: ""
+    # uNmINeD Web フロントエンドの任意ファイルシステム root です。
+    # 対応アダプターで空の場合はサイトを作らず、
+    # 既知の設定/一般パスから保守的に検出します。
+    web-root: ""
+    # uNmINeD web root からの KWC フロントエンド資産ディレクトリです。
+    addon-path: "kokoto-web-chat"
+  overviewer:
+    # Minecraft Overviewer に KWC フロントエンドを埋め込む連携を有効にします。
+    # KWC スタンドアロンを置き換えず、マップ製品自身のチャット転送も使いません。
+    enabled: false
+    # 連携が有効な時、検出または指定した Minecraft Overviewer web root へ KWC
+    # フロントエンド資産をコピーします。
+    auto-install: true
+    # Minecraft Overviewer index.html 内の KWC マーク付き連携ブロックだけを管理し、
+    # マップフロントエンドがファイルを再生成した後も
+    # startup/reload で復元できます。
+    auto-patch-index: true
+    # Minecraft Overviewer 埋め込みフロントエンドだけが使う KWC 公開 API base です。
+    # 空なら有効な公開 API base を自動計算し、外部 NAT ポートや API
+    # ホストが異なる場合は実際のパス/URL を指定します。
+    api-base-url: ""
+    # Minecraft Overviewer Web フロントエンドの任意ファイルシステム root です。
+    # 対応アダプターで空の場合はサイトを作らず、
+    # 既知の設定/一般パスから保守的に検出します。
+    web-root: ""
+    # Minecraft Overviewer web root からの KWC フロントエンド資産ディレクトリです。
+    addon-path: "kokoto-web-chat"
+
+# =============================================================================
+# チャット・メッセージ・非公開会話
+# =============================================================================
+
+chat:
+  # 公開チャット履歴の保存 backend です。
+  # sqlite が推奨の永続 backend、jsonl は legacy 単一ファイル、memory は再起動で消えます。
+  # 不明値は sqlite に正規化されます。
+  history-storage: "sqlite"
+  # 件数基準で保持する公開チャット履歴の最大行数で、
+  # 期間保持ポリシーと併用されます。
+  # 0 は件数制限をなくします。
+  history-size: 0
+  # 公開チャット履歴の期間保持日数です。
+  # 0 は期間による期限切れを無効にします。
+  history-retention-days: 5
+  # jsonl backend 選択時に使う公開チャット履歴 JSONL ファイル名/パスです。
+  history-file: "history.jsonl"
+  # 永続公開チャット履歴用 SQLite DB ファイル名/パスです。
+  history-sqlite-file: "history.db"
+  # SQLite 初回使用時、まだ取り込み済みでなければ既存 legacy JSONL
+  # 公開履歴をインポートします。
+  history-sqlite-migrate-jsonl: true
+  # 履歴ページ 1 回で要求する既定メッセージ数です。
+  # 0 の場合 memory/JSONL 履歴には明示的なページ制限を設けませんが、SQLite
+  # は内蔵のクエリ安全上限 500 件を適用します。
+  history-page-size: 80
+  # KWC が受け付ける通常公開チャットメッセージの最大長です。
+  # 0 はこの長さ制限をなくします。
+  max-message-length: 120
+  # URL を含む公開チャットメッセージの最大長です。
+  # 正数の場合、正数の通常メッセージ上限以上になるよう補正されます。
+  # 0 はこの長さ制限をなくします。
+  max-url-message-length: 2048
+  # 認証済み Web ユーザーの公開メッセージを Minecraft へ渡す形式です。
+  # placeholder: {player}, {message}。
+  web-user-to-game-format: "[Web] {player}: {message}"
+  # ゲスト公開メッセージを Minecraft へ渡す形式です。
+  # placeholder: {guest}, {message}。
+  web-guest-to-game-format: "[Web Guest] {guest}: {message}"
+  # Web 管理者の公開メッセージを Minecraft へ渡す形式です。
+  # placeholder: {player}, {message}。
+  web-admin-to-game-format: "[Web Admin] {player}: {message}"
+  # 受理した Web 発の公開メッセージを、必要に応じて送信者を含む接続中 Web
+  # クライアントへ再配信します。
+  broadcast-web-chat-to-web: true
+  # 取得した Minecraft 公開チャットを接続中 KWC Web クライアントへ配信します。
+  broadcast-ingame-chat-to-web: true
+  # 受理した KWC Web 公開メッセージを Minecraft チャットへ転送します。
+  send-web-chat-to-game: true
+  # KWC が Minecraft へ配信するチャットで URL 部分を開くクリックにし、URL 以外の本文は
+  # Reply など別のクリック動作に使えるよう保持します。
+  clickable-urls-in-game: true
+  game-name-hover:
+    # 連携済み Web 送信者名を Minecraft チャットで hover した時に設定情報を表示します。
+    enabled: false
+    # 連携済み Web 送信者名に表示する Minecraft hover text です。
+    # 対応 placeholder: {display}, {real}, {uuid}, {source}。
+    text: "&f{real}"
+message-tokens:
+  # newline、blank-line、tab、custom 置換など設定済みメッセージ token
+  # のサーバー側展開を有効にします。
+  enabled: true
+  # 1 メッセージで実行する token 置換の最大回数で、置換処理量を抑えます。
+  # 0 は件数制限をなくします。
+  max-replacements-per-message: 24
+  newline:
+    # 1 回の改行 token として認識する別名一覧です。
+    aliases:
+      - enter
+      - newline
+      - nextline
+      - linebreak
+      - br
+  blank-line:
+    # 意図的な空行/段落区切り token として認識する別名一覧です。
+    aliases:
+      - blankline
+      - emptyline
+      - paragraphbreak
+  tab:
+    # tab/インデント token として認識する別名一覧です。
+    aliases:
+      - tab
+      - indent
+    # tab token 展開時に挿入する空白数です。
+    # runtime 範囲は 1-16 で、範囲外は境界値へ補正します。
+    spaces: 4
+  # カスタム token→text 置換 map です。
+  # key が token、value がサーバー側置換文字列で、空 map は custom 置換を追加しません。
+  # 各項目は aliases: [name1, name2] を任意指定でき、replacement: "出力する通常文字列"
+  # は文字列として必須です。
+  # aliases を省略/空にすると親 key を alias として使います。
+  # チャットでは :alias: と入力し、alias は大文字小文字を区別せず最大 80 文字、
+  # コロン/改行を含められません。
+  # replacement の制御文字は除去され、結果が空文字列ならその定義は無視されます。
+  # 例:
+  # custom:
+  #   separator:
+  #     aliases:
+  #       - separator
+  #       - divider
+  #     replacement: "────────────"
+  #   bullet:
+  #     aliases:
+  #       - bullet
+  #     replacement: "• "
+  custom: {}
+search:
+  # 権限のあるユーザー向け公開履歴検索 endpoint/UI を有効にします。
+  enabled: true
+  # 公開履歴検索要求 1 回で返す最大行数です。
+  # runtime の最小値は 1 で、それ未満は最小値へ補正します。
+  result-limit: 50
+# Announcement 共通入力形式:
+# enabled: true | false
+# message: 引用符付き text/format 文字列。下の各イベント説明に記載された placeholder
+# だけを使用します。
+announcements:
+  # 有効なシステム通知を公開 Web チャットにも送信します。
+  # false の場合はゲーム内だけに表示します。
+  broadcast-to-web-chat: true
+  # 各イベントは enabled + message を使用します。message は対応する i18n
+  # 文言がない場合のフォールバック/カスタム文です。
+  # 共通: {server}, {event}; プレイヤーイベント: {player}, {name}, {real_player}, {real_name}, {uuid},
+  # {world}。
+  # イベント固有: death {message}/{killer}, advancement {advancement}/{advancement_key};
+  # ワールド/ゲームモード/レベル変更は各 from_/to_ placeholder、Web ログイン/ログアウトは
+  # {name}/{player} を使用します。
+
+  minecraft-join:
+    enabled: true
+    message: "🟢 {player} joined the server."
+  minecraft-quit:
+    enabled: true
+    message: "🔴 {player} left the server."
+  first-join:
+    enabled: true
+    message: "✨ {player} joined the server for the first time."
+  death:
+    enabled: true
+    message: "☠ {message}"
+  advancement:
+    enabled: true
+    message: "🏆 {player} completed the advancement [{advancement}]."
+  server-start:
+    enabled: true
+    message: "🟢 Server started."
+  server-stop:
+    enabled: true
+    message: "🔴 Server is stopping."
+
+  world-change:
+    enabled: false
+    message: "🌍 {player} moved to {to_world}."
+  gamemode-change:
+    enabled: false
+    message: "🎮 {player} changed game mode to {to_gamemode}."
+  level-change:
+    enabled: false
+    message: "⭐ {player} changed level from {old_level} to {new_level}."
+  bed-enter:
+    enabled: false
+    message: "💤 {player} entered a bed."
+  web-login:
+    enabled: false
+    message: "🌐 {name} logged in to web chat."
+  web-logout:
+    enabled: false
+    message: "🌐 {name} logged out of web chat."
+
+reply:
+  game-click:
+    # Minecraft チャットの対象メッセージ本文をクリックして /kchat reply
+    # 対象を準備できるようにし、URL 部分はリンクを開く動作を維持します。
+    enabled: true
+    # KWC 発メッセージだけでなくローカル取得した Minecraft 公開チャットにも Reply
+    # クリック動作を追加します。
+    # 他のチャット整形プラグインと click event が競合する場合は無効にします。
+    local-game-chat: true
+  # 公開チャット Reply 対象に使う Minecraft component text です。
+  # placeholder: {player}, {message}。
+  game-command-format: "&8[&dReply&8] &f{player}&7: &f{message}"
+  game-preview:
+    # Reply を Minecraft に表示する時、
+    # 元メッセージを短い引用プレビューとして表示します。
+    enabled: true
+    # Minecraft Reply 引用プレビュー形式です。
+    # placeholder: {sender}, {preview}。
+    format: "&7{sender}: {preview}"
+    # Minecraft Reply 引用プレビューに表示する元文の最大長です。
+    # 0 はプレビューの切り詰めを行いません。
+    max-length: 120
+  game-prefix:
+    # 以前のメッセージを参照する Reply を Minecraft に表示する際、設定した Reply
+    # マーカーを先頭に付けます。
+    enabled: true
+    # Reply metadata を持つ Minecraft メッセージの前に付ける prefix text です。
+    text: "↪ [Reply] "
+pinned:
+  # 公開チャットの pin/unpin 保存機能とピン留め UI を有効にします。
+  enabled: true
+  # 同時にピン留め状態で保持できる公開メッセージの最大件数です。
+  # 0 は件数制限をなくします。
+  max-pins: 20
+  # 未ログイン/ゲスト閲覧者にもピン留め領域を表示します。
+  # pin 管理には通常どおり権限確認が必要です。
+  show-to-logged-out: true
+  # ピン留めメッセージが参照するファイルを保持参照として扱い、
+  # 通常の未参照アップロード整理で削除されないようにします。
+  preserve-uploads: true
+direct-message:
+  # 保存型 1:1 DM です。非公開メッセージ本文を保存するため既定値は false です。
+  # 別サーバーのゲーム宛先: /kchat dm <player>@<server-id> <message>
+  # 先に server-relay を設定します。
+  enabled: false
+  # DM 保存 backend です。
+  # auto は互換の永続 backend を選び、設定済み履歴 backend が legacy JSONL
+  # 経路を必要とする場合を除いて SQLite を優先します。
+  # sqlite/jsonl の明示指定も可能です。
+  storage: "auto"
+  # 保存済み DM メッセージの期間保持日数です。
+  # 0 は期間による期限切れを無効にします。
+  retention-days: 0
+  # 各 DM thread で件数基準に保持する最大メッセージ数です。
+  # 0 は件数制限をなくします。
+  max-messages-per-thread: 0
+  # Web/ゲームから送信できる DM メッセージの最大長です。
+  # 0 はこの長さ制限をなくします。
+  max-message-length: 500
+  # 認証済み KWC Web ユーザーの DM 送信を許可します。
+  allow-web-send: true
+  # 必要な KWC 権限を持つ Minecraft プレイヤーが KWC ゲームコマンド/click 動作で DM
+  # を送信できるようにします。
+  allow-game-send: true
+  # 対応 Minecraft whisper コマンドを送信者/相手を解決できる場合に KWC DM
+  # 履歴/会話へ取り込みます。
+  capture-game-whispers: true
+  # 任意の管理者 DM 本文監査です。default は off です。
+  # 有効でも private-chat-super-admins に明示した account だけが利用できます。
+  # 監査 view は read-only で、送信、Reply、非表示、既読更新はできません。
+  # 各 page read は本文をコピーせず audit log に記録されます。
+  admin-audit:
+    enabled: false
+  # 連携ユーザーのログイン時に保留/未読 DM 通知状態を表示します。
+  notify-on-login: true
+  # 新しい非公開メッセージ到着時に DM 通知更新を生成します。
+  notify-on-message: true
+  # Web UI に未読 DM 件数/badge を表示します。
+  web-unread-badge: true
+  # 現在ユーザーの会話一覧から DM 会話を非表示にする際に確認を要求します。
+  confirm-hide: true
+  # jsonl backend 選択時に使う legacy DM JSONL 保存ファイルです。
+  jsonl-file: "direct-messages.jsonl"
+  # Reply metadata を含む永続 DM 保存に使う SQLite DB ファイルです。
+  sqlite-file: "direct-messages.db"
+group-chat:
+  # 保存型の複数ユーザーチャットルームです。
+  # 非公開本文を保存するため既定値は false です。
+  enabled: false
+  # 認証済み KWC Web ユーザーが現在参加中のグループルームへ送信できるようにします。
+  allow-web-send: true
+  # 通常のルーム規則の下で非公開招待なしでも発見/参加できる public
+  # グループルームを許可します。
+  allow-public-rooms: true
+  # グループルームでメンバー/招待制御に加えてルームパスワードを使用できるようにし
+  # ます。
+  allow-room-passwords: true
+  # 現在ユーザーがグループルームを退出する前に確認を要求します。
+  confirm-leave: true
+  # 現在ユーザーの会話一覧からグループルームを隠す前に確認を要求します。
+  confirm-hide: true
+  admin-audit:
+    # 権限のある管理者によるグループルーム記録の監査閲覧を許可し、
+    # 通常ユーザーには既存のルームメンバー確認を維持します。
+    enabled: false
+  # 保存済みグループルームメッセージの期間保持日数です。
+  # 0 は期間による期限切れを無効にします。
+  retention-days: 30
+  # 各グループルームで件数基準に保持する最大メッセージ数です。
+  # 0 は件数制限をなくします。
+  max-messages-per-room: 1000
+  # グループルームで受け付けるメッセージの最大長です。
+  # 0 はこの長さ制限をなくします。
+  max-message-length: 500
+  # ルーム管理判定で 1 ユーザーが所有/参加できるグループルームの最大数です。
+  # 0 は件数制限をなくします。
+  max-rooms-per-user: 20
+  # 1 グループルームに許可する最大メンバー数です。
+  # 0 は件数制限をなくします。
+  max-members-per-room: 50
+  # グループルーム名の最大長です。
+  # runtime の最小値は 1 で、それ未満は最小値へ補正します。
+  max-room-name-length: 32
+  # グループルーム招待の有効時間(時間)です。
+  # 0 は無制限ではありません。
+  # runtime の最小値は 1 で、それ未満は最小値へ補正します。
+  invite-expire-hours: 72
+  # グループルーム、メンバー、招待、メッセージ、非公開 Reply metadata の保存に使う
+  # SQLite DB です。
+  sqlite-file: "group-messages.db"
+# サーバー間の公開チャットおよび 1:1 DM Relay 設定です。
+server-relay:
+  # 参加サーバーすべての group/peer 設定を合わせてから有効にします。
+  enabled: false
+  # このサーバーの一意 ID。小文字 a-z、0-9、dot、underscore、hyphen を使用します。
+  server-id: "server-1"
+  # このサーバーから届いたメッセージに表示する名前です。
+  server-name: "Server 1"
+  # peer 接続 timeout（秒）。最小 1。
+  connect-timeout-seconds: 5
+  # Relay request timeout（秒）。最小 1。
+  request-timeout-seconds: 10
+  # Relay request で許容する時計差（秒）。最小 1。
+  max-clock-skew-seconds: 60
+  # 重複/replay ID の保持時間（秒）。最小 30。
+  dedupe-seconds: 300
+  # forwarding の最大 hop 数。範囲 1-32。
+  max-hops: 8
+
+  # Relay へ送るローカル公開メッセージの送信元です。
+  sources:
+    game: true
+    web: true
+    guest: true
+    # Discord 連携で Relay loop が起きる可能性がある場合は false のままにします。
+    discord: false
+    # ローカル system/announcement メッセージも Relay します。
+    system: false
+
+  # 受信した公開 Relay メッセージの配信先です。DM は別処理です。
+  delivery:
+    web: true
+    game: true
+
+  # 使用可能: {server}, {server_id}, {source}, {sender}, {real_sender}, {uuid}, {role}, {message}
+  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
+
+  # groups と peers は YAML リストで、各項目は必ず "- id:" から始めます。
+  # 初回設定では 1 台で shared-secret: "" のまま reload/再起動します。
+  # 生成値を同じ group の全サーバーへコピーします。
+  # 各サーバーは同じ group id と secret で相手を peer 登録します。
+  # peer url には相手サーバーの KWC API base URL を指定します。例: https://server2.example.com/api
+  # http:// peer は警告付きで direct Relay に使えますが、forwarding hop には使われません。
+  # 例:
+  # groups:
+  #   - id: "main"
+  #     shared-secret: ""
+  #     forwarding:
+  #       enabled: false
+  #     peers:
+  #       - id: "server-2"
+  #         url: "https://server2.example.com/api"
+  #         enabled: true
+  groups: []
+player-display:
+  # KWC が表示するプレイヤー名の基準です。
+  # name=Minecraft アカウント名、display-name=サーバー display name、custom-name=保存済み custom name。
+  # 不正値は name に fallback します。
+  mode: "name"
+  # プレイヤー表示名を Web/plain-text 環境へ出す前に Minecraft formatting/color code
+  # を除去します。
+  strip-colors: true
+
+# =============================================================================
+# アカウント・セキュリティ・管理
+# =============================================================================
+
+guest:
+  # 未認証ブラウザー訪問者が guest/captcha/rate-limit
+  # 規則に従ってゲスト公開チャットを使えるようにします。
+  enabled: true
+  # ゲストユーザーが自動生成名だけでなくゲスト表示名を自分で選べるようにします。
+  allow-custom-name: true
+  # KWC がゲスト名を自動生成する時に付ける prefix です。
+  name-prefix: "Guest-"
+  # 同じ resolved client identity/IP
+  # からゲストメッセージを連続送信する際の最小間隔(秒)です。
+  # 0 はこの cooldown 制限要素を無効にします。
+  cooldown-seconds: 6
+  # 同じ resolved client identity/IP に適用する 1 分あたりゲストメッセージ制限です。
+  # 0 はこの 1 分あたり制限要素を無効にします。
+  max-messages-per-minute: 50
+  # KWC ゲスト名検査で既知 Minecraft プレイヤー名を偽装するゲスト名を拒否します。
+  block-player-name-spoofing: true
+  # 管理者/サーバーを偽装しやすい名前を保護する追加ゲスト予約名一覧で、
+  # 大文字小文字を区別せず比較します。
+  blocked-names:
+    - "admin"
+    - "administrator"
+    - "server"
+    - "op"
+    - "console"
+    - "moderator"
+    - "owner"
+captcha:
+  # ゲスト captcha モードです。
+  # 内蔵算数 captcha は math の時だけ有効で、off を含む non-math 値は captcha
+  # 検査を無効にします。
+  mode: "math"
+  # 発行した captcha 問題の有効時間(秒)です。
+  # この値は clamp されないため、0/負数は新規問題を即時または実質即時に失効させます
+  # 。
+  expire-seconds: 120
+  # 有効な captcha 通過状態を再利用せず、ゲストメッセージごとに新しい captcha
+  # 通過を要求します。
+  require-on-each-message: false
+  # メッセージ毎 captcha が無効な場合に、一度成功した captcha
+  # 状態を再利用できる時間(分)です。
+  # runtime の最小値は 1 で、それ未満は最小値へ補正します。
+  pass-valid-minutes: 120
+auth:
+  # Account/login 設定確認用の任意の使用例:
+  # - Web account link: Web UI で code を発行し、Minecraft で /kchat auth <code> を実行します。
+  # - Password login: linked account の password は /kchat password <newPassword> で設定/変更します。
+  # - /kchat status で現在の link 状態を確認します。
+  #   auto-admin-from-permission は設定 permission を持つ linked player を自動昇格できます。
+  # Password は hash 保存されますが、HTTP 公開時の login traffic 自体は平文です。
+  # 信頼できない/public network では HTTPS を使用してください。
+  # Minecraft アカウント連携と認証済み KWC Web セッション機能を有効にします。
+  enabled: true
+  # ゲームアカウント連携コードとして生成する文字/数字の長さです。
+  # runtime の最小値は 4 で、それ未満は最小値へ補正します。
+  link-code-length: 6
+  # 新規発行したアカウント連携コードの有効時間(秒)です。
+  # runtime の最小値は 30 で、それ未満は最小値へ補正します。
+  link-code-expire-seconds: 180
+  # 同じ client/user がアカウント連携コード発行を繰り返す際の最小間隔(秒)です。
+  # 0 はこの制限要素を無効にします。
+  link-code-cooldown-seconds: 3
+  # 発行 rate limiter で 1 分あたり許可するアカウント連携コード最大発行回数です。
+  # 0 はこの制限要素を無効にします。
+  link-code-max-per-minute: 10
+  # 連携済みアカウントが link-code 設定後に KWC パスワードで Web
+  # チャットへログインできるようにします。
+  password-login: true
+  # 通常 USER/MODERATOR Web セッションの有効期間(日)です。
+  # 0 以下は expiry timestamp を設定しません。
+  remember-session-days: 30
+  # 現在 auth.admin-permission を持つ連携 Minecraft アカウントへ KWC ADMIN
+  # ロールを自動付与/マッピングします。
+  auto-admin-from-permission: true
+  # KWC 管理者ロール自動マッピングに使う Minecraft permission node です。
+  admin-permission: "kwc.admin"
+security:
+  # 設定済み失敗集計窓内で IP ベース一時ロックを発生させるログイン失敗回数です。
+  # 0 はこの制限要素を無効にします。
+  login-fail-limit: 5
+  # ログインロック判定用の失敗回数を集計する rolling window(秒)です。
+  # runtime の最小値は 1 で、それ未満は最小値へ補正します。
+  login-fail-window-seconds: 300
+  # ログイン失敗上限超過後に IP ベースログインロックを維持する時間(秒)です。
+  # 0 はこの制限要素を無効にします。
+  login-lock-seconds: 600
+  # resolved client IP 1 つあたり許可する同時 /stream SSE 接続の最大数です。
+  # リバースプロキシ使用時は全 client が proxy IP に見えないよう http.trusted-proxies
+  # を正しく設定します。
+  # 0 はこの制限要素を無効にします。
+  max-sse-connections-per-ip: 10
+  # KWC サーバー全体で許可する同時 /stream SSE 接続の最大数です。
+  # 0 はこの制限要素を無効にします。
+  max-sse-connections-total: 500
+admin:
+  # Minecraft UUID と連携しない KWC ローカル Web 管理者アカウントを許可します。
+  allow-local-admin-accounts: true
+  # ADMIN Web セッションの有効期間(時間)です。
+  # 0 以下は管理者セッションに expiry timestamp を設定しません。
+  admin-session-expire-hours: 12
+  # 管理者ログインに適用する任意 IP/CIDR allowlist です。
+  # 空一覧は IP 制限なしで、trusted proxy 設定と合わせ resolved client IP を基準にします。
+  # [] = 管理者ログインの IP 制限なし。例: ["127.0.0.1", "10.0.0.0/8", "2001:db8::/32"]
+  # マッチャーは "*" を全アドレスとして扱います。
+  # 制限しない場合は []、制限する場合は具体的な IP/CIDR のみを指定してください。
+  # 設定例（allow-admin-login-from: [] の1行を次のブロックへ置き換えます）:
+  # allow-admin-login-from:
+  #   - "127.0.0.1"
+  #   - "10.0.0.0/8"
+  #   - "2001:db8::/32"
+  allow-admin-login-from: []
+# 非公開チャットの管理/容量確認用メタデータ権限を追加付与する KWC
+# アカウント識別子一覧です。
+# 空一覧は追加対象なしで、通常の ADMIN/audit 規則はそのまま適用されます。
+# [] = 追加の private-chat super-admin 権限対象なし。
+# この一覧だけでは本文を開けません。DM 本文は direct-message.admin-audit.enabled、
+# group-chat 本文は group-chat.admin-audit.enabled も有効な場合だけ read-only 監査できます。
+# 両 audit view の page read は本文をコピーせず audit log に記録されます。
+# 例: ["00000000-0000-0000-0000-000000000000", "AdminName"]
+# 設定例（private-chat-super-admins: [] の1行を次のブロックへ置き換えます）:
+# private-chat-super-admins:
+#   - "00000000-0000-0000-0000-000000000000"
+#   - "AdminName"
+private-chat-super-admins: []
+audit:
+  # 対応する管理/セキュリティ操作の KWC audit logging を有効にします。
+  enabled: true
+  # KWC audit log ファイルを書き出す data directory 基準の相対フォルダーです。
+  directory: "audit"
+moderation:
+  # KWC moderation サービスのマスタースイッチです。
+  # config 専用で Web Admin には意図的に公開しません。
+  enabled: true
+  # moderation 有効時に Web Admin panel の moderation 機能を許可します。
+  # このポリシースイッチは config 専用です。
+  allow-web-admin-panel: true
+  # MODERATOR ロールが他の権限条件を満たす場合に moderation API
+  # でメッセージ削除できるようにします。
+  # このポリシースイッチは config 専用です。
+  allow-moderator-message-delete: true
+  # MODERATOR ロールが moderation 制御で guest/IP mute/unmute を実行できるようにします。
+  # このポリシースイッチは config 専用です。
+  allow-moderator-guest-mute: true
+  # 期間省略時の mute 既定時間(分)です。
+  # 0 以下は永久 mute で、config 専用設定です。
+  default-mute-minutes: 60
+content-filter:
+  # Content Filter 運用ガイド:
+  # - scopes.public / group / dm で検査する conversation type を選びます。
+  #   DM filter は privacy のため既定 off です。
+  # - 下の rules は config.yml 内の inline rule、filter-lists は filter-lists directory の大きな UTF-8 word
+  #   list を読み込みます。両方とも同じ engine を使用します。
+  # - action=block は message を拒否、mask は一致 text を隠し、replace は設定 replacement/mapping
+  #   に置換します。
+  # - 推奨手順: rule/list を先に作成・テストし、必要 scope を決めてから content-filter.enabled
+  #   を有効化します。anti-evasion を広げるほど false positive
+  #   も増えるため意図的に調整してください。
+  # content-filter.rules の直前に実際の inline replace rule 例があります。
+  # KWC 共通 content-filter engine のマスタースイッチです。
+  # 無効時は設定済み rule/list をチャット内容へ適用しません。
+  enabled: false
+  scopes:
+    # content filter を公開チャット入力経路へ適用します。
+    public: true
+    # content filter をグループルームメッセージ入力経路へ適用します。
+    group: true
+    # content filter を非公開 DM 入力経路へ適用します。
+    # 既定は off のため private-chat filtering は明示的に有効化が必要です。
+    dm: false
+  block:
+    # 内容ブロック時、一般的なブロック通知だけでなく許可されたユーザー/管理者フィ
+    # ードバックに一致語/rule 情報を含めます。
+    show-matched-word: true
+  mask:
+    # メッセージ全体をブロックせず一致部分を mask する content-filter rule で使う置換 text
+    # です。
+    text: "***"
+  anti-evasion:
+    # フィルター照合前に Unicode 形式を正規化し、視覚/互換上同等の文字による rule
+    # 回避を難しくします。
+    unicode-normalization: true
+    # filter engine 規則に従い無視可能な区切り/空白を除いた compact 形も照合し、
+    # 単語分割による回避を検出します。
+    compact-match: true
+    # 禁止語の間に別文字を挟んだ場合も設定済み gap 方針に従って検出する interleave
+    # 照合を有効にします。
+    interleave-match: true
+    # 制限付き interleave 照合で連続文字間に許可する挿入文字の最大 gap です。
+    interleave-max-gap: 2
+    # 有効にすると interleave gap 上限をなくします。
+    # 広い間隔の照合は誤検知/処理量リスクを増やすため慎重に使用します。
+    interleave-unlimited-gap: false
+    # 比較前に過剰な反復文字を縮約し、繰り返し文字による回避を rule
+    # と照合できるようにします。
+    collapse-repeats: false
+    # collapse-repeats 使用時に同一文字反復で残す最大連続数です。
+    # runtime の最小値は 1 で、それ未満は最小値へ補正します。
+    repeat-limit: 1
+  # inline content-filter rule 一覧です。
+  # 各 rule は一致語/mode/action を定義し、filter-lists ディレクトリから有効化された UTF-8
+  # リストと併用されます。
+  # Rule フィールド: id（任意、[a-z0-9._-] へ正規化、最大 64 文字）、enabled（true|false、既定
+  # true）、action（block|mask|replace）、words（文字列リスト）。
+  # action=replace の場合、replacements は文字列リスト、replacement-mode は first|random（既定
+  # first）、mappings は任意の word -> replacement YAML map です。
+  # mappings の key も match word に追加されます。
+  # 例:
+  # rules:
+  #   - id: "example-replace"
+  #     enabled: true
+  #     action: "replace"
+  #     words:
+  #       - "word1"
+  #       - "word2"
+  #     replacements:
+  #       - "穏やかな表現"
+  #       - "別の表現"
+  #     replacement-mode: "first"
+  #     mappings:
+  #       "word2": "指定表現"
+  rules: []
+commands:
+  # KWC Web UI から許可済み Minecraft/server コマンドを実行する機能のマスタースイッチです。
+  enabled: false
+  # role/確認検査後、設定 preset に限定せず任意 command text 実行を許可します。
+  # 信頼できる管理者環境だけで有効にします。
+  allow-all: false
+  # Web コマンド実行に必要な最小認証 KWC role です。
+  # 対応 role: USER, MODERATOR, ADMIN。
+  min-role: "ADMIN"
+  # 現在ユーザーに Web コマンド実行が許可されている時、command
+  # 実行ボタン/制御を表示します。
+  show-button: true
+  # 通常チャット入力欄の slash 始まり text をチャット送信せず Web command 実行 flow
+  # へ送れるようにします。
+  run-from-chat-input: false
+  # 通常チャット入力が / で始まる時に command 関連 UI 案内/制御を表示します。
+  show-when-input-starts-with-slash: true
+  # Web から要求した command を実行する前に明示的確認ステップを要求します。
+  require-confirm: true
+  # Web command 実行で受け付ける command text の最大長です。
+  # 0 はこの長さ制限をなくします。
+  max-length: 0
+  # true = Web コマンド実行通知を公開 Web チャットにも掲載します。
+  # 同じ通知をオンラインのゲームプレイヤーにも表示します。
+  # false = command response/control と既存のコンソール・監査ログ経路だけで処理します。
+  broadcast-result-to-web-chat: false
+  # Web command UI に表示/許可する任意 preset 定義です。
+  # null/empty は preset なしで、任意 command の可否は commands.allow-all に従います。
+  # Preset フィールド: id（任意; [a-z0-9._-] へ正規化、最大 64 文字）、label（任意）、
+  # description（任意）、command（必須）、enabled（true|false、既定 true）、confirm（true|false、
+  # 既定 true）。
+  # command 先頭の / は除去され、改行/CR/NUL を含む command は無視されます。
+  # 実際の例（下の presets: の配下にコメント解除して使用）:
+  # - id: "day"
+  #   label: "昼に変更"
+  #   description: "現在のワールド時刻を昼に変更します。"
+  #   command: "time set day"
+  #   confirm: true
+  # - id: "weather-clear"
+  #   label: "天候を晴れにする"
+  #   command: "weather clear"
+  #   confirm: true
+  presets:
+
+# =============================================================================
+# Web UI・通知
+# =============================================================================
+
+ui:
+  # 既定 Web UI 言語であり、config/reference/migration コメント表示言語の選択基準です。
+  # 内蔵対応: en-US, ko-KR, ja-JP, zh-CN。
+  # custom UI 言語は英語 config 表示を使います。
+  language: "en-US"
+  # 選択 UI 言語に翻訳 key がない時に使う Web 翻訳 fallback 言語です。
+  # 内蔵対応: en-US, ko-KR, ja-JP, zh-CN。
+  language-fallback: "en-US"
+  # Web チャット timestamp に使う timezone です。
+  # local はブラウザー/端末 timezone、UTC や Asia/Seoul など有効な Java/IANA zone id を使用でき、
+  # 不正値は local に
+  # fallback します。
+  time-zone: "local"
+  # 既定 Web theme です。
+  # 対応値: system, dark, light, high-contrast。
+  # ユーザー設定制御が有効なら個人 preference で上書きできます。
+  theme: "system"
+  # KWC を BlueMap に埋め込んだ時、対応範囲では独立 theme ではなく BlueMap の light/dark theme
+  # 信号に追従します。
+  sync-bluemap-theme: true
+  # KWC Web surface に適用する基本不透明度です。
+  # runtime 範囲は 0.2-1.0 で、範囲外は境界値へ補正します。
+  opacity: 0.92
+  # 安全にレンダリングした Web チャット本文で認識した URL text
+  # をクリック可能リンクへ変換します。
+  linkify-urls: true
+  # 対応画像 URL/アップロードを Web チャットで inline
+  # 画像プレビュー表示できるようにします。
+  image-preview-enabled: true
+  # 1 メッセージからレンダリングする inline 画像プレビューの最大件数です。
+  # 0 は件数制限をなくします。
+  image-preview-max-per-message: 3
+  # 画像プレビューに設定する高さ上限(px)です。
+  # 正数でもチャット viewport の安全上限が併用され、0 はこの明示的 px
+  # 上限だけを外して自動 viewport 上限を使うため、完全な無制限ではありません。
+  image-preview-max-height: 720
+  # 対応 Google Drive 共有リンクを Web チャット画像プレビュー候補として認識します。
+  google-drive-image-preview: false
+  # Google Drive preview URL 方式です。
+  # uc は uc-style パスを保持し、それ以外は thumbnail に正規化されます。
+  google-drive-preview-mode: "thumbnail"
+  # guest chat 無効時、未ログイン訪問者へ動作しない guest 入力欄を見せず公開チャット UI
+  # を隠します。
+  hide-chat-for-guests-when-guest-disabled: true
+  # ホスト layout が対応する環境でユーザーが floating/embedded KWC チャット panel
+  # をリサイズできるようにします。
+  resizable: true
+  # ユーザーが最後に調整した KWC panel サイズをブラウザー側 preference
+  # に保存/復元します。
+  remember-window-size: true
+  # 記憶済み/ユーザー別サイズ適用前の KWC panel 既定幅(px)です。
+  default-width: 372
+  # 記憶済み/ユーザー別サイズ適用前の KWC panel 既定高さ(px)です。
+  default-height: 462
+  # ユーザーが調整できる KWC panel 最小幅(px)です。
+  min-width: 280
+  # ユーザーが調整できる KWC panel 最小高さ(px)です。
+  min-height: 240
+  # 設定上の KWC panel 最大幅(px)です。
+  # 0 は設定上の最大値だけをなくし、ブラウザー/viewport の制約は残る場合があります。
+  max-width: 640
+  # 設定上の KWC panel 最大高さ(px)です。
+  # 0 は設定上の最大値だけをなくし、ブラウザー/viewport の制約は残る場合があります。
+  max-height: 720
+  # より具体的な font-size 設定がない Web UI 要素へ適用する基本文字サイズ(px)です。
+  font-size: 13
+  # Web チャットメッセージ本文の文字サイズ(px)です。
+  message-font-size: 13
+  # チャット入力欄/composer の文字サイズ(px)です。
+  input-font-size: 13
+  # チャットメッセージ text color の任意 override です。
+  # 空は有効 theme に従います。
+  text-color: ""
+  # 一般 UI/control text color の任意 override です。
+  # 空は有効 theme に従います。
+  ui-text-color: ""
+  # Web UI text-shadow preset です。
+  # 対応値: none, auto, dark, light, custom。
+  # 不正値は auto に正規化されます。
+  text-shadow-mode: "auto"
+  # custom mode だけで使う CSS text-shadow 値です。
+  # KWC が sanitize し、長さ/許可文字を制限し、url(...) 内容を拒否します。
+  text-shadow-custom: "0 1px 2px rgba(0, 0, 0, 0.85)"
+  # チャット入力欄/composer 背景色の任意 override です。
+  # 空は有効 theme に従います。
+  input-background-color: ""
+  # KWC button と小型 control に使う文字サイズ(px)です。
+  button-font-size: 12
+  # 未読/status badge に使う文字サイズ(px)です。
+  badge-font-size: 10
+  # KWC 既定 CSS font-family です。
+  # 空は内蔵 browser/system stack を使い、local font 名は Minecraft
+  # サーバーではなく各ユーザー端末で解決されます。
+  font-family: ""
+  # ユーザーが Chat settings UI から対応するブラウザー別/アカウント別チャット外観・動作
+  # preference を変更できるようにします。
+  user-preferences-control: true
+  user-profiles:
+    # 認証ユーザー向け名前付きサーバー保存 preference profile 機能を有効にします。
+    enabled: true
+    # アカウントごとにサーバー保存する preference profile の最大数です。
+    # runtime 範囲は 0-20 で、範囲外は境界値へ補正します。
+    # 0 はサーバー保存プロファイル機能を無効にします。
+    max-profiles: 5
+    # preference profile JSON の export/import を許可します。
+    # import データは strict schema 検証され、値は対応範囲内である必要があります。
+    allow-import-export: true
+  picture-in-picture:
+    # ブラウザーが必要機能を提供する場合に対応 KWC picture-in-picture/floating view
+    # 動作を有効にします。
+    enabled: false
+  # Chat settings に表示する font-family 選択肢です。
+  # 空文字列は browser/system 既定値で、対応環境ではインストール済み local font
+  # 名を直接入力することもできます。
+  user-font-options:
+    - ""
+    - "system-ui, sans-serif"
+    - "Arial, sans-serif"
+    - "Verdana, sans-serif"
+    - "Georgia, serif"
+    - "monospace"
+  virtual-scroll:
+    # 長いチャット履歴で DOM に制限された可視範囲だけを保持する virtualized message rendering
+    # を有効にします。
+    enabled: true
+    # virtual-scroll 可視範囲の上下に追加レンダリングする viewport screen 距離です。
+    # 0 も有効な最小動作値です。
+    overscan-screens: 0.75
+    # viewport 計算上もっと少なくてよい場合でもレンダリング状態で保持する最小メッセー
+    # ジ行数です。
+    # 0 も有効な最小動作値です。
+    min-rendered-messages: 30
+  history-preload:
+    # 上端/下端から何 viewport screen の距離で追加履歴 preload を開始するか決めます。
+    # runtime 範囲は 0-5 で、範囲外は境界値へ補正します。
+    screens: 0.70
+    # history-preload screen 距離と併用する最小 pixel threshold で、
+    # 端へ到達する前に履歴読み込みを開始できます。
+    # runtime 範囲は 0-1000 で、範囲外は境界値へ補正します。
+    min-px: 200
+  # 自動最新メッセージ追従で、まだ bottom 追従中と判断する下端距離(px)です。
+  # runtime 範囲は 2-300 で、範囲外は境界値へ補正します。
+  auto-follow-bottom-threshold-px: 80
+  # ユーザー直接スクロール後、自動 scroll/follow 処理を再開できるまでの idle
+  # 時間(ms)です。
+  # runtime 範囲は 50-1000 で、範囲外は境界値へ補正します。
+  scroll-interaction-idle-ms: 160
+  resume-refresh:
+    # background/suspend されたページが再び active になった時、interval/unchanged guard
+    # に従い関連チャット/config 状態を
+    # refresh します。
+    enabled: true
+    # 自動 resume-refresh 実行間の最小間隔(秒)です。
+    # runtime 範囲は 1-300 で、範囲外は境界値へ補正します。
+    min-interval-seconds: 5
+    # サーバー側状態 marker で関連データが未変更なら高コストな resume-refresh
+    # 処理を省略します。
+    skip-unchanged: true
+notifications:
+  # KWC ページが開いている時の browser notification 生成機能のマスタースイッチです。
+  # 個別通知カテゴリとユーザー preference でさらに配信範囲を絞れます。
+  enabled: true
+  # ページ内 browser notification を tab/window
+  # が非表示・最小化・非フォーカス時だけ送るよう制限します。
+  # background Web Push には適用しません。
+  only-when-hidden: true
+  # 通常公開チャットメッセージの browser notification を許可します。
+  notify-normal-chat: true
+  # 新着 DM の browser notification を許可します。
+  notify-dm: true
+  # 新着グループルームメッセージの browser notification を許可します。
+  notify-group-chat: true
+  # KWC mention 判定で現在ユーザーが言及された時の browser notification を許可します。
+  notify-mentions: true
+  # 現在ユーザーの関連メッセージ/会話への Reply に対する browser notification
+  # を許可します。
+  notify-replies: true
+  # サーバー/system announcement 通知を許可します。
+  # 対応環境ではユーザー設定で all、join/leave only、off にさらに絞れます。
+  notify-system: true
+  # ユーザー/管理者 keyword 通知規則で発生する browser notification を許可します。
+  notify-keywords: true
+  # 対象 browser notification にタイトル/カテゴリだけでなく安全なメッセージ text preview
+  # を含めます。
+  show-message-preview: true
+web-push:
+  # Web Push subscription 作成に使う VAPID public key です。
+  # 空なら Web Push が必要な時に KWC が key pair を生成/管理します。
+  vapid-public-key: ""
+  # web-push.vapid-public-key と対になる VAPID private key です。
+  # 秘密に保持し、空なら必要時に KWC が pair を生成/管理します。
+  vapid-private-key: ""
+  # Web Push 認証に含める VAPID contact subject で、通常は mailto: または https: の管理者連絡 URI
+  # を使います。
+  subject: "mailto:admin@example.com"
+  # server/test/background Web Push notification の既定タイトルです。
+  # 空なら frontend.standalone.app-name を使います。
+  notification-title: ""
+  # KWC が管理する browser Web Push subscription endpoint/key を保存する JSONL データファイルです。
+  # 公開 Web 資産ではなく application data として扱います。
+  subscriptions-file: "web-push-subscriptions.jsonl"
+  # push service へ queued Web Push 配信用に指定する time-to-live(秒)です。
+  # runtime 範囲は 30-86400 で、範囲外は境界値へ補正します。
+  ttl-seconds: 300
+web-fonts:
+  # web-fonts.items と指定 font directory のサーバーホスト Web フォント定義を有効にします。
+  enabled: false
+  # 設定 web-font item が参照するフォントファイルを置く data directory
+  # 基準の相対フォルダーです。
+  directory: "fonts"
+  # font-family metadata とサーバーホストファイルを対応付ける Web フォント定義一覧です。
+  # 空一覧は追加サーバーフォントを登録しません。
+  # 項目フィールド: family（必須 CSS font-family 名）、file（必須、web-fonts.directory
+  # 基準の相対パス; woff2|woff|ttf|otf のみ）、weight（100-900、既定 400）、
+  # style（normal|italic|oblique、既定 normal）。
+  # 絶対パス、".." を含むパス、未対応拡張子、family/file がない項目は無視されます。
+  # 不正な weight/style は 400/normal に補正されます。
+  # 例:
+  # items:
+  #   - family: "Pretendard"
+  #     file: "Pretendard.woff2"
+  #     weight: 400
+  #     style: "normal"
+  items: []
+
+# =============================================================================
+# 外部連携
+# =============================================================================
+
+discordsrv:
+  # DiscordSRV 設定例:
+  # - DiscordSRV を別途 install/configure し、channel には DiscordSRV Channels mapping の logical name（通常
+  #   "global"）を指定します。
+  # - DiscordSRV が既に通常の Minecraft chat を Discord へ relay している場合、game-relay-mode:
+  #   "discordsrv" のままにして KWC の重複送信を防ぎます。
+  # - KWC が Minecraft -> Discord 送信を直接担当する場合のみ game-relay-mode: "kwc" を使用し、
+  #   DiscordSRV 側の競合する通常 chat relay を無効化してください。
+  # - 他サーバーから Relay 受信した public chat は再度 Discord に投稿せず、server/source prefix
+  #   の重複と bridge loop を防ぎます。
+  # KWC の任意 DiscordSRV bridge 機能を有効にします。
+  # DiscordSRV 自体は別途導入/設定が必要です。
+  enabled: false
+  # 通常 KWC Discord relay に使う DiscordSRV logical channel 名です。
+  channel: "global"
+  # 受理した KWC Web 公開チャットメッセージを Discord へ relay します。
+  web-to-discord: true
+  # Minecraft 公開チャットを Discord へ送る主体を選びます。
+  # discordsrv は DiscordSRV native relay を KWC が補強し、kwc は game-relay-format で KWC
+  # が直接送信します。
+  # 不正値は discordsrv に fallback し、両 relay 同時動作による重複送信を避けます。
+  game-relay-mode: "discordsrv"
+  # 設定済み DiscordSRV channel の対象 Discord メッセージを KWC Web 公開チャットへ掲載します。
+  discord-to-web: true
+  # Discord→KWC チャット受信時に bot 投稿を無視して bot loop/echo リスクを減らします。
+  ignore-bot-messages: true
+  # 同じ Minecraft チャットを DiscordSRV/native relay 相関で再観測した時の Discord→web
+  # 重複配信を抑制します。
+  suppress-game-echo: true
+  # DiscordSRV relay 前後で同一ゲームチャット echo を相関/抑制する時間窓(秒)です。
+  suppress-game-echo-seconds: 5
+  # web→Discord relay 有効時に認証済み Web ユーザーの公開メッセージを Discord へ送ります。
+  send-web-user-chat-to-discord: true
+  # web→Discord relay 有効時にゲスト公開メッセージを Discord へ送ります。
+  send-web-guest-chat-to-discord: false
+  # web→Discord relay 有効時に Web 管理者公開メッセージを Discord へ送ります。
+  send-web-admin-chat-to-discord: true
+  # web→Discord メッセージ内の認識済み KWC custom-emoji token に外部到達可能な画像 URL
+  # を追加し、Discord が画像 preview
+  # できるようにします。
+  append-web-emoji-links: true
+  # Minecraft→Discord relay で Discord 投稿の元 emoji-token text を KWC token→image-link
+  # 経路で処理します。
+  # レンダリング済み Minecraft glyph は変換元に使いません。
+  append-game-emoji-links: true
+  # Discord メッセージ 1 件に追加する custom-emoji 画像 URL の最大数です。
+  # emoji.game-link.max-links-per-message と異なり、この設定では 0 は無効化を意味します。
+  # 0 は Discord への emoji 画像 URL 追加を無効にします。
+  max-emoji-links-per-message: 4
+  reply-relay:
+    # 対応メッセージを Discord へ relay する際、新規メッセージ text だけでなく KWC Reply
+    # context を保持/転送します。
+    enabled: false
+    # KWC Reply context を Discord へ relay する際、設定/既定 Reply marker/prefix を追加します。
+    prefix-enabled: true
+    # Discord relay 表示に Reply 対象元文の短い preview を含めます。
+    preview-enabled: true
+    # Discord Reply preview に含める Reply 対象元文の最大長です。
+    # 0 はプレビューの切り詰めを行いません。
+    preview-max-length: 120
+  # KWC Web 発 relay メッセージの Discord text 形式です。
+  # {server}, {server_id}, {sender}, {name}, {role}, {source}, {message}, {channel} などに対応し、relay
+  # 使用時はサーバー identity のない legacy 形式へ自動 prefix する場合があります。
+  web-to-discord-format: "[{server}] [Web] {sender}: {message}"
+  # discordsrv.game-relay-mode=kwc で KWC が Minecraft チャットを直接 Discord 送信する時の text
+  # 形式です。
+  game-relay-format: "[{server}] {sender}: {message}"
+  # Web チャットに表示する Discord 発メッセージの KWC sender label 形式です。
+  # placeholder: {sender}。
+  discord-to-web-sender-format: "Discord:{sender}"
+  # Web チャットに表示する Discord 発メッセージの KWC 本文形式です。
+  # placeholder: {message}。
+  discord-to-web-message-format: "{message}"
+admin-alerts:
+  discord:
+    # 設定 DiscordSRV channel を使う Discord 管理者 keyword alert 機能を有効にします。
+    enabled: false
+    # 管理者 alert に使う DiscordSRV logical channel です。
+    # 空は discordsrv.channel を再利用し、logical mapping がない場合だけ raw channel id を ID-only
+    # fallback
+    # として受け付けます。
+    channel: ""
+    sources:
+      # ローカル公開チャットメッセージを設定済み管理者 alert keyword
+      # の対象として検査します。
+      public-chat: true
+      # 受理したサーバー間 Relay 公開チャットメッセージを管理者 alert keyword
+      # 対象として検査します。
+      relay-chat: false
+      # 明示的に有効化した場合、非公開 DM 内容を管理者 alert keyword
+      # 対象として検査します。
+      # private message keyword 検査が不要なら無効にします。
+      dm: false
+      # 明示的に有効化した場合、グループルームメッセージを管理者 alert keyword
+      # 対象として検査します。
+      group-chat: false
+    # 管理者 alert に追加する Discord mention 方式です。
+    # 対応値: none, here, everyone。
+    # 不正値は none に正規化されます。
+    mention: "none"
+    # 設定済み管理者 alert keyword 照合を既定の大文字小文字無視ではなく case-sensitive
+    # にします。
+    case-sensitive: false
+    # カンマ/改行区切りの管理者 alert keyword です。
+    # 項目は trim/control 文字除去後、case-sensitive 方針で照合され、重複排除と KWC
+    # 安全上限が適用されます。
+    keywords: ""
+
+# =============================================================================
+# アップロード・メディア・絵文字
+# =============================================================================
+
+upload:
+  # Upload 運用/セキュリティガイド:
+  # - File は KWC data directory 配下の upload.directory に保存されます。
+  #   別の public file URL で配信する意図がなければ public-base-url は空を推奨します。
+  # - Guest upload は既定 off です。per-file/total 容量制限は MiB 単位で、0 は対応する設定 quota
+  #   だけを解除します。
+  # - allowed-extensions は allow-list ですが、KWC は危険な executable/web extension
+  #   を別途拒否し続けます。extension filtering だけで通常の server/network security
+  #   を代替できません。
+  # - Retention cleanup は古い未参照 upload のみ削除し、保持中 message/pin から参照される file
+  #   は関連設定に従って保持します。
+  # KWC ファイルアップロード endpoint と composer
+  # アップロード制御のマスタースイッチです。
+  enabled: true
+  # 未認証ゲストのファイルアップロードを許可します。
+  # spam/storage abuse リスクのため既定は off です。
+  allow-guest-upload: false
+  # 認証済み USER ロールのファイルアップロードを許可します。
+  allow-user-upload: true
+  # 認証済み MODERATOR ロールのファイルアップロードを許可します。
+  allow-moderator-upload: true
+  # 認証済み ADMIN ロールのファイルアップロードを許可します。
+  allow-admin-upload: true
+  # 同じ resolved client IP のアップロード試行間に要求する最小間隔(秒)です。
+  # 0 はこの制限要素を無効にします。
+  cooldown-seconds: 5
+  # resolved client IP 1 つに適用する 1 分あたりアップロード試行上限です。
+  # 0 はこの制限要素を無効にします。
+  max-uploads-per-minute: 4
+  # アップロードファイル 1 個に許可する最大サイズ(MiB)です。
+  # 0 はこのサイズ/容量制限をなくします。
+  max-file-size-mb: 20
+  # upload.directory 全体の保存 quota(MiB)です。
+  # 超過時は最古の未参照アップロードから削除し、
+  # それでも空きを確保できなければ新規アップロードを拒否します。
+  # 0 はこのサイズ/容量制限をなくします。
+  max-total-size-mb: 0
+  # composer アップロード 1 回で選択/添付できる最大ファイル数です。
+  # 0 は件数制限をなくします。
+  max-files-per-message: 3
+  # KWC アップロードファイルを保存する data directory 基準の相対フォルダーです。
+  directory: "uploads"
+  # 保存ファイル名方針です。
+  # random は生成 storage name で元名を隠し、original は sanitize 済み Unicode
+  # 元名を保持して衝突時に数字 suffix を付けます。
+  # 不正値は random に正規化されます。
+  filename-mode: "random"
+  # アップロードファイルの公開 URL base です。
+  # 空なら有効な KWC 公開 API base + /uploads を使い、API-base path、直接 upload path、相対パス、
+  # 完全 URL を互換規則で正規化します。
+  public-base-url: ""
+  # 保持中のメッセージ/pin から参照されなくなったアップロードファイルだけを、
+  # この日数より古い場合に削除します。
+  # 0 は期間ベースの整理を無効にします。
+  retention-days: 5
+  # 許可アップロード拡張子一覧です。
+  # 空一覧は全拡張子許可ではなく、KWC 内蔵の安全 media 拡張子一覧へ fallback します。
+  allowed-extensions:
+    - png
+    - jpg
+    - jpeg
+    - gif
+    - webp
+    - mp4
+    - webm
+    - mp3
+    - m4a
+    - ogg
+    - wav
+    - flac
+  # ブラウザー clipboard から貼り付けた image blob を KWC composer
+  # アップロード経路で送れるようにします。
+  clipboard-upload-enabled: true
+  # clipboard 画像アップロード後の動作です。
+  # insert はアップロード URL を現在 composer へ入れ、send は即時送信します。
+  # 不正値は insert に正規化されます。
+  clipboard-upload-send-mode: "insert"
+  # ブラウザーが利用可能 filename/extension を提供しない pasted image blob に付ける fallback
+  # 拡張子です。
+  clipboard-image-default-extension: "png"
+  # アップロード画像 URL/file を inline 画像 preview renderer で表示できるようにします。
+  preview-images: true
+  # アップロード video URL/file を inline video preview/player renderer で表示できるようにします。
+  preview-videos: true
+  # アップロード audio URL/file を inline audio player renderer で表示できるようにします。
+  preview-audio: true
+preview:
+  # 対応 YouTube URL を認識して Web チャットに YouTube embed を表示します。
+  youtube-embed-enabled: true
+  # ユーザーがクリックするまで YouTube embed を読み込まず、自動 third-party
+  # 要求/リソース使用を減らします。
+  youtube-click-to-load: true
+  # renderer が deferred loading に対応する inline media preview/player
+  # をユーザー操作まで読み込みません。
+  media-click-to-load: true
+  # 対応する場合 YouTube privacy-enhanced/no-cookie embed endpoint を使います。
+  youtube-nocookie: true
+  # 対応する場合 YouTube preview の展開/折りたたみ状態をユーザー/ブラウザー単位で記憶し
+  # ます。
+  youtube-remember-expanded: true
+  # YouTube preview を明示的に開いた時 autoplay を要求します。
+  # ブラウザー autoplay 方針で実際の再生が拒否される場合があります。
+  youtube-autoplay-on-open: false
+  # 1 メッセージからレンダリングする YouTube embed の最大数です。
+  # 0 は件数制限をなくします。
+  youtube-max-embeds-per-message: 1
+  social-embeds:
+    # 有効化した TikTok/X provider など YouTube 以外の social embed のマスタースイッチです。
+    enabled: true
+    # 対応 social embed をユーザークリックまで読み込まず、自動 third-party
+    # 要求を減らします。
+    click-to-load: true
+    # 1 メッセージからレンダリングする対応 social embed の最大数です。
+    # 0 は件数制限をなくします。
+    max-embeds-per-message: 2
+    tiktok:
+      # social-embed マスタースイッチ配下で TikTok URL 認識/embed
+      # レンダリングを有効にします。
+      enabled: false
+    x:
+      # social-embed マスタースイッチ配下で X/Twitter URL 認識/embed
+      # レンダリングを有効にします。
+      enabled: false
+      # X/Twitter embed に要求する theme: auto, light, dark。
+      # 不正値は auto に正規化されます。
+      theme: "auto"
+      # provider が対応する X/Twitter embed 設定で Do-Not-Track 動作を要求します。
+      dnt: true
+      # embed API が対応する場合 X/Twitter embed の添付 media 非表示を要求します。
+      hide-media: false
+      # 対応する場合 X/Twitter embed で周辺 thread/conversation context の非表示を要求します。
+      hide-thread: true
+  # 主に third-party URL が失効し得る添付を保持する KWC 外部 media local cache を有効にします。
+  external-media-cache-enabled: true
+  # 対象 Discord CDN attachment URL を元 URL の失効前に KWC external-media cache へコピーします。
+  cache-discord-cdn: true
+  # 対応外部 media の cache コピーを保存する data directory 基準の相対フォルダーです。
+  external-media-cache-directory: "uploads/external-media-cache"
+  # KWC が fetch/cache する外部 media オブジェクト 1 個の最大サイズ(MiB)です。
+  # 0 はこのサイズ/容量制限をなくします。
+  external-media-cache-max-size-mb: 20
+  # 未参照 external-media cache ファイルを削除する期間基準日数です。
+  # 0 は期間ベースの整理を無効にします。
+  external-media-cache-retention-days: 5
+  # 外部 media を local cache へダウンロードする際の fetch/connect timeout(秒)です。
+  # runtime の最小値は 1 で、それ未満は最小値へ補正します。
+  external-media-cache-timeout-seconds: 6
+emoji:
+  # Custom emoji 設定確認用の任意の使用例:
+  # - emoji.directory 直下の file は default/root emoji、subfolder は pack になります。
+  #   Web Admin emoji manager も同じ managed storage を使用します。
+  # - Picker は通常 :pack/name: token を挿入し、root で曖昧でなければ :name: も使用できます。
+  #   token-format=legacy は :emoji:pack/name: を挿入し、両形式とも parse されます。
+  # - 同じ pack 内の name collision は安定した suffix で区別し、別 pack は分離されます。
+  #   GIF animation は Web UI で保持されます。
+  # - game-link.enabled=false は game-side emoji plugin 用に元 token を保持します。
+  #   KWC 自身が web emoji を Minecraft 向けに変換する場合だけ有効化してください。
+  # - max-file-size-kb は KiB、max-total-size-mb は MiB 単位で、0 は対応する limit を解除します。
+  # サーバー管理 KWC custom emoji catalog、レンダリング、関連 admin/upload API を有効にします。
+  # emoji ファイルは直下または pack として使うサブフォルダーへ置けます。
+  enabled: true
+  # emoji 機能が利用可能な時、Web チャット composer に custom emoji picker ボタンを表示します。
+  show-button: true
+  # KWC custom emoji ファイルと pack サブディレクトリを scan/store する data directory
+  # 基準の相対フォルダーです。
+  directory: "emojis"
+  # custom emoji ファイルの公開 URL base です。
+  # 空なら有効な KWC 公開 API base + /emojis を使い、API-base path、emoji path、相対パス、完全 URL
+  # を互換規則で正規化します。
+  public-base-url: ""
+  # custom emoji ファイル 1 個のサイズ上限(KiB)で、超過ファイルは利用経路に応じ管理
+  # catalog 処理で拒否/除外されます。
+  # 0 はこのサイズ/容量制限をなくします。
+  max-file-size-kb: 512
+  # 管理 emoji ファイル全体の storage/catalog quota(MiB)です。
+  # quota 超過アップロードを拒否し、catalog scan
+  # も設定総量を超えるファイルを公開しません。
+  # 0 はこのサイズ/容量制限をなくします。
+  max-total-size-mb: 64
+  # 管理者 emoji manager に現在の管理 emoji storage 使用量を表示します。
+  show-storage-usage: true
+  # 管理者 emoji manager に設定済み全体 emoji storage 上限を表示します。
+  show-storage-limit: true
+  # チャットメッセージ内で custom emoji をレンダリングする表示サイズ(px)で、animated GIF
+  # はブラウザーでアニメーションを維持します。
+  # runtime 範囲は 16-1024 で、範囲外は境界値へ補正します。
+  render-size-px: 32
+  # emoji picker 内 item の表示サイズ(px)で、メッセージレンダリングサイズは変更しません。
+  # runtime 範囲は 24-1024 で、範囲外は境界値へ補正します。
+  picker-size-px: 44
+  # 1 メッセージで受け付ける custom emoji token の最大数です。
+  # token は canonical pack/name パスを含められます。
+  # 0 は件数制限をなくします。
+  message-token-limit: 12
+  # Web emoji picker が挿入する token 形式です。
+  # short=:pack/name:、legacy=:emoji:pack/name: で parser は両方を受理します。
+  # legacy/prefixed/emoji alias は legacy、それ以外は short に正規化されます。
+  token-format: "short"
+  # 許可 custom emoji 画像拡張子一覧です。
+  # 空一覧は任意ファイル許可ではなく KWC 内蔵対応画像拡張子一覧へ fallback します。
+  allowed-extensions:
+    - png
+    - jpg
+    - jpeg
+    - gif
+    - webp
+  game-link:
+    # KWC Web→Minecraft custom-emoji 変換を有効にします。
+    # 無効時は game-side emoji plugin が描画できるよう元 token text を保持し、有効時は
+    # emoji.game-link.mode を適用します。
+    enabled: false
+    # 有効時の Web→Minecraft emoji 変換 mode です。
+    # link=label+短い画像 URL、label=label のみ、preserve=元 token 保持。
+    # preserve/token/original/none は preserve、label/template/text は label、それ以外は link
+    # に正規化されます。
+    mode: "link"
+    # ゲーム内 emoji 画像 short link を作る公開 KWC API base です。
+    # 空なら設定済み adapter/standalone/origin 情報から自動計算し、HTTPS
+    # リバースプロキシでは実際の公開 API URL を明示すると曖昧さを避けられます。
+    public-api-base-url: ""
+    # Web→game emoji 変換に使う text label 形式です。
+    # placeholder: {id}, {name}, {pack}。
+    # pack identity を保持する必要がある場合は {id} を使います。
+    label-format: ":{id}:"
+    # link mode でゲームメッセージ 1 件に追加する emoji 画像リンク最大数です。
+    # 0 は件数制限をなくします。
+    max-links-per-message: 4
+    # 同じ emoji 名が複数 pack にある時、flat token/name の曖昧さを解消する優先 pack です。
+    # 空なら追加の優先 pack を適用しません。
+    default-pack: ""
+    # Web/game token 互換用の明示的 flat/custom alias→canonical pack/name map です。
+    # 空 map は追加 alias なしで、同じ emoji 名は異なる pack に独立して存在できます。
+    # alias key は wave のような通常名または引用した :wave: token を使用でき、
+    # 照合時は大文字小文字/NFC/NFKC 変種も正規化します。
+    # 対象 id が現在の emoji catalog に存在しなければその mapping は無視されます。
+    # 明示 mapping は自動 flat-name 照合より優先されます。
+    # 例:
+    # aliases:
+    #   wave: "default/wave"
+    #   ":party:": "global/party"
+    aliases: {}

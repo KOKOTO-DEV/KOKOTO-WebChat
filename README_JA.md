@@ -1,19 +1,28 @@
 # KOKOTO WebChat
 
 
+
+![アーキテクチャ概要](docs/assets/architecture-5.1.0.svg)
+
+> ビジュアル資料、アニメーションフロー、編集可能な図の source、参照規格一覧は `docs/assets/`、`docs/VISUAL_DOCUMENTATION.md`、`docs/REFERENCES.md` に含まれています。
+
+## 5.1.0 リリース
+
+5.1.0 ではサーバー間通信を、相互 peer 設定と request ごとの認証付き暗号化を備えた group 単位の Relay Protocol v2 へ移行し、Web/ゲームの DM・グループチャットに永続 Reply とサーバー間 stable reply 参照を追加します。さらに `ui.language` に連動する config/reference/migration 表示言語、emoji catalog と SSE の復旧強化、SSE default 10/IP・500 total、custom emoji の pack/file/token canonicalization、公開チャット Reply 描画改善、Android チャット入力欄の Autofill 抑制を含みます。release note と migration guide は 5.0.0 → 5.1.0 の最終変更内容を基準に記載します。 繰り返す運用 HTTP/ネットワーク障害は共通の状態追跡ポリシーで処理し、同一 retry エラーが console に無制限に蓄積しない一方、初回障害・状態変化・復旧は記録します。
+
 ## プロジェクト名と配布先の移行
 
 **BlueMapWebChat (BMWC) は 5.0.0 から KOKOTO WebChat へ名称変更します。** 4.7.0 利用者の既存 update-check 経路を切らないため、5.0.0 の移行 release は最初に既存 BlueMapWebChat project listing から配布できます。BMWC 4.x data は migration input としてのみ扱い、5.0.0 runtime の正式名称は KOKOTO WebChat です。
 
-移行期間中は次の旧 URL を配布入口として利用できます。
+現在の KOKOTO WebChat 配布 URL:
 
 - Modrinth: `https://modrinth.com/plugin/bluemapwebchat`
-- CurseForge: `https://www.curseforge.com/minecraft/bukkit-plugins/bluemapwebchat`
-- GitHub: `https://github.com/KOKOTO-DEV/BlueMapWebChat`
+- CurseForge: `https://www.curseforge.com/minecraft/bukkit-plugins/kokoto-webchat`
+- GitHub: `https://github.com/KOKOTO-DEV/KOKOTO-WebChat`
 
-移行後の KOKOTO WebChat canonical URL は `https://modrinth.com/plugin/kokoto-webchat`, `https://www.curseforge.com/minecraft/bukkit-plugins/kokoto-webchat`, `https://github.com/KOKOTO-DEV/KOKOTO-WebChat` です。ただし **各 platform で実際に rename/create が完了してから**正式 URL として案内します。同一 project として移行できない platform では、旧 BMWC page を終了・移行案内として残し、新 KOKOTO WebChat page へ誘導します。
+現在のプロジェクト URL 移行期間では、5.1.0 updater は Modrinth `kokoto-webchat` を先に確認し、canonical project を利用できない場合は既存 `bluemapwebchat` へ fallback します。BMWC fallback も URL 移行完了までは実際の update source として使用し、両方の取得に失敗した場合だけ更新確認の警告を出します。
 
-Bukkit/Paper/Spigot、Fabric 1.18.2〜26.2 exact-target、NeoForge 1.20.2〜26.2 exact-target、および Forge 1.18.2〜26.2 exact-target 向けのサーバー側 Web チャットです。standalone ページに加え、BlueMap、squaremap、Dynmap、Pl3xMap、LiveAtlas、uNmINeD、Minecraft Overviewer の地図画面へ KWC チャットを埋め込めます。
+Bukkit/Paper/Spigot では BlueMap、squaremap、Dynmap、Pl3xMap、LiveAtlas、uNmINeD、Minecraft Overviewer、または standalone WebChat を利用できます。Fabric 1.18.2〜26.2、NeoForge 1.20.2〜26.2、Forge 1.18.2〜26.2 の exact-target build は共通 core/standalone frontend を使用し、squaremap、Dynmap、LiveAtlas、uNmINeD、Overviewer の filesystem adapter に対応します。Pl3xMap filesystem adapter は Fabric でも利用でき、BlueMapAPI 連携は対応する Fabric/NeoForge と Forge 26.1.2/26.2 target で利用できます。
 
 ## 主な機能
 
@@ -28,7 +37,7 @@ Bukkit/Paper/Spigot、Fabric 1.18.2〜26.2 exact-target、NeoForge 1.20.2〜26.2
 - `upload.filename-mode: original` で新規アップロードの安全な Unicode 元ファイル名を保持し、同名を上書きせず番号付け
 - BlueMap / squaremap / Dynmap / Pl3xMap / LiveAtlas / uNmINeD / Overviewer 内チャットパネル、または standalone Web チャットページ
 - ゲーム ↔ Web チャット双方向連携
-- HMAC 署名付きサーバー間公開チャットリレー、サーバー別 Web バッジ、ゲーム/Discord サーバー表示
+- group 単位の公開チャットとサーバー間 DM/既読 receipt を扱う Relay Protocol v2：request 単位 peer 認証、HKDF-SHA256/AES-256-GCM の hop-by-hop 認証付き暗号化、replay 防御、HTTPS 専用 forwarding
 - Minecraft クリック返信(`/kchat reply`)と Web 送信者クリック KWC DM(`/kchat dm`)
 - ゲーム `/w`/`/msg`/`/tell` 系 whisper の両ユーザー Web DM への任意複製
 - ゲストチャット、計算 captcha、クールダウン、分間制限
@@ -41,19 +50,21 @@ Bukkit/Paper/Spigot、Fabric 1.18.2〜26.2 exact-target、NeoForge 1.20.2〜26.2
 - 返信と元メッセージへのジャンプ、ゲーム内返信プレビュー、ピン留め、仮想スクロール、移動/リサイズ可能なウィンドウ、PIP
 - UI 言語: en-US, ko-KR, ja-JP, zh-CN
 
-## Companion plugin integration
+## 連携プラグイン
 
 - [**ImageEmojis-Bero**](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) — Bukkit/Paper 系で `plugins/KOKOTO-WebChat/emojis` を共有し、Web/history/relay は canonical token、game は ImageEmojis glyph を利用できます。`serverIp` + `webServerPort` の resource-pack HTTP service は Minecraft client から到達可能である必要があります。詳細: [`docs/IMAGEEMOJIS_BERO_1_9_0_JA.md`](docs/IMAGEEMOJIS_BERO_1_9_0_JA.md)。一般運用は [upstream ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)。
 - [**SimpleNicks-Bero**](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) — `player-display.mode: "display-name"` で Bukkit display name を表示し、実 linked username/UUID identity は別に保持します。詳細: [`docs/SIMPLENICKS_BERO_JA.md`](docs/SIMPLENICKS_BERO_JA.md)。一般運用は [upstream SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks)。
 
 ## ビルド
 
+### Bukkit / Paper / Spigot
+
 ```bash
 mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.0.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.1.0-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target
@@ -64,7 +75,7 @@ Fabric は Minecraft version 別の 16 exact-target JAR として build しま�
 kwc-platform-fabric\build-all.bat
 ```
 
-Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.0.0-Fabric-<Minecraft>.jar` です。
+Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.1.0-Fabric-<Minecraft>.jar` です。
 
 ### NeoForge exact-target
 
@@ -74,7 +85,7 @@ NeoForge は 12 exact-target JAR として build します。1.20.2〜1.20.6 は
 kwc-platform-neoforge\build-all.bat
 ```
 
-Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.0.0-NeoForge-<Minecraft>.jar` です。
+Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.1.0-NeoForge-<Minecraft>.jar` です。
 
 ### Forge exact-target
 
@@ -84,11 +95,24 @@ Forge は単一の広域 JAR ではなく、16 個の Minecraft version 別 exac
 kwc-platform-forge\build-all.bat
 ```
 
-script が target ごとに JDK 17/21/25 を選択し、各 target の `build/libs/` に `KOKOTO-WebChat-5.0.0-Forge-<Minecraft>.jar` を生成します。
+script が target ごとに JDK 17/21/25 を選択し、各 target の `build/libs/` に `KOKOTO-WebChat-5.1.0-Forge-<Minecraft>.jar` を生成します。
 
 ### Windows 最終 release 検証
 
-source root で `validate-release-windows.bat` を実行すると、Bukkit、Fabric 16 target、NeoForge 12 target、Forge 16 target を連続 build します。`FINAL RELEASE BUILD PASS` が表示され、`release-5.0.0/` に配布用 JAR が正確に 45 個集まり、`SHA256SUMS.txt` が生成された場合のみ実 build まで最終検証済みと判定します。
+source root で `validate-release-windows.bat` を実行すると、Bukkit、Fabric 16 target、NeoForge 12 target、Forge 16 target を連続 build します。`FINAL RELEASE BUILD PASS` が表示され、`release-5.1.0/` に配布用 JAR が正確に 45 個集まり、`SHA256SUMS.txt` が生成された場合のみ実 build まで最終検証済みと判定します。
+
+Windows の反復 build では、同じ script で platform 選択、incremental cache、platform 並列 build、live progress を使用できます。
+
+```bat
+validate-release-windows.bat --bukkit
+validate-release-windows.bat --bukkit --fast
+validate-release-windows.bat --fabric --fast
+validate-release-windows.bat --neoforge --fast
+validate-release-windows.bat --forge --fast
+validate-release-windows.bat --parallel
+```
+
+platform option は組み合わせ可能です。`--bukkit` は Bukkit/Paper artifact と必要な Maven reactor dependency だけを build します。`--fast` は `clean` を省略し、既存の Maven/Gradle 出力と dependency cache を再利用して Gradle build cache を有効化します。`--parallel` は選択した build mode を維持し、Bukkit が選択されている場合は Bukkit を先に build し、PASS 後に残りの Fabric/NeoForge/Forge を並列実行します。そのため `validate-release-windows.bat --parallel` は clean 45-target 最終検証として扱われ、成功時は `FINAL RELEASE BUILD PASS` を表示します。console には経過時間、全体完了 target 数、platform 別完了数と現在の Minecraft target が live 表示され、詳細 log は `validation-logs/` に残ります。部分 build または `--fast` build は `build-5.1.0/` に出力され、最終 release validation にはなりません。source root の `mvn clean package` は引き続き Bukkit 専用 Maven build です。
 
 ## インストール
 
@@ -106,7 +130,7 @@ source root で `validate-release-windows.bat` を実行すると、Bukkit、Fab
 12. サーバーを再起動するか `/kchat reload` を実行します。BlueMap は `bluemap reload light` を自動要求し、squaremap/Dynmap/Pl3xMap/LiveAtlas/uNmINeD/Overviewer は KWC が Web file を直接再確認します。map/site generator が Web file を再生成した場合は `/kchat reload` を再実行します。
 
 
-既存の設定値は保持しますが、migration 中に古い config text/comment/layout は引き継ぎません。実行中 JAR の bundled `config.yml` が唯一の migration template であり、KWC は最新 default config を新しく作成して既存 operator 値だけを overlay します。そのため旧 comment・順序・空白・indent は破棄され、最新 bundled comment/layout が authoritative になります。`<KWC data dir>/config-reference-5.0.0.yml` は管理者が全 default 設定を確認するための正確な bundled config copy であり migration input ではありません。以前の marker に `_auto_migration` がなければ固定済み config とみなし、実 version upgrade 前に元の `config.yml` を backup します。migration 後は `config-version: "5.0.0_auto_migration"` となり、この marker の間は startup/reload ごとに同じ再構築を行います。正確な `config-version: "5.0.0"` は同一 version config を固定し、`config.yml` を書き換えません。旧 version の生成済み reference/migration/upgrade file は自動削除されます。同梱の UTF-8 starter filter list `filter-lists/ko-KR.txt`、`en-US.txt`、`ja-JP.txt`、`zh-CN.txt` は starter-list 初期化 marker がない場合に一度だけ初期化されるため、この機能より前から存在する data directory にも作成されます。既存または無効化済みの list file は上書きせず、初期化後に管理者が削除した starter list は再起動しても再作成しません。
+既存の解析済み operator 設定値は保持し、migration 時の comment/layout は `ui.language` が選ぶ bundled presentation template から再構成します。`en-US` は `config.yml`、`ko-KR`・`ja-JP`・`zh-CN` は各 localized template を使用し、未対応/custom UI 言語は英語 config 表示を使用します。`<KWC data dir>/config-reference-5.1.0.yml` は同じ built-in 言語で描画された管理者向けの現在 default であり、migration input には使用しません。固定された旧 version config は実際の version migration 前に backup します。migration 後は `config-version: "5.1.0_auto_migration"` となり、この marker がある間は startup/reload ごとに選択中の current template を再構成して既存の解析値を overlay し、新規設定と最新 comment/layout を維持します。正確な `config-version: "5.1.0"` は通常の same-version 自動設定再構成を停止しますが、`ui.language` を変更した場合は全解析値を保持したまま comment/layout の表示言語だけを再構成できます。`config-migration-5.1.0.yml` の Difference は comment・空白・quote・行位置・key 順序ではなく、解析済み YAML path/value の意味を比較します。旧 version の生成済み reference/migration/upgrade file は自動削除されます。同梱の UTF-8 starter filter list `filter-lists/ko-KR.txt`、`en-US.txt`、`ja-JP.txt`、`zh-CN.txt` は starter-list 初期化 marker がない場合に一度だけ初期化されるため、この機能より前から存在する data directory にも作成されます。既存または無効化済みの list file は上書きせず、初期化後に管理者が削除した starter list は再起動しても再作成しません。
 
 ### 5.0.0 KOKOTO WebChat の構成と名称移行
 
@@ -117,7 +141,7 @@ source root で `validate-release-windows.bat` を実行すると、Bukkit、Fab
 > **BMWC HTTPS migration:** BMWC の標準 `/bmwc/api`、`/bmwc/chat` 公開構成は KWC の `/chat` 構成へ移行します。標準 BMWC API URL 設定は空の自動値へ正規化されますが、Caddy/nginx file は自動変更されないため `/chat` prefix stripping 構成へ手動変更してください。
 
 
-Relay protocol v1 は旧 BMWC peer との互換性のため wire header `X-BMWC-Relay-*` を維持します。`server-id`、peer URL、shared secret が一致すれば KWC と BMWC 4.x の relay は継続できます。
+KOKOTO WebChat 5.1.0 は明示的な `groups -> peers`、group 単位 shared secret、handshake 前提なしの request 単位 peer 認証、HKDF-SHA256 directional key、AES-256-GCM hop-by-hop payload protection を使用する Relay Protocol v2 に移行しました。Relay v1/BMWC endpoint は相互運用せず HTTP 426 を返します。詳細は `docs/SERVER_RELAY_JA.md` を参照してください。
 
 ## 4.7.0 絵文字の複数アップロードと互換範囲
 
@@ -129,7 +153,7 @@ Bukkit/Spigot API baseline を 1.21 から 1.18 に下げ、Java 17 は維持し
 
 ## 4.6.3 管理者グループチャット監査
 
-4.6.3 ではグループチャット本文を確認できる任意の読み取り専用管理者監査を追加します。DM 監査と同じ `private-chat-super-admins` の明示 account list を使いますが、`group-chat.admin-audit.enabled` は独立したスイッチです。監査者は room に参加せず、既読状態や未読数を変更せず、送信・upload・hide・member 管理もできません。各監査 page read は本文をコピーせず `admin.group-audit-read` として記録されます。
+4.6.3 ではグループチャット本文を確認できる任意の read-only 管理者監査を追加しました。5.1.0 では DM と group-chat の本文監査を独立して制御します。DM は `direct-message.admin-audit.enabled`、group は `group-chat.admin-audit.enabled` を使い、どちらも `private-chat-super-admins` に明示した account だけが利用できます。監査 view は read-only で、送信、Reply、hide、既読更新や room 参加は行わず、各 page read は audit log に記録されます。
 
 ```yaml
 private-chat-super-admins:
@@ -223,19 +247,19 @@ DM は公開チャット履歴とは別の専用ストアを使います。`dire
 
 ## カスタム絵文字とゲーム側絵文字プラグイン
 
-KOKOTO WebChat はカスタム絵文字を `<KWC data dir>/emojis` 以下に保存します。サブフォルダーは絵文字パックとして扱われます。
+KOKOTO WebChat はカスタム絵文字を `<KWC data dir>/emojis` 以下に保存します。サブフォルダーは絵文字パックとして扱われます。5.1.0 以降、pack directory 名と emoji filename stem は同じ token-safe 正規化規則を使用します。空白/使用不可文字は削除され、既存の不正な名前は起動時に一括 rename され、衝突時は数値 suffix が付きます。最終的なディスクパスは `:pack/name:` token と一致します。
 
 既定では、Web→ゲームチャットは `:default/wave:` や `:emoji:default/wave:` のようなカスタム絵文字トークンをそのまま保持します。ImageEmojis などのゲーム側絵文字プラグインが Minecraft チャット内で同じトークン文字列を描画する場合は、この既定値を使用してください。
 
 `emoji.game-link.enabled` を有効にした場合、`emoji.game-link.mode` は `preserve`、`link`、`label` をサポートします。
 
 - `preserve`: 元のトークン文字列を変更しません。
-- `link`: 設定されたトークン文字列と短い BM Web Chat 画像リンクを送信します。
+- `link`: 設定されたトークン文字列と短い KOKOTO WebChat 画像リンクを送信します。
 - `label`: 設定されたトークン文字列のみを送信します。
 
 `emoji.game-link.*` は Web→Minecraft チャットのみに影響します。Discord の画像プレビューリンクは別設定です。`discordsrv.append-web-emoji-links` は Web→Discord 用で、`discordsrv.append-game-emoji-links` は可能な場合 DiscordSRV の通常の Minecraft→Discord リレー本文を編集して Game→Discord トークン URL を追加します。複数サーバーが同じ Discord チャンネルを共有する場合、実際のローカルゲームチャットを検知した発信元サーバーだけがその DiscordSRV メッセージを編集し、他サーバーはサーバー名や絵文字リンクを重ねません。受信 relay peer はそのメッセージを Discord へ再送しません。DiscordSRV が通常の Minecraft チャットを中継する場合は `discordsrv.game-relay-mode` を `discordsrv` にします。KWC から直接送信する場合は `kwc` を選び、DiscordSRV 側の通常ゲームチャット中継を無効にして重複投稿を防ぎます。
 
-BM Web Chat は Web 履歴とサーバーリレー payload に正規の絵文字 token をそのまま保持します。ImageEmojis または ImageEmojis-Bero が有効な場合は、公開されている runtime 絵文字 repository を reflection で読み取り、クリック可能な Minecraft component を作成するときに受信サーバーの現在の token→glyph mapping を使用します。hard dependency や resource pack の解析は不要で、解決できない token は従来のゲーム側レンダリング経路へ fallback します。
+KOKOTO WebChat は Web 履歴とサーバーリレー payload に正規の絵文字 token をそのまま保持します。ImageEmojis または ImageEmojis-Bero が有効な場合は、公開されている runtime 絵文字 repository を reflection で読み取り、クリック可能な Minecraft component を作成するときに受信サーバーの現在の token→glyph mapping を使用します。hard dependency や resource pack の解析は不要で、解決できない token は従来のゲーム側レンダリング経路へ fallback します。
 
 GIF/JPG/JPEG/WEBP 絵文字をアップロードすると、PNG のみを読むゲーム側絵文字プラグインとの互換性のため、同じフォルダーに PNG sidecar も作成します。
 
@@ -301,7 +325,7 @@ kwc.update.notify
 
 - `docs/USER_MANUAL_JA.md` - 全機能のユーザー・運用総合マニュアル
 - `docs/CONFIGURATION_JA.md`
-- `docs/SERVER_RELAY_JA.md` - サーバー間公開チャットリレー
+- `docs/SERVER_RELAY_JA.md` - Relay Protocol v2 公開チャット・サーバー間 DM/既読 receipt・trust/forwarding 規則
 - `docs/UPGRADE_5_0_0_JA.md` - 4.7.0→5.0.0 major upgrade / migration
 - `docs/UPGRADE_4_6_2_JA.md` - 4.6.1→4.6.2 upgrade
 - `docs/UPGRADE_4_6_1_JA.md` - 4.6.0→4.6.1 upgrade
@@ -325,13 +349,15 @@ SQLite 履歴ストレージを使用している場合、チャットパネル�
 
 ## グループチャットルーム
 
-`group-chat.enabled` を有効にすると、Webグループチャットルーム機能を使用できます。ユーザーはルーム作成、公開/非公開の選択、任意のルームパスワード、保存済みプレイヤーの招待、招待の承諾/拒否、退出、自分の一覧からの非表示/再表示、ルーム設定変更、メンバーのキック/ban/ban解除、所有者移譲、Webからのメッセージ送信を行えます。公開ルームは一覧に表示され、非公開ルームは招待制です。ルームパスワードは平文ではなくPBKDF2ハッシュとして保存されます。
+`group-chat.enabled` を有効にするとグループチャットルームを利用できます。ユーザーはルーム作成、公開/非公開の選択、任意のルームパスワード、保存済みプレイヤーの招待、招待の承諾/拒否、退出、自分の一覧からの非表示/再表示、ルーム設定変更、メンバーのキック/ban/ban解除、所有者移譲を行え、Web UI とゲーム側の `/kchat group` コマンドの両方からメッセージを送受信できます。公開ルームは一覧に表示され、非公開ルームは招待制です。ルームパスワードは平文ではなく PBKDF2 ハッシュとして保存されます。
 
-グループチャットは専用SQLiteストアを使用します（`group-chat.sqlite-file`、既定値 `group-messages.db`）。`group-chat.retention-days: 0` は期限なし、正の値はグループチャットタイトル横に保存期間として表示され、その日数を過ぎたメッセージは物理削除されます。`group-chat.max-messages-per-room: 0` は件数による整理なしです。このリリースはWeb中心で、ゲーム側 `/kchat group` コマンド、ルームミュート、所有者/メンバー操作を超える詳細なロール管理UI、グループJSONL保存はまだ含まれていません。
+各ルームにはメンバー入退室通知のオプションがあります。有効時は実際の参加/招待承諾を join event、自発的な退出/キック/ban によるメンバー削除を leave event として保存し、Web/履歴/オンラインのゲームメンバーへ表示します。ウィンドウを閉じる、別ルームへ切り替える、ルームを非表示にする操作は退出扱いにならず、membership event は Reply 対象になりません。
+
+グループチャットは専用 SQLite ストアを使用します（`group-chat.sqlite-file`、既定値 `group-messages.db`）。`group-chat.retention-days: 0` は期限なし、正の値はグループチャットタイトル横に保存期間として表示され、その日数を過ぎたメッセージは物理削除されます。`group-chat.max-messages-per-room: 0` は件数による整理なしです。既存 SQLite DB は 5.1.0 で必要な optional column がない場合にその場で拡張されます。
 
 ### 非公開チャットメタデータのスーパー管理者
 
-`config.yml` の `private-chat-super-admins` に exact UUID または Minecraft name を指定すると、管理/容量確認用 DM/group metadata を表示できます。default view は title/participant、message count、storage size、retention state、cleanup preview を表示します。`direct-message.admin-audit.enabled: true` を設定すると、同じ明示 account が DM body を read-only で開けます。4.6.3 では `group-chat.admin-audit.enabled: true` を別に有効化すると、room へ参加したり read state を変更したりせず group-chat body も read-only で開けます。通常 ADMIN/MODERATOR role は自動対象ではなく、audit page read はすべて audit log に記録されます。super admin は DM/group session lock と retention exclude も管理できます。
+`config.yml` の `private-chat-super-admins` に exact UUID または Minecraft name を指定すると、管理/容量確認用 DM/group metadata を表示できます。default view は title/participant、message count、storage size、retention state、cleanup preview、lock/exclusion を表示します。`direct-message.admin-audit.enabled: true` を併用すると同じ明示 account が DM body を read-only で開け、`group-chat.admin-audit.enabled: true` は group-chat body の監査を独立して制御します。通常 ADMIN/MODERATOR role だけでは監査権限は得られず、すべての audit page read は audit log に記録されます。
 
 管理上影響のある操作は、既定で `<KWC data dir>/audit` 配下の日付別テキストログに追記されます。audit ログはサーバー運用者向けで、Web UI には表示されません。
 

@@ -143,6 +143,20 @@
   border-color: rgba(130,190,255,0.65);
 }
 
+/* 5.1.0: chat composers use one-line textarea controls on Android/Chromium.
+   Chrome for Android can show password/payment/address Autofill keyboard
+   accessories on ordinary HTML input elements even with autocomplete=off.
+   Textarea keeps the same value/selection APIs while avoiding that input path. */
+.kwc-chat-composer {
+  box-sizing: border-box;
+  resize: none !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  white-space: nowrap !important;
+  font-family: inherit !important;
+  line-height: normal !important;
+}
+
 .kwc-send {
   min-width: 54px;
 }
@@ -9077,7 +9091,8 @@ body.kwc-standalone-mode {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   margin-left: 2px;
   white-space: nowrap;
 }
@@ -9781,4 +9796,196 @@ body.kwc-standalone-mode {
 
 .kwc-filter-rule-guide-test {
   padding-top: 2px;
+}
+
+/* 5.1.0: compact configured newline-token rows.
+   Empty rows keep one normal blank line, while emoji-only rows remove the
+   font leading that otherwise leaves a visible gap between stacked emojis. */
+.kwc-token-line {
+  display: block;
+  margin: 0;
+  padding: 0;
+}
+.kwc-token-line-empty {
+  min-height: 1em;
+  line-height: 1em;
+}
+.kwc-token-line-emoji-only {
+  min-height: 0;
+  line-height: 0;
+}
+.kwc-token-line-emoji-only .kwc-custom-emoji {
+  vertical-align: top;
+}
+
+/* Private DM/group reply UI. Keep this presentation intentionally identical to
+   the public/open-chat reply component; only the modal's horizontal inset differs
+   because the DM/group compose row owns its own 9px padding. */
+.kwc-dm-modal-backdrop .kwc-reply-action {
+  /* Do not reserve permanent metadata width for an action that is invisible
+     most of the time. The old visibility:hidden rule still consumed the button's
+     width and made full date/time + read state wrap a line too early. */
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.kwc-dm-modal-backdrop .kwc-msg:hover .kwc-reply-action,
+.kwc-dm-modal-backdrop .kwc-msg:focus-within .kwc-reply-action {
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+.kwc-dm-modal-backdrop .kwc-dm-message-meta .kwc-time-actions {
+  /* Do not keep time/reply/read-state in one reserved flex block. Let each
+     item participate in the metadata flow so long dates wrap naturally. */
+  display: contents !important;
+}
+.kwc-dm-modal-backdrop .kwc-reply-ref {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 2px 0 4px;
+  padding: 4px 7px;
+  border: 0;
+  border-left: 3px solid rgba(255,255,255,0.28);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.08);
+  color: var(--kwc-text-color, #fff);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+.kwc-dm-modal-backdrop .kwc-reply-ref:hover {
+  background: rgba(255,255,255,0.13);
+}
+.kwc-dm-modal-backdrop .kwc-reply-ref-sender {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kwc-dm-modal-backdrop .kwc-reply-ref-preview {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  opacity: 0.78;
+  line-height: 1.22;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kwc-dm-modal-backdrop .kwc-reply-compose {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 9px 6px;
+  padding: 5px 6px;
+  border-left: 3px solid rgba(255,255,255,0.28);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.08);
+}
+.kwc-dm-modal-backdrop .kwc-reply-compose.kwc-hidden {
+  display: none !important;
+}
+.kwc-dm-modal-backdrop .kwc-reply-compose-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--kwc-text-color, #fff);
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+.kwc-dm-modal-backdrop .kwc-reply-compose-label,
+.kwc-dm-modal-backdrop .kwc-reply-compose-preview {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kwc-dm-modal-backdrop .kwc-reply-compose-label {
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.kwc-dm-modal-backdrop .kwc-reply-compose-preview {
+  margin-top: 1px;
+  font-size: 11px;
+  opacity: 0.78;
+  line-height: 1.22;
+}
+.kwc-dm-modal-backdrop .kwc-reply-cancel {
+  flex: 0 0 auto;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 14px;
+  line-height: 20px;
+}
+.kwc-dm-modal-backdrop .kwc-reply-highlight {
+  animation: kwc-reply-highlight 2.4s ease-out;
+}
+.kwc-dm-modal-backdrop.kwc-theme-light .kwc-reply-ref,
+.kwc-dm-modal-backdrop.kwc-theme-light .kwc-reply-compose {
+  border-left-color: rgba(15, 23, 42, 0.22);
+  background: rgba(15, 23, 42, 0.06);
+}
+.kwc-dm-modal-backdrop.kwc-theme-light .kwc-reply-ref:hover {
+  background: rgba(15, 23, 42, 0.1);
+}
+@media (prefers-color-scheme: light) {
+  .kwc-dm-modal-backdrop.kwc-theme-system .kwc-reply-ref,
+  .kwc-dm-modal-backdrop.kwc-theme-system .kwc-reply-compose {
+    border-left-color: rgba(15, 23, 42, 0.22);
+    background: rgba(15, 23, 42, 0.06);
+  }
+  .kwc-dm-modal-backdrop.kwc-theme-system .kwc-reply-ref:hover {
+    background: rgba(15, 23, 42, 0.1);
+  }
+}
+
+/* Group-room membership events are persistent room events, not ordinary chat messages. */
+.kwc-group-form-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.kwc-group-form-toggle input {
+  margin: 0;
+}
+
+.kwc-group-membership-event {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 7px 0;
+  padding: 3px 6px;
+  opacity: .78;
+  text-align: center;
+  font-family: var(--kwc-chat-font-family, inherit);
+  font-size: var(--kwc-chat-message-font-size, var(--kwc-message-font-size, 13px));
+  text-shadow: var(--kwc-chat-text-shadow, var(--kwc-text-shadow, none));
+}
+
+.kwc-group-membership-event-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.kwc-group-membership-event-time {
+  flex: 0 0 auto;
+  opacity: .72;
+  font-family: inherit;
+  font-size: inherit;
+  text-shadow: inherit;
 }

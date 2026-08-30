@@ -1,28 +1,80 @@
 # Changelog
 
+## 5.1.0
+
+5.1.0 is a feature, reliability, and security update over the **5.0.0 release baseline**. This section lists only the final user- and operator-visible differences from 5.0.0.
+
+### Relay Protocol v2 and upgrade behavior
+
+- Replaced the 5.0.0 flat relay configuration with explicit **`groups -> peers`** trust groups. Each group uses one shared secret, and peers must be configured reciprocally in the same group.
+- Added safe first-setup secret generation: one server can start with an empty group `shared-secret`, persist a securely generated value, and have that value copied to the other servers in the group. Manually configured secrets must be at least 32 characters.
+- Public relay, cross-server DM, and DM read receipts now use request-by-request authenticated, encrypted Relay Protocol v2 transport with replay/loop protection. Relay protection is hop-by-hop rather than end-to-end; forwarding servers remain trusted participants.
+- Forwarding is group-local and HTTPS-only. A direct one-hop HTTP peer can still be used with an explicit security warning, but that HTTP peer cannot be used as a forwarding hop.
+- Relay v1/BMWC relay endpoints are no longer interoperable with 5.1.0 and return HTTP 426.
+- The first **5.0.0 -> 5.1.0** relay migration does not guess v2 groups from the old flat topology. Relay is reset to `server-relay.enabled: false` until the operator defines the v2 groups and reciprocal peers.
+- `/kchat reload` rechecks exposed built-in HTTP listeners and direct HTTP relay peers. Applicable localized warnings are written to the server log and echoed to the command sender after the reload-success message.
+
+### Chat, Reply, group rooms, and emoji
+
+- Added complete persistent Reply metadata and interaction for Web/game DM and group chat, including original-message preview/jump, restart persistence, server-side conversation validation, and stable cross-server DM reply references.
+- Unified Minecraft DM/group Reply rendering with the public-chat Reply presentation while preserving private delivery scope.
+- Fixed game-side group commands so room names containing spaces, quoted names, and repeated whitespace resolve correctly.
+- Added a per-room member join/leave notice option. Actual join/invite-accept and leave/kick/ban membership changes are stored as informational events and shown in Web/history and live game chat; closing, hiding, or switching a room is not treated as leaving.
+- Fixed account chat-profile persistence so explicit font size/opacity values and intentionally unset theme, font, and text-shadow fields round-trip exactly. Loaded font settings are also applied to already-open DM/group windows.
+- Improved DM/group message metadata flow so full-date timestamps, Reply actions, and read state no longer reserve one oversized fixed metadata column on narrow/mobile layouts.
+- Canonicalized custom emoji pack/file/token names, preserved full reply source text, improved URL/emoji rendering inside Reply previews, and changed the picker to insert only the exact emoji token at the caret.
+- Improved emoji catalog recovery across temporary fetch failures, SSE reconnects, and administrator catalog changes while keeping `emoji.message-token-limit: 0` as unlimited.
+- Raised the default SSE limits to **10 connections per resolved client IP / 500 total** and improved HTTP 429 diagnostics and reverse-proxy client-IP guidance.
+- Changed public/DM/group message composers to one-line textareas to avoid Android Chrome Autofill accessory UI on normal chat inputs without changing login/password fields.
+- Changed Android administrator emoji upload selection to use the generic system file/DocumentsUI picker path, while retaining server-side image validation.
+- When `commands.broadcast-result-to-web-chat: true`, the localized Web-command execution notice is now also delivered to online Minecraft players without adding a duplicate console/audit broadcast.
+
+### Configuration, migration, operations, and updates
+
+- Added EN/KO/JA/ZH `config.yml` comment templates. `ui.language` selects the presentation language used for rebuilt config/reference/migration output while preserving parsed operator values.
+- Added a complete **394-setting** administrator input guide with setting type/default, accepted values, ranges, units, and special zero/negative meanings.
+- Configuration migration/difference output now compares semantic YAML paths and values rather than formatting and keeps structured list/map values as readable physical multi-line YAML. Difference blocks show only changed value blocks instead of duplicating long comments.
+- Fixed structured relay reconstruction so multiple groups/peers are preserved without inserting duplicate empty `groups: []` or collapsing list entries onto one line.
+- Aligned platform loader fallbacks with the canonical defaults for captured whispers and game-click Reply settings.
+- Repeated operational HTTP/network failures now use a state-aware logging policy: the first failure and changed failure states are logged immediately, identical repeats are suppressed/summarized, and recovery is reported once.
+- During the project-address transition, the update checker tries canonical Modrinth `kokoto-webchat` first and falls back to the existing `bluemapwebchat` publication; a warning is emitted only when both sources fail.
+
+### Documentation
+
+- Reorganized the documentation into User Guide, Installation & Operations, Technical Reference, and Complete Reference sets in English, Korean, Japanese, and Simplified Chinese.
+- Added and synchronized Relay, Reply, deployment, configuration-language migration, upload-security, Web Push, architecture, Wiki diagrams, and localized primary/upstream reference indexes.
+
+### Compatibility
+
+- Bukkit/Paper/Spigot: Minecraft **1.18–26.2**
+- Fabric: **16 exact targets**, Minecraft **1.18.2–26.2**
+- NeoForge: **12 exact targets**, Minecraft **1.20.2–26.2**
+- Forge: **16 exact targets**, Minecraft **1.18.2–26.2**
+- Loader builds select Java **17 / 21 / 25** according to the Minecraft target; Bukkit remains Java 17.
+
 ## 5.0.0
 
-5.0.0 is a major release that expands the former BlueMap-focused project into 'KOKOTO WebChat', a multi-platform and multi-map Minecraft web chat system.
+5.0.0 is a major release that expands the former BlueMap-focused project into **KOKOTO WebChat**, a multi-platform and multi-map Minecraft web chat system.
 
 ### Platform and map expansion
 
-- Renamed the project to 'KOKOTO WebChat (KWC)'. `/kchat` and `/kc` are the canonical commands, `/chat` is the default public web path, first-run migration from BlueMapWebChat 4.x is supported without modifying the original BMWC data, and update checks support the BMWC → KWC distribution transition.
-- Added server builds for 'Bukkit/Paper/Spigot', 'Fabric (16 exact targets)', 'NeoForge (12 exact targets)', and 'Forge (16 exact targets)', covering supported Minecraft versions up to 26.2.
-- Expanded frontend integration beyond BlueMap with 'squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD, Minecraft Overviewer', and a 'standalone WebChat' mode.
+- Renamed the project to **KOKOTO WebChat (KWC)**. `/kchat` and `/kc` are the canonical commands, `/chat` is the default public web path, first-run migration from BlueMapWebChat 4.x is supported without modifying the original BMWC data, and update checks support the BMWC → KWC distribution transition.
+- Added server builds for **Bukkit/Paper/Spigot**, **Fabric (16 exact targets)**, **NeoForge (12 exact targets)**, and **Forge (16 exact targets)**, covering supported Minecraft versions up to 26.2.
+- Expanded frontend integration beyond BlueMap with **squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD, Minecraft Overviewer**, and a **standalone WebChat** mode.
 - Improved multi-server operation for public relay, cross-server DM/group chat, remote-user handling, delivery/read status, relay failure backoff, and mixed KWC/BMWC transition deployments.
 
 ### Chat, moderation and user features
 
-- Added a shared 'Unicode-aware content filter' for game and web chat with Block, Mask and Replace actions, bulk UTF-8 word lists, custom rules, anti-evasion matching, matched-word reporting, and Web Admin editing/testing. Hangul matching now avoids false positives such as `시발` matching `신발`, while jamo shorthand such as `ㅅㅂ` remains supported.
-- Added 'account-synced chat preferences and multiple visual profiles', including validated JSON import/export, improved settings synchronization, and removal of stray native file-picker controls. Device-specific window state and Web Push endpoints remain local to each device.
-- Expanded notifications with account-level keyword preferences, duplicate-notification suppression, desktop Notification/Web Push separation, mobile Web Push retry handling, and 'administrator Discord keyword alerts' through DiscordSRV.
+- Added a shared **Unicode-aware content filter** for game and web chat with Block, Mask and Replace actions, bulk UTF-8 word lists, custom rules, anti-evasion matching, matched-word reporting, and Web Admin editing/testing. Hangul matching now avoids false positives such as `시발` matching `신발`, while jamo shorthand such as `ㅅㅂ` remains supported.
+- Added **account-synced chat preferences and multiple visual profiles**, including validated JSON import/export, improved settings synchronization, and removal of stray native file-picker controls. Device-specific window state and Web Push endpoints remain local to each device.
+- Expanded notifications with account-level keyword preferences, duplicate-notification suppression, desktop Notification/Web Push separation, mobile Web Push retry handling, and **administrator Discord keyword alerts** through DiscordSRV.
 - Improved guest operation with Unicode guest names, stronger impersonation protection, corrected CAPTCHA/session behavior, and cleaner login/logout transitions.
-- Added `upload.filename-mode: original` with safe 'Unicode filename preservation', collision handling, and Windows clipboard filename fixes, while retaining randomized filenames as the default alternative.
-- Improved registered-emoji handling across game, web, relay and Discord paths, and added deployment-focused integration guides for 'ImageEmojis-Bero' and 'SimpleNicks-Bero'.
+- Added `upload.filename-mode: original` with safe **Unicode filename preservation**, collision handling, and Windows clipboard filename fixes, while retaining randomized filenames as the default alternative.
+- Improved registered-emoji handling across game, web, relay and Discord paths, and added deployment-focused integration guides for **ImageEmojis-Bero** and **SimpleNicks-Bero**.
 
 ### Reliability, security and UI
 
-- Reworked long-history 'virtual scrolling' so message order remains deterministic with images, GIFs, video, audio, YouTube/iframe embeds and link previews; mid-history focus/reconnect no longer replaces the viewed message slice.
+- Reworked long-history **virtual scrolling** so message order remains deterministic with images, GIFs, video, audio, YouTube/iframe embeds and link previews; mid-history focus/reconnect no longer replaces the viewed message slice.
 - Added SQLite history integrity/recovery checks and hardened authenticated APIs, SSE stream authentication, administrator IP restrictions, Web Push endpoints, Discord/iframe boundaries, and request limits.
 
 ### Configuration and upgrade behavior
@@ -32,18 +84,17 @@
 
 ### Compatibility
 
-- Bukkit/Paper/Spigot: Minecraft '1.18–26.2'
-- Fabric: '16 exact targets', Minecraft '1.18.2–26.2'
-- NeoForge: '12 exact targets', Minecraft '1.20.2–26.2'
-- Forge: '16 exact targets', Minecraft '1.18.2–26.2'
-- Target Java is selected by Minecraft generation: Java '17 / 21 / 25' as applicable.
-
+- Bukkit/Paper/Spigot: Minecraft **1.18–26.2**
+- Fabric: **16 exact targets**, Minecraft **1.18.2–26.2**
+- NeoForge: **12 exact targets**, Minecraft **1.20.2–26.2**
+- Forge: **16 exact targets**, Minecraft **1.18.2–26.2**
+- Target Java is selected by Minecraft generation: Java **17 / 21 / 25** as applicable.
 
 ## 4.7.0
 
-- Added administrator custom-emoji multi-file upload using the same browser picker flow as the existing normal chat file upload. The upload control now opens a hidden `multiple` file input; when the picker closes, BlueMapWebChat immediately copies the selected `FileList`, clears the native input, and begins sequential upload without a separate selection/confirmation stage. Upload progress and active-transfer cancel behavior remain available, while per-file extension/size checks, total-storage accounting, unique-name handling, audit logging, and PNG-sidecar generation continue through the existing server endpoint.
+- Added administrator custom-emoji multi-file upload using the same browser picker flow as the existing normal chat file upload. The upload control now opens a hidden `multiple` file input; when the picker closes, KOKOTO WebChat immediately copies the selected `FileList`, clears the native input, and begins sequential upload without a separate selection/confirmation stage. Upload progress and active-transfer cancel behavior remain available, while per-file extension/size checks, total-storage accounting, unique-name handling, audit logging, and PNG-sidecar generation continue through the existing server endpoint.
 - Expanded the declared Bukkit/Spigot API compatibility baseline from Minecraft 1.21 to 1.18. The plugin remains compiled for Java 17 and builds against Spigot API 1.18.2, keeping the conservative supported range at Minecraft 1.18 through 26.2. Paper `AsyncChatEvent` remains reflection-detected with Bukkit `AsyncPlayerChatEvent` as the hard-linked fallback.
-- Added configurable colon-delimited message tokens. The English defaults provide newline (`:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:`), blank-line (`:blankline:`, `:emptyline:`, `:paragraphbreak:`), and indentation (`:tab:`, `:indent:`) actions. Administrators can replace or add aliases in any language. Optional printable custom substitutions are also supported, while unknown tokens remain untouched for compatibility with custom/image emoji plugins. Minecraft output keeps the existing single-line sanitizers for ordinary CR/LF input, but configured newline/blank-line tokens are carried separately and emitted as explicit Minecraft chat lines at final delivery. Cross-server game rendering of these intentional line breaks requires the receiving BlueMapWebChat server to run the same 4.7.0 token-line delivery support.
+- Added configurable colon-delimited message tokens. The English defaults provide newline (`:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:`), blank-line (`:blankline:`, `:emptyline:`, `:paragraphbreak:`), and indentation (`:tab:`, `:indent:`) actions. Administrators can replace or add aliases in any language. Optional printable custom substitutions are also supported, while unknown tokens remain untouched for compatibility with custom/image emoji plugins. Minecraft output keeps the existing single-line sanitizers for ordinary CR/LF input, but configured newline/blank-line tokens are carried separately and emitted as explicit Minecraft chat lines at final delivery. Cross-server game rendering of these intentional line breaks requires the receiving KOKOTO WebChat server to run the same 4.7.0 token-line delivery support.
 - Fixed bundled config comment refresh so repeated startup/reload passes are idempotent. The public-relay delivery comment is no longer re-added on every refresh, and exact duplicate copies of that bundled comment left by earlier refreshes are collapsed to one without changing setting values or custom comments.
 - Added safe top-level config layout normalization on startup/reload. Known `config.yml` blocks are reordered to the bundled 4.7.0 order without changing their current values or block comments; unknown top-level blocks are retained after known blocks in their original order.
 
@@ -55,7 +106,7 @@
 config-version: "4.7.0"
 ```
 
-Existing setting values are not overwritten. On startup/reload, known top-level `config.yml` blocks are reordered to the bundled 4.7.0 layout while each block's current text, values, and custom comments are preserved; unknown top-level blocks remain last in their original order. BlueMapWebChat now writes `config-reference-4.7.0.yml` as a complete byte-for-byte copy of the bundled 4.7.0 default configuration, including comments, whenever an existing config is checked. This gives older or unversioned installations a full current reference independent of the detected baseline. When migration review is required, `config-migration-4.7.0.yml` still contains the concise missing/changed settings and review marker; empty maps such as `message-tokens.custom: {}` are now retained as real missing settings instead of disappearing from the fragment. The bottom of the migration file also contains a comment-only textual diff against `config-reference-4.7.0.yml`. Unchanged lines are omitted; each side prints the file name, a separate `Line` or `Lines` field, and then only the differing text. Reference-only blocks separately show where to insert them in the current config.
+Existing setting values are not overwritten. On startup/reload, known top-level `config.yml` blocks are reordered to the bundled 4.7.0 layout while each block's current text, values, and custom comments are preserved; unknown top-level blocks remain last in their original order. KOKOTO WebChat now writes `config-reference-4.7.0.yml` as a complete byte-for-byte copy of the bundled 4.7.0 default configuration, including comments, whenever an existing config is checked. This gives older or unversioned installations a full current reference independent of the detected baseline. When migration review is required, `config-migration-4.7.0.yml` still contains the concise missing/changed settings and review marker; empty maps such as `message-tokens.custom: {}` are now retained as real missing settings instead of disappearing from the fragment. The bottom of the migration file also contains a comment-only textual diff against `config-reference-4.7.0.yml`. Unchanged lines are omitted; each side prints the file name, a separate `Line` or `Lines` field, and then only the differing text. Reference-only blocks separately show where to insert them in the current config.
 
 Default token configuration:
 
@@ -113,7 +164,6 @@ group-chat:
 
 The existing `direct-message.admin-audit.enabled` switch remains independent and continues to control only DM body auditing.
 
-
 ## 4.6.2
 
 - Fixed same-name direct-message routing. A DM target without a server qualifier resolves only on the current server; cross-server targets require explicit server-scoped identity from `name@server-id` or the web UI.
@@ -127,7 +177,7 @@ The existing `direct-message.admin-audit.enabled` switch remains independent and
 
 ### Cross-server DM compatibility
 
-All servers that exchange cross-server DMs should run 'BlueMapWebChat 4.6.2 or later' to use end-to-end delivery confirmation, retry, and remote read-status acknowledgement.
+All servers that exchange cross-server DMs should run **KOKOTO WebChat 4.6.2 or later** to use end-to-end delivery confirmation, retry, and remote read-status acknowledgement.
 
 ### Configuration
 
@@ -139,14 +189,14 @@ config-version: "4.6.2"
 
 ## 4.6.1
 
-- Fixed cross-server direct messaging from the web interface. This includes exact `server-id + player UUID` targeting, shared game/web sessions, destination-server delivery, remote DM search, message-metadata shortcuts, game `/bmchat dm` and `name@server-id` whisper routing, and server identification in the DM window before the first message is sent.
+- Fixed cross-server direct messaging from the web interface. This includes exact `server-id + player UUID` targeting, shared game/web sessions, destination-server delivery, remote DM search, message-metadata shortcuts, game `/kchat dm` and `name@server-id` whisper routing, and server identification in the DM window before the first message is sent.
 - Added an optional read-only administrator DM audit view for responding to misconduct or other exceptional incidents. Access is limited to explicitly listed private-chat super administrators, and every audit read is recorded without copying message bodies into the audit log.
 - Added a compact update checker. It uses Modrinth as the release source, logs a newer stable version to the console, and shows administrators a one-line join notice with clickable Modrinth and CurseForge pages. Only `update-check.enabled` is configurable; timing, channel, permission behavior, and links use built-in defaults.
 - Reorganized the bundled `config.yml` into clearly labeled functional groups without renaming existing keys or changing their defaults. The only newly exposed update-check setting is the single `update-check.enabled` switch directly below the plugin master switch.
 
-### Important cross-server DM compatibility requirement
+### Important cross-server DM requirement
 
-All servers that exchange cross-server DMs must run the same corrected '4.6.1 build'. Matching the displayed version number alone is not sufficient because earlier 4.6.1 builds do not include the complete private DM relay and exact target handoff changes. Replace the plugin on every connected server and restart all of them; otherwise the sender may create a session while the destination server does not receive or store it.
+All servers that exchange cross-server DMs must run **KOKOTO WebChat 4.6.1 or later**.
 
 ### Configuration added in 4.6.1
 
@@ -180,22 +230,45 @@ direct-message:
 
 Ordinary ADMIN or MODERATOR roles do not gain DM body access automatically. The audit view is read-only.
 
-
-
 ## 4.6.0
 
-- Added secure multi-server game/web chat relay with HTTPS and HMAC authentication.
-- Added server-aware message labels and per-server web badge colors.
-- Added in-game message replies using `/bmchat reply`.
-- Added BMChat DM suggestions for web and remote-server senders.
-- Added game whisper capture into BMChat DM history.
-- Added ImageEmojis-Bero 1.9.0 compatibility for chat, replies, DMs, and relayed messages.
-- Preserved URLs, emoji tokens, message IDs, reply references, and origin metadata across relays.
-- Prevented duplicate Discord delivery and repeated server/source prefixes in shared channels.
-- Restored the normal asynchronous logging path for local Minecraft chat.
-- Added automatic SQLite relay metadata migration.
-- Added a non-destructive configuration migration fragment for missing and changed settings.
-- Updated the changelog, configuration manuals, upgrade guides, and four-language documentation.
+- Added dedicated ImageEmojis-Bero 1.9.x compatibility documentation covering the shared emoji directory, token formats, runtime glyph resolution, `replaceInCommands`, permissions, reload/update order, multi-server asset synchronization, DiscordSRV overlap, fallbacks, and troubleshooting.
+- Documented the compatibility boundary around `getEmojiRepository().getEmojis()` and the emoji model accessors used by KWC's reflection-based integration; ImageEmojis-Bero remains optional and is not a hard dependency.
+
+### Server-to-server relay
+
+- Added optional signed server-to-server public chat relay for game, linked web-user, and guest messages. Relayed messages preserve sender, UUID, role, reply, message ID, and origin-server metadata and can be delivered to both remote web chat and Minecraft chat.
+- Added HMAC-SHA256 request signing, timestamp skew validation, per-peer or shared secrets, HTTP/HTTPS peer URLs, relay-ID de-duplication, hop limits, origin suppression, and immediate-peer exclusion to prevent unauthorized injection and relay loops.
+- Added full-mesh and hub topologies, source filters (`game`, `web`, `guest`, `discord`, `system`), independent web/game delivery filters, and remote game-format placeholders.
+- Added detailed peer validation and startup diagnostics. Logs now report `activePeers=<usable>/<configured>`, active peer IDs, and the reason invalid, duplicate, self-referencing, secret-less, or malformed peers were ignored.
+- Improved relay failure logs to include the remote HTTP response body. Common failures now expose reasons such as `unknown_peer`, `bad_signature`, `expired_request`, `relay_disabled`, and `unsupported_protocol` instead of only a status code.
+- Added SQLite migration columns for relay ID, origin server ID/name, and relay hop count. Existing SQLite history databases are upgraded additively without deleting history.
+
+### Server identification
+
+- Added deterministic per-server badges and colors in the web UI. The current server omits its own badge; remote server IDs retain stable, distinguishable colors.
+- Added originating-server labels to remote web-to-game output. Existing formats without `{server}` or `{server_id}` are automatically prefixed with `[server-name]` only when the message originated on another server.
+- Added Discord `{server}` and `{server_id}` placeholders. Existing Discord formats without those placeholders are automatically prefixed with `[server-name]`, and editable DiscordSRV Minecraft relay messages are labeled when possible.
+
+### Game replies and direct messages
+
+- Added public in-game replies for KWC messages. Clicking a non-URL message body suggests `/kchat reply <messageId> ` and `/kchat reply <messageId> <message>` stores the same `replyTo` metadata used by web replies.
+- Added optional clickable rendering for local Minecraft chat through `reply.game-click.local-game-chat`, allowing game-origin messages to participate in the same reply system. This can be disabled when another chat-format plugin must own the final renderer.
+- Changed linked web-sender name clicks in Minecraft to suggest `/kchat dm <real Minecraft name> ` instead of vanilla `/w`, keeping the conversation in KWC's persistent private DM thread and web inbox.
+- Added optional mirroring of non-cancelled `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, and `/t` commands into the sender and recipient KWC DM thread with `direct-message.capture-game-whispers`. The Minecraft command itself is not resent or replaced.
+- Added localized game reply click hints and reply-command usage/errors for `en-US`, `ko-KR`, `ja-JP`, and `zh-CN`.
+- Added remote relay senders with a player UUID to the same known-player directory used by the web DM recipient search and `/kchat dm`. Their latest relayed display name and real Minecraft name become searchable after receipt and are restored from retained chat history after restart; guest and Discord messages without a player UUID remain excluded.
+
+### Configuration and documentation
+
+- Added complete feature-by-feature user and operations manuals in English, Korean, Japanese, and Simplified Chinese. The manuals cover installation, deployment modes, HTTPS, public chat, accounts, guests, moderation, history/search, replies, DM, group chat, uploads, previews, emoji/ImageEmojis-Bero, notifications, DiscordSRV, server relay, commands, permissions, storage, backup, reload behavior, and troubleshooting with copy-ready examples.
+- Bumped the plugin and build artifact version to `4.6.0` while retaining the historical release entries below this section.
+- Added `config-version: "4.6.0"` as an administrator review marker and replaced the fixed partial upgrade file with a generated `config-migration-4.6.0.yml` fragment. When the marker is missing or differs from the running plugin version, the plugin compares the physical config with the current bundled defaults and the bundled 4.5.5 baseline, then writes copy-ready missing settings, changed bundled defaults, and the target `config-version` review marker. The fragment is still generated when there are no other differences, so unversioned configurations can be explicitly version-managed. Version and old/new default details are comments rather than YAML metadata; custom-value and obsolete-setting information lists are omitted. The real `config.yml` is never modified. When the marker matches, comparison is skipped and stale same-version guidance is removed. Privacy-sensitive missing behavior keys use migration-safe disabled fallbacks only while the versions do not match.
+- Added and documented `server-relay.*`, `direct-message.capture-game-whispers`, `reply.game-click.*`, `reply.game-command-format`, and Discord server-label placeholders.
+- Expanded English, Korean, Japanese, and Simplified Chinese README, configuration, relay, upgrade, troubleshooting, and release-checklist documentation.
+- `/kchat reload` now reloads relay configuration by closing the previous relay instance and constructing a new one. Relay transport is request-based HTTP rather than a persistent socket, so there is no separate connection state to reconnect.
+- Preserved raw player-entered emoji tokens when mirroring native whisper commands, moved clickable local-chat replacement to the proper high-priority stage, and kept empty Paper viewer sets from expanding into a broadcast to all players.
+- Added a bounded transient reply-target cache so game-only relay delivery can still resolve clicked reply IDs without exposing those messages through web history.
 
 
 ## 4.5.5
@@ -217,7 +290,6 @@ chat:
 - Fixed Web Push notification filter drift when the same account has multiple saved browser/mobile subscriptions. Updating notification options now also synchronizes the same account's existing Web Push subscriptions, so older endpoints do not keep sending notifications with stale settings such as `notifySystemMode=all` after the user changes the current device to `join-leave` or `off`.
 - Reduced duplicate startup refresh work after stored-token verification. The client now verifies a saved token once, then loads pins, commands, DM rooms, group rooms, history, and SSE through the normal startup path only, avoiding duplicate initial API requests that could cause slower loading, brief UI flicker after SSE reconnect, or repeated DM/group/pinned-message re-rendering on mobile and lower-powered browsers.
 - Added notification and mobile/background Web Push handling for Discord-to-web relay messages. Discord relays now use the same public-chat notification path as web/game chat, so the existing normal chat, mention, keyword, own-message, preview, and notification enable settings apply consistently.
-
 - Restored the PIP unsupported/failure popup in mobile/standalone flows by showing a parent-page modal instead of relying only on native `alert()`, and added a child-frame fallback if the parent bridge does not answer.
 - Fixed notification i18n regressions: removed the duplicated English keyword-help suffix and translated the Japanese Web Push error/failure strings.
 - Updated JA/ZH README Web Push notes so the recent addon/standalone push behavior is documented in the target language instead of mixed English.
@@ -226,12 +298,12 @@ chat:
 ## 4.5.3
 
 - When chat is hidden from logged-out users, expired or revoked sessions now immediately clear visible chat history, pinned messages, DM/group state, and chat-related modals.
-- Connected browsers now receive an auth-expired SSE event when a session expires, is logged out from another tab, or is revoked from web/admin or `/bmchat revoke`.
+- Connected browsers now receive an auth-expired SSE event when a session expires, is logged out from another tab, or is revoked from web/admin or `/kchat revoke`.
 
 - Added a dedicated server notification mode in user notification settings: all server notifications, join/leave only, or off.
 
 
-Notification configuration migration
+### Notification configuration migration
 
 In 4.5.3, browser notification defaults and mobile/background Web Push notification defaults were consolidated into a single notifications: section.
 
@@ -280,30 +352,30 @@ Existing configs do not have to be rewritten immediately. However, if both the n
 - When the upload quota is enabled and a new upload would exceed it, the server deletes the oldest unreferenced uploads first. Files still referenced by chat history, SQLite history, DM/group messages, or preserved pinned messages are not removed.
 - If quota cleanup cannot free enough space, the upload is rejected with `upload_storage_quota_exceeded` instead of writing beyond the configured limit.
 
-Upgrade notes:
+### Upgrade notes
+
 - Existing Web Push subscriptions should be turned off and on again from the intended page so the corrected `openUrl` is saved.
 - Set `upload.max-total-size-mb` manually to enable upload-folder quota enforcement; the default is `0` for compatibility.
 
 
-4.5.1
-Fixed Web Push notification click navigation so subscriptions remember the actual page URL where push was enabled, including BlueMap web-addon pages and standalone chat pages.
-Fixed notification click handling so public chat, reply, keyword, DM, and group notifications can reopen/focus an existing chat page and jump to the target message, thread, or room when available.
-Fixed mobile Web Push support in BlueMap web-addon mode by registering the Service Worker from the parent BlueMap page instead of the embedded addon iframe.
-Removed the unnecessary standalone-page requirement for Web Push on supported browsers. iOS/iPadOS still requires the site to be added to the Home Screen as a PWA before Web Push can be enabled.
-Added parent-page forwarding for Service Worker notification navigation so notification clicks can reach the embedded chat iframe on BlueMap web-addon pages.
-Fixed minimized chat pill controls so the minimized area only shows the title and restore button. DM, group, notification inbox, login, PIP, and other controls remain available only in the expanded chat window.
-Added emoji folder moving in the admin emoji manager, including single/multi-select moves, conflict checks, PNG sidecar movement, path validation, and audit logging.
-Added reply notifications for public replies to the current user's messages.
-Added a browser-local notification inbox so recent notification-worthy events can be reviewed from the same browser.
-Improved notification language handling so Web Push subscriptions remember browser language and notification text uses language resources more consistently.
-Improved chat settings layout so saved-setting controls and notification-related labels are not clipped in the settings modal.
+## 4.5.1
+- Fixed Web Push notification click navigation so subscriptions remember the actual page URL where push was enabled, including BlueMap web-addon pages and standalone chat pages.
+- Fixed notification click handling so public chat, reply, keyword, DM, and group notifications can reopen/focus an existing chat page and jump to the target message, thread, or room when available.
+- Fixed mobile Web Push support in BlueMap web-addon mode by registering the Service Worker from the parent BlueMap page instead of the embedded addon iframe.
+- Removed the unnecessary standalone-page requirement for Web Push on supported browsers. iOS/iPadOS still requires the site to be added to the Home Screen as a PWA before Web Push can be enabled.
+- Added parent-page forwarding for Service Worker notification navigation so notification clicks can reach the embedded chat iframe on BlueMap web-addon pages.
+- Fixed minimized chat pill controls so the minimized area only shows the title and restore button. DM, group, notification inbox, login, PIP, and other controls remain available only in the expanded chat window.
+- Added emoji folder moving in the admin emoji manager, including single/multi-select moves, conflict checks, PNG sidecar movement, path validation, and audit logging.
+- Added reply notifications for public replies to the current user's messages.
+- Added a browser-local notification inbox so recent notification-worthy events can be reviewed from the same browser.
+- Improved notification language handling so Web Push subscriptions remember browser language and notification text uses language resources more consistently.
+- Improved chat settings layout so saved-setting controls and notification-related labels are not clipped in the settings modal.
 
-Upgrade notes:
+### Upgrade notes
 
-Existing Web Push subscriptions should be turned off and on again so the corrected open URL and language values are saved.
-BlueMap web-addon mobile push requires HTTPS and a browser that supports Service Workers, Push API, and Notifications.
-iOS/iPadOS Web Push requires launching the site from the Home Screen PWA.
-
+- Existing Web Push subscriptions should be turned off and on again so the corrected open URL and language values are saved.
+- BlueMap web-addon mobile push requires HTTPS and a browser that supports Service Workers, Push API, and Notifications.
+- iOS/iPadOS Web Push requires launching the site from the Home Screen PWA.
 
 ## 4.5.0
 
@@ -334,14 +406,14 @@ iOS/iPadOS Web Push requires launching the site from the Home Screen PWA.
 
 ### Standalone, HTTPS, and resource loading
 - Fixed standalone `chat.js` bootstrap so the embedded inner application is available and does not fail with `BMWC_EMBEDDED_INNER_TEXT is not defined`.
-- Fixed standalone manifest URL generation so `/bmwc/chat` serves its manifest from the standalone route.
+- Fixed standalone manifest URL generation so the configured public standalone prefix serves its manifest from the standalone route.
 - Improved API base handling for direct HTTP, same-domain HTTPS reverse proxy, standalone pages, uploads, and emoji URLs.
-- Refreshed Caddy/Nginx and configuration documentation around same-domain `/bmwc/api` and `/bmwc/chat` deployments.
+- Refreshed Caddy/Nginx and configuration documentation around same-domain `/chat` + `/chat/api` deployments.
 
 ### Retention, cleanup, upload safety, and audit logs
 - Improved DM/group retention cleanup so decisions are based on surviving message timestamps and respect locked or auto-delete-excluded sessions.
 - Improved upload cleanup so files still referenced by public chat history, pinned messages, DM threads, or group rooms are protected before deletion.
-- Added optional append-only daily audit logs under `audit/YYYY-MM-DD.log` for management-impacting actions such as command execution, administrative `/bmchat` commands, session flag changes, forced DM/group deletion, message deletion, pin management, emoji management, and history clearing.
+- Added optional append-only daily audit logs under `audit/YYYY-MM-DD.log` for management-impacting actions such as command execution, administrative `/kchat` commands, session flag changes, forced DM/group deletion, message deletion, pin management, emoji management, and history clearing.
 
 ### Configuration, language files, and upgrade notes
 - Added the `group-chat`, `private-chat-super-admins`, `audit`, `browser-notifications`, and `web-push` configuration blocks.
@@ -352,7 +424,7 @@ iOS/iPadOS Web Push requires launching the site from the Home Screen PWA.
 - If group chat is enabled, include `group-messages.db`, `group-messages.db-wal`, and `group-messages.db-shm` in backup plans.
 - Message bodies remain unavailable from the super-admin metadata view by design.
 
-### 4.5.0 - documentation and upgrade guidance
+### Documentation and upgrade guidance
 
 - Added an upgrade recommendation for 4.5.0: because many options changed between 4.3.x and 4.5.0, it is usually safer to back up the old `config.yml`, regenerate a fresh one, and then copy custom settings back manually.
 - Clarified that newly generated configs start with `enabled: false`, so regenerating `config.yml` does not start web/chat services, cleanup tasks, or private-message/group-chat storage until the administrator reviews settings and sets `enabled: true`. Existing history databases, uploads, emojis, audit logs, language files, and VAPID key files are not deleted by config regeneration.
@@ -361,13 +433,13 @@ Example migration flow:
 
 ```bash
 # Stop the Minecraft server first.
-cd plugins/BlueMapWebChat
+cd plugins/KOKOTO-WebChat
 cp config.yml config.yml.4.3-backup
 # Optional: keep a full plugin-data backup too.
-# cp -a . ../BlueMapWebChat-backup-4.3
+# cp -a . ../KOKOTO WebChat-backup-4.3
 rm config.yml
 # Start the server once. The new config.yml is generated with enabled: false.
-# Review and merge your custom values, then set enabled: true and restart or /bmchat reload.
+# Review and merge your custom values, then set enabled: true and restart or /kchat reload.
 ```
 
 Key 4.5.0 config blocks to review or merge:
@@ -381,12 +453,13 @@ audit:
   enabled: true
   directory: "audit"
 
-standalone-web:
-  enabled: false
-  path: "/chat"
-  app-name: "Web Chat"
-  app-short-name: "Web Chat"
-  api-base-url: ""
+frontend:
+  standalone:
+    enabled: false
+    path: "/kchat"
+    app-name: "Web Chat"
+    app-short-name: "Web Chat"
+    api-base-url: ""
 
 direct-message:
   enabled: false
@@ -458,13 +531,13 @@ discordsrv:
 
 ### Startup safety
 
-- Added a top-level master switch for newly generated configs. New `config.yml` files start disabled so BlueMapWebChat only creates configuration files until the administrator reviews settings and opts in.
+- Added a top-level master switch for newly generated configs. New `config.yml` files start disabled so KOKOTO WebChat only creates configuration files until the administrator reviews settings and opts in.
 - Existing configs without the `enabled` key are treated as enabled for upgrade compatibility.
 
 ```yml
-# Master switch for BlueMapWebChat.
+# Master switch for KOKOTO WebChat.
 # New generated configs default to false so the plugin creates config.yml first
-# without starting web/chat services or cleanup tasks. /bmchat reload remains available.
+# without starting web/chat services or cleanup tasks. /kchat reload remains available.
 # Existing configs that do not have this key are treated as enabled for upgrade compatibility.
 enabled: false
 ```
@@ -479,7 +552,7 @@ When `enabled: false`, the plugin does not start the HTTP server, web addon inst
 - Messages are stored by UUID and displayed as `display name (real account name)` where both values are available.
 - A->B and B->A messages always use the same thread by using a deterministic pair of UUIDs.
 - Added a web message-box button with unread badge, player search, thread list, conversation view, and reply-style message sending inside each 1:1 thread.
-- Added `/bmchat dm <player> <message>` and `/bmchat dm list` for game-side direct message sending and unread/thread summary checks.
+- Added `/kchat dm <player> <message>` and `/kchat dm list` for game-side direct message sending and unread/thread summary checks.
 - Added per-user unread tracking, web SSE direct-message refresh events, join-time unread notices, and online recipient notices.
 - Direct-message storage uses an independent private-message store from public chat history, so public chat retention and private-message retention can be managed independently.
 - Added `direct-message.storage`, `direct-message.jsonl-file`, and `direct-message.sqlite-file`. With `storage: "auto"`, DM storage follows `chat.history-storage: "jsonl"`; otherwise it uses SQLite.
@@ -515,7 +588,7 @@ direct-message:
 
   # Allow sending DMs from the web UI.
   allow-web-send: true
-  # Allow sending DMs from /bmchat dm in game.
+  # Allow sending DMs from /kchat dm in game.
   allow-game-send: true
 
   # Notify players about unread DMs when they join.
@@ -537,7 +610,7 @@ direct-message:
 Upgrade note:
 
 - Existing `config.yml` files are not rewritten automatically. To use direct messages after upgrading, merge the `direct-message` block above into your existing config.
-- Because 4.2.0 and 4.3.0 include large configuration changes, if manual merging is difficult, stop the server, back up and delete `plugins/BlueMapWebChat/config.yml`, start the server once to regenerate it, and then reapply your custom settings manually.
+- Because 4.2.0 and 4.3.0 include large configuration changes, if manual merging is difficult, stop the server, back up and delete `plugins/KOKOTO-WebChat/config.yml`, start the server once to regenerate it, and then reapply your custom settings manually.
 - New generated configs now start with top-level `enabled: false`. This prevents web/chat services and cleanup tasks from running until the administrator reviews the generated config and sets `enabled: true`.
 - If `direct-message.storage: "auto"` and `chat.history-storage: "jsonl"`, DMs are stored in `direct-messages.jsonl`. Otherwise `auto` uses SQLite.
 - If direct messages are enabled with SQLite storage, include `direct-messages.db`, `direct-messages.db-wal`, and `direct-messages.db-shm` in backup plans.
@@ -775,9 +848,9 @@ search:
 ### URL and reverse-proxy behavior
 
 * Reworked public URL resolution for direct HTTP, BlueMap addon mode, standalone mode, uploads, and custom emoji files.
-* Made `web-addon.api-base-url` the primary public API base for reverse-proxy deployments.
-* Made empty `standalone-web.api-base-url`, `upload.public-base-url`, and `emoji.public-base-url` consistently follow the active public API base.
-* Kept compatibility with explicit legacy values such as `/bmwc/api`, `/bmwc/api/uploads`, and `/bmwc/api/emojis`.
+* Made `adapters.bluemap.api-base-url` the primary public API base for reverse-proxy deployments.
+* Made empty `frontend.standalone.api-base-url`, `upload.public-base-url`, and `emoji.public-base-url` consistently follow the active public API base.
+* Kept compatibility with explicit legacy values such as `/chat/api`, `/chat/api/uploads`, and `/chat/api/emojis`.
 * Documented absolute paths, full resource paths, relative shorthand values resolved through `http.cors-origin`, and full `https://...` URLs consistently.
 * Reordered the default config so `web-addon` appears before `standalone-web`, making the reverse-proxy API base setting easier to find.
 
@@ -832,7 +905,7 @@ search:
 * Fixed standalone mode API base resolution when opened through a reverse proxy path.
 * Preserved standalone runtime mode inside the embedded chat iframe.
 * Added standalone diagnostics to generated page configuration.
-* Improved behavior when BlueMapWebChat is served from non-root API paths.
+* Improved behavior when KOKOTO WebChat is served from non-root API paths.
 
 ### Minimized window behavior
 
@@ -853,6 +926,7 @@ search:
 
 * Improved the server command modal layout so the command input and Run button align cleanly.
 * Fixed web command execution notices so the executor display name is shown correctly even with older language files.
+* Mirrored enabled web command execution notices to online Minecraft players without adding a second console log path.
 * Updated bundled translation files for YAML validity and key alignment.
 
 
@@ -899,3 +973,8 @@ search:
 - Expanded the nginx + Certbot HTTPS setup guide.
 - Added installation examples under `examples/caddy` and `examples/nginx`.
 
+
+
+
+- Added Forge Stage 1 source/build matrix with 16 exact Minecraft targets from 1.18.2 through 26.2, using common + four compatibility source layers; Forge 26.1.2/26.2 optionally integrate BlueMap through BlueMapAPI while older targets use loader-neutral map adapters.
+- Forge exact-target build helpers now select the required JDK 17/21/25 launcher per Minecraft target, including explicit Windows override variables (`KWC_JAVA17_HOME`, `KWC_JAVA21_HOME`, `KWC_JAVA25_HOME`).

@@ -25,7 +25,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.logging.Level;
 
 /**
  * Lightweight release update notification backed by Modrinth's public API.
@@ -36,7 +35,7 @@ public final class UpdateChecker implements Listener, AutoCloseable {
     private static final UpdateSource PRIMARY_SOURCE = new UpdateSource(
             URI.create("https://api.modrinth.com/v2/project/kokoto-webchat/version"),
             "https://modrinth.com/plugin/kokoto-webchat",
-            "https://www.curseforge.com/minecraft/bukkit-plugins/bluemapwebchat",
+            "https://www.curseforge.com/minecraft/bukkit-plugins/kokoto-webchat",
             "kokoto-webchat");
     private static final UpdateSource LEGACY_SOURCE = new UpdateSource(
             URI.create("https://api.modrinth.com/v2/project/bluemapwebchat/version"),
@@ -47,7 +46,6 @@ public final class UpdateChecker implements Listener, AutoCloseable {
     private static final long CHECK_INTERVAL_TICKS = 12L * 60L * 60L * 20L;
     private static final long JOIN_NOTICE_DELAY_TICKS = 60L;
     private static final long JOIN_REFRESH_MIN_INTERVAL_MILLIS = 60_000L;
-    private static final long FAILURE_LOG_REPEAT_MILLIS = 30L * 60L * 1000L;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(8);
 
     private final KokotoWebChatPlugin plugin;
@@ -55,17 +53,19 @@ public final class UpdateChecker implements Listener, AutoCloseable {
     private final Set<UUID> notifiedPlayers = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean requestRunning = new AtomicBoolean(false);
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final OperationalIssueTracker issues;
 
     private volatile UpdateInfo availableUpdate;
     private volatile String lastLoggedVersion = "";
     private volatile long lastAttemptMillis;
-    private volatile String lastFailureMessage = "";
     private volatile UpdateSource activeSource = PRIMARY_SOURCE;
-    private volatile long lastFailureLogMillis;
     private BukkitTask checkTask;
 
     public UpdateChecker(KokotoWebChatPlugin plugin) {
         this.plugin = plugin;
+        this.issues = new OperationalIssueTracker(
+                message -> plugin.getLogger().info(message),
+                message -> plugin.getLogger().warning(message));
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(REQUEST_TIMEOUT)
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -113,15 +113,18 @@ public final class UpdateChecker implements Listener, AutoCloseable {
                 if (legacy.usable()) {
                     result = legacy;
                 } else {
-                    warnCheckFailure("Modrinth sources unavailable: "
-                            + result.detail + "; fallback " + legacy.detail, null);
+                    String detail = "Modrinth sources unavailable: " + result.detail + "; fallback " + legacy.detail;
+                    issues.failed("update-check", detail,
+                            "KOKOTO WebChat update check failed: " + detail
+                                    + ". Current version=" + current
+                                    + ", sources=" + PRIMARY_SOURCE.api + " -> " + LEGACY_SOURCE.api);
                     return;
                 }
             }
 
             UpdateInfo newest = result.update;
             activeSource = result.source;
-            clearFailureState();
+            issues.recovered("update-check", "KOKOTO WebChat update check recovered via " + activeSource.slug + ".");
             if (compareVersions(newest.version, current) <= 0) {
                 availableUpdate = null;
                 return;
@@ -146,10 +149,13 @@ public final class UpdateChecker implements Listener, AutoCloseable {
             }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            warnCheckFailure("update check was interrupted", ex);
+            issues.failed("update-check", "interrupted",
+                    "KOKOTO WebChat update check was interrupted.");
         } catch (Exception ex) {
-            warnCheckFailure(ex.getClass().getSimpleName()
-                    + (ex.getMessage() == null || ex.getMessage().isBlank() ? "" : ": " + ex.getMessage()), ex);
+            String detail = ex.getClass().getSimpleName()
+                    + (ex.getMessage() == null || ex.getMessage().isBlank() ? "" : ": " + ex.getMessage());
+            issues.failed("update-check", detail,
+                    "KOKOTO WebChat update check failed: " + detail);
         } finally {
             requestRunning.set(false);
         }
@@ -184,27 +190,6 @@ public final class UpdateChecker implements Listener, AutoCloseable {
     private boolean canReceiveNotice(Player player) {
         return player != null && player.isOnline()
                 && (player.isOp() || PermissionCompat.has(player, "kwc.update.notify"));
-    }
-
-    private void clearFailureState() {
-        lastFailureMessage = "";
-        lastFailureLogMillis = 0L;
-    }
-
-    private void warnCheckFailure(String detail, Throwable error) {
-        if (closed.get()) return;
-        String safeDetail = detail == null || detail.isBlank() ? "unknown error" : detail;
-        long now = System.currentTimeMillis();
-        boolean changed = !safeDetail.equals(lastFailureMessage);
-        if (!changed && now - lastFailureLogMillis < FAILURE_LOG_REPEAT_MILLIS) return;
-
-        lastFailureMessage = safeDetail;
-        lastFailureLogMillis = now;
-        String message = "KOKOTO WebChat update check failed: " + safeDetail
-                + ". Current version=" + plugin.getDescription().getVersion()
-                + ", sources=" + PRIMARY_SOURCE.api + " -> " + LEGACY_SOURCE.api;
-        if (error == null) plugin.getLogger().warning(message);
-        else plugin.getLogger().log(Level.WARNING, message, error);
     }
 
     private void notifyPlayer(Player player) {
@@ -361,6 +346,7 @@ public final class UpdateChecker implements Listener, AutoCloseable {
         HandlerList.unregisterAll(this);
         notifiedPlayers.clear();
         availableUpdate = null;
+        issues.clearAll();
     }
 
     static final class UpdateSource {

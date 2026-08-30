@@ -1,7 +1,19 @@
 @echo off
 setlocal EnableExtensions
 set "MC=%~1"
+if /I "%~2"=="--fast" (
+  set "KWC_SKIP_CLEAN=1"
+  if defined KWC_GRADLE_ARGS (set "KWC_GRADLE_ARGS=--build-cache %KWC_GRADLE_ARGS%") else set "KWC_GRADLE_ARGS=--build-cache"
+) else if not "%~2"=="" (
+  echo Usage: build-target.bat ^<minecraft-version^> [--fast] 1>&2
+  exit /b 2
+)
 for %%I in ("%~dp0..") do set "KWC_ROOT=%%~fI"
+if not defined KWC_PATH_PREFLIGHT_DONE (
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%KWC_ROOT%\check-build-path.ps1" -Root "%KWC_ROOT%"
+  if errorlevel 1 exit /b 1
+  set "KWC_PATH_PREFLIGHT_DONE=1"
+)
 if defined KWC_GRADLE_USER_HOME (
   set "GRADLE_USER_HOME=%KWC_GRADLE_USER_HOME%"
 ) else if not defined GRADLE_USER_HOME (
@@ -17,7 +29,7 @@ if not exist "%KWC_TARGET_TEMP%" mkdir "%KWC_TARGET_TEMP%" >nul 2>&1
 set "TEMP=%KWC_TARGET_TEMP%"
 set "TMP=%KWC_TARGET_TEMP%"
 if "%MC%"=="" (
-  echo Usage: build-target.bat ^<minecraft-version^> 1>&2
+  echo Usage: build-target.bat ^<minecraft-version^> [--fast] 1>&2
   exit /b 2
 )
 
@@ -65,7 +77,9 @@ echo [KWC Forge] Temp: %TEMP%
 if errorlevel 1 exit /b 1
 
 echo [KWC Forge] Building...
-call "%~dp0gradlew.bat" -p "%~dp0targets\%MC%" clean build %KWC_GRADLE_ARGS%
+set "KWC_GRADLE_TASKS=clean build"
+if /I "%KWC_SKIP_CLEAN%"=="1" set "KWC_GRADLE_TASKS=build"
+call "%~dp0gradlew.bat" -p "%~dp0targets\%MC%" %KWC_GRADLE_TASKS% %KWC_GRADLE_ARGS%
 set "RC=%ERRORLEVEL%"
 if not "%RC%"=="0" (
   echo [KWC Forge] FAILED: Minecraft %MC% 1>&2

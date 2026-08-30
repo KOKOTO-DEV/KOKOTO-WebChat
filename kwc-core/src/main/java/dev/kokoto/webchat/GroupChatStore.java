@@ -64,11 +64,13 @@ public class GroupChatStore {
                     "updated_at INTEGER NOT NULL," +
                     "archived INTEGER NOT NULL DEFAULT 0," +
                     "locked INTEGER NOT NULL DEFAULT 0," +
-                    "retention_exempt INTEGER NOT NULL DEFAULT 0" +
+                    "retention_exempt INTEGER NOT NULL DEFAULT 0," +
+                    "membership_events_enabled INTEGER NOT NULL DEFAULT 1" +
                     ")");
             st.execute("CREATE INDEX IF NOT EXISTS idx_group_rooms_visibility ON group_rooms(visibility, updated_at)");
             addColumnIfMissing(st, "group_rooms", "locked", "INTEGER NOT NULL DEFAULT 0");
             addColumnIfMissing(st, "group_rooms", "retention_exempt", "INTEGER NOT NULL DEFAULT 0");
+            addColumnIfMissing(st, "group_rooms", "membership_events_enabled", "INTEGER NOT NULL DEFAULT 1");
             st.execute("CREATE TABLE IF NOT EXISTS group_members (" +
                     "room_id TEXT NOT NULL," +
                     "user_uuid TEXT NOT NULL," +
@@ -106,9 +108,17 @@ public class GroupChatStore {
                     "body TEXT NOT NULL," +
                     "created_at INTEGER NOT NULL," +
                     "hidden INTEGER NOT NULL DEFAULT 0," +
-                    "client_message_id TEXT NOT NULL DEFAULT ''" +
+                    "client_message_id TEXT NOT NULL DEFAULT ''," +
+                    "reply_to_id INTEGER NOT NULL DEFAULT 0," +
+                    "reply_to_sender TEXT NOT NULL DEFAULT ''," +
+                    "reply_to_preview TEXT NOT NULL DEFAULT ''," +
+                    "event_type TEXT NOT NULL DEFAULT ''" +
                     ")");
             addColumnIfMissing(st, "group_messages", "client_message_id", "TEXT NOT NULL DEFAULT ''");
+            addColumnIfMissing(st, "group_messages", "reply_to_id", "INTEGER NOT NULL DEFAULT 0");
+            addColumnIfMissing(st, "group_messages", "reply_to_sender", "TEXT NOT NULL DEFAULT ''");
+            addColumnIfMissing(st, "group_messages", "reply_to_preview", "TEXT NOT NULL DEFAULT ''");
+            addColumnIfMissing(st, "group_messages", "event_type", "TEXT NOT NULL DEFAULT ''");
             st.execute("CREATE INDEX IF NOT EXISTS idx_group_messages_room ON group_messages(room_id, id)");
             st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_group_messages_client_id ON group_messages(client_message_id) WHERE client_message_id<>''");
             st.execute("CREATE INDEX IF NOT EXISTS idx_group_messages_created ON group_messages(created_at)");
@@ -177,7 +187,7 @@ public class GroupChatStore {
         }
     }
 
-    public synchronized CreateResult createRoom(String ownerUuid, String name, String visibility, String password) {
+    public synchronized CreateResult createRoom(String ownerUuid, String name, String visibility, String password, boolean membershipEventsEnabled) {
         CreateResult r = new CreateResult();
         if (connection == null) { r.error = "store_unavailable"; return r; }
         GroupChatSettings c = host.groupChatSettings();
@@ -194,7 +204,7 @@ public class GroupChatStore {
         String passwordHash = hashPassword(password);
         try {
             connection.setAutoCommit(false);
-            try (PreparedStatement ps = connection.prepareStatement("INSERT INTO group_rooms(id,name,owner_uuid,visibility,password_hash,created_at,updated_at,archived,locked,retention_exempt) VALUES(?,?,?,?,?,?,?,0,0,0)")) {
+            try (PreparedStatement ps = connection.prepareStatement("INSERT INTO group_rooms(id,name,owner_uuid,visibility,password_hash,created_at,updated_at,archived,locked,retention_exempt,membership_events_enabled) VALUES(?,?,?,?,?,?,?,0,0,0,?)")) {
                 ps.setString(1, id);
                 ps.setString(2, roomName);
                 ps.setString(3, owner);
@@ -202,6 +212,7 @@ public class GroupChatStore {
                 ps.setString(5, passwordHash);
                 ps.setLong(6, now);
                 ps.setLong(7, now);
+                ps.setInt(8, membershipEventsEnabled ? 1 : 0);
                 ps.executeUpdate();
             }
             try (PreparedStatement ps = connection.prepareStatement("INSERT INTO group_members(room_id,user_uuid,role,joined_at,last_read_message_id,hidden) VALUES(?,?,?,?,0,0)")) {
@@ -249,6 +260,7 @@ public class GroupChatStore {
             ps.executeUpdate();
         } catch (SQLException ex) { r.error = "join_failed"; return r; }
         acceptPendingInvites(user, id);
+        r.membershipEvent = appendMembershipEvent(id, user, "member_join", now);
         r.ok = true;
         r.room = roomForUser(user, id);
         return r;
@@ -261,17 +273,20 @@ public class GroupChatStore {
         if (connection == null) { r.error = "store_unavailable"; return r; }
         if (!isMember(user, id)) { r.error = "not_member"; return r; }
         String role = roleOf(user, id);
+        GroupRoom roomBeforeLeave = roomForUser(user, id);
         try (PreparedStatement ps = connection.prepareStatement("DELETE FROM group_members WHERE room_id=? AND user_uuid=?")) {
             ps.setString(1, id);
             ps.setString(2, user);
             ps.executeUpdate();
         } catch (SQLException ex) { r.error = "leave_failed"; return r; }
+        r.membershipEvent = appendMembershipEvent(id, user, "member_leave", System.currentTimeMillis());
         if (countMembers(id) <= 0) {
             archiveRoom(id);
         } else if ("owner".equals(role)) {
             promoteOldestMemberToOwner(id);
         }
         r.ok = true;
+        r.room = roomBeforeLeave;
         return r;
     }
 
@@ -332,10 +347,18 @@ public class GroupChatStore {
     }
 
     public synchronized SendResult send(String userUuid, String roomId, String body) {
-        return send(userUuid, roomId, body, "");
+        return send(userUuid, roomId, body, "", 0L);
+    }
+
+    public synchronized SendResult send(String userUuid, String roomId, String body, long replyToId) {
+        return send(userUuid, roomId, body, "", replyToId);
     }
 
     public synchronized SendResult send(String userUuid, String roomId, String body, String clientMessageId) {
+        return send(userUuid, roomId, body, clientMessageId, 0L);
+    }
+
+    public synchronized SendResult send(String userUuid, String roomId, String body, String clientMessageId, long replyToId) {
         SendResult r = new SendResult();
         String user = normalizeUuid(userUuid);
         String id = cleanId(roomId);
@@ -344,6 +367,11 @@ public class GroupChatStore {
         if (connection == null) { r.error = "store_unavailable"; return r; }
         if (!isMember(user, id)) { r.error = "not_member"; return r; }
         if (isRoomLocked(id)) { r.error = "room_locked"; return r; }
+        GroupMessage reply = null;
+        if (replyToId > 0L) {
+            reply = replyTargetForSend(user, id, replyToId);
+            if (reply == null) { r.error = "reply_target_not_found"; return r; }
+        }
         if (!requestId.isBlank()) {
             try (PreparedStatement ps = connection.prepareStatement(
                     "SELECT id FROM group_messages WHERE client_message_id=? AND room_id=? AND sender_uuid=? AND hidden=0 LIMIT 1")) {
@@ -368,12 +396,15 @@ public class GroupChatStore {
         if (max > 0 && message.length() > max) message = message.substring(0, max);
         if (message.isBlank()) { r.error = "empty_message"; return r; }
         long now = System.currentTimeMillis();
-        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO group_messages(room_id,sender_uuid,body,created_at,hidden,client_message_id) VALUES(?,?,?,?,0,?)", Statement.RETURN_GENERATED_KEYS)) {
+        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO group_messages(room_id,sender_uuid,body,created_at,hidden,client_message_id,reply_to_id,reply_to_sender,reply_to_preview,event_type) VALUES(?,?,?,?,0,?,?,?,?,'')", Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, id);
             ps.setString(2, user);
             ps.setString(3, message);
             ps.setLong(4, now);
             ps.setString(5, requestId);
+            ps.setLong(6, reply == null ? 0L : reply.id);
+            ps.setString(7, reply == null ? "" : replySenderLabel(reply));
+            ps.setString(8, reply == null ? "" : replyPreview(reply.body));
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) { if (keys.next()) r.messageId = keys.getLong(1); }
         } catch (SQLException ex) { r.error = "send_failed"; return r; }
@@ -414,7 +445,7 @@ public class GroupChatStore {
         } catch (SQLException ex) { return false; }
     }
 
-    public synchronized ActionResult updateSettings(String userUuid, String roomId, String name, String visibility, String password, boolean passwordSet) {
+    public synchronized ActionResult updateSettings(String userUuid, String roomId, String name, String visibility, String password, boolean passwordSet, Boolean membershipEventsEnabled) {
         ActionResult r = new ActionResult();
         String user = normalizeUuid(userUuid);
         String id = cleanId(roomId);
@@ -429,12 +460,14 @@ public class GroupChatStore {
         String newHash = info.passwordHash;
         if (passwordSet) newHash = hashPassword(password);
         long now = System.currentTimeMillis();
-        try (PreparedStatement ps = connection.prepareStatement("UPDATE group_rooms SET name=?, visibility=?, password_hash=?, updated_at=? WHERE id=?")) {
+        boolean newMembershipEventsEnabled = membershipEventsEnabled == null ? roomMembershipEventsEnabled(id) : membershipEventsEnabled.booleanValue();
+        try (PreparedStatement ps = connection.prepareStatement("UPDATE group_rooms SET name=?, visibility=?, password_hash=?, membership_events_enabled=?, updated_at=? WHERE id=?")) {
             ps.setString(1, newName);
             ps.setString(2, newVis);
             ps.setString(3, newHash);
-            ps.setLong(4, now);
-            ps.setString(5, id);
+            ps.setInt(4, newMembershipEventsEnabled ? 1 : 0);
+            ps.setLong(5, now);
+            ps.setString(6, id);
             ps.executeUpdate();
         } catch (SQLException ex) { r.error = "settings_failed"; return r; }
         r.ok = true;
@@ -512,8 +545,8 @@ public class GroupChatStore {
         if (connection == null || !isMember(user, id)) return out;
         int max = limit <= 0 ? 100 : Math.min(limit, 300);
         String sql = before > 0
-                ? "SELECT id,room_id,sender_uuid,body,created_at FROM group_messages WHERE room_id=? AND hidden=0 AND id<? AND id NOT IN (SELECT message_id FROM group_message_state WHERE user_uuid=? AND hidden=1) ORDER BY id DESC LIMIT ?"
-                : "SELECT id,room_id,sender_uuid,body,created_at FROM group_messages WHERE room_id=? AND hidden=0 AND id NOT IN (SELECT message_id FROM group_message_state WHERE user_uuid=? AND hidden=1) ORDER BY id DESC LIMIT ?";
+                ? "SELECT id,room_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,event_type FROM group_messages WHERE room_id=? AND hidden=0 AND id<? AND id NOT IN (SELECT message_id FROM group_message_state WHERE user_uuid=? AND hidden=1) ORDER BY id DESC LIMIT ?"
+                : "SELECT id,room_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,event_type FROM group_messages WHERE room_id=? AND hidden=0 AND id NOT IN (SELECT message_id FROM group_message_state WHERE user_uuid=? AND hidden=1) ORDER BY id DESC LIMIT ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, id);
             if (before > 0) {
@@ -544,8 +577,8 @@ public class GroupChatStore {
         if (connection == null || id.isBlank()) return out;
         int max = limit <= 0 ? 100 : Math.min(limit, 200);
         String sql = before > 0
-                ? "SELECT id,room_id,sender_uuid,body,created_at FROM group_messages WHERE room_id=? AND hidden=0 AND id<? ORDER BY id DESC LIMIT ?"
-                : "SELECT id,room_id,sender_uuid,body,created_at FROM group_messages WHERE room_id=? AND hidden=0 ORDER BY id DESC LIMIT ?";
+                ? "SELECT id,room_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,event_type FROM group_messages WHERE room_id=? AND hidden=0 AND id<? ORDER BY id DESC LIMIT ?"
+                : "SELECT id,room_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,event_type FROM group_messages WHERE room_id=? AND hidden=0 ORDER BY id DESC LIMIT ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, id);
             if (before > 0) {
@@ -748,6 +781,10 @@ public class GroupChatStore {
             r.ok = true;
         } catch (SQLException ex) { rollbackQuietly(); r.error = ban ? "ban_failed" : "kick_failed"; }
         finally { autoCommitQuietly(); }
+        if (r.ok) {
+            r.membershipEvent = appendMembershipEvent(id, target, "member_leave", now);
+            r.room = roomForUser(manager, id);
+        }
         return r;
     }
 
@@ -998,7 +1035,7 @@ public class GroupChatStore {
     private GroupRoom roomForUser(String userUuid, String roomId) {
         String user = normalizeUuid(userUuid);
         String id = cleanId(roomId);
-        String sql = "SELECT r.id,r.name,r.owner_uuid,r.visibility,r.password_hash,r.updated_at," +
+        String sql = "SELECT r.id,r.name,r.owner_uuid,r.visibility,r.password_hash,r.updated_at,r.membership_events_enabled," +
                 "COALESCE(m.role,''), COALESCE(m.last_read_message_id,0)," +
                 "(SELECT COUNT(*) FROM group_members gm WHERE gm.room_id=r.id)," +
                 "(SELECT id FROM group_messages lm WHERE lm.room_id=r.id ORDER BY id DESC LIMIT 1)," +
@@ -1017,14 +1054,15 @@ public class GroupChatStore {
                 room.visibility = rs.getString(4);
                 room.passwordProtected = rs.getString(5) != null && !rs.getString(5).isBlank();
                 room.updatedAt = rs.getLong(6);
-                room.role = rs.getString(7) == null ? "" : rs.getString(7);
-                long lastRead = rs.getLong(8);
+                room.membershipEventsEnabled = rs.getInt(7) != 0;
+                room.role = rs.getString(8) == null ? "" : rs.getString(8);
+                long lastRead = rs.getLong(9);
                 room.member = room.role != null && !room.role.isBlank();
-                room.memberCount = rs.getInt(9);
+                room.memberCount = rs.getInt(10);
                 room.onlineMemberCount = onlineMemberCount(room.id);
-                room.lastMessageId = rs.getLong(10);
-                room.lastMessage = rs.getString(11) == null ? "" : rs.getString(11);
-                room.lastSenderUuid = normalizeUuid(rs.getString(12));
+                room.lastMessageId = rs.getLong(11);
+                room.lastMessage = rs.getString(12) == null ? "" : rs.getString(12);
+                room.lastSenderUuid = normalizeUuid(rs.getString(13));
                 room.unread = room.member ? countUnread(room.id, lastRead, user) : 0;
                 return room;
             }
@@ -1040,10 +1078,15 @@ public class GroupChatStore {
         }
     }
 
+    /** Returns a group message only when the requesting user is still a member of its room. */
+    public synchronized GroupMessage messageForUser(String userUuid, long messageId) {
+        return messageById(userUuid, messageId);
+    }
+
     private GroupMessage messageById(String userUuid, long messageId) {
         if (messageId <= 0) return null;
         GroupMessage result = null;
-        try (PreparedStatement ps = connection.prepareStatement("SELECT id,room_id,sender_uuid,body,created_at FROM group_messages WHERE id=?")) {
+        try (PreparedStatement ps = connection.prepareStatement("SELECT id,room_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,event_type FROM group_messages WHERE id=? AND hidden=0")) {
             ps.setLong(1, messageId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) return null;
@@ -1072,13 +1115,58 @@ public class GroupChatStore {
 
     private GroupMessage messageFromResult(ResultSet rs) throws SQLException {
         GroupMessage msg = new GroupMessage();
-        msg.id = rs.getLong(1);
-        msg.roomId = rs.getString(2);
-        msg.senderUuid = normalizeUuid(rs.getString(3));
-        msg.body = rs.getString(4) == null ? "" : rs.getString(4);
-        msg.createdAt = rs.getLong(5);
+        msg.id = rs.getLong("id");
+        msg.roomId = rs.getString("room_id");
+        msg.senderUuid = normalizeUuid(rs.getString("sender_uuid"));
+        msg.body = rs.getString("body") == null ? "" : rs.getString("body");
+        msg.createdAt = rs.getLong("created_at");
+        String eventType = rs.getString("event_type");
+        msg.eventType = eventType == null ? "" : eventType;
+        msg.replyToId = Math.max(0L, rs.getLong("reply_to_id"));
+        String replySender = rs.getString("reply_to_sender");
+        String replyPreview = rs.getString("reply_to_preview");
+        msg.replyToSender = replySender == null ? "" : replySender;
+        msg.replyToPreview = replyPreview == null ? "" : replyPreview;
         fillIdentity(msg);
         return msg;
+    }
+
+    private GroupMessage replyTargetForSend(String requestingUser, String expectedRoomId, long replyToId) {
+        if (connection == null || replyToId <= 0L || expectedRoomId == null || expectedRoomId.isBlank()) return null;
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT id,room_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,event_type FROM group_messages WHERE id=? AND hidden=0")) {
+            ps.setLong(1, replyToId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                GroupMessage original = messageFromResult(rs);
+                if (original.eventType != null && !original.eventType.isBlank()) return null;
+                if (!expectedRoomId.equals(original.roomId)) return null;
+                if (!isMember(requestingUser, expectedRoomId)) return null;
+                return original;
+            }
+        } catch (SQLException ex) {
+            return null;
+        }
+    }
+
+    private String replySenderLabel(GroupMessage message) {
+        if (message == null) return "";
+        String display = String.valueOf(message.senderDisplayName == null ? "" : message.senderDisplayName).trim();
+        if (!display.isBlank()) return cleanReplyText(display, 128);
+        String username = String.valueOf(message.senderUsername == null ? "" : message.senderUsername).trim();
+        if (!username.isBlank()) return cleanReplyText(username, 128);
+        return cleanReplyText(message.senderUuid, 128);
+    }
+
+    private String replyPreview(String body) {
+        return cleanReplyText(body, 240);
+    }
+
+    private String cleanReplyText(String text, int maxLength) {
+        String value = String.valueOf(text == null ? "" : text).replace('\r', ' ').replace('\n', ' ').trim();
+        value = value.replaceAll("\\s+", " ");
+        if (maxLength > 0 && value.length() > maxLength) value = value.substring(0, maxLength);
+        return value;
     }
 
     private void fillIdentity(GroupMessage msg) {
@@ -1236,6 +1324,49 @@ public class GroupChatStore {
         } catch (SQLException ex) { return null; }
     }
 
+    private boolean roomMembershipEventsEnabled(String roomId) {
+        if (connection == null) return true;
+        try (PreparedStatement ps = connection.prepareStatement("SELECT membership_events_enabled FROM group_rooms WHERE id=? AND archived=0")) {
+            ps.setString(1, cleanId(roomId));
+            try (ResultSet rs = ps.executeQuery()) { return !rs.next() || rs.getInt(1) != 0; }
+        } catch (SQLException ex) { return true; }
+    }
+
+    private GroupMessage appendMembershipEvent(String roomId, String actorUuid, String eventType, long now) {
+        String id = cleanId(roomId);
+        String actor = normalizeUuid(actorUuid);
+        String type = String.valueOf(eventType == null ? "" : eventType).trim();
+        if (connection == null || id.isBlank() || actor.isBlank() || type.isBlank() || !roomMembershipEventsEnabled(id)) return null;
+        long messageId = 0L;
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT INTO group_messages(room_id,sender_uuid,body,created_at,hidden,client_message_id,reply_to_id,reply_to_sender,reply_to_preview,event_type) VALUES(?,?,'',?,0,'',0,'','',?)",
+                Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, id);
+            ps.setString(2, actor);
+            ps.setLong(3, now);
+            ps.setString(4, type);
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) { if (keys.next()) messageId = keys.getLong(1); }
+        } catch (SQLException ex) {
+            host.warn("Failed to append group membership event: " + ex.getMessage());
+            return null;
+        }
+        touchRoom(id, now);
+        if (messageId <= 0L) return null;
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT id,room_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,event_type FROM group_messages WHERE id=? AND hidden=0")) {
+            ps.setLong(1, messageId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                GroupMessage message = messageFromResult(rs);
+                message.unreadMemberCount = unreadMemberCountForMessage(message);
+                return message;
+            }
+        } catch (SQLException ex) {
+            return null;
+        }
+    }
+
     private String hashPassword(String password) {
         String p = String.valueOf(password == null ? "" : password);
         if (p.isBlank()) return "";
@@ -1279,6 +1410,7 @@ public class GroupChatStore {
         public boolean ok;
         public String error = "";
         public GroupRoom room;
+        public GroupMessage membershipEvent;
     }
 
     public static class CreateResult extends ActionResult {}

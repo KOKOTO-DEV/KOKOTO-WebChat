@@ -125,6 +125,54 @@ public final class ConfigTextEditor {
 
     public record ValueBlock(int startLine, int endLine, List<String> lines) {}
 
+    /**
+     * Returns a copy-ready physical YAML setting block, including only the
+     * contiguous comment/blank lines immediately preceding the setting. This is
+     * intended for migration reports and diagnostics where structured values
+     * must remain readable YAML instead of being collapsed into flow/JSON text.
+     */
+    public static Map<String, SettingBlock> readSettingBlocks(Path file, Collection<String> paths) throws IOException {
+        Objects.requireNonNull(file, "file");
+        LinkedHashSet<String> targets = new LinkedHashSet<>();
+        if (paths != null) {
+            for (String path : paths) {
+                String target = String.valueOf(path == null ? "" : path).trim();
+                if (!target.isBlank()) targets.add(target);
+            }
+        }
+        LinkedHashMap<String, SettingBlock> out = new LinkedHashMap<>();
+        if (targets.isEmpty()) return out;
+        synchronized (LOCK) {
+            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            for (String target : targets) {
+                int index = findPathIndex(lines, target);
+                if (index < 0) continue;
+                Parsed parsed = parse(lines.get(index));
+                if (parsed == null) continue;
+
+                int start = index;
+                while (start > 0) {
+                    String previous = lines.get(start - 1);
+                    String trimmed = previous.trim();
+                    if (trimmed.startsWith("#")) { start--; continue; }
+                    if (trimmed.isEmpty() && start - 2 >= 0 && lines.get(start - 2).trim().startsWith("#")) {
+                        start--;
+                        continue;
+                    }
+                    break;
+                }
+
+                String rawValue = stripInlineCommentValue(parsed.valuePart).trim();
+                int end = rawValue.isEmpty() ? valueDataBlockEnd(lines, index, parsed.indent) : index + 1;
+                out.put(target, new SettingBlock(start + 1, Math.max(start + 1, end),
+                        new ArrayList<>(lines.subList(start, end))));
+            }
+        }
+        return out;
+    }
+
+    public record SettingBlock(int startLine, int endLine, List<String> lines) {}
+
     private static void upsertScalar(List<String> lines, String target, Object value) throws IOException {
         Deque<Node> stack = new ArrayDeque<>();
         for (int i = 0; i < lines.size(); i++) {
@@ -164,7 +212,16 @@ public final class ConfigTextEditor {
         if (existing >= 0) {
             Parsed parsed = parse(lines.get(existing));
             if (parsed == null) throw new IOException("config path could not be parsed: " + target);
-            int end = valueBlockEnd(lines, existing, parsed.indent);
+            // Inline/scalar values occupy exactly one physical line. The previous
+            // implementation used valueBlockEnd() even here, which consumed the
+            // comments belonging to the following sibling setting during migration.
+            // That is why rebuilt config.yml files kept only the first comment in
+            // many sections. Only an actually block-valued existing entry may own
+            // following indented data lines.
+            String existingRawValue = stripInlineCommentValue(parsed.valuePart).trim();
+            int end = existingRawValue.isEmpty()
+                    ? valueDataBlockEnd(lines, existing, parsed.indent)
+                    : existing + 1;
             String inline = isScalarValue(value) ? inlineComment(parsed.valuePart) : "";
             List<String> replacement = renderValueEntry(parsed.indent, parsed.rawKey, value, inline);
             lines.subList(existing, end).clear();
@@ -267,8 +324,27 @@ public final class ConfigTextEditor {
             String prefix = " ".repeat(indent) + "-";
             if (isScalarValue(value)) out.add(prefix + " " + yamlScalar(value));
             else if (value instanceof Map<?,?> nested) {
-                if (nested.isEmpty()) out.add(prefix + " {}");
-                else { out.add(prefix); renderMap(out, indent + 2, nested); }
+                if (nested.isEmpty()) {
+                    out.add(prefix + " {}");
+                } else {
+                    // Prefer the conventional compact YAML sequence-map form:
+                    //   - id: "server-2"
+                    //     url: "https://..."
+                    // instead of a standalone '-' line. This keeps generated config and
+                    // migration output aligned with the operator-facing examples.
+                    var iterator = nested.entrySet().iterator();
+                    Map.Entry<?,?> first = iterator.next();
+                    Object firstValue = normalizeYamlValue(first.getValue());
+                    if (isScalarValue(firstValue)) {
+                        out.add(prefix + " " + yamlKey(String.valueOf(first.getKey())) + ": " + yamlScalar(firstValue));
+                        LinkedHashMap<String,Object> rest = new LinkedHashMap<>();
+                        iterator.forEachRemaining(entry -> rest.put(String.valueOf(entry.getKey()), normalizeYamlValue(entry.getValue())));
+                        if (!rest.isEmpty()) renderMap(out, indent + 2, rest);
+                    } else {
+                        out.add(prefix);
+                        renderMap(out, indent + 2, nested);
+                    }
+                }
             } else if (value instanceof List<?> nested) {
                 if (nested.isEmpty()) out.add(prefix + " []");
                 else { out.add(prefix); renderList(out, indent + 2, nested); }

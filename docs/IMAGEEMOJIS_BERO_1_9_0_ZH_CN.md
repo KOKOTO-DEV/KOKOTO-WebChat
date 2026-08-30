@@ -1,6 +1,6 @@
 # ImageEmojis-Bero 集成 (1.9.x)
 
-KOKOTO WebChat 5.0.0 可选集成 [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)。服务器端 runtime glyph 集成面向 **Bukkit/Paper 系列**，当前按 1.9.x Bero 系列（包括 1.9.2）验证。该兼容层基于 reflection，不构成硬依赖。
+KOKOTO WebChat 5.1.0 可选集成 [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)。服务器端 runtime glyph 集成面向 **Bukkit/Paper 系列**，当前按 1.9.x Bero 系列（包括 1.9.2）验证。该兼容层基于 reflection，不构成硬依赖。
 
 基础安装、命令、权限、资源包生成和常规运维请参考 [上游 ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)。本文只说明与 KWC 配合时需要注意的配置。
 
@@ -20,7 +20,13 @@ templateFormat: ':<emoji>:'
 
 ## 共用表情目录
 
-`emojisFolder: /KOKOTO-WebChat/emojis` 对应：
+以下设置：
+
+```yaml
+emojisFolder: /KOKOTO-WebChat/emojis
+```
+
+对应：
 
 ```text
 plugins/KOKOTO-WebChat/emojis/<pack>/<name>.png
@@ -30,7 +36,14 @@ plugins/KOKOTO-WebChat/emojis/<pack>/<name>.png
 
 ## 资源包 HTTP 端口
 
-`serverIp` 与 `webServerPort` 属于 **ImageEmojis-Bero 的资源包 HTTP 服务**，不是 KWC Web 服务。若配置 `serverIp: yourdomain`、`webServerPort: 5000`，Minecraft 客户端必须能够通过 TCP 访问 `yourdomain:5000`。根据环境可能需要操作系统防火墙放行、路由器/NAT 端口转发及正确 DNS。公开 KWC `/chat` 并不会自动公开 ImageEmojis 的资源包端口。
+`serverIp` 与 `webServerPort` 属于 **ImageEmojis-Bero 的资源包 HTTP 服务**，不是 KWC Web 服务。例如：
+
+```text
+serverIp: yourdomain
+webServerPort: 5000
+```
+
+在这种配置下，Minecraft 客户端必须能够通过 TCP 访问 `yourdomain:5000`。根据环境可能需要操作系统防火墙放行、路由器/NAT 端口转发及正确 DNS。公开 KWC `/chat` 并不会自动公开 ImageEmojis 的资源包端口。
 
 ## KWC 行为
 
@@ -67,3 +80,10 @@ Relay 只传输 token，不同步 PNG 或资源包。需要显示该表情的每
 
 - KWC 验证的 fork: [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)
 - 上游 / 一般安装运维: [ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)
+
+## Upstream 参考文档
+
+- [ImageEmojis upstream on Modrinth](https://modrinth.com/plugin/image-emojis)
+- [ImageEmojis upstream source](https://github.com/MrQuackDuck/ImageEmojis)
+
+以上链接说明的是 upstream 项目。本文件中的 KWC token 转换、共享目录处理以及 Bero 专用集成行为，应以实际安装的 Bero/KWC 版本为准。

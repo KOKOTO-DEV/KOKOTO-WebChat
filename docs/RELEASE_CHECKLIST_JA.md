@@ -1,21 +1,33 @@
-# KOKOTO WebChat 5.0.0 Release Checklist
+# KOKOTO WebChat 5.1.0 リリースチェックリスト
 
-- [ ] 5.0.0 metadata/artifact/config reference が一致する。
-- [ ] 4.7.0→5.0.0 migration、`5.0.0_auto_migration`、same-version backfill stop が正常。
-- [ ] en-US/ko-KR/ja-JP/zh-CN key set が同一で空 translation がない。
-- [ ] login/guest/public chat/reply/pin/search/filter/DM/group/upload/clipboard/profile/Push/admin Discord alert/relay/map adapters を smoke test する。
-- [ ] clipboard original filename で long filename が有効、DOS 8.3 alias が broken link を作らない。
-- [ ] Bearer auth、one-time SSE ticket、admin IP restriction、body limit、Web Push SSRF protection、Discord mention/CDN protection、profile strict import を確認する。
-- [ ] `update-check.enabled` が Bukkit/Fabric/NeoForge/Forge すべてで実動し、KWC 優先/BMWC fallback 確認と `kwc.update.notify` login notice が正常。
-- [ ] Bukkit JDK17、Fabric 16 exact-target、NeoForge 12 exact-target、Forge 16 exact-target が target 別 JDK 17/21/25 で build 成功する。
-- [ ] `validate-release-windows.bat` が `FINAL RELEASE BUILD PASS`、45 deployable JAR、SHA256SUMS を生成する。
-- [ ] README/Upgrade/Configuration/User Manual/Wiki/Modrinth/CurseForge が最終 5.0.0 と一致し、“rebrand later” の旧説明がない。
-- [ ] AI assistance disclosure は README/description/`AI_USAGE.md` に置き、functional changelog 項目にはしない。
-- [ ] 5.0.0 を旧 BMWC listing に先に公開し、4.7.0 update checker が bridge release を検出できるようにする。
-- [ ] 5.0.0 の update notice の CurseForge link は、新 KWC CurseForge listing が実際に公開されるまで既存 BMWC bridge page を使用する。
-- [ ] 同一 project rename ができない場合、BMWC page は終了/移行案内として残し、新 KWC listing を案内する。
-- [ ] Modrinth は 1 project に loader 別 version を置き、CurseForge は既存 Bukkit Plugins project に Bukkit bridge を先に公開してから mod-loader file/class compatibility を確認する。
-- [ ] GitHub は `BlueMapWebChat` → `KOKOTO-WebChat` rename を優先し、rename 後 local remote を更新する。
+## ソース / 設定 / 多言語
+- [ ] Root/Bukkit/Fabric/NeoForge/Forge の metadata と成果物名がすべて `5.1.0` である。
+- [ ] `config.yml`、`config-baselines/config-5.1.0.yml`、`distribution/config-reference-5.1.0.yml` が byte-identical である。
+- [ ] 5.0.0 → 5.1.0 migration が `5.1.0_auto_migration` を記録し、対応している運用値は保持する一方で retired 設定は削除し、Relay v1 の trust/topology は推測せず明示的な再設定用に無効な Relay v2 として再構築し、正確な `5.1.0` では同一バージョンの設定再構築を停止する。
+- [ ] en-US/ko-KR/ja-JP/zh-CN の key set と placeholder が完全に一致する。
+- [ ] `inner.js` と 8 個すべての frontend wrapper が構文検査と embedded JS/CSS 一致検査を通過する。
 
-- [ ] ImageEmojis-Bero 使用時は shared `plugins/KOKOTO-WebChat/emojis`、`serverIp:webServerPort` 到達性、resource-pack reload/update、game↔web token rendering を確認する。
-- [ ] SimpleNicks-Bero 使用時は `player-display.mode: "display-name"` の nickname 表示と KWC account/UUID identity を確認する。
+## 機能 smoke test
+- [ ] ゲーム↔Web 公開チャット、Reply、URL、custom emoji、pin、検索、message token、content filter が正常に動作する。
+- [ ] 既存の不正な emoji pack/item 名が canonical 名へ移行され、新規 pack/item upload も同じ規則を使い、同一 pack 内の衝突は数値 suffix で解消される。
+- [ ] Emoji picker は自動スペースを追加せず正確な token を挿入し、設定した newline alias の emoji-only 行は詰めて表示され、blank-line alias は実際の空行を維持する。
+- [ ] Web Reply は元メッセージ全文を保持し、URL/custom emoji を読みやすく表示する。
+- [ ] ゲーム内 DM/group の名前クリックは既存コマンドを入力欄へ準備し、本文クリックは Reply を準備し、URL 部分は URL を開く。
+- [ ] 改ざんした `dm-...`/`group-...` Reply target は、実際の DM 参加者または現在の group member でない限り拒否される。
+
+## Relay / セキュリティ
+- [ ] 任意の signed `/relay/v2/handshake` identity/health probe は、双方が同じ group ID と group shared secret で互いを登録した場合に成功し、probe は route 状態を作らず direct relay は各 request を独立認証する。
+- [ ] 片側だけの peer 設定は両方向とも使用不可である。
+- [ ] `server-relay.forwarding.enabled` の既定値が `false` である。
+- [ ] forwarding 有効時も inbound/outbound の両 forwarding hop が HTTPS の場合だけ許可され、HTTP forwarding は拒否される。
+- [ ] 直接 HTTP peer は 1-hop 互換を維持しながら、明示的な多言語 WARNING/警告を出力する。
+- [ ] KWC 内蔵 HTTP listener が loopback 以外へ公開される場合、HTTP 公開警告を出力する。
+- [ ] 公開 relay と server 間 1:1 DM/read receipt が動作し、group chat は local 機能のままで server relay されない。
+
+## 配布 / ビルド
+- [ ] Modrinth updater が URL 移行中に `kokoto-webchat` を優先し `bluemapwebchat` へ fallback し、両方の取得失敗時だけ警告する。
+- [ ] CurseForge URL が `bukkit-plugins/kokoto-webchat` を指す。
+- [ ] Windows path preflight が full validator と Fabric/NeoForge/Forge の build-all/build-target entry point 全てで有効である。
+- [ ] Bukkit は JDK 17、Fabric 16 / NeoForge 12 / Forge 16 の exact target は対象ごとの JDK 17/21/25 でビルドされる。
+- [ ] `validate-release-windows.bat` が `FINAL RELEASE BUILD PASS`、45 個の deployable JAR、SHA256SUMS を生成する。
+- [ ] 最終 acceptance は `--fast` なしで実行する。sequential または `--parallel` clean 実行は許可するが、cached/partial build を `FINAL RELEASE BUILD PASS` として扱わない。

@@ -1,132 +1,192 @@
-# 서버 간 공개 채팅 릴레이
+# 서버 릴레이 — Protocol v2
 
-`server-relay`는 여러 KOKOTO WebChat 서버의 공개 채팅을 연결합니다. 게임, 연동된 웹 사용자, 게스트 메시지를 상대 서버의 웹 채팅과 Minecraft 채팅으로 전달하며 메시지 ID, 댓글 관계, 발신자 정보와 원본 서버 정보를 유지합니다.
 
-`peers`는 서버끼리 상시 연결 세션을 만드는 목록이 아닙니다. 각 항목의 `url`은 **이 서버가 메시지를 보낼 HTTP 대상**이며, 로컬 공개 채팅이 발생할 때 해당 URL로 요청을 보냅니다. 같은 항목의 `id`/`secret`은 그 서버에서 들어오는 릴레이 요청을 인증할 때도 사용됩니다. 양방향으로 주고받으려면 양쪽 서버에 서로의 항목을 등록해야 합니다.
+![Relay Protocol v2 요청별 인증 및 암호화 메시지 흐름](assets/relay-v2-flow.gif)
 
-## 서버 2대 설정 예시
+> **보안 경계:** Relay v2는 종단간 암호화가 아니라 **hop-by-hop authenticated encryption**입니다. 전달에 참여하는 KWC 서버는 신뢰 경계 안의 참가자입니다.
 
-서버 1:
+KOKOTO WebChat 5.1.0은 5.0.0의 flat relay trust 구조를 **Relay Protocol v2**로 교체합니다. 공개 채팅과 타 서버 1:1 DM/읽음 확인은 같은 group 기반 인증 전송을 사용합니다. 그룹 채팅 방 자체는 로컬 기능이며 relay하지 않습니다.
+
+## 신뢰 모델
+
+Relay **group이 보안 경계**입니다. 각 group에는 다음만 둡니다.
+
+- group `id`
+- 해당 group의 모든 관계가 공통으로 사용하는 `shared-secret`
+- group별 `forwarding.enabled`
+- `id`, `url`, `enabled`만 갖는 peer 목록
+
+v2에는 `peers[].secret`이 없습니다. 따라서 peer에 다른 group의 secret을 잘못 연결하는 설정 자체를 만들지 못합니다.
+
+같은 peer ID를 로컬의 여러 group에 중복 등록할 수 없습니다. 중복이 발견되면 그 peer ID의 모든 등록을 비활성 처리하고 진단 로그를 남깁니다.
+
+`shared-secret`은 최종적으로 최소 **32자**여야 하지만 운영자가 직접 긴 값을 만들 필요는 없습니다. 최초 설정에서는 **한 서버에서만** `shared-secret: ""`로 두고 KWC를 시작하거나 `/kchat reload`를 실행하세요. KWC가 암호학적으로 안전한 32바이트 URL-safe 난수값을 생성해 그 서버의 `config.yml`에 직접 저장하며, secret 원문은 로그에 출력하지 않습니다. 그 생성값을 같은 group의 다른 모든 서버에 그대로 복사합니다. 각 서버에서 따로 빈 값으로 시작하면 서로 다른 secret이 생성되어 요청 인증이 실패하므로 그렇게 하면 안 됩니다. 이미 비어 있지 않은 secret은 자동 재생성하지 않으며, 수동으로 넣은 값이 32자 미만이면 그대로 invalid/fail-closed 처리됩니다. secret이 유출되면 해당 group의 모든 서버에서 함께 교체하세요.
+
+## 설정 예시
 
 ```yaml
 server-relay:
   enabled: true
-  server-id: "server1"
-  server-name: "서버 1"
-  shared-secret: "양쪽-서버에서-동일하게-쓸-충분히-긴-임의의-비밀키"
+  server-id: "server-1"
+  server-name: "Server 1"
   connect-timeout-seconds: 5
   request-timeout-seconds: 10
   max-clock-skew-seconds: 60
   dedupe-seconds: 300
   max-hops: 8
-  forward-received-public-chat: true
+
   sources:
     game: true
     web: true
     guest: true
     discord: false
     system: false
+
   delivery:
     web: true
     game: true
+
   game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-  peers:
-    - id: "server3"
-      url: "https://server3.example.com/chat/api"
-      secret: ""
-      enabled: true
+
+  groups:
+    - id: "main"
+      shared-secret: ""
+      forwarding:
+        enabled: false
+      peers:
+        - id: "server-2"
+          url: "https://server2.example.com/api"
+          enabled: true
 ```
 
-서버 3:
+먼저 `server-1`을 빈 값으로 한 번 시작/리로드하고 `config.yml`을 다시 열어 생성된 secret을 확인합니다. 그 값을 `server-2`에 그대로 복사해 같은 `main` group에서 `server-1`을 역방향 peer로 등록합니다.
 
 ```yaml
 server-relay:
   enabled: true
-  server-id: "server3"
-  server-name: "서버 3"
-  shared-secret: "양쪽-서버에서-동일하게-쓸-충분히-긴-임의의-비밀키"
-  sources:
-    game: true
-    web: true
-    guest: true
-    discord: false
-    system: false
-  delivery:
-    web: true
-    game: true
-  game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-  peers:
-    - id: "server1"
-      url: "https://server1.example.com/chat/api"
-      secret: ""
-      enabled: true
+  server-id: "server-2"
+  server-name: "Server 2"
+  groups:
+    - id: "main"
+      shared-secret: "<copy-the-generated-secret-from-server-1>"
+      forwarding:
+        enabled: false
+      peers:
+        - id: "server-1"
+          url: "https://server1.example.com/api"
+          enabled: true
 ```
 
-피어는 반드시 서로 등록해야 합니다. 요청을 받는 서버의 `peers[].id`가 보내는 서버의 `server-id`와 정확히 같아야 합니다. 서버마다 ID는 고유해야 하며 같은 ID를 두 서버에 사용하면 안 됩니다.
+## 요청별 인증과 선택적 identity/health probe
 
-## HTTPS와 리버스 프록시
+direct relay는 5.0.0과 같은 동작 방식으로 각 `/relay/v2/message` 요청을 독립적으로 인증합니다. 수신 서버는 송신 서버를 같은 group에 같은 shared secret으로 등록해야 하며, 이 정보로 요청을 인증/복호화합니다. 반대 방향은 독립적입니다. `/relay/v2/handshake`는 상태를 저장하지 않는 진단용 identity/health probe일 뿐이며 direct route를 생성·유지·활성화·비활성화하지 않습니다. 선택적 probe 요청에는 다음이 포함됩니다.
 
-`url`에는 상대 서버에서 외부 접근 가능한 KWC API 기본 주소를 입력합니다. `/relay/receive`는 자동으로 붙습니다.
+- protocol `2`, 제품 버전 `5.1.0`
+- `group-id`
+- 송신 server ID
+- 대상 server ID
+- timestamp
+- nonce
+- 송신자가 상대에게 실제로 사용하는 transport (`http` 또는 `https`)
+
+수신측은 group 존재 여부, 해당 group의 peer membership, 대상 ID, 시간 오차, nonce 재사용, group shared-secret HMAC을 모두 검증합니다. 따라서 한쪽에만 peer를 등록한 구성은 어느 방향에서도 정상 관계가 되지 않습니다.
+
+Endpoint는 다음 두 개입니다.
 
 ```text
-설정값: https://server3.example.com/chat/api
-실제 요청: https://server3.example.com/chat/api/relay/receive
+/relay/v2/handshake
+/relay/v2/message
 ```
 
-공개 HTTPS 경로가 `/relay/receive`의 POST 요청을 포함해 KWC API 전체를 내부 KWC HTTP 포트로 전달해야 합니다. 이미 HTTPS로 공개 중이면 8899 포트를 외부에 직접 열 필요가 없습니다. 프록시는 다음 헤더를 보존해야 합니다.
+구형 v1 endpoint (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, `/relay/dm/read`)는 **HTTP 426**과 protocol `2` / version `5.1.0` 요구를 반환합니다.
+
+## 암호화와 인증
+
+Relay v2는 group secret, group ID, 송신 ID, 수신 ID를 입력으로 HKDF-SHA256을 사용해 **방향별 256-bit key**를 생성합니다. 각 요청은 12-byte 난수 IV와 128-bit tag의 AES-256-GCM을 사용합니다.
+
+다음 값은 GCM AAD에 포함됩니다.
 
 ```text
-X-BMWC-Relay-Version
-X-BMWC-Relay-From
-X-BMWC-Relay-Timestamp
-X-BMWC-Relay-Signature
+group-id
+from-server-id
+to-server-id
+timestamp
+nonce
+IV
 ```
 
-공인 인증서는 Java에서 보통 바로 동작합니다. 자체 서명 인증서는 Java trust store에 등록하지 않으면 요청이 KWC까지 도달하기 전에 TLS 검증에서 실패합니다.
+이 값 중 하나라도 변경되면 인증에 실패합니다. 암호화된 payload 안에는 `public`, `dm`, `read` 종류와 해당 relay envelope가 들어갑니다.
 
-## 비밀키
+알려진 peer에 대한 성공/오류 응답도 HMAC-SHA256으로 인증합니다. 응답 서명에는 group, 응답 서버, 요청 서버, 응답 timestamp, 원 요청 nonce, HTTP status, response body가 들어가므로 네트워크 중간자가 성공 응답만 위조할 수 없습니다.
 
-- `shared-secret`은 모든 피어에 사용할 기본 키입니다.
-- `peers[].secret`은 해당 피어 연결에만 사용할 개별 키이며 공통 키보다 우선합니다.
-- 서버가 2대라면 양쪽 `shared-secret`을 같은 긴 임의 문자열로 설정하고 피어의 `secret: ""`은 비워두면 됩니다.
-- 피어별 키를 쓰면 양쪽의 서로 마주보는 피어 항목에 같은 전용 키를 넣어야 합니다.
-- 피어 키와 공통 키가 모두 없으면 해당 피어는 활성 목록에서 제외됩니다.
+## 재전송/루프 방어
 
-## 여러 서버 연결
+- `max-clock-skew-seconds` timestamp 검사
+- 요청 nonce 중복 차단
+- relay ID / receipt ID 중복 차단
+- origin server loop 검사
+- forwarding `max-hops`
 
-- 풀 메시: 모든 서버가 나머지 모든 서버를 피어로 등록합니다. 가장 단순하고 한 서버 장애에도 유리합니다.
-- 허브: 각 리프 서버는 허브만 등록하고 허브가 모든 리프를 등록합니다. `forward-received-public-chat: true`이면 허브가 받은 공개 채팅을 다른 피어로 다시 전달합니다. `false`이면 공개 채팅은 직접 설정한 피어 연결까지만 전달됩니다.
+을 함께 적용합니다.
 
-`forward-received-public-chat`은 공개 채팅에만 적용되며 서버 간 DM 라우팅/읽음 확인의 다중 홉 동작에는 영향을 주지 않습니다. 릴레이 ID 중복 제거, 원본 서버 억제, 바로 전 송신 피어 제외, `max-hops`가 순환 구조의 무한 반복을 방지합니다. 상대 서버가 꺼져 있을 때의 메시지를 나중에 재전송하는 영구 오프라인 큐는 없습니다.
+## HTTP와 HTTPS
 
-## reload와 진단 로그
+직접 1-hop HTTP peer는 허용합니다. **Relay payload 자체는 AES-256-GCM으로 암호화·인증되므로 v1처럼 평문 payload를 보내지 않습니다.** 그래도 HTTPS는 transport metadata 보호, 일반적인 서버 인증, defense-in-depth를 제공하므로 KWC가 명시적인 `[경고]`를 출력합니다.
 
-`/kchat reload`는 기존 릴레이 인스턴스를 닫고 현재 설정으로 새 인스턴스를 만듭니다. 릴레이는 상시 소켓 연결이 아니라 메시지마다 HTTPS 요청을 보내므로 별도 재연결 상태는 없습니다.
+HTTP는 forwarding hop으로 사용할 수 없습니다.
 
-정상 로그 예시:
+Forwarding 조건은 모두 만족해야 합니다.
 
-```text
-Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
-```
+1. 해당 group의 `forwarding.enabled: true`
+2. 이 서버에 설정된 incoming peer 항목의 URL이 HTTPS
+3. 선택할 다음 peer 항목의 URL도 HTTPS
+4. 다음 peer가 같은 group에 속함
 
-`activePeers`가 설정한 수보다 적으면 바로 앞뒤 경고에 제외 이유가 표시됩니다. 중복 ID, 자기 서버와 같은 ID, 빈 URL, 잘못된 URL/프로토콜, 비밀키 누락을 확인하세요.
+HTTP 차단은 **peer 단위**입니다. `http://` peer는 direct relay에는 계속 사용할 수 있지만 그 peer에서 들어온 메시지를 더 forwarding하지 않고, 그 peer 자체도 다음 forwarding hop으로 선택하지 않습니다. 같은 group의 다른 `https://` peer는 계속 forwarding 후보가 됩니다.
 
-## HTTP 오류
+## Group 격리
 
-- `403 unknown_peer`: 받는 서버의 활성 피어 목록에 보내는 서버의 정확한 `server-id`가 없습니다. 받는 서버의 `activePeers` 로그와 양방향 설정을 확인합니다.
-- `404 relay_disabled`: 받는 서버에서 `server-relay.enabled: false`입니다. 이 응답을 한 번 확인하면 송신 서버는 해당 피어로의 추가 요청을 즉시 중지하며 주기 probe도 보내지 않습니다. 상대 서버에서 릴레이를 켠 뒤 송신 서버의 KWC를 reload하거나 재시작하면 다시 시도합니다.
+한 group에서 수신한 메시지를 다른 group으로 forwarding하지 않습니다. 다음 hop은 항상 **수신한 동일 group 내부**에서만 선택합니다. 공개 채팅, DM, DM read receipt에 동일하게 적용됩니다.
 
-`403 unknown_peer`는 수신 서버가 해당 직접 요청을 저장하거나 게시하기 전에 거부됩니다. 같은 목적지에서 정상 응답 없이 `unknown_peer`가 3회 발생하면 송신 서버는 그 목적지를 60초 backoff 상태로 전환합니다. backoff 동안 발생한 해당 목적지 메시지는 송신하지 않고 무시하며 별도의 주기 probe도 보내지 않습니다. 60초가 지난 뒤 처음 발생한 실제 릴레이 메시지가 복구 확인을 겸하며, 그 시도도 실패하면 마지막 실패 시점부터 다시 60초를 기다립니다. 정상 응답이 오면 카운터와 backoff 상태가 즉시 초기화됩니다. 다른 허브를 통해 같은 메시지가 보이는 경우는 별도의 경유 전달이며, 403을 받은 직접 요청이 수락된 것은 아닙니다. 연결 거부, timeout 같은 transport 실패도 같은 3회/60초 backoff를 사용하므로 오프라인 피어 때문에 포워딩 메시지마다 경고가 반복되지 않습니다.
-- `401 bad_signature`: 실제 적용되는 비밀키가 다르거나 프록시가 본문/헤더를 변경했습니다.
-- `401 expired_request`: 양쪽 서버 시간이 `max-clock-skew-seconds`보다 많이 차이 납니다.
-- `404 relay_disabled`: 받는 서버에서 릴레이가 꺼져 있거나 프록시가 다른 KWC 인스턴스/경로로 전달합니다.
-- `426 unsupported_protocol`: 양쪽 플러그인의 릴레이 프로토콜 버전이 호환되지 않습니다.
+로컬에서 새로 발생한 메시지를 서버가 명시적으로 가입한 여러 group에 각각 publish하는 것은 가능하지만, 이는 수신 메시지의 cross-group forwarding과는 다릅니다.
 
-설정을 바꾼 쪽에서 `/kchat reload`를 실행합니다. 특히 받는 서버의 피어 목록이나 비밀키를 바꿨다면 받는 서버도 반드시 reload해야 합니다.
+## E2EE가 아닌 hop-by-hop 암호화
 
-## 서버 구별 표시
+Relay v2는 **hop-by-hop authenticated encryption**이며 end-to-end encryption이 아닙니다. 중계 서버는 incoming payload를 복호화해 envelope를 검증·처리한 뒤 다음 hop용 방향키로 다시 암호화합니다.
 
-- 웹 채팅은 `originServerId`를 기준으로 서버별 고정 색상의 배지를 표시합니다.
-- 웹에서는 현재 서버의 배지는 생략하고 다른 서버 메시지에만 서버별 고정 색상 배지를 표시합니다. 게임 출력도 현재 서버명은 생략하며, 다른 서버 메시지의 이전 형식에 `{server}`와 `{server_id}`가 모두 없을 때만 `[server-name]`을 자동으로 붙입니다. Discord는 여러 서버가 공유하는 외부 채널이므로 서버명을 유지합니다.
-- Discord 직접 전달 형식도 `{server}`, `{server_id}`를 지원하며 없으면 자동 접두사가 붙습니다. 같은 채널을 여러 서버가 공유할 때는 로컬 게임 채팅을 실제로 감지한 원본 서버만 DiscordSRV 메시지를 수정하며, 다른 서버는 자기 서버명이나 이모지 링크를 다시 붙이지 않습니다. 수신 서버는 릴레이 메시지를 Discord로 재전송하지 않으므로 경유 서버 대체 전송은 없습니다.
-- `sources.discord`와 `sources.system`은 DiscordSRV 순환 및 과도한 이벤트 복제를 막기 위해 기본적으로 꺼져 있습니다.
+따라서 중계 서버는 trusted participant이며 relay payload를 볼 수 있습니다. Relay v2를 E2EE로 설명하면 안 됩니다.
+
+## 5.0.0 / v1에서 업그레이드
+
+5.1.0은 기존 flat 설정을 보고 v2 group을 **추측해서 만들지 않습니다**. 최초 5.0.0 → 5.1.0 migration에서는:
+
+- `server-relay.shared-secret` 폐기
+- flat `server-relay.peers` 폐기
+- `server-relay.forward-received-public-chat` 폐기
+- 구형 top-level forwarding 설정을 임의의 group에 이식하지 않음
+- `server-relay.enabled: false`로 안전하게 reset
+- 운영자가 v2 group을 직접 정의한 뒤 다시 활성화
+
+합니다. 잘못된 trust group 자동 생성보다 재설정을 요구하는 쪽을 우선합니다.
+
+## 운영 확인
+
+시작/reload 로그에서 다음을 확인하세요.
+
+- `Server relay protocol v2 enabled`
+- direct 요청의 인증/복호화 성공 여부와 선택적으로 실행한 identity/health probe 결과
+- peer ID 중복 진단
+- group secret 길이 진단
+- HTTP peer `[경고]`
+- forwarding HTTPS 차단 경고
+
+선택적 identity/health probe가 실패하면 group ID, 양쪽 server ID, 상호 peer 등록, group secret, API base URL, 서버 시간 동기화, 네트워크 접근성을 확인하세요. direct 메시지 전달은 probe 상태와 독립적입니다.
+
+## 참조 표준 및 공식 문서
+
+이 문서에서 사용하는 1차 표준과 공식 서드파티 문서는 [REFERENCES_KO.md](REFERENCES_KO.md)에 정리되어 있습니다.
+
+- [RFC 2104 — HMAC](https://www.rfc-editor.org/rfc/rfc2104.html)
+- [RFC 5869 — HKDF](https://www.rfc-editor.org/info/rfc5869/)
+- [NIST SP 800-38D — GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)
+- [RFC 9110 — HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)

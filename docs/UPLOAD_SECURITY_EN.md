@@ -1,5 +1,8 @@
 # KOKOTO WebChat Upload Security Notes
 
+
+![Upload security pipeline](assets/upload-security-pipeline.svg)
+
 File upload is convenient but can be abused on public servers. The default configuration keeps guest uploads disabled.
 
 ## Recommended defaults

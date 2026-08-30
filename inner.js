@@ -134,6 +134,11 @@
     dmEdgePendingBottomUntil: 0,
     dmEdgeBottomExtraScrollCount: 0,
     dmMessages: [],
+    dmReplyTarget: null,
+    dmReplyJumpGeneration: 0,
+    dmReplyJumpStartedAt: 0,
+    dmReplyJumpLastCenteredScrollTop: NaN,
+    dmReplyJumpStabilizeTimer: null,
     dmMessagesHasMore: false,
     dmMessagesLoading: false,
     dmBottomRetryInFlight: false,
@@ -172,6 +177,11 @@
     groupEdgePendingBottomUntil: 0,
     groupEdgeBottomExtraScrollCount: 0,
     groupMessages: [],
+    groupReplyTarget: null,
+    groupReplyJumpGeneration: 0,
+    groupReplyJumpStartedAt: 0,
+    groupReplyJumpLastCenteredScrollTop: NaN,
+    groupReplyJumpStabilizeTimer: null,
     groupMessagesHasMore: false,
     groupMessagesLoading: false,
     groupBottomRetryInFlight: false,
@@ -194,6 +204,8 @@
     emojiByAlias: new Map(),
     emojiPanelOpen: false,
     emojiLoading: false,
+    emojiRetryTimer: null,
+    emojiRetryAttempt: 0,
     emojiPanelHeightPx: Math.max(56, Math.min(420, Number(localStorage.getItem("kwc.emojiPanelHeightPx") || 180) || 180)),
     emojiPanelResizeStart: null,
     adminEmojiSelectedPack: localStorage.getItem("kwc.adminEmojiPack") || "default",
@@ -419,9 +431,11 @@
     return parts.map(esc).join(minecraftLegacyTextHtml(sender, true));
   }
 
-  function minecraftLegacyTextHtml(value, renderColors = true, allowLinks = true) {
+  function minecraftLegacyTextHtml(value, renderColors = true, allowLinks = true, readableUrlsWithoutLinks = false) {
     const text = normalizeMinecraftLegacySource(value);
-    if (!renderColors) return allowLinks ? linkifyText(stripMinecraftColorCodes(text)) : esc(stripMinecraftColorCodes(text));
+    if (!renderColors) return allowLinks
+      ? renderCustomEmojiTokens(stripMinecraftColorCodes(text), true, false)
+      : renderCustomEmojiTokens(stripMinecraftColorCodes(text), false, readableUrlsWithoutLinks);
 
     let out = "";
     let buf = "";
@@ -441,7 +455,7 @@
     const flush = () => {
       if (!buf) return;
       const attr = styleAttr();
-      const html = renderCustomEmojiTokens(buf, allowLinks);
+      const html = renderCustomEmojiTokens(buf, allowLinks, readableUrlsWithoutLinks);
       out += attr ? `<span class="kwc-mc-legacy" style="${esc(attr)}">${html}</span>` : html;
       buf = "";
     };
@@ -562,6 +576,30 @@
   function displayLinkText(value) {
     const text = String(value ?? "");
     try { return decodeURI(text); } catch (_) { return text; }
+  }
+
+  function displayUrlsAsText(value) {
+    const text = String(value ?? "");
+    const urlRe = /\b((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
+    let out = "";
+    let last = 0;
+    let match;
+    while ((match = urlRe.exec(text)) !== null) {
+      const raw = match[1];
+      let url = raw;
+      let trailing = "";
+      while (/[.,!?;:)\]\}]+$/.test(url)) {
+        trailing = url.slice(-1) + trailing;
+        url = url.slice(0, -1);
+      }
+      if (!url) continue;
+      out += esc(text.slice(last, match.index));
+      out += esc(displayLinkText(url));
+      out += esc(trailing);
+      last = match.index + raw.length;
+    }
+    out += esc(text.slice(last));
+    return out;
   }
 
   function linkifyText(value) {
@@ -1455,6 +1493,48 @@
 
 
 
+  // Shared browser-side policy for recurring operational HTTP/network failures.
+  // Functional handling (for example auth expiration or a caller choosing to retry)
+  // stays in the caller. This only prevents the same automatic failure from filling
+  // DevTools on every retry.
+  const operationalIssueState = new Map();
+  const OPERATIONAL_ISSUE_REPEAT_MS = 30 * 60 * 1000;
+
+  function operationalApiKey(path) {
+    const raw = String(path || "");
+    const q = raw.indexOf("?");
+    return "api:" + (q >= 0 ? raw.substring(0, q) : raw);
+  }
+
+  function reportOperationalIssue(key, fingerprint, message, details) {
+    const now = Date.now();
+    const k = String(key || "unknown");
+    const fp = String(fingerprint || "unknown");
+    const previous = operationalIssueState.get(k);
+    if (!previous || previous.fingerprint !== fp) {
+      operationalIssueState.set(k, {fingerprint: fp, lastLoggedAt: now, suppressed: 0});
+      console.warn(message, details || {});
+      return;
+    }
+    if (now - previous.lastLoggedAt < OPERATIONAL_ISSUE_REPEAT_MS) {
+      previous.suppressed += 1;
+      return;
+    }
+    const repeated = previous.suppressed + 1;
+    previous.suppressed = 0;
+    previous.lastLoggedAt = now;
+    console.warn(message + ` (same issue repeated ${repeated} time(s); intermediate logs were suppressed)`, details || {});
+  }
+
+  function recoverOperationalIssue(key) {
+    operationalIssueState.delete(String(key || "unknown"));
+  }
+
+  function isOperationalHttpFailure(status) {
+    const code = Number(status || 0);
+    return code === 429 || code >= 500;
+  }
+
   function api(path, opts = {}) {
     const timeoutMs = Number(opts.timeoutMs || 0);
     const fetchOpts = Object.assign({}, opts);
@@ -1483,6 +1563,11 @@
       if (!r.ok) {
         let response = null;
         try { response = await r.clone().json(); } catch (_) {}
+        if (isOperationalHttpFailure(r.status)) {
+          const errorCode = response && typeof response === "object" ? String(response.error || "") : "";
+          reportOperationalIssue(operationalApiKey(path), `http:${r.status}:${errorCode || "unknown"}`,
+            "KOKOTO WebChat API request failed", {endpoint: path, status: r.status, error: errorCode || "unknown"});
+        }
         if (returnHttpErrorResponse && response && typeof response === "object") {
           if (response.ok === undefined) response.ok = false;
           return response;
@@ -1492,8 +1577,16 @@
         err.response = response;
         throw err;
       }
+      recoverOperationalIssue(operationalApiKey(path));
       return r.json();
     }).catch(err => {
+      if (!err || !err.status) {
+        const timedOut = !!(controller && err && err.name === "AbortError");
+        const name = String(err && err.name || "NetworkError");
+        const message = String(err && err.message || "network failure");
+        reportOperationalIssue(operationalApiKey(path), timedOut ? "timeout" : `network:${name}:${message}`,
+          "KOKOTO WebChat API network request failed", {endpoint: path, error: timedOut ? "timeout" : message});
+      }
       if (isAuthExpiredApiError(err)) {
         handleAuthExpired("api");
       }
@@ -2026,6 +2119,20 @@
     el.style.display = visible ? "" : "none";
   }
 
+  function normalizeSingleLineComposer(input) {
+    if (!input) return;
+    const value = String(input.value ?? "");
+    if (!/[\r\n]/.test(value)) return;
+    const start = Number.isFinite(input.selectionStart) ? input.selectionStart : value.length;
+    const end = Number.isFinite(input.selectionEnd) ? input.selectionEnd : start;
+    const normalize = text => String(text || "").replace(/\r\n?|\n/g, " ");
+    const next = normalize(value);
+    const nextStart = normalize(value.slice(0, start)).length;
+    const nextEnd = normalize(value.slice(0, end)).length;
+    input.value = next;
+    try { input.setSelectionRange(nextStart, nextEnd); } catch (_) {}
+  }
+
   function updateDirectMessageComposeControls() {
     if (!state.dmModalOpen) return;
     syncDirectMessageModalSettings();
@@ -2105,26 +2212,94 @@
     }
   }
 
-  function renderCustomEmojiTokens(text, allowLinks = true) {
+  function renderCustomEmojiTokens(text, allowLinks = true, readableUrlsWithoutLinks = false) {
     text = String(text ?? "");
-    const renderText = value => allowLinks ? linkifyText(value) : esc(value);
-    if (!state.emojiEnabled || !state.emojiById || state.emojiById.size === 0) return renderText(text);
-    const re = customEmojiTokenRegex();
+    const linkEnabled = allowLinks && (!state.config || state.config.linkifyUrls !== false);
+    const renderPlain = value => readableUrlsWithoutLinks ? displayUrlsAsText(value) : esc(value);
+    const renderNonUrl = value => {
+      value = String(value ?? "");
+      if (!state.emojiEnabled || !state.emojiById || state.emojiById.size === 0) return renderPlain(value);
+      const re = customEmojiTokenRegex();
+      let out = "";
+      let last = 0;
+      let match;
+      while ((match = re.exec(value)) !== null) {
+        out += renderPlain(value.slice(last, match.index));
+        const item = customEmojiByToken(match[1]);
+        out += item ? customEmojiImgHtml(item) : esc(match[0]);
+        last = match.index + match[0].length;
+      }
+      out += renderPlain(value.slice(last));
+      return out;
+    };
+
+    // Protect complete URL spans before looking for :emoji: tokens. A registered
+    // token-shaped path fragment inside a URL must remain part of the URL instead
+    // of turning into an image. Reply previews reuse this path with anchors disabled.
+    const urlRe = /\b((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
     let out = "";
     let last = 0;
     let match;
-    while ((match = re.exec(text)) !== null) {
-      out += renderText(text.slice(last, match.index));
-      const item = customEmojiByToken(match[1]);
-      out += item ? customEmojiImgHtml(item) : esc(match[0]);
-      last = match.index + match[0].length;
+    while ((match = urlRe.exec(text)) !== null) {
+      const raw = match[1];
+      let url = raw;
+      let trailing = "";
+      while (/[.,!?;:)\]\}]+$/.test(url)) {
+        trailing = url.slice(-1) + trailing;
+        url = url.slice(0, -1);
+      }
+      if (!url) continue;
+      out += renderNonUrl(text.slice(last, match.index));
+      if (linkEnabled) {
+        const href = safeExternalUrl(url);
+        out += href
+          ? `<a class="kwc-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(displayLinkText(url))}</a>`
+          : esc(raw);
+      } else {
+        out += readableUrlsWithoutLinks ? esc(displayLinkText(url)) : esc(url);
+      }
+      out += esc(trailing);
+      last = match.index + raw.length;
     }
-    out += renderText(text.slice(last));
+    out += renderNonUrl(text.slice(last));
     return out;
   }
 
+  function emojiOnlyTokenLine(value) {
+    const text = String(value ?? "");
+    if (!text.trim() || !state.emojiEnabled || !state.emojiById || state.emojiById.size === 0) return false;
+    const re = customEmojiTokenRegex();
+    let last = 0;
+    let found = false;
+    let match;
+    while ((match = re.exec(text)) !== null) {
+      if (text.slice(last, match.index).trim()) return false;
+      if (!customEmojiByToken(match[1])) return false;
+      found = true;
+      last = match.index + match[0].length;
+    }
+    return found && !text.slice(last).trim();
+  }
+
+  function renderMessageTokenLines(value, options = {}) {
+    const text = String(value ?? "").replace(/\r\n?/g, "\n");
+    const lines = text.split("\n");
+    const allowLinks = options.allowLinks !== false;
+    const readableUrlsWithoutLinks = options.readableUrlsWithoutLinks === true;
+    if (lines.length === 1) return renderCustomEmojiTokens(text, allowLinks, readableUrlsWithoutLinks);
+    return lines.map(line => {
+      const empty = line.length === 0;
+      const emojiOnly = !empty && emojiOnlyTokenLine(line);
+      const classes = ["kwc-token-line"];
+      if (empty) classes.push("kwc-token-line-empty");
+      if (emojiOnly) classes.push("kwc-token-line-emoji-only");
+      const html = empty ? "&#8203;" : renderCustomEmojiTokens(line, allowLinks, readableUrlsWithoutLinks);
+      return `<span class="${classes.join(" ")}">${html}</span>`;
+    }).join("");
+  }
+
   function messageTextHtml(msg) {
-    return renderCustomEmojiTokens(plainDisplayMessageText(msg));
+    return renderMessageTokenLines(plainDisplayMessageText(msg));
   }
 
   function replyPreviewPlain(msg) {
@@ -2143,8 +2318,9 @@
   function replyTargetFromMessage(msg) {
     if (!msg || !msg.id || msg.hidden) return null;
     const sender = displaySender(msg) || msg.sender || "";
-    let preview = plainDisplayMessageText(msg).replace(/[\r\n]+/g, " ").trim();
-    if (preview.length > 120) preview = preview.slice(0, 117) + "...";
+    // Preserve the complete original message in the reply payload. Compact reply
+    // presentation is a rendering concern (ellipsis/nowrap), not stored data.
+    const preview = plainDisplayMessageText(msg);
     return {id: String(msg.id), sender, preview};
   }
 
@@ -2174,10 +2350,12 @@
   }
 
   function replyPreviewHtml(value) {
-    // Reply previews are stored as a plain short copy of the original text.
-    // Use the dedicated legacy text renderer so raw §a/&a/&#RRGGBB tags do not
-    // leak into the compact reply reference UI.
-    return minecraftLegacyTextHtml(String(value || ""), true, false);
+    // replyToPreview keeps the complete original text. Collapse line breaks only
+    // for this compact one-line UI, keep registered emojis rendered, and decode
+    // percent-encoded URL text for readability without creating nested anchors
+    // inside the reply jump button.
+    const compact = String(value || "").replace(/[\r\n]+/g, " ");
+    return minecraftLegacyTextHtml(compact, true, false, true);
   }
 
   function replyReferenceHtml(msg) {
@@ -2185,8 +2363,9 @@
     const sender = msg.replyToSender || t("sender.unknown", "Unknown");
     const preview = msg.replyToPreview || "";
     const plainSender = plainLegacyText(sender).trim() || t("sender.unknown", "Unknown");
-    const plainPreview = plainLegacyText(preview).trim();
-    const title = plainPreview ? fmt("reply.jump", "Jump to replied message") + ": " + plainSender + " - " + plainPreview : t("reply.jump", "Jump to replied message");
+    const plainPreview = plainLegacyText(preview).replace(/[\r\n]+/g, " ").trim();
+    const titlePreview = plainPreview.length > 240 ? plainPreview.slice(0, 237) + "..." : plainPreview;
+    const title = titlePreview ? fmt("reply.jump", "Jump to replied message") + ": " + plainSender + " - " + titlePreview : t("reply.jump", "Jump to replied message");
     return `<button type="button" class="kwc-reply-ref" data-reply-jump="${esc(msg.replyToId)}" title="${esc(title)}">
       <span class="kwc-reply-ref-sender">${minecraftLegacyTextHtml(sender, true)}</span>
       <span class="kwc-reply-ref-preview">${replyPreviewHtml(preview)}</span>
@@ -3907,7 +4086,7 @@
             <button type="button" class="kwc-mini-action kwc-reply-cancel" id="kwc-reply-cancel" title="${t("button.cancel", "Cancel")}">×</button>
           </div>
           <div class="kwc-row">
-            <input class="kwc-input" id="kwc-message" maxlength="2048" placeholder="${t("placeholder.message", "message")}">
+            <textarea class="kwc-input kwc-chat-composer" id="kwc-message" rows="1" autocomplete="off" enterkeyhint="send" maxlength="2048" placeholder="${t("placeholder.message", "message")}"></textarea>
             <button class="kwc-button kwc-command kwc-hidden" id="kwc-command" title="${t("button.commands", "Commands")}">/</button>
             <button class="kwc-button kwc-emoji-button kwc-hidden" id="kwc-emoji" title="${t("button.emoji", "Emoji")}">☺</button>
             <button class="kwc-button kwc-upload kwc-hidden" id="kwc-upload" title="${t("button.upload", "Attach")}">&#128206;</button>
@@ -4025,7 +4204,10 @@
       }
       if (e.key === "Escape") { hideCommandPanel(); hideEmojiPanel(); if (state.replyTarget) clearReplyTarget(); }
     });
-    messageInput.addEventListener("input", scheduleCommandPanelUpdate);
+    messageInput.addEventListener("input", () => {
+      normalizeSingleLineComposer(messageInput);
+      scheduleCommandPanelUpdate();
+    });
     messageInput.addEventListener("focus", scheduleCommandPanelUpdate);
     messageInput.addEventListener("blur", () => setTimeout(hideCommandPanel, 160));
     installHistoryPaging();
@@ -6532,6 +6714,7 @@
     root.style.setProperty("--kwc-button-font-size", fontPx(state.config.uiButtonFontSize, 12));
     root.style.setProperty("--kwc-badge-font-size", fontPx(state.config.uiBadgeFontSize, 10));
     root.style.setProperty("--kwc-chat-message-font-size", fontPx(userSize == null ? configuredMessageSize : userSize, configuredMessageSize));
+    syncDetachedModalThemeVariables();
   }
 
   function clampOpacity(value) {
@@ -6548,7 +6731,9 @@
   }
 
   function savedUserTheme() {
-    return normalizedTheme(localStorage.getItem("kwc.userTheme") || "");
+    const raw = String(localStorage.getItem("kwc.userTheme") || "").trim().toLowerCase();
+    if (!raw) return "";
+    return normalizedTheme(raw);
   }
 
   function resetVisualUserPreferencesForTheme() {
@@ -6750,7 +6935,8 @@
   }
 
   function savedUserTextShadowMode() {
-    return normalizeTextShadowMode(localStorage.getItem("kwc.userTextShadowMode") || "");
+    const raw = String(localStorage.getItem("kwc.userTextShadowMode") || "").trim().toLowerCase();
+    return ["none", "auto", "dark", "light", "custom"].includes(raw) ? raw : "";
   }
 
   function savedUserTextShadowCustom() {
@@ -6973,6 +7159,7 @@
     if (chatFamily) root.style.setProperty("--kwc-chat-font-family", chatFamily);
     else root.style.removeProperty("--kwc-chat-font-family");
     applyUserColorOverrides(root);
+    syncDetachedModalThemeVariables();
 
     if (state.themeSyncTimer) {
       clearInterval(state.themeSyncTimer);
@@ -7742,6 +7929,7 @@
       // web config/captcha state. Re-read config and one latest history page so
       // the page recovers without requiring a manual browser refresh.
       await loadConfig();
+      await loadEmojis({force: true, retryOnFailure: true});
       await loadHistory(false, {skipIfUnchanged: false});
     } catch (e) {
       console.warn("KOKOTO WebChat stream reconnect refresh failed", reason, e);
@@ -7802,6 +7990,10 @@
     es.onopen = handleConnected;
     es.addEventListener("ready", handleConnected);
     es.addEventListener("ping", () => markStreamActivity());
+    es.addEventListener("emoji-catalog", () => {
+      markStreamActivity();
+      loadEmojis({force: true, retryOnFailure: true}).catch(() => {});
+    });
     es.addEventListener("chat", e => {
       markStreamActivity();
       publishStandalonePipStream("chat", e.data || "");
@@ -7981,17 +8173,14 @@
     if (hasSelection) {
       const before = current.slice(0, start);
       const after = current.slice(end);
-      // Do not add an automatic gap between custom emoji tokens. Keep a small
-      // separator only when inserting into normal text.
-      const prefix = before && !/\s$/.test(before) && !endsWithCustomEmojiToken(before) ? " " : "";
-      const suffix = after && !/^\s/.test(after) && !startsWithCustomEmojiToken(after) ? " " : "";
-      input.value = before + prefix + token + suffix + after;
-      const caret = (before + prefix + token + suffix).length;
+      // Insert exactly the selected emoji token. Do not synthesize whitespace:
+      // spacing around emojis is user-authored and consecutive tokens stay exact.
+      input.value = before + token + after;
+      const caret = (before + token).length;
       try { input.selectionStart = input.selectionEnd = caret; } catch (_) {}
     } else {
       const current = input.value || "";
-      const prefix = current && !/\s$/.test(current) && !endsWithCustomEmojiToken(current) ? " " : "";
-      input.value = current + prefix + token;
+      input.value = current + token;
       try { input.selectionStart = input.selectionEnd = input.value.length; } catch (_) {}
     }
     input.focus();
@@ -8074,8 +8263,33 @@
     updateEmojiResizeHandleVisibility();
   }
 
+  function clearEmojiRetryTimer() {
+    if (!state.emojiRetryTimer) return;
+    clearTimeout(state.emojiRetryTimer);
+    state.emojiRetryTimer = null;
+  }
+
+  function emojiRetryDelayMs() {
+    const attempt = Math.max(0, Number(state.emojiRetryAttempt || 0));
+    const base = Math.min(60000, 1000 * Math.pow(2, attempt));
+    const jitter = Math.floor(Math.random() * 500);
+    return Math.max(1000, Math.floor(base + jitter));
+  }
+
+  function scheduleEmojiRetry(reason = "catalog-load-failed") {
+    if (state.emojiRetryTimer || !state.config || state.config.emojiEnabled === false) return;
+    const delay = emojiRetryDelayMs();
+    state.emojiRetryAttempt = Math.min(10, Number(state.emojiRetryAttempt || 0) + 1);
+    state.emojiRetryTimer = setTimeout(() => {
+      state.emojiRetryTimer = null;
+      loadEmojis({force: true, retryOnFailure: true, reason}).catch(() => {});
+    }, delay);
+  }
+
   async function loadEmojis(options = {}) {
     if (!state.config || state.config.emojiEnabled === false) {
+      clearEmojiRetryTimer();
+      state.emojiRetryAttempt = 0;
       state.emojiEnabled = false;
       state.emojiPacks = [];
       state.emojiItems = [];
@@ -8100,20 +8314,29 @@
       // the same HTTP origin with image requests and compete with the long-lived
       // SSE connection. Message emoji <img> nodes already use an empty alt value,
       // so the transport token is never painted while an image is loading.
-      state.emojiRenderSizePx = Math.max(16, Math.min(1024, Number(res.renderSizePx || state.emojiRenderSizePx || 32)));
-      state.emojiPickerSizePx = Math.max(24, Math.min(1024, Number(res.pickerSizePx || state.emojiPickerSizePx || 44)));
+      state.emojiRenderSizePx = Math.max(16, Math.min(1024, Number(res.renderSizePx ?? state.emojiRenderSizePx ?? 32)));
+      state.emojiPickerSizePx = Math.max(24, Math.min(1024, Number(res.pickerSizePx ?? state.emojiPickerSizePx ?? 44)));
       applyEmojiPickerSize();
       updateDirectMessageComposeControls();
       updateGroupChatComposeControls();
-      state.emojiMessageTokenLimit = Math.max(0, Math.floor(Number(res.messageTokenLimit || state.emojiMessageTokenLimit || 0)));
-      state.emojiTokenFormat = normalizeEmojiTokenFormat(res.tokenFormat || state.emojiTokenFormat);
+      // Zero is a valid server value meaning unlimited; do not use `||` here.
+      state.emojiMessageTokenLimit = Math.max(0, Math.floor(Number(res.messageTokenLimit ?? state.emojiMessageTokenLimit ?? 0)));
+      state.emojiTokenFormat = normalizeEmojiTokenFormat(res.tokenFormat ?? state.emojiTokenFormat);
+      clearEmojiRetryTimer();
+      state.emojiRetryAttempt = 0;
       if (state.messages && state.messages.length) scheduleVirtualRender({preserveScroll: true, deferDuringScroll: false});
     } catch (e) {
-      state.emojiPacks = [];
-      state.emojiItems = [];
-      state.emojiById = new Map();
-      state.emojiByAlias = new Map();
-      console.warn("KOKOTO WebChat emoji list failed", e);
+      // A transient catalog failure must not erase the last known-good emoji list.
+      // Existing messages/pickers continue using the cached client-side catalog
+      // while a bounded exponential retry obtains a fresh copy.
+      console.warn("KOKOTO WebChat emoji list failed; keeping previous catalog", {
+        endpoint: "/emojis",
+        status: Number(e && e.status || 0) || undefined,
+        error: e && e.response && e.response.error ? String(e.response.error) : String(e && e.message || e || "unknown")
+      });
+      if (options.retryOnFailure !== false) scheduleEmojiRetry(options.reason || "catalog-load-failed");
+      if (options.throwOnFailure === true) throw e;
+      return false;
     } finally {
       state.emojiLoading = false;
       updateEmojiButton();
@@ -10246,6 +10469,60 @@
       xhr.send(form);
     });
 
+    const adminEmojiAllowedExtensions = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+
+    const adminEmojiUploadExtension = file => {
+      const rawName = String(file && file.name || "").trim();
+      const dot = rawName.lastIndexOf(".");
+      const rawExt = dot > 0 ? rawName.slice(dot + 1).toLowerCase() : "";
+      if (adminEmojiAllowedExtensions.has(rawExt)) return rawExt;
+      const mimeExt = extensionFromMime(file && file.type);
+      return adminEmojiAllowedExtensions.has(mimeExt) ? mimeExt : "";
+    };
+
+    const looksLikeAndroidPhotoPickerSyntheticFile = file => {
+      if (!file || typeof navigator === "undefined" || !/Android/i.test(String(navigator.userAgent || ""))) return false;
+      if (!/^image\//i.test(String(file.type || ""))) return false;
+      const rawName = String(file.name || "").trim();
+      const dot = rawName.lastIndexOf(".");
+      const base = dot > 0 ? rawName.slice(0, dot) : rawName;
+      // Android Photo Picker can expose its internal media id (for example
+      // 1000019131.jpg) instead of the source filename. A normal file-manager
+      // selection keeps the actual filename, so only guard the observed
+      // picker-shaped form: an image filename whose base is a 10+-digit number
+      // beginning with "10". Pack/folder names are intentionally irrelevant.
+      return /^10\d{8,}$/.test(base);
+    };
+
+    const adminEmojiFallbackBaseName = (file, index) => {
+      const stampValue = Number(file && file.lastModified);
+      const date = new Date(Number.isFinite(stampValue) && stampValue > 0 ? stampValue : Date.now());
+      const pad = value => String(value).padStart(2, "0");
+      const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+      return `emoji-${stamp}${index > 0 ? "-" + (index + 1) : ""}`;
+    };
+
+    const adminEmojiUploadName = (file, index) => {
+      const rawName = String(file && file.name || "").trim();
+      const ext = adminEmojiUploadExtension(file);
+      if (!looksLikeAndroidPhotoPickerSyntheticFile(file)) {
+        if (rawName) return rawName;
+        const fallback = adminEmojiFallbackBaseName(file, index);
+        return ext ? `${fallback}.${ext}` : fallback;
+      }
+
+      const suggested = adminEmojiFallbackBaseName(file, index);
+      const entered = String(prompt(
+        t("prompt.androidPhotoPickerEmojiName", "Android's photo picker did not provide the original filename. Enter the emoji name."),
+        suggested
+      ) || "").trim();
+      const chosen = entered || suggested;
+      const dot = chosen.lastIndexOf(".");
+      const chosenExt = dot > 0 ? chosen.slice(dot + 1).toLowerCase() : "";
+      const base = adminEmojiAllowedExtensions.has(chosenExt) ? chosen.slice(0, dot) : chosen;
+      return ext ? `${base}.${ext}` : chosen;
+    };
+
     const uploadAdminEmojiFiles = async files => {
       // Match the normal chat upload path: copy FileList immediately, release the
       // native input, then process that ordinary File array asynchronously.
@@ -10269,13 +10546,14 @@
         for (let i = 0; i < files.length; i++) {
           if (emojiUploadCancelRequested) break;
           const file = files[i];
+          const uploadName = adminEmojiUploadName(file, i);
           const form = new FormData();
           form.append("pack", pack || "default");
-          form.append("file", file, file.name);
+          form.append("file", file, uploadName);
           const baseLabel = fmt("upload.progress", "Uploading {current}/{total}: {name}", {
             current: i + 1,
             total: files.length,
-            name: file.name || ""
+            name: uploadName || ""
           });
           try {
             const res = await uploadEmojiFormWithProgress(form, (loaded, size) => {
@@ -10287,7 +10565,7 @@
             });
             completedBytes += Math.max(1, Number(file.size) || 1);
             if (!res || res.ok === false) {
-              failures.push({name: file.name || "", error: res && res.error ? res.error : "upload_failed"});
+              failures.push({name: uploadName || file.name || "", error: res && res.error ? res.error : "upload_failed"});
               continue;
             }
             uploaded++;
@@ -10300,7 +10578,7 @@
               break;
             }
             completedBytes += Math.max(1, Number(file.size) || 1);
-            failures.push({name: file.name || "", error: err && err.error ? err.error : "network"});
+            failures.push({name: uploadName || file.name || "", error: err && err.error ? err.error : "network"});
           }
         }
       } finally {
@@ -10339,13 +10617,31 @@
     };
 
     if (uploadBtn && uploadFileInput) {
-      uploadBtn.onclick = () => uploadFileInput.click();
+      // Android Chrome routes image-only <input type=file> through the system
+      // Photo Picker. Some picker-provided File handles can fail later during
+      // multipart upload even though the same image works through "Browse".
+      // For administrator emoji uploads, deliberately leave accept unset on
+      // Android so Chrome opens the generic DocumentsUI/file picker instead.
+      // File type/extension validation still happens in KWC and on the server.
+      const useAndroidEmojiFilePicker = typeof navigator !== "undefined"
+        && /Android/i.test(String(navigator.userAgent || ""));
+      if (useAndroidEmojiFilePicker) uploadFileInput.removeAttribute("accept");
+      uploadBtn.onclick = () => {
+        if (useAndroidEmojiFilePicker) uploadFileInput.removeAttribute("accept");
+        uploadFileInput.click();
+      };
       uploadFileInput.addEventListener("change", async event => {
-        // Deliberately identical to the normal file-upload picker handoff.
         const input = event.target;
         const files = Array.from(input.files || []);
-        input.value = "";
-        await uploadAdminEmojiFiles(files);
+        // Android Photo Picker may back File objects with a transient content URI.
+        // Keep the native selection alive through the optional rename prompt and
+        // multipart upload; clearing it first can invalidate the lazy file handle
+        // and surface as XMLHttpRequest.onerror (reported as "network").
+        try {
+          await uploadAdminEmojiFiles(files);
+        } finally {
+          input.value = "";
+        }
       });
     }
 
@@ -12486,12 +12782,15 @@
             id: String(id || ""),
       name: String(name || "").trim(),
       theme: savedUserTheme(),
-      opacity: Number(effectiveOpacity()),
-      fontSize: Number(effectiveBaseFontSize()) || 13,
+      // Account profiles must preserve the same explicit-vs-unset state as local
+      // chat-setting presets. Saving effective server defaults here made a profile
+      // change font size/opacity when loaded on another server/device.
+      opacity: savedUserOpacity(),
+      fontSize: savedUserFontSize(),
       fontFamily: savedUserFontFamily(),
       textColor: savedUserTextColor(),
       uiTextColor: savedUserUiTextColor(),
-      textShadowMode: savedUserTextShadowMode() || "auto",
+      textShadowMode: savedUserTextShadowMode(),
       textShadowCustom: savedUserTextShadowCustom(),
       backgroundColor: savedUserBackgroundColor(),
       inputBackgroundColor: savedUserInputBackgroundColor(),
@@ -13140,6 +13439,15 @@
     }).join("");
   }
 
+  function syncDetachedModalThemeVariables() {
+    // DM/group/pinned/settings windows are detached from #kwc-root. They receive a
+    // snapshot of CSS variables when opened, so a loaded profile previously changed
+    // the main chat but left already-open detached chat windows at the old font/theme.
+    document.querySelectorAll(".kwc-modal-backdrop").forEach(backdrop => {
+      try { applyDetachedModalTheme(backdrop); } catch (_) {}
+    });
+  }
+
   function applyDetachedModalTheme(backdrop) {
     const root = document.getElementById("kwc-root");
     if (!root || !backdrop) return;
@@ -13741,7 +14049,7 @@
     // Direct messages use the same text renderer as normal chat text: URLs,
     // Minecraft legacy color codes, and BM Web Chat emoji tokens are rendered
     // on the web side, while the stored/sent message remains the raw text token.
-    return renderCustomEmojiTokens(String(value || ""));
+    return renderMessageTokenLines(String(value || ""));
   }
 
   function directMessagePreviewHtml(value, messageId = "", type = "dm") {
@@ -13872,6 +14180,7 @@
 
   function returnDirectMessageToList() {
     if (!hasDirectMessageConversationOpen()) return;
+    clearPrivateReply("dm");
     closeDirectMessageEmojiPanel();
     closeDirectMessagePlayerSearch();
     state.dmActiveThreadId = "";
@@ -13930,6 +14239,7 @@
         state.dmAuditMode = false;
         state.dmAuditThread = null;
         state.dmActiveThreadId = btn.dataset.dmThread || "";
+        clearPrivateReply("dm");
         updateDirectMessageComposeControls();
         renderDirectMessageThreads();
         updateDirectMessageViewMode();
@@ -13948,6 +14258,7 @@
         state.dmAuditMode = true;
         state.dmAuditThread = item;
         state.dmActiveThreadId = threadId;
+        clearPrivateReply("dm");
         updateDirectMessageComposeControls();
         renderDirectMessageThreads();
         updateDirectMessageViewMode();
@@ -14098,7 +14409,7 @@
     return `<span class="kwc-private-meta-status">${delivery}${receipt}</span>`;
   }
 
-  function directMessageOptimisticMessage(clientMessageId, message, requestBody) {
+  function directMessageOptimisticMessage(clientMessageId, message, requestBody, replyTarget = null) {
     return {
       id: "local-dm-" + clientMessageId,
       threadId: state.dmActiveThreadId || "",
@@ -14109,6 +14420,9 @@
       time: Date.now(),
       deliveryStatus: "pending",
       deliveryError: "",
+      replyToId: replyTarget && replyTarget.id ? replyTarget.id : 0,
+      replyToSender: replyTarget && replyTarget.sender ? replyTarget.sender : "",
+      replyToPreview: replyTarget && replyTarget.preview ? replyTarget.preview : "",
       clientMessageId,
       _kwcDmRequestBody: Object.assign({}, requestBody || {})
     };
@@ -14171,6 +14485,186 @@
     }
   }
 
+  function privateReplyState(type = "dm") {
+    return type === "group" ? state.groupReplyTarget : state.dmReplyTarget;
+  }
+
+  function setPrivateReplyState(type, value) {
+    if (type === "group") state.groupReplyTarget = value;
+    else state.dmReplyTarget = value;
+  }
+
+  function privateReplyConversationId(type = "dm") {
+    return type === "group" ? String(state.groupActiveRoomId || "") : String(state.dmActiveThreadId || "");
+  }
+
+  function privateReplyTargetFromMessage(msg, type = "dm") {
+    if (!msg || !/^\d+$/.test(String(msg.id || ""))) return null;
+    const sender = String(msg.senderDisplayName || msg.senderUsername || msg.senderUuid || t("sender.unknown", "Unknown"));
+    const preview = String(msg.body || "");
+    return {id: Number(msg.id), sender, preview, conversationId: privateReplyConversationId(type)};
+  }
+
+  function renderPrivateReplyCompose(type = "dm") {
+    const prefix = type === "group" ? "kwc-group" : "kwc-dm";
+    const wrap = document.getElementById(prefix + "-reply-compose");
+    if (!wrap) return;
+    const target = privateReplyState(type);
+    const valid = !!(target && target.id && String(target.conversationId || "") === privateReplyConversationId(type));
+    if (!valid && target) setPrivateReplyState(type, null);
+    wrap.classList.toggle("kwc-hidden", !valid);
+    const label = document.getElementById(prefix + "-reply-compose-label");
+    const preview = document.getElementById(prefix + "-reply-compose-preview");
+    if (label) label.innerHTML = valid ? formatReplyComposeLabelHtml(target.sender || "") : "";
+    if (preview) preview.innerHTML = valid ? replyPreviewHtml(target.preview || "") : "";
+  }
+
+  function startPrivateReply(msg, type = "dm") {
+    if ((type === "group" && state.groupAuditMode) || (type === "dm" && state.dmAuditMode)) return;
+    const target = privateReplyTargetFromMessage(msg, type);
+    if (!target) return;
+    setPrivateReplyState(type, target);
+    renderPrivateReplyCompose(type);
+    const input = document.getElementById(type === "group" ? "kwc-group-input" : "kwc-dm-input");
+    if (input) input.focus();
+  }
+
+  function clearPrivateReply(type = "dm") {
+    setPrivateReplyState(type, null);
+    renderPrivateReplyCompose(type);
+  }
+
+  function privateReplyReferenceHtml(msg, type = "dm") {
+    if (!msg || !(Number(msg.replyToId || 0) > 0)) return "";
+    const sender = msg.replyToSender || t("sender.unknown", "Unknown");
+    const preview = msg.replyToPreview || "";
+    const plainSender = plainLegacyText(sender).trim() || t("sender.unknown", "Unknown");
+    const plainPreview = plainLegacyText(preview).replace(/[\r\n]+/g, " ").trim();
+    const titlePreview = plainPreview.length > 240 ? plainPreview.slice(0, 237) + "..." : plainPreview;
+    const title = titlePreview ? t("reply.jump", "Jump to replied message") + ": " + plainSender + " - " + titlePreview : t("reply.jump", "Jump to replied message");
+    return `<button type="button" class="kwc-reply-ref kwc-private-reply-ref" data-private-reply-jump="${esc(msg.replyToId)}" data-private-reply-type="${type}" title="${esc(title)}"><span class="kwc-reply-ref-sender">${minecraftLegacyTextHtml(sender, true)}</span><span class="kwc-reply-ref-preview">${replyPreviewHtml(preview)}</span></button>`;
+  }
+
+  function privateReplySignature(msg) {
+    return [Number(msg && msg.replyToId || 0), String(msg && msg.replyToSender || ""), String(msg && msg.replyToPreview || "")].join("|");
+  }
+
+  function privateReplyJumpKeys(type = "dm") {
+    return type === "group"
+      ? {generation: "groupReplyJumpGeneration", startedAt: "groupReplyJumpStartedAt", lastCentered: "groupReplyJumpLastCenteredScrollTop", timer: "groupReplyJumpStabilizeTimer"}
+      : {generation: "dmReplyJumpGeneration", startedAt: "dmReplyJumpStartedAt", lastCentered: "dmReplyJumpLastCenteredScrollTop", timer: "dmReplyJumpStabilizeTimer"};
+  }
+
+  function cancelPrivateReplyJump(type = "dm") {
+    const keys = privateReplyJumpKeys(type);
+    clearTimeout(state[keys.timer]);
+    state[keys.timer] = null;
+    state[keys.generation] = Number(state[keys.generation] || 0) + 1;
+    state[keys.startedAt] = 0;
+    state[keys.lastCentered] = NaN;
+  }
+
+  function privateReplyMessageElement(box, messageId, type = "dm") {
+    if (!box) return null;
+    const attr = type === "group" ? "data-group-message-id" : "data-dm-message-id";
+    const id = Number(messageId || 0);
+    if (!(id > 0)) return null;
+    return Array.from(box.querySelectorAll(`[${attr}]`)).find(node => Number(node.getAttribute(attr) || 0) === id) || null;
+  }
+
+  function centerPrivateReplyMessage(box, el, type = "dm", highlight = true) {
+    if (!box || !el) return false;
+    let desired = Number(box.scrollTop || 0);
+    try {
+      const boxRect = box.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const centerOffset = Math.max(0, (Number(box.clientHeight || 0) - Number(elRect.height || 0)) / 2);
+      desired = desired + (elRect.top - boxRect.top) - centerOffset;
+    } catch (_) {}
+    box.scrollTop = Math.max(0, desired);
+    const keys = privateReplyJumpKeys(type);
+    state[keys.lastCentered] = Number(box.scrollTop || 0);
+    if (highlight) highlightMessageElement(el);
+    return true;
+  }
+
+  function stabilizePrivateReplyJump(messageId, type, generation) {
+    const keys = privateReplyJumpKeys(type);
+    clearTimeout(state[keys.timer]);
+    const delays = [0, 60, 160, 360, 720];
+    let pos = 0;
+    const run = () => {
+      if (Number(state[keys.generation] || 0) !== generation) return;
+      const box = document.getElementById(type === "group" ? "kwc-group-messages" : "kwc-dm-messages");
+      if (!box) return;
+      const lastCentered = Number(state[keys.lastCentered]);
+      if (pos > 0 && Number.isFinite(lastCentered)) {
+        const drift = Math.abs(Number(box.scrollTop || 0) - lastCentered);
+        if (drift > Math.max(28, Math.round(Math.max(1, Number(box.clientHeight || 1)) * 0.07))) {
+          cancelPrivateReplyJump(type);
+          return;
+        }
+      }
+      const el = privateReplyMessageElement(box, messageId, type);
+      if (el) {
+        const boxRect = box.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const boxCenter = boxRect.top + Math.max(1, boxRect.height || box.clientHeight || 1) / 2;
+        const elCenter = elRect.top + Math.max(1, elRect.height || 1) / 2;
+        if (pos <= 1 || Math.abs(elCenter - boxCenter) > 22) centerPrivateReplyMessage(box, el, type, pos <= 1);
+      }
+      pos++;
+      if (pos < delays.length && Number(state[keys.generation] || 0) === generation) {
+        state[keys.timer] = setTimeout(run, delays[pos]);
+      } else {
+        state[keys.timer] = null;
+      }
+    };
+    state[keys.timer] = setTimeout(run, delays[0]);
+  }
+
+  async function jumpToPrivateReplyTarget(messageId, type = "dm") {
+    const id = Number(messageId || 0);
+    if (!(id > 0)) return;
+    const messages = () => type === "group" ? (state.groupMessages || []) : (state.dmMessages || []);
+    const hasMore = () => type === "group" ? !!state.groupMessagesHasMore : !!state.dmMessagesHasMore;
+    const box = document.getElementById(type === "group" ? "kwc-group-messages" : "kwc-dm-messages");
+    if (!box) return;
+
+    cancelPrivateReplyJump(type);
+    if (type === "group") {
+      state.groupEdgePendingTopUntil = 0;
+      state.groupEdgePendingBottomUntil = 0;
+      hideGroupChatEdgeToast(true);
+    } else {
+      state.dmEdgePendingTopUntil = 0;
+      state.dmEdgePendingBottomUntil = 0;
+      hideDirectMessageEdgeToast(true);
+    }
+
+    let found = messages().find(msg => Number(msg && msg.id || 0) === id) || null;
+    let rounds = 0;
+    while (!found && hasMore() && rounds++ < 40) {
+      const loaded = type === "group"
+        ? await loadOlderGroupChatMessagesFromEdge(box, "reply-jump")
+        : await loadOlderDirectMessageMessagesFromEdge(box, "reply-jump");
+      found = messages().find(msg => Number(msg && msg.id || 0) === id) || null;
+      if (!loaded) break;
+      const oldest = privateMessageOldestId(messages());
+      if (oldest > 0 && oldest <= id && !found) break;
+    }
+    if (!found) { alert(t("reply.notFound", "The referenced message could not be found.")); return; }
+
+    const el = privateReplyMessageElement(box, id, type);
+    if (!el) { alert(t("reply.notFound", "The referenced message could not be found.")); return; }
+    const keys = privateReplyJumpKeys(type);
+    const generation = Number(state[keys.generation] || 0) + 1;
+    state[keys.generation] = generation;
+    state[keys.startedAt] = Date.now();
+    centerPrivateReplyMessage(box, el, type, true);
+    stabilizePrivateReplyJump(id, type, generation);
+  }
+
   function privateMessageDomKey(msg, type = "dm") {
     const clientMessageId = String(msg && msg.clientMessageId || "").trim();
     if (clientMessageId) return type + ":client:" + clientMessageId;
@@ -14187,14 +14681,43 @@
   function privateMessageMetaHtml(msg, mine, type = "dm") {
     const sender = msg.senderDisplayName || msg.senderUsername || msg.senderUuid || "";
     const senderIdentity = {senderDisplayName: sender, senderUsername: msg.senderUsername || "", senderUuid: msg.senderUuid || ""};
-    return `${directMessageIdentityHtml(senderIdentity, "kwc-sender")}<span class="kwc-meta-sep" aria-hidden="true">·</span><span class="kwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span>${type === "dm" ? (state.dmAuditMode ? "" : privateMessageMetaStatusHtml(msg, mine, "dm")) : (state.groupAuditMode ? "" : privateMessageMetaStatusHtml(msg, mine, "group"))}`;
+    const statusHtml = type === "dm"
+      ? (state.dmAuditMode ? "" : privateMessageMetaStatusHtml(msg, mine, "dm"))
+      : (state.groupAuditMode ? "" : privateMessageMetaStatusHtml(msg, mine, "group"));
+    return `${directMessageIdentityHtml(senderIdentity, "kwc-sender")}<span class="kwc-meta-sep" aria-hidden="true">·</span><span class="kwc-time-actions"><span class="kwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span>${privateReplyActionHtml(msg, type)}${statusHtml}</span>`;
+  }
+
+  function privateReplyActionHtml(msg, type = "dm") {
+    const rawMessageId = String(msg && msg.id || "");
+    const persisted = /^\d+$/.test(rawMessageId);
+    const canReply = persisted && !(type === "group" ? state.groupAuditMode : state.dmAuditMode);
+    if (!canReply) return "";
+    return `<span class="kwc-mini-actions"><button type="button" class="kwc-mini-action kwc-reply-action" data-private-reply-message="${esc(rawMessageId)}" data-private-reply-type="${type}">${esc(t("button.reply", "reply"))}</button></span>`;
+  }
+
+  function groupMembershipEventText(msg) {
+    const player = directMessagePlainLabel(msg && (msg.senderDisplayName || msg.senderUsername || msg.senderUuid) || "");
+    if (String(msg && msg.eventType || "") === "member_leave") {
+      return fmt("group.memberLeft", "{player} left the room.", {player});
+    }
+    return fmt("group.memberJoined", "{player} joined the room.", {player});
   }
 
   function createPrivateMessageElement(msg, type = "dm") {
     const mine = !!(state.username && msg.senderUsername && String(msg.senderUsername).toLowerCase() === String(state.username).toLowerCase());
     const rawMessageId = String(msg.id || "");
     const body = String(msg.body || "");
+    const eventType = type === "group" ? String(msg.eventType || "") : "";
     const el = document.createElement("div");
+    if (eventType === "member_join" || eventType === "member_leave") {
+      el.className = "kwc-msg kwc-group-message kwc-group-membership-event";
+      el.dataset.kwcPrivateMessageKey = privateMessageDomKey(msg, type);
+      el.dataset.kwcPrivateBody = body;
+      el.dataset.kwcPrivateEventType = eventType;
+      el.dataset.groupMessageId = rawMessageId;
+      el.innerHTML = `<span class="kwc-group-membership-event-text">${esc(groupMembershipEventText(msg))}</span><span class="kwc-group-membership-event-time kwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span>`;
+      return el;
+    }
     el.className = `kwc-msg kwc-dm-message${type === "group" ? " kwc-group-message" : ""}${mine ? " kwc-mine" : ""}`;
     el.dataset.kwcPrivateMessageKey = privateMessageDomKey(msg, type);
     el.dataset.kwcPrivateBody = body;
@@ -14204,12 +14727,35 @@
     const hideButton = type === "group"
       ? (!state.groupAuditMode && persisted ? `<button type="button" class="kwc-dm-message-hide" data-group-hide-message="${esc(rawMessageId)}" title="${esc(t("dm.hideMessage", "Hide this message"))}">×</button>` : "")
       : (state.dmAuditMode ? "" : `<button type="button" class="kwc-dm-message-hide" data-dm-hide-message="${esc(rawMessageId)}" title="${esc(t("dm.hideMessage", "Hide this message"))}" aria-label="${esc(t("dm.hideMessage", "Hide this message"))}">×</button>`);
-    el.innerHTML = `<div class="kwc-meta kwc-dm-message-meta">${privateMessageMetaHtml(msg, mine, type)}</div>${hideButton}<div class="kwc-text kwc-dm-message-body">${directMessageBodyHtml(body)}</div>${directMessagePreviewHtml(body, rawMessageId, type)}`;
+    el.dataset.kwcPrivateReplySignature = privateReplySignature(msg);
+    el.innerHTML = `<div class="kwc-meta kwc-dm-message-meta">${privateMessageMetaHtml(msg, mine, type)}</div>${hideButton}${privateReplyReferenceHtml(msg, type)}<div class="kwc-text kwc-dm-message-body">${directMessageBodyHtml(body)}</div>${directMessagePreviewHtml(body, rawMessageId, type)}`;
     return el;
   }
 
   function syncPrivateMessageElement(el, msg, type = "dm") {
     if (!el || !msg) return el;
+    const eventType = type === "group" ? String(msg.eventType || "") : "";
+    if (eventType === "member_join" || eventType === "member_leave") {
+      if (String(el.dataset.kwcPrivateEventType || "") !== eventType) {
+        const replacement = createPrivateMessageElement(msg, type);
+        el.replaceWith(replacement);
+        return replacement;
+      }
+      const text = el.querySelector(":scope > .kwc-group-membership-event-text");
+      if (text) text.textContent = groupMembershipEventText(msg);
+      const time = el.querySelector(":scope > .kwc-group-membership-event-time");
+      if (time) {
+        time.dataset.time = String(msg.time || "");
+        time.title = timeToggleTitle(msg.time);
+        time.textContent = formatMessageTime(msg.time);
+      }
+      return el;
+    }
+    if (el.dataset.kwcPrivateEventType) {
+      const replacement = createPrivateMessageElement(msg, type);
+      el.replaceWith(replacement);
+      return replacement;
+    }
     const mine = !!(state.username && msg.senderUsername && String(msg.senderUsername).toLowerCase() === String(state.username).toLowerCase());
     el.classList.toggle("kwc-mine", mine);
     const rawMessageId = String(msg.id || "");
@@ -14221,7 +14767,7 @@
     // body/preview on delivery/read refreshes: a loaded video/audio element must
     // remain mounted in exactly the same message DOM node, like public chat.
     const body = String(msg.body || "");
-    if (String(el.dataset.kwcPrivateBody || "") !== body) {
+    if (String(el.dataset.kwcPrivateBody || "") !== body || String(el.dataset.kwcPrivateReplySignature || "") !== privateReplySignature(msg)) {
       const replacement = createPrivateMessageElement(msg, type);
       el.replaceWith(replacement);
       return replacement;
@@ -14231,6 +14777,25 @@
 
   function installPrivateMessageActions(root, type = "dm") {
     if (!root) return;
+    root.querySelectorAll("[data-private-reply-message]").forEach(btn => {
+      if (btn.dataset.kwcPrivateReplyInstalled === "1") return;
+      btn.dataset.kwcPrivateReplyInstalled = "1";
+      btn.addEventListener("click", event => {
+        event.preventDefault(); event.stopPropagation();
+        const buttonType = btn.dataset.privateReplyType === "group" ? "group" : "dm";
+        const arr = buttonType === "group" ? state.groupMessages : state.dmMessages;
+        const msg = (arr || []).find(item => String(item && item.id || "") === String(btn.dataset.privateReplyMessage || ""));
+        startPrivateReply(msg, buttonType);
+      });
+    });
+    root.querySelectorAll("[data-private-reply-jump]").forEach(btn => {
+      if (btn.dataset.kwcPrivateReplyJumpInstalled === "1") return;
+      btn.dataset.kwcPrivateReplyJumpInstalled = "1";
+      btn.addEventListener("click", event => {
+        event.preventDefault(); event.stopPropagation();
+        jumpToPrivateReplyTarget(btn.dataset.privateReplyJump || "", btn.dataset.privateReplyType === "group" ? "group" : "dm");
+      });
+    });
     if (type === "group") {
       root.querySelectorAll("[data-group-hide-message]").forEach(btn => {
         if (btn.dataset.kwcPrivateActionInstalled === "1") return;
@@ -14365,6 +14930,7 @@
   function renderDirectMessageMessages(messages, options = {}) {
     const box = document.getElementById("kwc-dm-messages");
     if (!box) return;
+    renderPrivateReplyCompose("dm");
     hideDirectMessageEdgeToast(true);
     const arr = Array.isArray(messages) ? messages : [];
     const prevTop = Number(options.previousScrollTop != null ? options.previousScrollTop : box.scrollTop || 0);
@@ -15348,7 +15914,9 @@
       message = message.slice(0, state.directMessageMaxMessageLength);
     }
     const clientMessageId = privateClientMessageId("dm");
+    const replyTarget = state.dmReplyTarget && String(state.dmReplyTarget.conversationId || "") === privateReplyConversationId("dm") ? Object.assign({}, state.dmReplyTarget) : null;
     const body = {message, clientMessageId};
+    if (replyTarget && replyTarget.id) body.replyToId = replyTarget.id;
     if (state.dmActiveThreadId) {
       const thread = (state.dmThreads || []).find(t => t.id === state.dmActiveThreadId);
       if (thread) {
@@ -15377,7 +15945,8 @@
       return;
     }
     input.value = "";
-    state.dmMessages = (state.dmMessages || []).concat([directMessageOptimisticMessage(clientMessageId, message, body)]);
+    clearPrivateReply("dm");
+    state.dmMessages = (state.dmMessages || []).concat([directMessageOptimisticMessage(clientMessageId, message, body, replyTarget)]);
     renderDirectMessageMessages(state.dmMessages, {stickToBottom: true});
     input.disabled = true;
     try {
@@ -15611,6 +16180,7 @@
 
   async function openGroupRoom(roomId) {
     roomId = String(roomId || "").trim();
+    clearPrivateReply("group");
     if (!roomId) return;
     state.groupAuditMode = false;
     state.groupAuditRoom = null;
@@ -15659,6 +16229,7 @@
 
   async function openGroupAuditRoom(roomId) {
     roomId = String(roomId || "").trim();
+    clearPrivateReply("group");
     if (!roomId || !state.groupChatContentAccess) return;
     let room = (state.groupAdminRooms || []).find(r => String(r.id || "") === roomId);
     if (!room) {
@@ -15727,7 +16298,7 @@
     const memberCount = Math.max(0, Number(room.memberCount || 0));
     const onlineCount = Math.max(0, Number(room.onlineMemberCount || 0));
     const countText = fmt("group.memberOnlineCount", "{online}/{total} online", {online: onlineCount, total: memberCount});
-    title.innerHTML = `<span class="kwc-group-title-main"><span class="kwc-group-title-name">${privacyIcon} ${esc(groupRoomLabel(room))}</span><span class="kwc-group-member-counts" id="kwc-group-member-counts" role="button" tabindex="0" title="${esc(t("group.members", "Members"))}" aria-label="${esc(t("group.members", "Members"))}">${esc(countText)}</span></span><small>${esc(privacyLabel)}${passwordText}</small><span class="kwc-group-actions">${manage ? `<button class="kwc-button" id="kwc-group-invite">${esc(t("group.invite", "Invite"))}</button>` : ""}<button class="kwc-button" id="kwc-group-hide-room">${esc(t("button.hide", "Hide"))}</button><button class="kwc-button" id="kwc-group-leave">${esc(t("group.leave", "Leave"))}</button></span>`;
+    title.innerHTML = `<span class="kwc-group-title-main"><span class="kwc-group-title-name">${privacyIcon} ${esc(groupRoomLabel(room))}</span><span class="kwc-group-member-counts" id="kwc-group-member-counts" role="button" tabindex="0" title="${esc(t("group.members", "Members"))}" aria-label="${esc(t("group.members", "Members"))}">${esc(countText)}</span></span><small>${esc(privacyLabel)}${passwordText}</small><span class="kwc-group-actions">${manage ? `<button class="kwc-button" id="kwc-group-settings">${esc(t("group.settings", "Settings"))}</button><button class="kwc-button" id="kwc-group-invite">${esc(t("group.invite", "Invite"))}</button>` : ""}<button class="kwc-button" id="kwc-group-hide-room">${esc(t("button.hide", "Hide"))}</button><button class="kwc-button" id="kwc-group-leave">${esc(t("group.leave", "Leave"))}</button></span>`;
     title.onclick = event => {
       if (event && event.target && event.target.closest && event.target.closest(".kwc-group-actions")) return;
       if (event && event.target && event.target.closest && event.target.closest(".kwc-group-member-counts")) return;
@@ -15738,6 +16309,8 @@
       event.preventDefault();
       returnGroupChatToList();
     };
+    const settings = document.getElementById("kwc-group-settings");
+    if (settings) settings.onclick = event => { event.preventDefault(); event.stopPropagation(); updateGroupRoomSettings(); };
     const invite = document.getElementById("kwc-group-invite");
     if (invite) invite.onclick = event => { event.preventDefault(); event.stopPropagation(); inviteToGroupRoom(); };
     const memberCounts = document.getElementById("kwc-group-member-counts");
@@ -15833,6 +16406,7 @@
   }
 
   function returnGroupChatToList() {
+    clearPrivateReply("group");
     state.groupActiveRoomId = "";
     state.groupActiveRoom = null;
     state.groupAuditMode = false;
@@ -16122,6 +16696,7 @@
   function renderGroupChatMessages(messages, options = {}) {
     const box = document.getElementById("kwc-group-messages");
     if (!box) return;
+    renderPrivateReplyCompose("group");
     hideGroupChatEdgeToast(true);
     const arr = Array.isArray(messages) ? messages : [];
     const prevTop = Number(options.previousScrollTop != null ? options.previousScrollTop : box.scrollTop || 0);
@@ -16241,7 +16816,7 @@
     }
   }
 
-  function groupOptimisticMessage(clientMessageId, message, status = "pending", error = "") {
+  function groupOptimisticMessage(clientMessageId, message, replyTarget = null, status = "pending", error = "") {
     return {
       id: "local-" + clientMessageId,
       roomId: state.groupActiveRoomId,
@@ -16252,6 +16827,9 @@
       time: Date.now(),
       deliveryStatus: status,
       deliveryError: error,
+      replyToId: replyTarget && replyTarget.id ? replyTarget.id : 0,
+      replyToSender: replyTarget && replyTarget.sender ? replyTarget.sender : "",
+      replyToPreview: replyTarget && replyTarget.preview ? replyTarget.preview : "",
       clientMessageId
     };
   }
@@ -16265,9 +16843,11 @@
     return true;
   }
 
-  async function sendGroupChatAttempt(roomId, message, clientMessageId) {
+  async function sendGroupChatAttempt(roomId, message, clientMessageId, replyToId = 0) {
     try {
-      const res = await api("/group/send", {method: "POST", body: JSON.stringify({roomId, message, clientMessageId})});
+      const body = {roomId, message, clientMessageId};
+      if (Number(replyToId || 0) > 0) body.replyToId = Number(replyToId);
+      const res = await api("/group/send", {method: "POST", body: JSON.stringify(body)});
       if (res.room) state.groupActiveRoom = res.room;
       await loadGroupChatRooms(true);
       if (state.groupActiveRoomId === roomId) await loadGroupChatMessages(roomId);
@@ -16287,7 +16867,7 @@
     item.deliveryStatus = "pending";
     item.deliveryError = "";
     renderGroupChatMessages(state.groupMessages, {stickToBottom: true});
-    await sendGroupChatAttempt(String(item.roomId || state.groupActiveRoomId || ""), String(item.body || ""), clientMessageId);
+    await sendGroupChatAttempt(String(item.roomId || state.groupActiveRoomId || ""), String(item.body || ""), clientMessageId, Number(item.replyToId || 0));
   }
 
   async function sendGroupChatMessage() {
@@ -16300,13 +16880,15 @@
     if (state.groupChatMaxMessageLength > 0 && message.length > state.groupChatMaxMessageLength) message = message.slice(0, state.groupChatMaxMessageLength);
     const roomId = state.groupActiveRoomId;
     const clientMessageId = privateClientMessageId("group");
+    const replyTarget = state.groupReplyTarget && String(state.groupReplyTarget.conversationId || "") === privateReplyConversationId("group") ? Object.assign({}, state.groupReplyTarget) : null;
     input.value = "";
+    clearPrivateReply("group");
     closeGroupChatEmojiPanel();
-    state.groupMessages = (state.groupMessages || []).concat([groupOptimisticMessage(clientMessageId, message)]);
+    state.groupMessages = (state.groupMessages || []).concat([groupOptimisticMessage(clientMessageId, message, replyTarget)]);
     renderGroupChatMessages(state.groupMessages, {stickToBottom: true});
     input.disabled = true;
     try {
-      await sendGroupChatAttempt(roomId, message, clientMessageId);
+      await sendGroupChatAttempt(roomId, message, clientMessageId, replyTarget && replyTarget.id ? replyTarget.id : 0);
     } finally {
       input.disabled = false;
       input.focus();
@@ -16331,18 +16913,21 @@
       const title = isSettings ? t("group.settings", "Settings") : t("group.newRoom", "New room");
       const currentName = isSettings ? groupRoomLabel(room) : "";
       const passwordBlock = state.groupChatAllowRoomPasswords ? `<label class="kwc-group-form-field"><span>${esc(isSettings ? t("group.passwordSettingsLabel", "Password (blank removes it)") : t("group.passwordOptionalLabel", "Password (optional)"))}</span><input class="kwc-input" id="kwc-group-form-password" type="password" autocomplete="new-password"></label>` : "";
-      wrap.innerHTML = `<div class="kwc-modal kwc-group-form-modal"><div class="kwc-group-form-head"><h3>${esc(title)}</h3></div><div class="kwc-group-form-grid"><label class="kwc-group-form-field"><span>${esc(t("group.roomName", "Room name"))}</span><input class="kwc-input" id="kwc-group-form-name" value="${esc(currentName)}" maxlength="80"></label><label class="kwc-group-form-field"><span>${esc(t("group.visibility", "Visibility"))}</span>${groupVisibilityOptionsHtml(room.visibility || "private")}</label>${passwordBlock}</div><div class="kwc-row kwc-group-form-actions"><button type="button" class="kwc-button" id="kwc-group-form-save">${esc(t("button.save", "Save"))}</button><button type="button" class="kwc-button" id="kwc-group-form-cancel">${esc(t("button.cancel", "Cancel"))}</button></div></div>`;
+      const membershipEventsChecked = !isSettings || room.membershipEventsEnabled !== false;
+      const membershipEventsBlock = `<label class="kwc-group-form-toggle"><input type="checkbox" id="kwc-group-form-membership-events" ${membershipEventsChecked ? "checked" : ""}><span>${esc(t("group.membershipEvents", "Show member join/leave notices"))}</span></label>`;
+      wrap.innerHTML = `<div class="kwc-modal kwc-group-form-modal"><div class="kwc-group-form-head"><h3>${esc(title)}</h3></div><div class="kwc-group-form-grid"><label class="kwc-group-form-field"><span>${esc(t("group.roomName", "Room name"))}</span><input class="kwc-input" id="kwc-group-form-name" value="${esc(currentName)}" maxlength="80"></label><label class="kwc-group-form-field"><span>${esc(t("group.visibility", "Visibility"))}</span>${groupVisibilityOptionsHtml(room.visibility || "private")}</label>${passwordBlock}${membershipEventsBlock}</div><div class="kwc-row kwc-group-form-actions"><button type="button" class="kwc-button" id="kwc-group-form-save">${esc(t("button.save", "Save"))}</button><button type="button" class="kwc-button" id="kwc-group-form-cancel">${esc(t("button.cancel", "Cancel"))}</button></div></div>`;
       document.body.appendChild(wrap);
       const close = value => { wrap.remove(); resolve(value); };
       wrap.addEventListener("click", event => { if (event.target === wrap) close(null); });
       const nameInput = wrap.querySelector("#kwc-group-form-name");
       const visibilityInput = wrap.querySelector("#kwc-group-form-visibility");
       const passwordInput = wrap.querySelector("#kwc-group-form-password");
+      const membershipEventsInput = wrap.querySelector("#kwc-group-form-membership-events");
       const submit = () => {
         const name = String(nameInput && nameInput.value || "").trim();
         if (!name) { if (nameInput) nameInput.focus(); return; }
         const visibility = state.groupChatAllowPublicRooms ? String(visibilityInput && visibilityInput.value || "private").toLowerCase() : "private";
-        const out = {name, visibility: visibility === "public" ? "public" : "private"};
+        const out = {name, visibility: visibility === "public" ? "public" : "private", membershipEventsEnabled: !membershipEventsInput || !!membershipEventsInput.checked};
         if (state.groupChatAllowRoomPasswords && passwordInput) out.password = String(passwordInput.value || "");
         close(out);
       };
@@ -16360,7 +16945,7 @@
     const form = await openGroupRoomForm({mode: "create"});
     if (!form) return;
     try {
-      const res = await api("/group/create", {method: "POST", body: JSON.stringify({name: form.name, visibility: form.visibility, password: form.password || ""})});
+      const res = await api("/group/create", {method: "POST", body: JSON.stringify({name: form.name, visibility: form.visibility, password: form.password || "", membershipEventsEnabled: form.membershipEventsEnabled !== false})});
       if (res.room) { state.groupActiveRoomId = String(res.room.id || ""); state.groupActiveRoom = res.room; }
       await loadGroupChatRooms(true);
       const refreshed = (state.groupRooms || []).find(r => r.id === state.groupActiveRoomId);
@@ -16404,7 +16989,7 @@
     if (!room) return;
     const form = await openGroupRoomForm({mode: "settings", room});
     if (!form) return;
-    const body = {roomId: state.groupActiveRoomId, name: form.name, visibility: form.visibility};
+    const body = {roomId: state.groupActiveRoomId, name: form.name, visibility: form.visibility, membershipEventsEnabled: form.membershipEventsEnabled !== false};
     if (state.groupChatAllowRoomPasswords) body.password = form.password || "";
     try {
       const res = await api("/group/settings", {method: "POST", body: JSON.stringify(body)});
@@ -16448,7 +17033,7 @@
     wrap.style.setProperty("--kwc-emoji-picker-size", emojiPickerSizePx() + "px");
     wrap.style.setProperty("--kwc-emoji-panel-height", emojiPanelHeightPx() + "px");
     wrap.style.setProperty("--kwc-emoji-panel-min-height", emojiPanelMinHeightPx() + "px");
-    wrap.innerHTML = `<div class="kwc-modal kwc-dm-modal kwc-group-modal"><div class="kwc-dm-head"><h3 class="kwc-dm-main-title"><span>${esc(t("group.title", "Group chats"))}</span><span class="kwc-dm-retention" title="${esc(groupRoomRetentionText())}">${esc(groupRoomRetentionText())}</span></h3><button class="kwc-button" id="kwc-group-close">${esc(t("button.close", "Close"))}</button></div><div class="kwc-dm-layout"><aside class="kwc-dm-sidebar"><button type="button" class="kwc-button kwc-dm-new" id="kwc-group-create">${esc(t("group.newRoom", "New room"))}</button><div class="kwc-group-invites" id="kwc-group-invites"></div><div class="kwc-dm-thread-list" id="kwc-group-room-list"></div></aside><section class="kwc-dm-conversation"><div class="kwc-dm-title kwc-group-title" id="kwc-group-title">${esc(t("group.selectRoom", "Select a room"))}</div><div class="kwc-dm-messages" id="kwc-group-messages"></div><div class="kwc-emoji-resize-handle kwc-dm-emoji-resize kwc-hidden" id="kwc-group-emoji-resize" title="${esc(t("button.resizeEmojiPanel", "Drag to resize emoji picker"))}" aria-label="${esc(t("button.resizeEmojiPanel", "Drag to resize emoji picker"))}"></div><div class="kwc-dm-compose kwc-row"><input class="kwc-input" id="kwc-group-input" placeholder="${esc(t("placeholder.message", "message"))}" ${state.groupChatMaxMessageLength > 0 ? `maxlength="${state.groupChatMaxMessageLength}"` : ""}><button class="kwc-button kwc-dm-emoji-button kwc-hidden" id="kwc-group-emoji" title="${esc(t("button.emoji", "Emoji"))}">☺</button><button class="kwc-button kwc-dm-upload kwc-hidden" id="kwc-group-upload" title="${esc(t("button.upload", "Attach"))}">&#128206;</button><button class="kwc-button kwc-dm-send" id="kwc-group-send">${esc(t("button.send", "Send"))}</button><input type="file" id="kwc-group-file" class="kwc-file-input" multiple hidden style="display:none !important;"></div><div class="kwc-emoji-panel kwc-dm-emoji-panel kwc-group-emoji-panel kwc-hidden" id="kwc-group-emoji-panel" aria-live="polite"></div>${uploadProgressHtml("kwc-group-upload-progress")}</section></div><div class="kwc-dm-search-panel kwc-hidden" id="kwc-group-search-panel"><div class="kwc-dm-search-head"><strong>${esc(t("group.searchPlayer", "Search player to invite"))}</strong><button class="kwc-button" id="kwc-group-search-close" type="button">${esc(t("button.close", "Close"))}</button></div><input class="kwc-input" id="kwc-group-search" placeholder="${esc(t("group.searchPlayer", "Search player to invite"))}"><div class="kwc-dm-player-results" id="kwc-group-player-results"></div></div></div>`;
+    wrap.innerHTML = `<div class="kwc-modal kwc-dm-modal kwc-group-modal"><div class="kwc-dm-head"><h3 class="kwc-dm-main-title"><span>${esc(t("group.title", "Group chats"))}</span><span class="kwc-dm-retention" title="${esc(groupRoomRetentionText())}">${esc(groupRoomRetentionText())}</span></h3><button class="kwc-button" id="kwc-group-close">${esc(t("button.close", "Close"))}</button></div><div class="kwc-dm-layout"><aside class="kwc-dm-sidebar"><button type="button" class="kwc-button kwc-dm-new" id="kwc-group-create">${esc(t("group.newRoom", "New room"))}</button><div class="kwc-group-invites" id="kwc-group-invites"></div><div class="kwc-dm-thread-list" id="kwc-group-room-list"></div></aside><section class="kwc-dm-conversation"><div class="kwc-dm-title kwc-group-title" id="kwc-group-title">${esc(t("group.selectRoom", "Select a room"))}</div><div class="kwc-dm-messages" id="kwc-group-messages"></div><div class="kwc-emoji-resize-handle kwc-dm-emoji-resize kwc-hidden" id="kwc-group-emoji-resize" title="${esc(t("button.resizeEmojiPanel", "Drag to resize emoji picker"))}" aria-label="${esc(t("button.resizeEmojiPanel", "Drag to resize emoji picker"))}"></div><div class="kwc-reply-compose kwc-private-reply-compose kwc-hidden" id="kwc-group-reply-compose"><button type="button" class="kwc-reply-compose-main" id="kwc-group-reply-compose-main" title="${esc(t("reply.jump", "Jump to replied message"))}"><span class="kwc-reply-compose-label" id="kwc-group-reply-compose-label"></span><span class="kwc-reply-compose-preview" id="kwc-group-reply-compose-preview"></span></button><button type="button" class="kwc-mini-action kwc-reply-cancel" id="kwc-group-reply-cancel" title="${esc(t("button.cancel", "Cancel"))}">×</button></div><div class="kwc-dm-compose kwc-row"><textarea class="kwc-input kwc-chat-composer" id="kwc-group-input" rows="1" autocomplete="off" enterkeyhint="send" placeholder="${esc(t("placeholder.message", "message"))}" ${state.groupChatMaxMessageLength > 0 ? `maxlength="${state.groupChatMaxMessageLength}"` : ""}></textarea><button class="kwc-button kwc-dm-emoji-button kwc-hidden" id="kwc-group-emoji" title="${esc(t("button.emoji", "Emoji"))}">☺</button><button class="kwc-button kwc-dm-upload kwc-hidden" id="kwc-group-upload" title="${esc(t("button.upload", "Attach"))}">&#128206;</button><button class="kwc-button kwc-dm-send" id="kwc-group-send">${esc(t("button.send", "Send"))}</button><input type="file" id="kwc-group-file" class="kwc-file-input" multiple hidden style="display:none !important;"></div><div class="kwc-emoji-panel kwc-dm-emoji-panel kwc-group-emoji-panel kwc-hidden" id="kwc-group-emoji-panel" aria-live="polite"></div>${uploadProgressHtml("kwc-group-upload-progress")}</section></div><div class="kwc-dm-search-panel kwc-hidden" id="kwc-group-search-panel"><div class="kwc-dm-search-head"><strong>${esc(t("group.searchPlayer", "Search player to invite"))}</strong><button class="kwc-button" id="kwc-group-search-close" type="button">${esc(t("button.close", "Close"))}</button></div><input class="kwc-input" id="kwc-group-search" placeholder="${esc(t("group.searchPlayer", "Search player to invite"))}"><div class="kwc-dm-player-results" id="kwc-group-player-results"></div></div></div>`;
     document.body.appendChild(wrap);
     installDirectMessageIdentityToggleGuard(wrap);
     const close = () => {
@@ -16463,6 +17048,7 @@
       state.groupActiveRoom = null;
       state.groupAuditMode = false;
       state.groupAuditRoom = null;
+      state.groupReplyTarget = null;
       if (state.activeComposeInputId === "kwc-group-input") state.activeComposeInputId = "kwc-message";
     };
     wrap.querySelector("#kwc-group-close").onclick = close;
@@ -16478,6 +17064,13 @@
     });
     wrap.querySelector("#kwc-group-create").onclick = createGroupRoom;
     wrap.querySelector("#kwc-group-send").onclick = sendGroupChatMessage;
+    const groupReplyCancel = wrap.querySelector("#kwc-group-reply-cancel");
+    if (groupReplyCancel) groupReplyCancel.onclick = () => clearPrivateReply("group");
+    const groupReplyMain = wrap.querySelector("#kwc-group-reply-compose-main");
+    if (groupReplyMain) groupReplyMain.onclick = () => {
+      const target = privateReplyState("group");
+      if (target && target.id) jumpToPrivateReplyTarget(target.id, "group");
+    };
     const roomList = wrap.querySelector("#kwc-group-room-list");
     if (roomList) roomList.addEventListener("click", handleGroupRoomListClick);
     const searchClose = wrap.querySelector("#kwc-group-search-close");
@@ -16511,11 +17104,17 @@
     if (groupUploadCancel) groupUploadCancel.addEventListener("click", cancelCurrentUpload);
     const input = wrap.querySelector("#kwc-group-input");
     input.addEventListener("focus", () => setActiveComposeInput(input));
+    input.addEventListener("input", () => normalizeSingleLineComposer(input));
     input.addEventListener("paste", async e => {
       setActiveComposeInput(input);
       await handlePasteUpload(e);
     });
     input.addEventListener("keydown", e => {
+      if (e.key === "Escape") {
+        closeGroupChatEmojiPanel();
+        if (state.groupReplyTarget) clearPrivateReply("group");
+        return;
+      }
       if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
       e.preventDefault();
       closeGroupChatEmojiPanel();
@@ -16572,8 +17171,9 @@
             <div class="kwc-dm-title" id="kwc-dm-title">${t("dm.selectThread", "Select a thread")}</div>
             <div class="kwc-dm-messages" id="kwc-dm-messages"></div>
             <div class="kwc-emoji-resize-handle kwc-dm-emoji-resize kwc-hidden" id="kwc-dm-emoji-resize" title="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}" aria-label="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}"></div>
+            <div class="kwc-reply-compose kwc-private-reply-compose kwc-hidden" id="kwc-dm-reply-compose"><button type="button" class="kwc-reply-compose-main" id="kwc-dm-reply-compose-main" title="${t("reply.jump", "Jump to replied message")}"><span class="kwc-reply-compose-label" id="kwc-dm-reply-compose-label"></span><span class="kwc-reply-compose-preview" id="kwc-dm-reply-compose-preview"></span></button><button type="button" class="kwc-mini-action kwc-reply-cancel" id="kwc-dm-reply-cancel" title="${t("button.cancel", "Cancel")}">×</button></div>
             <div class="kwc-dm-compose kwc-row">
-              <input class="kwc-input" id="kwc-dm-input" placeholder="${t("placeholder.message", "message")}" ${state.directMessageMaxMessageLength > 0 ? `maxlength="${state.directMessageMaxMessageLength}"` : ""}>
+              <textarea class="kwc-input kwc-chat-composer" id="kwc-dm-input" rows="1" autocomplete="off" enterkeyhint="send" placeholder="${t("placeholder.message", "message")}" ${state.directMessageMaxMessageLength > 0 ? `maxlength="${state.directMessageMaxMessageLength}"` : ""}></textarea>
               <button class="kwc-button kwc-dm-emoji-button kwc-hidden" id="kwc-dm-emoji" title="${t("button.emoji", "Emoji")}">☺</button>
               <button class="kwc-button kwc-dm-upload kwc-hidden" id="kwc-dm-upload" title="${t("button.upload", "Attach")}">&#128206;</button>
               <button class="kwc-button kwc-dm-send" id="kwc-dm-send">${t("button.send", "Send")}</button>
@@ -16594,7 +17194,7 @@
       </div>`;
     document.body.appendChild(wrap);
     installDirectMessageIdentityToggleGuard(wrap);
-    const close = () => { hideEmojiAutocomplete(); closeDirectMessageEmojiPanel(); closeDirectMessagePlayerSearch(); hideDirectMessageEdgeToast(true); discardPrivateMessageDom(wrap.querySelector("#kwc-dm-messages")); wrap.remove(); state.dmModalOpen = false; state.dmAuditMode = false; state.dmAuditThread = null; if (state.activeComposeInputId === "kwc-dm-input") state.activeComposeInputId = "kwc-message"; };
+    const close = () => { hideEmojiAutocomplete(); closeDirectMessageEmojiPanel(); closeDirectMessagePlayerSearch(); hideDirectMessageEdgeToast(true); discardPrivateMessageDom(wrap.querySelector("#kwc-dm-messages")); wrap.remove(); state.dmModalOpen = false; state.dmAuditMode = false; state.dmAuditThread = null; state.dmReplyTarget = null; if (state.activeComposeInputId === "kwc-dm-input") state.activeComposeInputId = "kwc-message"; };
     wrap.querySelector("#kwc-dm-close").onclick = close;
     wrap.addEventListener("click", e => { if (e.target === wrap) close(); });
     wrap.addEventListener("click", e => {
@@ -16634,6 +17234,13 @@
       state.dmSearchTimer = setTimeout(() => searchDirectMessagePlayers(search.value), 180);
     });
     wrap.querySelector("#kwc-dm-send").onclick = sendDirectMessageFromModal;
+    const dmReplyCancel = wrap.querySelector("#kwc-dm-reply-cancel");
+    if (dmReplyCancel) dmReplyCancel.onclick = () => clearPrivateReply("dm");
+    const dmReplyMain = wrap.querySelector("#kwc-dm-reply-compose-main");
+    if (dmReplyMain) dmReplyMain.onclick = () => {
+      const target = privateReplyState("dm");
+      if (target && target.id) jumpToPrivateReplyTarget(target.id, "dm");
+    };
     const dmEmoji = wrap.querySelector("#kwc-dm-emoji");
     if (dmEmoji) {
       dmEmoji.addEventListener("click", () => toggleDirectMessageEmojiPanel());
@@ -16657,11 +17264,17 @@
     if (dmUploadCancel) dmUploadCancel.addEventListener("click", cancelCurrentUpload);
     const dmInput = wrap.querySelector("#kwc-dm-input");
     dmInput.addEventListener("focus", () => setActiveComposeInput(dmInput));
+    dmInput.addEventListener("input", () => normalizeSingleLineComposer(dmInput));
     dmInput.addEventListener("paste", async e => {
       setActiveComposeInput(dmInput);
       await handlePasteUpload(e);
     });
     dmInput.addEventListener("keydown", e => {
+      if (e.key === "Escape") {
+        closeDirectMessageEmojiPanel();
+        if (state.dmReplyTarget) clearPrivateReply("dm");
+        return;
+      }
       if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
       e.preventDefault();
       closeDirectMessageEmojiPanel();

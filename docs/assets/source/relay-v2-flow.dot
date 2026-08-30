@@ -1,0 +1,19 @@
+digraph G {
+
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=LR;
+  s1 [label="Server 1\npeer config: server-2\ngroup: main", fillcolor="#DBEAFE"];
+  msg [label="1. /relay/v2/message\nindependent request authentication\nHKDF-SHA256 + AES-256-GCM", fillcolor="#FCE7F3"];
+  s2 [label="Server 2\npeer config: server-1\ngroup: main", fillcolor="#DBEAFE"];
+  resp [label="2. Authenticated response\nHMAC over status/body/request nonce", fillcolor="#F3E8FF"];
+  probe [label="Optional /relay/v2/handshake\nstateless identity/health probe\ncreates no routing state", fillcolor="#FEF3C7"];
+  s1 -> msg -> s2;
+  s2 -> resp -> s1;
+  s1 -> probe -> s2 [style=dashed, label="diagnostics only"];
+  note [shape=note,label="Direct messages authenticate independently per request.\nForwarding is same-group and peer-specific.\nHTTP direct is allowed with warning;\nHTTP peers are excluded only from forwarding.", fillcolor="#FFF7ED"];
+  msg -> note [style=dashed,arrowhead=none];
+
+}

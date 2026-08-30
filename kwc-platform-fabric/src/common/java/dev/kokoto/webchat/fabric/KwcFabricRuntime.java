@@ -72,6 +72,7 @@ public final class KwcFabricRuntime {
             installDefaultFilterLists();
             FabricYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile());
             reconcileConfigMigration();
+            provisionRelaySharedSecrets();
             return FabricConfigValuesLoader.load(FabricYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile()));
         } catch (Exception ex) {
             warn("BlueMap adapter config snapshot could not be loaded: " + ex.getMessage());
@@ -108,6 +109,7 @@ public final class KwcFabricRuntime {
             for (String lang : List.of("en-US", "ko-KR", "ja-JP", "zh-CN")) installDefault("lang/" + lang + ".yml");
             FabricYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile());
             reconcileConfigMigration();
+            provisionRelaySharedSecrets();
             this.configValues = FabricConfigValuesLoader.load(FabricYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile()));
         } catch (Exception ex) {
             warn("KOKOTO WebChat config load failed; services were not started: " + ex.getMessage());
@@ -131,6 +133,10 @@ public final class KwcFabricRuntime {
     }
 
     private void startServices() {
+        startServices(true);
+    }
+
+    private void startServices(boolean emitSecurityWarnings) {
         storage = new FabricStorage(this);
         storage.load();
         enforceCurrentSessionPolicies("startup/reload");
@@ -152,16 +158,21 @@ public final class KwcFabricRuntime {
         new UnminedAdapter(new FabricUnminedAdapterHost(this)).install();
         new OverviewerAdapter(new FabricOverviewerAdapterHost(this)).install();
         ensureEmojiDirectory();
-        webServer = new WebChatServer(new FabricWebChatHost(this));
-        try { webServer.start(); }
-        catch (Exception ex) { warn("Failed to start HTTP chat server: " + ex); webServer = null; }
         serverRelay = new ServerRelay(new FabricRelayHost(this));
-        serverRelay.start();
+        webServer = new WebChatServer(new FabricWebChatHost(this));
+        try { webServer.start(false); }
+        catch (Exception ex) { warn("Failed to start HTTP chat server: " + ex); webServer = null; }
+        serverRelay.start(false);
+        if (emitSecurityWarnings) logReloadTransportSecurityWarnings();
         if (configValues.updateCheckEnabled) {
             updateChecker = new PortableUpdateChecker(version(), platformAdapter, langManager, this::info, this::warn);
             updateChecker.start();
         }
         publishAnnouncement("server-start", Map.of("server", serverName()));
+    }
+
+    public void logReloadTransportSecurityWarnings() {
+        TransportSecurityWarnings.logAll(configValues, langManager, CoreLogger.of(this::info, this::warn));
     }
 
     public synchronized boolean reload() {
@@ -171,6 +182,7 @@ public final class KwcFabricRuntime {
         try { FabricYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile()); }
         catch (Exception ex) { warn("Reload rejected: " + ex.getMessage()); return false; }
         reconcileConfigMigration();
+        provisionRelaySharedSecrets();
         FabricYamlConfiguration loaded;
         try { loaded = FabricYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile()); }
         catch (Exception ex) { warn("Reload rejected after config migration: " + ex.getMessage()); return false; }
@@ -183,7 +195,7 @@ public final class KwcFabricRuntime {
         platformAdapter = new FabricPlatformAdapter(this);
         conversationStoreHost = new FabricConversationStoreHost(this);
         if (configValues.pluginEnabled) {
-            startServices();
+            startServices(false);
         } else {
             new SquaremapAdapter(new FabricSquaremapAdapterHost(this)).install();
             new DynmapAdapter(new FabricDynmapAdapterHost(this)).install();
@@ -193,6 +205,9 @@ public final class KwcFabricRuntime {
             new OverviewerAdapter(new FabricOverviewerAdapterHost(this)).install();
             info("KOKOTO WebChat disabled by reloaded config.");
         }
+        // Emit transport warnings from the reload lifecycle itself so command-bridge
+        // differences cannot suppress HTTP listener/peer warnings.
+        logReloadTransportSecurityWarnings();
         requestBlueMapLightReload();
         return true;
     }
@@ -333,6 +348,18 @@ public final class KwcFabricRuntime {
         } catch (Exception ex) { warn("Failed to create emoji directory: " + ex.getMessage()); }
     }
 
+
+    private void provisionRelaySharedSecrets() {
+        try {
+            FabricYamlConfiguration yaml = FabricYamlConfiguration.loadStrict(dataDirectory.resolve("config.yml").toFile());
+            RelaySharedSecretProvisioner.provision(
+                    dataDirectory.resolve("config.yml"), yaml.getMapList("server-relay.groups"),
+                    CoreLogger.of(this::info, this::warn));
+        } catch (Exception ex) {
+            warn("Failed to provision Relay v2 group shared-secret: " + ex.getMessage());
+        }
+    }
+
     private void reconcileConfigMigration() {
         try {
             PortableConfigMigration.reconcile(
@@ -396,7 +423,7 @@ public final class KwcFabricRuntime {
     public ServerRelay serverRelay() { return serverRelay; }
     public WebChatServer webServer() { return webServer; }
 
-    public String version() { return "5.0.0"; }
+    public String version() { return "5.1.0"; }
 
     public String serverName() {
         if (configValues != null && configValues.serverRelayServerName != null && !configValues.serverRelayServerName.isBlank()) return configValues.serverRelayServerName;

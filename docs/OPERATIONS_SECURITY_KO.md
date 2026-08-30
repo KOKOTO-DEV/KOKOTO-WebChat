@@ -89,8 +89,8 @@ commands:
 
 ```yaml
 security:
-  max-sse-connections-per-ip: 5
-  max-sse-connections-total: 200
+  max-sse-connections-per-ip: 10
+  max-sse-connections-total: 500
 ```
 
 각 값은 `0`으로 두면 비활성화됩니다. 제한에 걸린 클라이언트는 `too_many_stream_connections` 응답을 받습니다.

@@ -77,8 +77,8 @@ function Return-JavaHome([string]$JavaHome) {
 
 function Get-AdoptiumBinary([int]$Version) {
     $api = "https://api.adoptium.net/v3/assets/feature_releases/$Version/ga?architecture=x64&heap_size=normal&image_type=jdk&jvm_impl=hotspot&os=windows&page=0&page_size=1&project=jdk&sort_method=DEFAULT&sort_order=DESC&vendor=eclipse"
-    Write-Host "[KWC Forge] JDK $Version not found locally; resolving Eclipse Temurin..."
-    $releases = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent' = 'KOKOTO-WebChat-Forge-Build/5.0.0' }
+    Write-Host "[KWC Fabric] JDK $Version not found locally; resolving Eclipse Temurin..."
+    $releases = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent' = 'KOKOTO-WebChat-Forge-Build/5.1.0' }
     if (!$releases -or $releases.Count -lt 1) {
         throw "Adoptium returned no GA JDK $Version release for Windows x64."
     }
@@ -108,8 +108,8 @@ function Install-LocalTemurin([int]$Version) {
     $extract = Join-Path $downloadDir ("extract-{0}" -f $Version)
 
     try {
-        Write-Host "[KWC Forge] Downloading Eclipse Temurin JDK $Version..."
-        Invoke-WebRequest -Uri $package.link -OutFile $zip -UseBasicParsing -Headers @{ 'User-Agent' = 'KOKOTO-WebChat-Forge-Build/5.0.0' }
+        Write-Host "[KWC Fabric] Downloading Eclipse Temurin JDK $Version..."
+        Invoke-WebRequest -Uri $package.link -OutFile $zip -UseBasicParsing -Headers @{ 'User-Agent' = 'KOKOTO-WebChat-Forge-Build/5.1.0' }
 
         if ([string]::IsNullOrWhiteSpace($package.checksum)) {
             throw "Adoptium response did not include a SHA-256 checksum for JDK $Version."
@@ -119,11 +119,11 @@ function Install-LocalTemurin([int]$Version) {
         if ($actual -ne $expected) {
             throw "JDK $Version SHA-256 mismatch. Expected $expected, got $actual."
         }
-        Write-Host "[KWC Forge] JDK $Version SHA-256 verified."
+        Write-Host "[KWC Fabric] JDK $Version SHA-256 verified."
 
         if (Test-Path -LiteralPath $extract) { Remove-Item -LiteralPath $extract -Recurse -Force }
         New-Item -ItemType Directory -Path $extract -Force | Out-Null
-        Write-Host "[KWC Forge] Extracting JDK $Version..."
+        Write-Host "[KWC Fabric] Extracting JDK $Version..."
         Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
 
         $jdk = Get-ChildItem -LiteralPath $extract -Directory -ErrorAction Stop |
@@ -138,7 +138,7 @@ function Install-LocalTemurin([int]$Version) {
 
         if (Test-Path -LiteralPath $LocalJdkHome) { Remove-Item -LiteralPath $LocalJdkHome -Recurse -Force }
         Move-Item -LiteralPath $jdk.FullName -Destination $LocalJdkHome
-        Write-Host "[KWC Forge] Local JDK $Version ready: $LocalJdkHome"
+        Write-Host "[KWC Fabric] Local JDK $Version ready: $LocalJdkHome"
     }
     finally {
         if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue }

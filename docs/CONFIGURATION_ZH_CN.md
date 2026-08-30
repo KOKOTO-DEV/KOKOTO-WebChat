@@ -48,11 +48,13 @@ Web Admin 提供 **Filter** 和 **Settings** 页签。Filter 可管理适用范�
 
 ## 配置版本与迁移片段
 
-`config-version` 用于选择自动 migration 行为。migration 的**唯一模板是当前插件 JAR 内置的 `config.yml`**。`config-reference-<plugin-version>.yml` 只是提供给管理员查看完整默认配置的内置 config 原样副本，不作为 migration 输入。
+`config-version` 用于选择自动 migration 行为。重建时使用由 `ui.language` 选择的**当前版本内置显示模板**：`en-US` 使用 `config.yml`，`ko-KR`/`ja-JP`/`zh-CN` 使用各自的内置本地化模板。`config-reference-<plugin-version>.yml` 是从所选模板生成的管理员可读默认配置，不作为 migration 输入。默认值的语义比较仍以 canonical 英文 `config.yml` 为准，四个内置模板的解析值必须完全一致。
 
 如果 `config-version` 缺失或属于其他版本，KWC 会读取现有配置值，以最新内置 `config.yml` 创建新文件，再把现有用户值覆盖到新默认配置上。若旧 marker 不带 `*_auto_migration`，则视为管理员曾固定过该配置，并在重建前完整备份原 `config.yml`。旧注释、顺序、空白和缩进不会继承；以最新内置注释/布局为准，同时保留管理员设置值。已废弃设置不会重新写回。结果标记为 `<plugin-version>_auto_migration`。只要该 marker 保留，startup/reload 都会重复同样的“最新默认配置 + 当前值覆盖”过程，从而自动获得新增设置和最新注释/布局。精确的 `<plugin-version>` 表示当前版本配置已固定，同版本 startup/reload 不会重写 `config.yml`。
 
 `config-migration-<plugin-version>.yml` 是 review/diff 报告。旧版本生成的 `config-reference-*`、`config-migration-*`、`config-upgrade-*` 会自动清理；只有用于真实版本升级默认值比较的 JAR 内部 `config-baselines/*` 会保留。
+5.1.0 中，`ui.language` 不仅选择 Web UI 语言，也选择 KWC 重建 `config.yml` 时的注释/呈现语言、`config-reference-5.1.0.yml` 以及 migration/difference 报告语言。内置 template 为 `en-US`、`ko-KR`、`ja-JP`、`zh-CN`；切换语言只改变注释/布局，Relay group/secret/peer 等现有已解析管理员值会 overlay 回新模板并保持不变。Difference 判断比较的是已解析 YAML setting path + value，而不是注释、空白、缩进、引号样式、行号或 key 顺序。
+
 ## 总开关
 
 新生成的 config 顶层默认为 `enabled: false`。在此状态下，KOKOTO WebChat 只会生成/读取配置，/kchat reload 仍可使用，但不会启动 Web/聊天服务、监听器、Discord 集成、私信存储、插件网页安装、上传/表情初始化或清理任务。已有 config 如果没有此键，为了升级兼容会视为已启用。请先检查存储方式、保留期限、上传、预览、认证和对外公开设置，再改为 `enabled: true`。
@@ -64,8 +66,7 @@ update-check:
   enabled: true
 ```
 
-启用后，KOKOTO WebChat 会在 Bukkit、Fabric、NeoForge 和 Forge 上统一在后台检查 Modrinth 的最新正式版本。查询优先使用 KWC 的 `kokoto-webchat` 项目，在迁移期间失败时回退到旧 `bluemapwebchat` 项目。OP 或拥有 `kwc.update.notify` 权限的玩家登录时会按限频规则重新查询，因此新版本检测不再只依赖定时查询结果。5.0.0 的 CurseForge 通知链接在新的 KWC listing 真正上线前继续指向现有 BMWC bridge 页面。检查间隔、发布通道和进服提示延迟仍使用内置默认值。更新查询失败不会阻止服务器启动，并会记录为警告日志。
-
+启用后，KOKOTO WebChat 会在 Bukkit、Fabric、NeoForge 和 Forge 上统一在后台检查 Modrinth 的最新正式版本。当前项目地址迁移期间，KWC 5.1.0 会先查询 canonical `kokoto-webchat`；不可用时回退到现有 `bluemapwebchat`。BMWC 在迁移完成前仍是实际更新来源，有更高版本时会正常通知，只有两个来源都失败时才输出警告。OP 或拥有 `kwc.update.notify` 权限的玩家登录时会按限频规则重新查询，因此新版本检测不再只依赖定时查询结果。
 ## 部署模式
 
 ### BlueMap 插件模式
@@ -140,7 +141,7 @@ emoji:
 
 ## 聊天记录存储
 
-聊天记录通过 `chat.history-storage` 选择 `memory`、`jsonl` 或 `sqlite`。`chat.history-size` 和 `chat.history-retention-days` 在三种模式中共用。`0` 表示不限制数量/期限。新生成的 config 顶层默认为 `enabled: false`，因此在检查这些值并设置 `enabled: true` 前不会执行清理任务。如果服务器策略需要自动清理旧聊天，请设置正数保留天数，例如 `30` 或 `90`。上传和外部媒体缓存保留设置也按同样方式工作。`chat.history-file` 仅用于 JSONL，`chat.history-sqlite-file` 仅用于 SQLite。
+聊天记录通过 `chat.history-storage` 选择 `memory`、`jsonl` 或 `sqlite`。`chat.history-size` 和 `chat.history-retention-days` 在三种模式中共用。`0` 表示不限制数量/期限。新生成的 config 顶层默认为 `enabled: false`，因此在检查这些值并设置 `enabled: true` 前不会执行清理任务。如果服务器策略需要自动清理旧聊天，请设置正数保留天数，例如 `30` 或 `90`。上传和外部媒体缓存保留设置也按同样方式工作。`chat.history-file` 仅用于 JSONL，`chat.history-sqlite-file` 仅用于 SQLite。当 `chat.history-sqlite-migrate-jsonl: true` 且 SQLite 数据库为空时，会一次性导入现有 `chat.history-file`。手工编辑、大规模清理或迁移前，请正常备份 `history.db`。
 
 ## 消息令牌
 
@@ -174,13 +175,15 @@ message-tokens:
 
 ```yaml
 message-tokens:
+  newline:
+    aliases: [enter, newline, nextline, linebreak, br, next]
   custom:
     separator:
-      aliases: [separator, divider]
+      aliases: [separator, divider, line]
       replacement: "────────────"
 ```
 
-## 1:1 私信会话线程
+## 1:1 私信会话
 
 ```yaml
 direct-message:
@@ -194,35 +197,72 @@ direct-message:
     enabled: false
 ```
 
+启用 `direct-message.enabled` 后，已绑定或曾被服务器识别的玩家之间可使用持久化 1:1 私信会话。A→B 与 B→A 使用同一个 UUID 对应会话。存储方式、保留期限、消息数量限制与通知选项以当前默认 config 为准。
+
 `group-chat.admin-audit.enabled` 是 4.6.3 新增的独立、默认关闭的群聊正文访问开关。即使启用，账号仍必须列在 `private-chat-super-admins` 中。管理员视图为只读，不要求房间成员身份，也不会加入房间或更新已读状态；每次分页读取都会记录为 `admin.group-audit-read`，且不会把消息正文复制到审计日志。
 
-`direct-message.admin-audit.enabled` 是默认关闭的独立正文访问开关。即使启用，也只有同时列在 `private-chat-super-admins` 中的账号可以在只读审计视图中打开私信正文。每次分页读取会写入审计日志，但正文不会复制到日志。普通 ADMIN/MODERATOR 角色不会自动获得权限。
+`direct-message.admin-audit.enabled` 是独立且默认关闭的私信正文审计开关。即使启用，也只有同时明确列在 `private-chat-super-admins` 中的账号可以在只读审计视图中打开私信正文。审计视图不能发送、回复、隐藏消息或更新已读状态；每次分页读取都会写入审计日志，但不会把正文复制到日志中。
 
 `capture-game-whispers` 会把未取消的 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 复制到发送者和接收者的 KWC DM 会话。它不会重新发送或替换 Minecraft 私聊。Bukkit 无法统一获得所有私聊插件的最终成功结果，因此以格式正确、目标为已知玩家的命令作为记录条件。
 
-## 0 表示无限制/无最大值的选项
+## 重要的 0 值语义
 
-- `chat.history-size`
-- `chat.history-retention-days`
-- `chat.history-page-size`
-- `chat.max-message-length`
-- `chat.max-url-message-length`
-- `upload.max-uploads-per-minute`
-- `upload.max-file-size-mb`
-- `upload.max-files-per-message`
-- `ui.image-preview-max-per-message`
-- `ui.image-preview-max-height`
-- `ui.max-width`
-- `ui.max-height`
-- `preview.youtube-max-embeds-per-message`
-- `preview.social-embeds.max-embeds-per-message`
-- `preview.external-media-cache-max-size-mb`
-- `pinned.max-pins`
-- `pinned.show-to-logged-out`
-- `commands.max-length`
-- `direct-message.retention-days`
-- `direct-message.max-messages-per-thread`
-- `direct-message.max-message-length`
+`0` 在不同设置中并不具有统一含义。以下说明以当前 5.1.0 loader/runtime 的实际行为为准；实际说明不同的设置不得自行推断为“无限制”。
+
+- `chat.history-size`: 按数量保留的公开聊天历史最大行数，与按时间保留策略同时生效。 0 表示不限制数量。
+- `chat.history-retention-days`: 公开聊天历史的按时间保留天数。 0 表示不按时间过期。
+- `chat.history-page-size`: 每页默认请求的历史消息数量。设为 0 时，memory/JSONL 历史不设置显式分页上限，但 SQLite 仍应用内置的 500 行查询安全上限。
+- `chat.max-message-length`: KWC 接受的普通公开聊天消息最大长度。 0 表示不限制此长度。
+- `chat.max-url-message-length`: 包含 URL 的公开聊天消息最大长度。若为正数，会保证不小于正数的普通消息长度限制。 0 表示不限制此长度。
+- `message-tokens.max-replacements-per-message`: 单条消息最多执行的 token 替换次数，用于限制替换工作量。 0 表示不限制数量。
+- `reply.game-preview.max-length`: Minecraft Reply 引用预览中显示的原文最大长度。 0 表示不截断预览。
+- `pinned.max-pins`: 同时保持置顶状态的公开消息最大数量。 0 表示不限制数量。
+- `direct-message.retention-days`: 已存储 DM 消息的按时间保留天数。 0 表示不按时间过期。
+- `direct-message.max-messages-per-thread`: 每个 DM thread 按数量保留的最大消息数。 0 表示不限制数量。
+- `direct-message.max-message-length`: Web/游戏发送可接受的 DM 消息最大长度。 0 表示不限制此长度。
+- `group-chat.retention-days`: 已存储群组房间消息的按时间保留天数。 0 表示不按时间过期。
+- `group-chat.max-messages-per-room`: 每个群组房间按数量保留的最大消息数。 0 表示不限制数量。
+- `group-chat.max-message-length`: 群组房间可接受的消息最大长度。 0 表示不限制此长度。
+- `group-chat.max-rooms-per-user`: 房间管理校验中，单个用户可拥有/加入的群组房间最大数量。 0 表示不限制数量。
+- `group-chat.max-members-per-room`: 单个群组房间允许的最大成员数。 0 表示不限制数量。
+- `group-chat.invite-expire-hours`: 群组房间邀请有效期（小时）。0 并不表示无限期。 运行时最小值为 1；更小的值会提高到最小值。
+- `guest.cooldown-seconds`: 同一 resolved client identity/IP 连续发送访客消息的最小间隔（秒）。0 表示关闭此 cooldown 限制项。
+- `guest.max-messages-per-minute`: 对同一 resolved client identity/IP 应用的每分钟访客消息限制。0 表示关闭此每分钟限制项。
+- `captcha.expire-seconds`: 每个已签发验证码题目的有效期（秒）。该值不钳制；0/负数会让新题立即或几乎立即过期。
+- `captcha.pass-valid-minutes`: 未要求每条消息验证码时，一次成功的验证码状态可复用的时间（分钟）。 运行时最小值为 1；更小的值会提高到最小值。
+- `auth.link-code-cooldown-seconds`: 同一 client/user 重复签发账号绑定码的最小间隔（秒）。 0 表示关闭此限制项。
+- `auth.link-code-max-per-minute`: 签发 rate limiter 中每分钟允许生成的账号绑定码最大次数。 0 表示关闭此限制项。
+- `auth.remember-session-days`: 普通 USER/MODERATOR Web 会话的过期天数。<=0 时不设置 expiry timestamp。
+- `security.login-fail-limit`: 在配置的失败统计窗口内触发基于 IP 临时锁定的登录失败次数。 0 表示关闭此限制项。
+- `security.login-lock-seconds`: 超过登录失败限制后，基于 IP 的登录锁定持续时间（秒）。 0 表示关闭此限制项。
+- `security.max-sse-connections-per-ip`: 单个 resolved client IP 允许的并发 /stream SSE 连接最大数量。使用反向代理时应正确配置 http.trusted-proxies，避免所有客户端都显示为代理 IP。 0 表示关闭此限制项。
+- `security.max-sse-connections-total`: 整个 KWC 服务器允许的并发 /stream SSE 连接最大数量。 0 表示关闭此限制项。
+- `admin.admin-session-expire-hours`: ADMIN Web 会话过期时间（小时）。<=0 时管理员会话不设置 expiry timestamp。
+- `moderation.default-mute-minutes`: 未指定时默认禁言时长（分钟）。<=0 表示永久禁言；此设置仅限 config。
+- `commands.max-length`: Web 命令执行接受的命令文本最大长度。 0 表示不限制此长度。
+- `ui.image-preview-max-per-message`: 单条消息渲染的 inline 图片预览最大数量。 0 表示不限制数量。
+- `ui.image-preview-max-height`: 图片预览的配置高度上限（px）。即使为正数也仍受聊天 viewport 安全上限约束；0 只取消此明确 px 上限并改用自动 viewport 上限，因此并非真正无限。
+- `ui.max-width`: 配置的 KWC 面板最大宽度（px）。 0 仅取消配置的最大值；浏览器/viewport 限制仍可能生效。
+- `ui.max-height`: 配置的 KWC 面板最大高度（px）。 0 仅取消配置的最大值；浏览器/viewport 限制仍可能生效。
+- `ui.user-profiles.max-profiles`: 每个账号可在服务器保存的 preference 配置档最大数量。 运行时范围为 0-20，超出范围会钳制到边界值。 0 表示关闭服务器端保存的配置档。
+- `ui.virtual-scroll.overscan-screens`: virtual-scroll 可见窗口上下额外渲染的 viewport 屏幕距离。 0 是有效的最小行为值。
+- `ui.virtual-scroll.min-rendered-messages`: 即使 viewport 计算需要更少，也保持渲染的最小消息行数。 0 是有效的最小行为值。
+- `discordsrv.max-emoji-links-per-message`: 单条 Discord 消息附加的 custom-emoji 图片 URL 最大数量。与 emoji.game-link.max-links-per-message 不同，本设置中的 0 表示禁用。 0 表示不向 Discord 附加 emoji 图片 URL。
+- `discordsrv.reply-relay.preview-max-length`: Discord Reply preview 中包含的被回复原文最大长度。 0 表示不截断预览。
+- `upload.cooldown-seconds`: 同一 resolved client IP 两次上传尝试之间的最小间隔（秒）。 0 表示关闭此限制项。
+- `upload.max-uploads-per-minute`: 单个 resolved client IP 每分钟上传尝试限制。 0 表示关闭此限制项。
+- `upload.max-file-size-mb`: 单个上传文件允许的最大大小（MiB）。 0 表示不限制此大小/配额。
+- `upload.max-total-size-mb`: upload.directory 的总存储配额（MiB）。超额时先删除最旧的未引用上传；若仍无法腾出足够空间，则拒绝新上传。 0 表示不限制此大小/配额。
+- `upload.max-files-per-message`: 一次 composer 上传操作可选择/附加的最大文件数。 0 表示不限制数量。
+- `upload.retention-days`: 仅删除超过此天数且已不再被保留消息/pin 引用的上传文件。 0 表示关闭按时间清理。
+- `preview.youtube-max-embeds-per-message`: 单条消息渲染的 YouTube embed 最大数量。 0 表示不限制数量。
+- `preview.social-embeds.max-embeds-per-message`: 单条消息渲染的受支持社交 embed 最大数量。 0 表示不限制数量。
+- `preview.external-media-cache-max-size-mb`: KWC 会获取/缓存的单个外部媒体对象最大大小（MiB）。 0 表示不限制此大小/配额。
+- `preview.external-media-cache-retention-days`: 删除未引用 external-media cache 文件的按时间天数。 0 表示关闭按时间清理。
+- `emoji.max-file-size-kb`: 单个 custom emoji 文件大小限制（KiB）；超出时会根据所用流程在管理 catalog 操作中被拒绝/忽略。 0 表示不限制此大小/配额。
+- `emoji.max-total-size-mb`: 管理 emoji 文件的总 storage/catalog 配额（MiB）。超过配额的上传会被拒绝，catalog 扫描也不会暴露超出总限制的文件。 0 表示不限制此大小/配额。
+- `emoji.message-token-limit`: 单条消息允许的 custom emoji token 最大数量。token 可包含规范化的 pack/name 路径。 0 表示不限制数量。
+- `emoji.game-link.max-links-per-message`: link 模式下单条游戏消息附加的 emoji 图片链接最大数量。 0 表示不限制数量。
 
 ## 访客聊天限制
 
@@ -263,6 +303,9 @@ reply:
 ```
 
 点击非 URL 正文会建议 `/kchat reply <messageId> `，URL 片段仍优先打开链接。`local-game-chat` 让普通本地游戏聊天也可点击回复；若其他聊天格式插件必须独占最终渲染，请关闭。点击同服游戏发送者名称会建议 `/w <真实名称> `；已关联 Web 发送者和其他服务器的游戏发送者会建议 `/kchat dm <真实名称> `。
+启用 `reply.game-click.enabled` 后，点击由 KWC 渲染的非 URL 消息正文会准备 `/kchat reply <messageId> `；执行 `/kchat reply <messageId> <message>` 会创建与 Web Reply 使用相同 `replyTo` metadata 的公开消息。
+DM/group 消息也使用相同的游戏点击模型：会话标签准备现有 `/kchat dm ...` 或 `/kchat group ...` 命令，正文准备内部 private reply target。发送前会重新验证私信参与者/当前群组成员身份，因此内部 ID 本身不是权限凭据。
+
 
 游戏回复会保留玩家输入的自定义表情 token，用于 Web 历史和服务器中继；在发送端服务器的 Minecraft 输出中，则复用游戏侧表情插件处理后的命令正文来显示表情。若没有处理后的 glyph 且 `emoji.game-link.mode` 为 `preserve`，已识别 token 会以普通 Bukkit 聊天行输出以兼容游戏侧渲染器；该兼容行无法附带 KWC 的点击和 hover metadata。
 
@@ -272,22 +315,18 @@ reply:
 
 ## 服务器中继配置
 
-`peers` 不是连接/会话列表，而是本服务器发送中继消息的 HTTP 目标列表；相同条目的 `id` / `secret` 也用于验证从对应服务器收到的中继请求。需要双向中继时，请在两端分别配置对方条目。
-
-服务器 1：
+KOKOTO WebChat 5.1.0 使用 **Relay Protocol v2**。relay group 本身就是信任边界；同一 group 内所有 peer 关系共享一个 group `shared-secret`。peer 项只包含 `id`、`url` 和 `enabled`，不存在 `peers[].secret`。
 
 ```yaml
 server-relay:
   enabled: true
-  server-id: "server1"
-  server-name: "服务器 1"
-  shared-secret: "两台服务器使用同一个足够长的随机密钥"
+  server-id: "server-1"
+  server-name: "Server 1"
   connect-timeout-seconds: 5
   request-timeout-seconds: 10
   max-clock-skew-seconds: 60
   dedupe-seconds: 300
   max-hops: 8
-  forward-received-public-chat: true
   sources:
     game: true
     web: true
@@ -298,60 +337,24 @@ server-relay:
     web: true
     game: true
   game-format: "&8[&b{server}&8] &f{sender}&7: &f{message}"
-  peers:
-    - id: "server3"
-      url: "https://server3.example.com/chat/api"
-      secret: ""
-      enabled: true
+  groups:
+    - id: "main"
+      shared-secret: ""
+      forwarding:
+        enabled: false
+      peers:
+        - id: "server-2"
+          url: "https://server2.example.com/api"
+          enabled: true
 ```
 
-服务器 3 使用 `server-id: "server3"`，并在 `peers` 中添加 `id: "server1"` 和服务器 1 的公开 API URL。双方必须互相登记；接收方 peer ID 必须与发送方 `server-id` 完全一致，并且每台服务器的 ID 必须唯一。
+首次设置时，只在一台服务器上保留 `shared-secret: ""`，启动/重载后重新打开该服务器的 `config.yml`，再把自动生成的值原样复制到同一 **group** 的其他服务器。不要让每台服务器分别从空值生成，否则会得到不同 secret 而无法互相认证。已有 non-empty secret 会保留；手工 secret 不足 32 字符时不会自动替换，而会保持 invalid/fail-closed。双方必须在同一 group 中互相登记 peer，并使用完全相同的生成/复制 secret。同一个 peer ID 不能登记到多个本地 group，重复登记会被禁用。direct relay 会逐个独立认证/加密 `/relay/v2/message` 请求。`/relay/v2/handshake` 是无状态的诊断 identity/health probe，不控制 routing。
 
-## HTTPS 与反向代理
+Relay v2 通过 `/relay/v2/message` 传递 public chat 以及跨服务器 1:1 DM/read receipt。payload 使用方向性 HKDF-SHA256 key 与 AES-256-GCM 做 hop-by-hop 保护。direct 1-hop HTTP 仍可在 payload 加密/认证的状态下使用，但会产生明确警告。forwarding 只发生在同一 group 内并按 peer 单独过滤：使用 `http://` 的 peer 只会被排除在经过该 peer 的 forwarding 之外，同组其他 `https://` peer 仍可继续参与。
 
-`url` 是远端可公开访问的 KWC API base，`/relay/receive` 会自动追加。
+首次从 5.0.0 迁移到 5.1.0 时，KWC **不会**根据旧 flat relay 配置猜测 group。旧 relay trust key/peer/forwarding 会被废弃，`server-relay.enabled` 安全重置为 `false`，管理员必须显式定义 v2 group 后再重新启用 relay。
 
-```text
-配置: https://server3.example.com/chat/api
-请求: https://server3.example.com/chat/api/relay/receive
-```
-
-公开 HTTPS 路由必须把包含 `/relay/receive` POST 在内的整个 API 路径转发到内部 KWC HTTP 监听器。已有 HTTPS 前端时无需公开 8899 端口。代理必须保留 `X-BMWC-Relay-Version`, `X-BMWC-Relay-From`, `X-BMWC-Relay-Timestamp`, `X-BMWC-Relay-Signature`。自签名证书需要加入 Java trust store，否则会在 TLS 验证阶段失败。
-
-## 密钥
-
-- `shared-secret` 是所有 peer 的默认密钥。
-- `peers[].secret` 是单独连接的覆盖密钥。
-- 两台服务器可使用相同的长随机 `shared-secret`，并保持 peer `secret: ""`。
-- peer 密钥和公共密钥都为空时，该 peer 会从活动列表排除。
-
-## 多服务器拓扑
-
-全网状拓扑让每台服务器登记所有其他服务器；Hub 拓扑让 leaf 只连接 hub，hub 登记所有 leaf。`forward-received-public-chat: true` 时会继续转发收到的公共聊天；设为 `false` 时公共聊天只在直接 peer 之间传递。该设置不影响 DM 多跳投递与已读回执。relay ID 去重、来源抑制、上一跳排除和 `max-hops` 防止循环。没有持久离线队列；peer 离线期间的消息不会稍后补发。
-
-## reload 与诊断
-
-`/kchat reload` 会关闭旧 relay，并使用当前配置重新创建。中继是每条消息一次 HTTP(S) 请求，不是永久连接，因此没有单独的“重新连接”操作。
-
-```text
-Server relay enabled. serverId=server1, activePeers=2/2 [server2, server3]
-```
-
-如果 `activePeers` 少于配置数量，警告会指出重复 ID、自身 ID、空/非法 URL、不支持的 scheme 或缺少密钥等原因。
-
-## HTTP 错误
-
-- `403 unknown_peer`: 接收服务器的活动 peer 中没有发送方的准确 `server-id`。
-- `401 bad_signature`: 实际密钥不同，或代理修改了正文/头。
-- `401 expired_request`: 两台服务器时钟差超过 `max-clock-skew-seconds`。
-- `404 relay_disabled`: 接收端未启用，或代理转发到了错误实例/路径。
-- `426 unsupported_protocol`: 两端中继协议版本不兼容。
-
-修改接收端 peer 或密钥后，也必须在接收端执行 `/kchat reload`。
-
-## 显示区分
-
-Web 聊天只为其他服务器的消息显示基于 `originServerId` 的固定颜色徽章，当前服务器自身的徽章会省略。Web→游戏时，仅远端消息的旧格式缺少 `{server}` / `{server_id}` 才会自动添加 `[server-name]`。Discord 是共享外部频道，因此继续保留服务器标识。为避免 DiscordSRV 循环和系统事件重复，`sources.discord` 与 `sources.system` 默认关闭。
+完整 protocol、trust、migration、forwarding 与诊断请参阅 `docs/SERVER_RELAY_ZH_CN.md`。
 
 ## Discord 转发选项
 
@@ -364,6 +367,9 @@ discordsrv:
   append-game-emoji-links: true
   reply-relay:
     enabled: false
+    prefix-enabled: true
+    preview-enabled: true
+    preview-max-length: 120
 ```
 
 格式支持 `{server}`, `{server_id}`, `{sender}`, `{name}`, `{role}`, `{source}`, `{message}`, `{channel}`。中继启用时，旧格式若没有服务器占位符会自动添加 `[server-name]`。多个服务器共享同一 Discord 频道时，只有实际检测到本地 Minecraft 聊天的来源服务器 KWC 才会给 DiscordSRV 的普通游戏转发添加服务器名和表情链接，其他服务器不会编辑该消息。接收端不会把服务器中继消息再次发送到 Discord，因此来源服务器的 Discord 集成关闭或失败时，不存在由其他服务器代发的 relay-only fallback。DiscordSRV 负责普通游戏聊天转发时，请使用 `game-relay-mode: "discordsrv"`。若由 KWC 直接发送，请使用 `kwc` 并关闭 DiscordSRV 的普通游戏聊天转发以避免重复。
@@ -391,9 +397,9 @@ admin-alerts:
 
 `pinned.show-to-logged-out` 控制未登录访问者是否能看到置顶消息。如需仅登录用户可见，请设为 `false`。
 
-## 固定/删除显示开关
+## 置顶/删除显示开关
 
-为避免误点，单条消息上的固定/删除按钮默认隐藏。ADMIN/MOD 用户可以在管理面板中，使用“清空 Web 历史”按钮旁边的固定/删除开关来显示这些按钮。该开关不会持久保存，刷新后会恢复为关闭。
+为避免误点，单条消息上的置顶/删除按钮默认隐藏。ADMIN/MOD 用户可以在管理面板中，使用“清空 Web 历史”按钮旁边的置顶/删除开关来显示这些按钮。该开关不会持久保存，刷新后会恢复为关闭。
 
 ## UI
 
@@ -419,23 +425,23 @@ player-display:
 
 ## 自定义表情与游戏侧表情插件
 
-KOKOTO WebChat 会把自定义表情文件保存到 `plugins/KOKOTO-WebChat/emojis`。子文件夹会作为表情包处理。
+KOKOTO WebChat 会把自定义表情文件保存到 `plugins/KOKOTO-WebChat/emojis`。子文件夹会作为表情包处理。从 5.1.0 起，表情包目录名与表情文件名 stem 使用同一 token-safe 规则规范化；空格/不可用字符会被删除，已有不规范名称会在启动时统一更名，冲突时追加数字 suffix。最终路径与 `:pack/name:` token 一致。
 
 默认情况下，`emoji.game-link.enabled` 为 `false`，因此 Web→游戏消息会保留 `:pack/name:`、`:emoji:pack/name:` 这样的自定义表情 token。若 ImageEmojis 或其他游戏侧表情插件会在 Minecraft 聊天中渲染 token，请使用这个默认行为。
 
 当 `emoji.game-link.enabled` 为 `true` 时，`emoji.game-link.mode` 支持 `preserve`、`link` 和 `label`。
 
 - `preserve`: 即使 game-link 已启用，也强制保持 token 不变。
-- `link`: 发送 `label-format` 文本，并附加一个短 BM Web Chat 图片链接。
+- `link`: 发送 `label-format` 文本，并附加一个短 KOKOTO WebChat 图片链接。
 - `label`: 只发送 `label-format` 文本。
 
 `emoji.game-link.*` 只影响 Web→Minecraft 聊天。在 `discordsrv` 模式下，KWC 会直接扫描 DiscordSRV 实际发送到 Discord 的游戏消息中的 `:emoji:` token，并把它交给与 Web→Discord 相同的 KWC token→link 处理路径。LOWEST 阶段记录的游戏聊天信息只用于共享 Discord 频道中的来源服务器判定；Minecraft glyph 或游戏渲染后的文本不会作为 Discord 表情转换输入。Discord 图片预览链接分别由 Web→Discord 的 `discordsrv.append-web-emoji-links` 和 Game→Discord 的 `discordsrv.append-game-emoji-links` 控制。
 
-BM Web Chat 会在 Web 历史和中继 payload 中保留规范的表情 token。启用 ImageEmojis 或 ImageEmojis-Bero 时，KWC 会通过 reflection 读取其公开的 runtime 表情 repository，并在构建可点击的 Minecraft component 前把 token 转换为接收服务器当前使用的 glyph。该机制不增加硬依赖，也不会解析资源包。
+KOKOTO WebChat 会在 Web 历史和中继 payload 中保留规范的表情 token。启用 ImageEmojis 或 ImageEmojis-Bero 时，KWC 会通过 reflection 读取其公开的 runtime 表情 repository，并在构建可点击的 Minecraft component 前把 token 转换为接收服务器当前使用的 glyph。该机制不增加硬依赖，也不会解析资源包。
 
 对于交互式聊天行，KWC 会先插入 ImageEmojis glyph，再构建发送者、回复和 URL 点击事件，因此表情显示与可点击链接可以同时工作。只有接收服务器无法解析的已知 token 才会使用单行 plain Bukkit fallback 兼容其他游戏侧 renderer；该 fallback 无法携带 KWC 的点击或 hover metadata。
 
-`default-pack` 和 `aliases` 可用于把扁平的游戏侧 token 映射回 BM Web Chat 的 pack/name id。例如：
+`default-pack` 和 `aliases` 可用于把扁平的游戏侧 token 映射回 KOKOTO WebChat 的 pack/name id。例如：
 
 ```yaml
 emoji:
@@ -470,7 +476,7 @@ commands:
 
 ## 媒体预览高度与滚动稳定性
 
-`ui.image-preview-max-height` 用于限制图片、GIF、视频和 iframe 类预览的显示高度。推荐范围为 `640-720`，默认值为 `720`。
+`ui.image-preview-max-height` 用于限制图片、GIF、视频和 iframe 类预览的显示高度。推荐范围为 `640-720`，默认值为 `720`。 `ui.image-preview-max-height` 设为 `0` 时，只取消明确的 px 上限，自动按 viewport 计算的安全上限仍会生效，因此并不是真正的无限高度。
 
 ```yaml
 ui:
@@ -564,6 +570,11 @@ ui:
 
 `ui.time-zone` 用于指定聊天时间显示的时区。`local` 表示使用浏览器/设备本地时区，也可以使用 `UTC` 或 `Asia/Seoul` 等 IANA 时区。无效值会在 Web UI 中回退到本地时间。
 
+
+## 重复运维错误日志
+
+KWC 不再为每个 HTTP 状态码单独堆叠日志例外，而是对可重复出现的运维 HTTP/网络故障使用统一控制台策略。同一 operation/target 的首次故障会立即记录；相同状态的重复故障会被抑制，并在后续摘要中报告省略次数。故障状态发生变化时会立即记录新状态；在重复日志被抑制后恢复正常时，会输出一次恢复摘要。该策略用于 Relay 验证/HTTP 传输、更新源查询、运维 API 的 rate/server 故障等重复 transport 类问题；普通用户输入验证/认证失败响应不会升级为服务器控制台错误。实际 retry/backoff 仍由各功能独立控制，与日志抑制分离。
+
 ## HTTP 代理 / 客户端 IP
 
 `http.trusted-proxies` 用于指定哪些代理的 `X-Forwarded-For` 可以被信任。直接公开 HTTP 时请保持为空；如果同一台服务器上使用 Caddy/Nginx，请将 `127.0.0.1` 和 `::1` 写成块状 YAML 列表。`http.log-client-ip-resolution: true` 只建议临时开启，用于在服务器控制台和 `logs/latest.log` 中确认 socket IP、forwarded 头和最终解析出的客户端 IP。完整检查步骤见 `docs/OPERATIONS_SECURITY_ZH_CN.md`。
@@ -610,19 +621,23 @@ ui:
 
 ## 消息搜索
 
-启用存储历史记录时，可以通过聊天面板右上角的浮动区域的放大镜按钮和 `/history/search` API 搜索消息内容和发送者。搜索选项可按日期/时间范围、发送者、来源以及是否包含系统/事件消息进行筛选。搜索结果会显示在可滚动列表中，并遵循聊天主题和字体设置。点击搜索结果会使用现有的周边历史加载跳转到对应消息。带有 i18n 键的系统/事件消息会尽可能按请求的 Web UI 语言搜索和显示。 可通过 `search.enabled` 启用/禁用搜索，且仅用 `search.result-limit` 同时控制 Web UI 结果数量和 `/history/search` API 限制。没有单独的内部最大值：设置为 2000 时最多返回 2000 条，设置为 10 时最多返回 10 条。10000 或 100000 这类非常大的值也会被接受，但可能导致搜索变慢、响应体变大，并显著增加 CPU、内存和数据库负载。默认值为 50，普通使用建议 50-200。当 `config-version: "5.0.0_auto_migration"` 时，缺少的搜索设置会在 startup/reload 时自动插入。只有使用精确的 `config-version: "5.0.0"` 停止同版本自动 migration 后，才需要手动添加缺少的键或重新启用 `_auto_migration`。
+启用存储历史记录时，可以通过聊天面板右上角的浮动区域的放大镜按钮和 `/history/search` API 搜索消息内容和发送者。搜索选项可按日期/时间范围、发送者、来源以及是否包含系统/事件消息进行筛选。搜索结果会显示在可滚动列表中，并遵循聊天主题和字体设置。点击搜索结果会使用现有的周边历史加载跳转到对应消息。带有 i18n 键的系统/事件消息会尽可能按请求的 Web UI 语言搜索和显示。 可通过 `search.enabled` 启用/禁用搜索，且仅用 `search.result-limit` 同时控制 Web UI 结果数量和 `/history/search` API 限制。没有单独的内部最大值：设置为 2000 时最多返回 2000 条，设置为 10 时最多返回 10 条。10000 或 100000 这类非常大的值也会被接受，但可能导致搜索变慢、响应体变大，并显著增加 CPU、内存和数据库负载。默认值为 50，普通使用建议 50-200。当 `config-version: "5.1.0_auto_migration"` 时，缺少的搜索设置会在 startup/reload 时自动插入。只有使用精确的 `config-version: "5.1.0"` 停止同版本自动 migration 后，才需要手动添加缺少的键或重新启用 `_auto_migration`。
 
 ## 群组聊天
 
 `group-chat.enabled` 启用 Web 群组聊天功能。支持公开/私密房间、哈希保存的可选密码、邀请、退出房间、隐藏/恢复房间、房间设置、未读追踪、按用户隐藏消息、踢出/封禁/解除封禁成员以及转移房主。群组消息保存在 `group-chat.sqlite-file`（默认 `group-messages.db`）中。`group-chat.retention-days: 0` 表示不按时间清理；正数会物理删除更旧的群组消息。
 
+房间加入/退出通知不是全局 `config.yml` 开关，而是**每个房间单独保存的数据库设置**。可在房间设置中开启或关闭，并保存到 `group_rooms.membership_events_enabled`；旧数据库新增该列时默认启用。只有实际成员关系变化才会保存事件，关闭群聊窗口不等于退出房间。
+
 
 ## 私信/群组聊天元数据超级管理员
 
-`private-chat-super-admins: []` 用于填写可查看私信/群聊元数据的准确 UUID 或 Minecraft 名。元数据视图显示参与者/标题、消息数、大致存储大小、保留状态和管理操作。只有在 `direct-message.admin-audit.enabled: true` 时才能以只读方式打开私信正文，只有在 `group-chat.admin-audit.enabled: true` 时才能打开群聊正文；两种审计视图的每次分页读取都会写入审计日志。
+`private-chat-super-admins: []` 用于填写可查看私信/群聊元数据的准确 UUID 或 Minecraft 名。元数据视图显示参与者/标题、消息数、大致存储大小、保留状态和管理操作。私信正文仅在 `direct-message.admin-audit.enabled: true` 时可审计，群聊正文仅在 `group-chat.admin-audit.enabled: true` 时可审计；两者都要求账号列在 `private-chat-super-admins` 中。两种审计视图均为只读，每次分页读取都会写入审计日志。
 
 
 `frontend.standalone.app-name` 和 `frontend.standalone.app-short-name` 控制 standalone 页面/PWA 名称。移动端添加到主屏幕后如更改这些值，需要重新添加。`web-push.notification-title` 控制测试/系统/后台推送的默认标题；留空时使用 `frontend.standalone.app-name`。
+
+如果旧 config 中仍保留 `BlueMapWebChat` 或 `BM WebChat` 这类历史生成显示名，KWC 会把它视为 legacy default，并使用当前 fallback 名称。
 
 ### Dynmap 适配器
 

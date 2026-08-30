@@ -141,13 +141,11 @@ public class ConfigValues implements MessageTokenConfig {
     public boolean serverRelayEnabled;
     public String serverRelayServerId;
     public String serverRelayServerName;
-    public String serverRelaySharedSecret;
     public int serverRelayConnectTimeoutSeconds;
     public int serverRelayRequestTimeoutSeconds;
     public int serverRelayMaxClockSkewSeconds;
     public int serverRelayDedupeSeconds;
     public int serverRelayMaxHops;
-    public boolean serverRelayForwardReceivedPublicChat;
     public boolean serverRelayGameChat;
     public boolean serverRelayWebChat;
     public boolean serverRelayGuestChat;
@@ -156,18 +154,30 @@ public class ConfigValues implements MessageTokenConfig {
     public boolean serverRelayDeliverToWeb;
     public boolean serverRelayDeliverToGame;
     public String serverRelayGameFormat;
-    public List<RelayPeer> serverRelayPeers;
+    public List<RelayGroup> serverRelayGroups;
+
+    public static final class RelayGroup {
+        public final String id;
+        public final String sharedSecret;
+        public final boolean forwardingEnabled;
+        public final List<RelayPeer> peers;
+
+        public RelayGroup(String id, String sharedSecret, boolean forwardingEnabled, List<RelayPeer> peers) {
+            this.id = id;
+            this.sharedSecret = sharedSecret;
+            this.forwardingEnabled = forwardingEnabled;
+            this.peers = peers == null ? List.of() : List.copyOf(peers);
+        }
+    }
 
     public static final class RelayPeer {
         public final String id;
         public final String url;
-        public final String secret;
         public final boolean enabled;
 
-        public RelayPeer(String id, String url, String secret, boolean enabled) {
+        public RelayPeer(String id, String url, boolean enabled) {
             this.id = id;
             this.url = url;
-            this.secret = secret;
             this.enabled = enabled;
         }
     }

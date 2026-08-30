@@ -1,0 +1,26 @@
+digraph G {
+
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.42", ranksep="0.65", fontname="Noto Sans"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=TB;
+  client [label="Client sends one multipart upload", fillcolor="#E0F2FE"];
+  size [label="Request/body/file size checks", fillcolor="#FEF3C7"];
+  rate [label="Per-IP cooldown / upload rate limit", fillcolor="#FEF3C7"];
+  auth [label="Session / role / guest upload policy", fillcolor="#FEF3C7"];
+  type [label="Sanitize filename\nvalidate allowed extension", fillcolor="#FEF3C7"];
+  cleanup [label="Retention cleanup\nthen storage quota check", fillcolor="#F1F5F9"];
+  store [label="Write using configured filename policy\nunder upload directory", fillcolor="#DCFCE7"];
+  publish [label="Return URL + safe metadata", fillcolor="#ECFEFF"];
+  reject [label="Reject with explicit HTTP/JSON error", fillcolor="#FEE2E2"];
+  composer [shape=note,label="Composer-side max-files-per-message limits\nhow many files the web UI selects/attaches per action.\nThe /upload endpoint processes one multipart file per request.", fillcolor="#FFF7ED"];
+  client -> size -> rate -> auth -> type -> cleanup -> store -> publish;
+  size -> reject [label="fail",style=dashed];
+  rate -> reject [label="fail",style=dashed];
+  auth -> reject [label="fail",style=dashed];
+  type -> reject [label="fail",style=dashed];
+  cleanup -> reject [label="quota",style=dashed];
+  client -> composer [style=dashed,arrowhead=none];
+
+}

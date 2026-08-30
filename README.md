@@ -1,17 +1,26 @@
 # KOKOTO WebChat
 
 
+
+![Architecture overview](docs/assets/architecture-5.1.0.svg)
+
+> Visual manuals, animated flows, editable diagram sources, and standards references are included under `docs/assets/`, `docs/VISUAL_DOCUMENTATION.md`, and `docs/REFERENCES.md`.
+
+## 5.1.0 release
+
+5.1.0 upgrades server-to-server communication to group-scoped Relay Protocol v2 with reciprocal peer configuration and per-request authenticated encryption, adds persistent Web/game DM and group-chat replies including stable cross-server reply references, localizes config/reference/migration presentation from `ui.language`, hardens emoji catalog synchronization and SSE recovery, raises the default SSE limits to 10 per resolved client IP / 500 total, canonicalizes custom-emoji pack/file/token names, improves public reply rendering, and adds Android chat-composer Autofill suppression. Release notes and migration guidance describe the final 5.0.0 → 5.1.0 differences. Repeated operational HTTP/network failures use a shared state-aware console policy so identical retry errors do not accumulate indefinitely, while the first failure, state changes, and recovery remain visible.
+
 ## Project rename and download transition
 
 **BlueMapWebChat (BMWC) was renamed to KOKOTO WebChat starting with 5.0.0.** The 5.0.0 transition release may initially be published through the existing BlueMapWebChat project listings so 4.7.0 installations that only know the legacy project can discover the upgrade. Existing BMWC 4.x data is migration input only; the 5.0.0 runtime identity is KOKOTO WebChat.
 
-During the transition, these legacy project addresses remain valid distribution entry points:
+Current KOKOTO WebChat distribution addresses:
 
 - Modrinth: `https://modrinth.com/plugin/bluemapwebchat`
-- CurseForge: `https://www.curseforge.com/minecraft/bukkit-plugins/bluemapwebchat`
-- GitHub: `https://github.com/KOKOTO-DEV/BlueMapWebChat`
+- CurseForge: `https://www.curseforge.com/minecraft/bukkit-plugins/kokoto-webchat`
+- GitHub: `https://github.com/KOKOTO-DEV/KOKOTO-WebChat`
 
-The target canonical KOKOTO WebChat addresses are `https://modrinth.com/plugin/kokoto-webchat`, `https://www.curseforge.com/minecraft/bukkit-plugins/kokoto-webchat`, and `https://github.com/KOKOTO-DEV/KOKOTO-WebChat` **after those names/URLs are activated**. Do not assume a target URL is live until the corresponding project listing has been renamed or created. If a distribution platform cannot preserve the existing BMWC project as the same listing, the BMWC page should remain as a retirement/migration notice that points users to the new KOKOTO WebChat listing.
+During the current project-address transition, the 5.1.0 updater checks Modrinth `kokoto-webchat` first and falls back to the existing `bluemapwebchat` project when the canonical project is unavailable. The BMWC fallback remains a real update source until the address transition is complete; only when both sources fail is an update-check warning emitted.
 
 A multi-platform server-side web chat for Minecraft. The Bukkit/Paper/Spigot platform can run as a BlueMap, squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD, or Minecraft Overviewer embedded web chat, as a standalone page, or in multiple modes together. Fabric 1.18.2–26.2 exact-target, NeoForge 1.20.2–26.2 exact-target, and Forge 1.18.2–26.2 exact-target builds reuse the shared core/standalone frontend and support squaremap, Dynmap, LiveAtlas, uNmINeD, and Overviewer through filesystem adapters; Fabric also supports Pl3xMap through the same filesystem-adapter model, while Fabric/NeoForge and Forge 26.1.2/26.2 integrate with BlueMap 5.21+ through BlueMapAPI 2.8.0 when the BlueMap mod is present.
 
@@ -30,7 +39,7 @@ A multi-platform server-side web chat for Minecraft. The Bukkit/Paper/Spigot pla
 - Optional `upload.filename-mode: original` preserves safe Unicode source filenames for new uploads and resolves collisions without overwriting
 - BlueMap/squaremap/Dynmap/Pl3xMap/LiveAtlas/uNmINeD/Overviewer embedded chat panel and standalone web chat page
 - Two-way game ↔ web chat relay
-- Signed server-to-server public chat relay with per-server web badges and game/Discord server labels
+- Relay Protocol v2 for group-scoped public chat and cross-server DM/read receipts, with request-by-request peer authentication, HKDF-SHA256/AES-256-GCM hop-by-hop authenticated encryption, replay protection, and HTTPS-only forwarding
 - Clickable Minecraft replies (`/kchat reply`) and linked web-sender DM shortcuts (`/kchat dm`)
 - Optional mirroring of game `/w`/`/msg`/`/tell`-style whispers into both users' KWC web DM thread
 - Guest chat with math captcha, cooldowns, and a 50 messages/minute default guest rate limit
@@ -48,7 +57,7 @@ A multi-platform server-side web chat for Minecraft. The Bukkit/Paper/Spigot pla
 
 ## Companion plugin integrations
 
-KWC 5.0.0 documents two optional Bukkit/Paper-family companion-plugin paths:
+KWC 5.1.0 documents two optional Bukkit/Paper-family companion-plugin paths:
 
 - [**ImageEmojis-Bero**](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) — share `plugins/KOKOTO-WebChat/emojis`, keep canonical `:pack/name:` tokens across web/history/relay, and let ImageEmojis render the game glyph. Its resource-pack server (`serverIp` + `webServerPort`, commonly TCP 5000) must be reachable by Minecraft clients. See [`docs/IMAGEEMOJIS_BERO_1_9_0_EN.md`](docs/IMAGEEMOJIS_BERO_1_9_0_EN.md). General plugin operation remains documented by [upstream ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis).
 - [**SimpleNicks-Bero**](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) — set `player-display.mode: "display-name"` so KWC shows the Bukkit display name produced by the nickname plugin while retaining the linked username/UUID as the real identity. See [`docs/SIMPLENICKS_BERO_EN.md`](docs/SIMPLENICKS_BERO_EN.md). General plugin operation remains documented by [upstream SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks).
@@ -64,7 +73,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.0.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.1.0-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target builds
@@ -79,7 +88,7 @@ kwc-platform-fabric\build-all.bat
 ./kwc-platform-fabric/build-all.sh
 ```
 
-Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.0.0-Fabric-<Minecraft>.jar`.
+Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.1.0-Fabric-<Minecraft>.jar`.
 
 ### NeoForge exact-target builds
 
@@ -93,7 +102,7 @@ kwc-platform-neoforge\build-all.bat
 ./kwc-platform-neoforge/build-all.sh
 ```
 
-Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.0.0-NeoForge-<Minecraft>.jar`.
+Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.1.0-NeoForge-<Minecraft>.jar`.
 
 ### Forge exact-target builds
 
@@ -109,11 +118,22 @@ On Linux/macOS:
 ./kwc-platform-forge/build-all.sh
 ```
 
-The Forge build helpers select JDK 17/21/25 per target and produce `KOKOTO-WebChat-5.0.0-Forge-<Minecraft>.jar` under each target's `build/libs/` directory.
+The Forge build helpers select JDK 17/21/25 per target and produce `KOKOTO-WebChat-5.1.0-Forge-<Minecraft>.jar` under each target's `build/libs/` directory.
 
 ### Final Windows release acceptance
 
-Run `validate-release-windows.bat` from the source root to build Bukkit, all 16 Fabric targets, all 12 NeoForge targets, and all 16 Forge targets in one pass. A fully build-validated release must end with `FINAL RELEASE BUILD PASS`, collect exactly 45 deployable JARs under `release-5.0.0/`, and generate `SHA256SUMS.txt`.
+Run `validate-release-windows.bat` from the source root to build Bukkit, all 16 Fabric targets, all 12 NeoForge targets, and all 16 Forge targets in one pass. A fully build-validated release must end with `FINAL RELEASE BUILD PASS`, collect exactly 45 deployable JARs under `release-5.1.0/`, and generate `SHA256SUMS.txt`.
+
+For normal development builds on Windows, the same script supports platform selection, incremental cache reuse, parallel platform scheduling, and live progress:
+
+```bat
+validate-release-windows.bat --bukkit
+validate-release-windows.bat --bukkit --fast
+validate-release-windows.bat --fabric --forge --fast
+validate-release-windows.bat --parallel
+```
+
+Platform flags may be combined. `--bukkit` builds only the Bukkit/Paper artifact and its required Maven reactor dependencies. `--fast` skips `clean`, reuses existing Maven/Gradle outputs and dependency caches, and enables the Gradle build cache. `--parallel` keeps the selected build mode, builds Bukkit first when it is selected, and after Bukkit passes runs the remaining selected loaders concurrently; therefore `validate-release-windows.bat --parallel` is still a clean 45-target release validation and may print `FINAL RELEASE BUILD PASS`. The console continuously shows elapsed time, overall completed targets, each platform count, and the current Minecraft target while full logs remain in `validation-logs/`. Partial or `--fast` builds are written under `build-5.1.0/` and never count as final release validation. Root `mvn clean package` remains a valid Bukkit-only Maven build and does not build Fabric/NeoForge/Forge.
 
 ## Fabric / NeoForge exact-target platforms
 
@@ -140,7 +160,7 @@ See `kwc-platform-fabric/README.md` for Fabric-specific build and installation n
 13. Restart the server or run `/kchat reload`. `/kchat reload` requests `bluemap reload light` after refreshing BlueMap. squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD, and Overviewer web files are re-checked directly by KWC. Re-run `/kchat reload` after a map/site generator replaces its web files.
 
 
-Existing configured values are preserved, but active migration no longer carries forward the old config text. The bundled `config.yml` is the only migration template: KWC creates a fresh copy of the current bundled default and overlays the existing operator values, so old comments/order/whitespace/indentation are discarded and the current bundled comments/layout become authoritative. `<KWC data dir>/config-reference-5.0.0.yml` is only an administrator-readable exact copy of that bundled default and is not used as migration input. A fixed older-version config (a marker without `_auto_migration`) is backed up before reconstruction. The migrated file is marked `config-version: "5.0.0_auto_migration"`; while that marker remains, startup/reload repeats the same bundled-default rebuild with current values overlaid. Exact `config-version: "5.0.0"` fixes the same-version config and leaves `config.yml` untouched. Changed existing defaults remain review items in `config-migration-5.0.0.yml`. Older generated `config-reference-*`, `config-migration-*`, and `config-upgrade-*` files are removed automatically; internal version baselines remain for changed-default detection. Bundled UTF-8 starter filter lists `filter-lists/ko-KR.txt`, `en-US.txt`, `ja-JP.txt`, and `zh-CN.txt` are initialized once when the starter-list marker is absent, including on an existing data directory that predates this feature. Existing or disabled list files are never overwritten; after initialization, deleting a starter list is respected and it is not recreated on restart.
+Existing parsed operator values are preserved, while active migration rebuilds comments and layout from the bundled presentation template selected by `ui.language`: `en-US` uses `config.yml`, and `ko-KR`, `ja-JP`, and `zh-CN` use their localized bundled templates. Unsupported/custom UI languages use the English config presentation. `<KWC data dir>/config-reference-5.1.0.yml` is an administrator-readable rendering of the current default in that same built-in language and is never used as migration input. A fixed older-version config is backed up before a real version migration. The migrated config is marked `config-version: "5.1.0_auto_migration"`; while that marker remains, startup/reload rebuilds from the selected current template and overlays the existing parsed values so new settings and current comments/layout stay synchronized. Exact `config-version: "5.1.0"` disables normal same-version automatic setting reconstruction, but changing `ui.language` can still rebuild only the comment/layout presentation while preserving every parsed value. `config-migration-5.1.0.yml` compares parsed YAML path/value semantics rather than comments, whitespace, quoting, line positions, or key order. Older generated reference/migration/upgrade files are removed automatically; internal version baselines remain for changed-default detection. Bundled UTF-8 starter filter lists `filter-lists/ko-KR.txt`, `en-US.txt`, `ja-JP.txt`, and `zh-CN.txt` are initialized once when the starter-list marker is absent, including on an existing data directory that predates this feature. Existing or disabled list files are never overwritten; after initialization, deleting a starter list is respected and it is not recreated on restart.
 
 ## 5.0.0 KOKOTO WebChat architecture and rename
 
@@ -153,7 +173,7 @@ The previous BlueMapWebChat 4.x installation is migration input only: KOKOTO Web
 
 Platform-neutral chat/session/security models, public/DM/group persistence, signed relay, HTTP/SSE, Web Push and endpoint orchestration live in `kwc-core`. Shared BlueMap assets/config generation and Bukkit `webapp.conf` integration live in `kwc-adapter-bluemap`; the Java 25 `kwc-adapter-bluemap-api` bridge supplies Fabric/NeoForge and Forge 26.1.2/26.2 BlueMapAPI registration; squaremap web-directory/index integration lives in `kwc-adapter-squaremap`; Dynmap `webpath`/index integration lives in `kwc-adapter-dynmap`; Pl3xMap `settings.web-directory.path`/index integration lives in `kwc-adapter-pl3xmap`; LiveAtlas static-web-root/index integration lives in `kwc-adapter-liveatlas`; uNmINeD static-export/index integration lives in `kwc-adapter-unmined`; standalone assets live independently in `kwc-standalone-frontend`; loader lifecycle and Minecraft integration live in `kwc-platform-bukkit`, `kwc-platform-fabric`, `kwc-platform-neoforge`, and the exact-target `kwc-platform-forge` tree.
 
-Server relay protocol v1 intentionally keeps the existing `X-BMWC-Relay-*` HTTP header names on the wire. They are treated as a legacy protocol namespace only, so a KOKOTO WebChat server can continue relaying with BlueMapWebChat 4.x peers when `server-id`, peer URL and shared secret settings match.
+KOKOTO WebChat 5.1.0 uses Relay Protocol v2 with explicit `groups -> peers`, one shared secret per group, independent request-by-request peer authentication, a stateless diagnostic handshake endpoint, HKDF-SHA256 directional keys, and AES-256-GCM hop-by-hop payload protection. Relay v1/BMWC endpoints are no longer interoperable and return HTTP 426; see `docs/SERVER_RELAY_EN.md`.
 
 ## 4.7.0 multi-upload and compatibility
 
@@ -165,7 +185,7 @@ The Bukkit/Spigot API baseline is lowered from 1.21 to 1.18 while the plugin rem
 
 ## 4.6.3 administrator group-chat audit
 
-4.6.3 adds optional read-only administrator access to group-chat message bodies. It uses the same exact-account `private-chat-super-admins` allowlist as DM audit, but has an independent `group-chat.admin-audit.enabled` switch. Audit access does not join the room, mark messages read, change unread counts, send/upload/hide content, or modify membership. Every audit page read is logged as `admin.group-audit-read` without copying message bodies into the audit log.
+4.6.3 added optional read-only administrator access to group-chat message bodies. In 5.1.0, DM and group content auditing remain independent: `direct-message.admin-audit.enabled` controls DM-body audit and `group-chat.admin-audit.enabled` controls group-body audit. Both also require an exact account in `private-chat-super-admins`. Audit views are read-only and do not send, reply, hide, join, or change read state. Each audit page read is logged without copying message bodies into the audit log.
 
 ```yaml
 private-chat-super-admins:
@@ -198,18 +218,7 @@ Every server participating in cross-server DM must run KOKOTO WebChat 4.6.1 or l
 
 When a relayed message contains a player UUID, that remote player is added to the existing New Message recipient search. No separate DM button is added. Guest and Discord senders without a UUID remain excluded.
 
-DM content audit is disabled by default and requires both settings below:
-
-```yaml
-private-chat-super-admins:
-  - "ExactMinecraftNameOrUUID"
-
-direct-message:
-  admin-audit:
-    enabled: true
-```
-
-Ordinary ADMIN/MODERATOR roles do not gain access automatically. The audit view is read-only, and every page read records the actor, thread ID, pagination position, requested limit, and returned count in the audit log without copying message bodies into the log.
+4.6.1 introduced optional administrator DM-body auditing. KOKOTO WebChat 5.1.0 keeps that behavior: only exact accounts listed in `private-chat-super-admins` can open DM bodies, and only when `direct-message.admin-audit.enabled: true`. The audit view is read-only and each page read is audit-logged. `group-chat.admin-audit.enabled` remains a separate group-content audit control.
 
 ## Deployment modes
 
@@ -319,14 +328,16 @@ Chat history uses SQLite by default in new configs (`chat.history-storage: "sqli
 
 Legacy modes remain available: use `chat.history-storage: "jsonl"` for the old `history.jsonl` file, or `"memory"` for session-only history. `chat.history-size` and `chat.history-retention-days` apply to memory, JSONL, and SQLite. Newly generated configs start with top-level `enabled: false`, so cleanup cannot run until you review retention values and set `enabled: true`. If `chat.history-sqlite-migrate-jsonl` is true, an empty SQLite DB imports the existing JSONL history once.
 
-A `/history/search` API and in-chat search modal are available for message text and sender searches, with optional date/time range, sender, source, and system/event filters. The search button is placed in the floating chat-panel area so the message input row stays compact, and the search modal follows the configured chat theme/font settings with a scrollable result list. i18n-backed system/event messages are searched and displayed in the selected web UI language when possible. Search can be disabled with `search.enabled`, and the single `search.result-limit` setting controls both the web UI result count and the `/history/search` API limit. There is no separate internal maximum: setting it to 2000 returns up to 2000 results, while setting it to 10 returns up to 10. Very large values such as 10000 or 100000 are accepted, but they can slow searches, increase response size, and add significant CPU, memory, and database load. The default is 50, and 50-200 is recommended for normal use. With `config-version: "5.0.0_auto_migration"`, missing search settings are inserted automatically on startup/reload. If same-version automatic migration has been disabled with exact `config-version: "5.0.0"`, add the missing keys manually or re-enable `_auto_migration`.
+A `/history/search` API and in-chat search modal are available for message text and sender searches, with optional date/time range, sender, source, and system/event filters. The search button is placed in the floating chat-panel area so the message input row stays compact, and the search modal follows the configured chat theme/font settings with a scrollable result list. i18n-backed system/event messages are searched and displayed in the selected web UI language when possible. Search can be disabled with `search.enabled`, and the single `search.result-limit` setting controls both the web UI result count and the `/history/search` API limit. There is no separate internal maximum: setting it to 2000 returns up to 2000 results, while setting it to 10 returns up to 10. Very large values such as 10000 or 100000 are accepted, but they can slow searches, increase response size, and add significant CPU, memory, and database load. The default is 50, and 50-200 is recommended for normal use. With `config-version: "5.1.0_auto_migration"`, missing search settings are inserted automatically on startup/reload. If same-version automatic migration has been disabled with exact `config-version: "5.1.0"`, add the missing keys manually or re-enable `_auto_migration`.
 
 
 ## Group chat rooms
 
-`group-chat.enabled` enables the web group-chat room system. Users can create rooms, choose public/private visibility, set an optional room password, invite known players, accept or decline invitations, leave rooms, hide rooms from their own list and restore them later, edit room settings, kick or ban members, unban users, transfer room ownership, and send messages from the web UI. Public rooms appear in the room list; private rooms are invite-only. Room passwords are stored as PBKDF2 hashes, not plain text.
+`group-chat.enabled` enables the group-chat room system. Users can create rooms, choose public/private visibility, set an optional room password, invite known players, accept or decline invitations, leave rooms, hide rooms from their own list and restore them later, edit room settings, kick or ban members, unban users, transfer room ownership, and send/read group messages from both the Web UI and the game-side `/kchat group` commands. Public rooms appear in the room list; private rooms are invite-only. Room passwords are stored as PBKDF2 hashes, not plain text.
 
-Group chats use a dedicated SQLite store (`group-chat.sqlite-file`, default `group-messages.db`). `group-chat.retention-days: 0` means no time limit; positive values are shown next to the group-chat title and old group messages are physically removed after that many days. `group-chat.max-messages-per-room: 0` disables count-based cleanup. This release remains web-first; game-side `/kchat group` commands, room mute, group role-management beyond owner/member actions, and JSONL group storage are not included yet.
+Each room also has a **member join/leave notices** option. When enabled, actual membership changes are stored as `member_join` / `member_leave` events and shown in Web/group history and to online game members. Accepting an invite or joining records an entry; leaving, kick, or ban records an exit. Closing the group-chat window, switching rooms, or hiding a room does **not** count as leaving and never creates an exit event. Membership events cannot be used as Reply targets.
+
+Group chats use a dedicated SQLite store (`group-chat.sqlite-file`, default `group-messages.db`). `group-chat.retention-days: 0` means no time limit; positive values are shown next to the group-chat title and old group messages are physically removed after that many days. `group-chat.max-messages-per-room: 0` disables count-based cleanup. Existing SQLite databases are upgraded in place when optional 5.1.0 columns are missing.
 
 ## Direct message threads
 
@@ -339,19 +350,19 @@ Game `/w`, `/msg`, `/tell`, and compatible aliases can be mirrored into the same
 
 ## Custom emoji and game-side emoji plugins
 
-KOKOTO WebChat stores custom emoji files under `<KWC data dir>/emojis`. Subfolders are treated as emoji packs.
+KOKOTO WebChat stores custom emoji files under `<KWC data dir>/emojis`. Subfolders are treated as emoji packs. In 5.1.0, pack directory names and emoji filename stems use the same token-safe canonical naming rule: whitespace/unsupported characters are removed, existing invalid names are migrated at startup, and collisions receive numeric suffixes. The resulting on-disk path directly matches `:pack/name:`.
 
 By default, web-to-game chat preserves custom emoji tokens such as `:default/wave:` and `:emoji:default/wave:`. Use this default when ImageEmojis or another game-side emoji plugin renders the same token text in Minecraft chat.
 
 `emoji.game-link.mode` supports `preserve`, `link`, and `label` when `emoji.game-link.enabled` is enabled.
 
 - `preserve`: keeps the original token text unchanged.
-- `link`: sends the configured token text plus a short BM Web Chat image link.
+- `link`: sends the configured token text plus a short KOKOTO WebChat image link.
 - `label`: sends only the configured token text.
 
 `emoji.game-link.*` only affects web-to-Minecraft chat. Discord image preview links are controlled separately: `discordsrv.append-web-emoji-links` handles web→Discord messages, and `discordsrv.append-game-emoji-links` scans the `:emoji:` token text in DiscordSRV's actual game post and passes it through the same registered KWC token-to-link routine. In shared channels the early game-chat fingerprint is used only to identify the origin server; Minecraft glyphs are not Discord conversion input. Receiving relay peers never re-send the message to Discord. Leave `game-relay-mode: "discordsrv"` when DiscordSRV already relays normal Minecraft chat to avoid duplicate posts.
 
-BM Web Chat keeps the canonical token text in web history and server-relay payloads. When ImageEmojis or ImageEmojis-Bero is enabled, KWC reads its public runtime emoji repository through reflection and uses the receiving server's current token-to-glyph mapping when it builds clickable Minecraft components. No hard plugin dependency or resource-pack parsing is required; unresolved tokens still fall back to the normal game-side rendering path.
+KOKOTO WebChat keeps the canonical token text in web history and server-relay payloads. When ImageEmojis or ImageEmojis-Bero is enabled, KWC reads its public runtime emoji repository through reflection and uses the receiving server's current token-to-glyph mapping when it builds clickable Minecraft components. No hard plugin dependency or resource-pack parsing is required; unresolved tokens still fall back to the normal game-side rendering path.
 
 When GIF/JPG/JPEG/WEBP emoji files are uploaded, KOKOTO WebChat also creates a same-folder PNG sidecar for compatibility with game-side emoji plugins that only read PNG files:
 
@@ -417,7 +428,7 @@ kwc.update.notify
 
 - `docs/USER_MANUAL_EN.md` - complete user and operator manual for all features
 - `docs/CONFIGURATION_EN.md` - configuration reference
-- `docs/SERVER_RELAY_EN.md` - server-to-server public/private chat relay
+- `docs/SERVER_RELAY_EN.md` - Relay Protocol v2 public chat, cross-server DM/read receipts, trust and forwarding rules
 - `docs/UPGRADE_5_0_0_EN.md` - 4.7.0 to 5.0.0 major upgrade and migration
 - `docs/UPGRADE_4_7_0_EN.md` - 4.6.3 to 4.7.0 upgrade
 - `wiki/` - GitHub Wiki source pages using safe page names without `and` / `&`
@@ -440,7 +451,7 @@ Font note: Installed fonts must be typed by their CSS font-family name. Chat set
 
 ### Private chat metadata super admins
 
-Set `private-chat-super-admins` in `config.yml` to exact UUIDs or Minecraft names for users who may see DM/group-chat metadata for moderation/accounting. By default this view shows titles/participants, message counts, approximate stored byte sizes, retention status, and cleanup preview counts. When `direct-message.admin-audit.enabled: true` is also set, the same explicitly listed users may open DM bodies in a read-only audit view. In 4.6.3, `group-chat.admin-audit.enabled: true` independently allows the same explicitly listed users to open group-chat bodies without joining the room or changing read state. Ordinary ADMIN/MODERATOR roles do not qualify automatically, and every audit page read is logged. Super admins can also lock a DM/group session or exclude it from automatic retention cleanup.
+Set `private-chat-super-admins` in `config.yml` to exact UUIDs or Minecraft names for users who may see DM/group-chat metadata for moderation/accounting. This view shows titles/participants, message counts, approximate stored byte sizes, retention status, cleanup preview counts, locks and cleanup exclusions. `direct-message.admin-audit.enabled: true` lets those explicitly listed accounts open DM bodies in a read-only audit view; `group-chat.admin-audit.enabled: true` independently enables the group-body audit view. Ordinary ADMIN/MODERATOR roles do not qualify automatically, and every audit page read is logged.
 
 Administrative actions are also appended to date-based text audit files under `<KWC data dir>/audit` by default. The audit log is intended for server operators and is not shown in the web UI.
 
@@ -448,7 +459,7 @@ Administrative actions are also appended to date-based text audit files under `<
 Note: `frontend.standalone.app-name` / `frontend.standalone.app-short-name` can change the mobile Home Screen web app name, and `web-push.notification-title` can change the default push title. Server notifications can be set to all, join/leave only, or off in Chat settings. If `web-push.notification-title` is empty, `frontend.standalone.app-name` is used. Android/desktop browsers can enable push from either the BlueMap addon or the standalone page when HTTPS and Push API support are available. On iOS/iPadOS, use a page added to the Home Screen and opened as a web app rather than a normal browser tab.
 
 
-Existing configs that still contain old generated display names such as `KOKOTO WebChat` or `KOKOTO WebChat` are treated as legacy placeholders so they no longer appear as push titles by default.
+Existing configs that still contain legacy generated display names such as `BlueMapWebChat` or `BM WebChat` are treated as placeholders so they no longer appear as push titles by default.
 
 
 - Pl3xMap integration: `docs/PL3XMAP_INTEGRATION.md`
@@ -459,7 +470,7 @@ Existing configs that still contain old generated display names such as `KOKOTO 
 
 - Overviewer integration: `docs/OVERVIEWER_INTEGRATION.md`
 
-## Forge
+## Forge Stage 1
 
 Forge uses exact-target server JARs for Minecraft 1.18.2 through 26.2. The Forge tree is split into `src/common` plus `compat118`, `compatClassic`, `compatModern`, and `compat26`; see `kwc-platform-forge/README.md` and `docs/FORGE_INTEGRATION.md`. Direct BlueMapAPI integration is limited to Forge 26.1.2/26.2; older Forge targets use the loader-neutral filesystem/static-map adapters. Build helpers select JDK 17/21/25 per exact target; use `kwc-platform-forge/build-all.bat` (Windows) or `build-all.sh` instead of forcing every ForgeGradle generation through one system JVM.
 

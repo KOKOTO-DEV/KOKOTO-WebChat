@@ -8,6 +8,7 @@ package dev.kokoto.webchat;
 public interface RelayHost {
     RelaySettings relaySettings();
     String defaultServerName();
+    WebChatLanguage language();
     void info(String message);
     void warn(String message);
 

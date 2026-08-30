@@ -36,8 +36,8 @@ web:
     cancel: キャンセル
     reply: 返信
     pin: 固定
-    moderationActionsEnable: 固定 / 削除を有効化
-    moderationActionsDisable: 固定 / 削除を無効化
+    moderationActionsEnable: ピン留め / 削除を有効化
+    moderationActionsDisable: ピン留め / 削除を無効化
     unpin: 解除
     moveUp: 上へ移動
     move: 移動
@@ -229,7 +229,6 @@ web:
       auth-password-login: 'パスワードログイン'
       auth-remember-session-days: '一般セッション期間（日）'
       admin-admin-session-expire-hours: '管理者セッション期間（時間）'
-      moderation-enabled: 'モデレーション'
       upload-enabled: 'アップロード'
       upload-allow-guest-upload: 'ゲストのアップロード'
       upload-allow-user-upload: '一般ユーザーのアップロード'
@@ -358,6 +357,7 @@ web:
   prompt:
     createEmojiPack: 新しいフォルダー名
     renameEmoji: 新しい絵文字名
+    androidPhotoPickerEmojiName: "Android の写真選択画面から元のファイル名を取得できませんでした。使用する絵文字名を入力してください。画像の拡張子は自動的に保持されます。"
     renameEmojiPack: 新しいフォルダー名
   login:
     title: KOKOTO WebChat ログイン
@@ -613,7 +613,6 @@ web:
     dmHideFailed: 'メッセージを非表示にできませんでした: {error}'
     dmSendFailed: 'メッセージを送信できませんでした: {error}'
     dm_disabled: ダイレクトメッセージは無効です
-    dm_audit_disabled: DM本文監査機能は無効です
     web_send_disabled: Web からの DM 送信は無効です
     player_not_found: プレイヤーが見つかりません
     remote_server_unavailable: 対象サーバーに接続できません
@@ -663,6 +662,9 @@ web:
     passwordProtected: 'パスワード'
     passwordOptionalLabel: 'パスワード（任意）'
     passwordSettingsLabel: 'パスワード（空欄で解除）'
+    membershipEvents: 'メンバーの入退室通知を表示'
+    memberJoined: '{player} がルームに参加しました。'
+    memberLeft: '{player} がルームから退出しました。'
     membersShort: '人'
     join: '参加'
     invite: '招待'
@@ -792,7 +794,7 @@ web:
     filterRuleRemoved: 'フィルタールールを削除しました: {id}'
     filterRuleAdded: 'フィルタールールを追加しました: {id}'
     filterWordRequired: 対象語を入力してください。
-    filterTestResult: 'blocked={blocked} changed={changed} rule={rule} mode={mode} -> {message}'
+    filterTestResult: 'ブロック={blocked} 変更={changed} ルール={rule} モード={mode} -> {message}'
     contentFilterBlocked: '禁止された内容が含まれているため、メッセージを送信できません。'
     contentFilterBlockedWord: '禁止語 {word} が含まれているため、メッセージを送信できません。'
     settingsShowHint: '/kchat settings show <key> または /kchat settings set <key> <value> を使用してください。'
@@ -805,6 +807,9 @@ web:
     helpDmRead: 1:1 メッセージスレッドを読む
     helpReply: 公開 KWC メッセージに返信
     replyClickHint: "クリックして返信 (#{id})"
+    dmClickHint: "{player} にDMを書くにはクリックしてください"
+    groupClickHint: "グループ {room} にメッセージを書くにはクリックしてください"
+    privateReplyClickHint: "このメッセージに返信するにはクリックしてください"
     helpGroup: 'グループチャットメッセージを送信'
     helpGroupList: '参加中のグループチャット一覧を表示'
     helpGroupRead: 'グループチャットを読む'
@@ -824,6 +829,8 @@ web:
     groupReadFirstPage: 'すでに最新のグループチャットページです。'
     groupReadLastPage: 'すでに最古のグループチャットページです。'
     groupIncoming: 'グループ {room} の {player}: {message}'
+    groupMemberJoined: '{player} がグループ {room} に参加しました。'
+    groupMemberLeft: '{player} がグループ {room} から退出しました。'
     dmDisabled: ダイレクトメッセージは無効です。
     dmTitle: 'ダイレクトメッセージ: 未読 {count} 件'
     dmTitlePage: 'ダイレクトメッセージ: 未読 {count} 件 ({page}/{pages}ページ)'
@@ -887,6 +894,11 @@ web:
     failed: 'コマンド実行失敗: {error}'
     tooLong: コマンドが長すぎます。最大 {max} 文字です。
     maxLengthHint: 最大 {max} 文字
+  security:
+    httpServerWarning: "[警告] KOKOTO WebChat は HTTP に設定されています ({url})。ログイン情報やチャット内容がネットワーク上で平文として見える可能性があります。可能な限りリバースプロキシ経由で HTTPS を使用してください。"
+    relayHttpPeerWarning: "[警告] Relay peer '{peer}' は HTTP を使用しています ({url})。Direct Relay は許可されますが、この peer は forwarding から除外されます。HTTPS を強く推奨します。"
+    relayForwardingHttpBlocked: "[警告] Relay peer '{peer}' は HTTP を使用しているため、この peer を経由する forwarding のみ無効です ({url})。同じ group の他の HTTPS peer は引き続き forwarding できます。"
+
   update:
     available: '新しい version {latest} があります。現在: {current}'
     openDownload: ダウンロードページを開く
