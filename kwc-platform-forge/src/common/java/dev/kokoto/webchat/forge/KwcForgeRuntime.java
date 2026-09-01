@@ -21,6 +21,8 @@ import org.slf4j.LoggerFactory;
 /** Owns one KWC runtime instance on a Forge dedicated/integrated server. */
 public final class KwcForgeRuntime {
     private static final Logger LOGGER = LoggerFactory.getLogger("KOKOTO WebChat");
+    private static final String BUILD_METADATA_RESOURCE = "/kwc-build.properties";
+    private static final String MINECRAFT_VERSION = loadBuildMinecraftVersion();
     private final Path dataDirectory;
     private MinecraftServer server;
     private volatile ConfigValues configValues;
@@ -418,8 +420,25 @@ public final class KwcForgeRuntime {
         return "Forge Server";
     }
     public String minecraftVersion() {
-        return "26.2";
+        return MINECRAFT_VERSION;
     }
+    private static String loadBuildMinecraftVersion() {
+        Properties properties = new Properties();
+        try (InputStream input = KwcForgeRuntime.class.getResourceAsStream(BUILD_METADATA_RESOURCE)) {
+            if (input == null) {
+                LOGGER.warn("KWC build metadata resource {} is missing; Minecraft version will be reported as unknown.", BUILD_METADATA_RESOURCE);
+                return "unknown";
+            }
+            properties.load(input);
+            String value = properties.getProperty("minecraft.version", "").trim();
+            if (!value.isEmpty()) return value;
+            LOGGER.warn("KWC build metadata resource {} does not define minecraft.version; Minecraft version will be reported as unknown.", BUILD_METADATA_RESOURCE);
+        } catch (IOException ex) {
+            LOGGER.warn("Could not read KWC build metadata resource {}: {}", BUILD_METADATA_RESOURCE, ex.getMessage());
+        }
+        return "unknown";
+    }
+
     public void info(String message) { LOGGER.info("{}", message); }
     public void warn(String message) { LOGGER.warn("{}", message); }
     public void debug(String message) { LOGGER.debug("{}", message); }

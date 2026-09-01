@@ -2,55 +2,86 @@
 
 ## 5.1.0
 
-5.1.0 is a feature, reliability, and security update over the **5.0.0 release baseline**. This section lists only the final user- and operator-visible differences from 5.0.0.
+5.1.0 is a feature, reliability, compatibility, and security update over the **5.0.0 release baseline**. Changes are grouped by function below.
 
-### Relay Protocol v2 and upgrade behavior
+### Security — Relay Protocol v2
 
-- Replaced the 5.0.0 flat relay configuration with explicit **`groups -> peers`** trust groups. Each group uses one shared secret, and peers must be configured reciprocally in the same group.
-- Added safe first-setup secret generation: one server can start with an empty group `shared-secret`, persist a securely generated value, and have that value copied to the other servers in the group. Manually configured secrets must be at least 32 characters.
-- Public relay, cross-server DM, and DM read receipts now use request-by-request authenticated, encrypted Relay Protocol v2 transport with replay/loop protection. Relay protection is hop-by-hop rather than end-to-end; forwarding servers remain trusted participants.
-- Forwarding is group-local and HTTPS-only. A direct one-hop HTTP peer can still be used with an explicit security warning, but that HTTP peer cannot be used as a forwarding hop.
-- Relay v1/BMWC relay endpoints are no longer interoperable with 5.1.0 and return HTTP 426.
-- The first **5.0.0 -> 5.1.0** relay migration does not guess v2 groups from the old flat topology. Relay is reset to `server-relay.enabled: false` until the operator defines the v2 groups and reciprocal peers.
-- `/kchat reload` rechecks exposed built-in HTTP listeners and direct HTTP relay peers. Applicable localized warnings are written to the server log and echoed to the command sender after the reload-success message.
+#### Why the relay protocol changed
 
-### Chat, Reply, group rooms, and emoji
+Relay Protocol v1 used by KWC 5.0.0 and compatible BMWC relay peers had two important security limitations:
 
-- Added complete persistent Reply metadata and interaction for Web/game DM and group chat, including original-message preview/jump, restart persistence, server-side conversation validation, and stable cross-server DM reply references.
+- **Relay v1 over `http://` sent the relay payload in plaintext at the application/transport path.** A network observer between peers could therefore read relayed content when TLS was not providing protection.
+- **Relay v1 used one flat trust set with a top-level shared secret and flat peer list.** Even when the peer URL used HTTPS, exposure of that shared secret or an unintended peer/forwarding configuration affected the whole relay trust set instead of a smaller explicit trust group.
+
+The relay-specific exposure applies to servers that actually enabled/configured **Relay v1**. Servers that did not use server relay are not affected by this relay transport/trust issue. The highest-priority upgrades are Relay v1 deployments with one or more `http://` peers. This changelog describes the protocol design exposure; it does not claim a known in-the-wild exploit or assign a CVE.
+
+#### What 5.1.0 changes
+
+- Replaced the flat v1 trust model with explicit **`groups -> peers`** trust groups. Each group is a separate trust boundary with one shared secret, and both servers must configure each other reciprocally in the same group.
+- Added safe first-setup secret provisioning: one server may start with an empty group `shared-secret`, KWC generates and persists a cryptographically secure value, and the operator copies that exact value to the other members of the group. Manually configured secrets shorter than 32 characters fail closed.
+- Public relay, cross-server 1:1 DM, and DM read receipts now use request-by-request authenticated/encrypted Relay v2 transport. Directional keys are derived with HKDF-SHA256 and relay payloads are protected with AES-256-GCM; timestamps, nonces, relay IDs, hop counts, and authenticated responses provide replay/loop and forged-response protection.
+- Relay v2 protection is **hop-by-hop, not end-to-end encryption**. A forwarding KWC server is a trusted participant that decrypts and re-encrypts the message for the next hop.
+- Direct one-hop `http://` peers remain possible because the v2 payload itself is encrypted/authenticated, but KWC emits a security warning because HTTP still lacks TLS server identity and transport-metadata confidentiality.
+- Forwarding is restricted to the same trust group and only through HTTPS peers. An HTTP peer can be used only as a direct hop and is excluded from incoming/outgoing forwarding.
+- Legacy Relay v1/BMWC endpoints return **HTTP 426** and do not interoperate with Relay v2.
+- The first **5.0.0 -> 5.1.0** relay migration retires the old global secret/flat peers/forwarding settings and resets `server-relay.enabled: false` instead of guessing new trust groups. Operators must explicitly rebuild reciprocal v2 groups before re-enabling relay.
+- `/kchat reload` rechecks exposed built-in HTTP listeners and direct HTTP relay peers and reports localized warnings to the server log and command sender.
+
+### Cross-server relay and private messaging
+
+- Public relay, cross-server DM delivery, DM read receipts, origin identity, duplicate protection, and forwarding now share the same Relay v2 group boundary and authenticated transport.
+- Preserved stable cross-server DM reply references so a reply continues to target the original remote message identity after relay delivery or restart.
+- Fixed structured relay configuration reconstruction so multiple groups/peers remain intact without duplicate empty `groups: []` values or collapsed list entries.
+
+### Replies, direct messages, and group rooms
+
+- Added complete persistent Reply metadata and interaction for Web/game DM and group chat, including original-message preview/jump, restart persistence, and server-side conversation validation.
 - Unified Minecraft DM/group Reply rendering with the public-chat Reply presentation while preserving private delivery scope.
 - Fixed game-side group commands so room names containing spaces, quoted names, and repeated whitespace resolve correctly.
 - Added a per-room member join/leave notice option. Actual join/invite-accept and leave/kick/ban membership changes are stored as informational events and shown in Web/history and live game chat; closing, hiding, or switching a room is not treated as leaving.
-- Fixed account chat-profile persistence so explicit font size/opacity values and intentionally unset theme, font, and text-shadow fields round-trip exactly. Loaded font settings are also applied to already-open DM/group windows.
 - Improved DM/group message metadata flow so full-date timestamps, Reply actions, and read state no longer reserve one oversized fixed metadata column on narrow/mobile layouts.
-- Canonicalized custom emoji pack/file/token names, preserved full reply source text, improved URL/emoji rendering inside Reply previews, and changed the picker to insert only the exact emoji token at the caret.
-- Improved emoji catalog recovery across temporary fetch failures, SSE reconnects, and administrator catalog changes while keeping `emoji.message-token-limit: 0` as unlimited.
-- Raised the default SSE limits to **10 connections per resolved client IP / 500 total** and improved HTTP 429 diagnostics and reverse-proxy client-IP guidance.
-- Changed public/DM/group message composers to one-line textareas to avoid Android Chrome Autofill accessory UI on normal chat inputs without changing login/password fields.
-- Changed Android administrator emoji upload selection to use the generic system file/DocumentsUI picker path, while retaining server-side image validation.
-- When `commands.broadcast-result-to-web-chat: true`, the localized Web-command execution notice is now also delivered to online Minecraft players without adding a duplicate console/audit broadcast.
 
-### Configuration, migration, operations, and updates
+### Emoji, notifications, pinned messages, and browser UI
+
+- Canonicalized custom emoji pack/file/token names, preserved full Reply source text, improved URL/emoji rendering inside Reply previews, and changed the picker to insert only the exact emoji token at the caret.
+- Custom emoji tokens now render as compact inline emoji in the notification center and pinned-message UI. Notification emoji are capped at 18px, collapsed pin emoji at 16px, and expanded pin emoji at 22px without changing normal chat emoji sizing.
+- Fixed custom emoji images that could remain blank in the initially visible history after a browser refresh. Transient image-load failures are retried in place so scrolling away and back is no longer required.
+- Improved emoji catalog recovery across temporary fetch failures, SSE reconnects, and administrator catalog changes while keeping `emoji.message-token-limit: 0` as unlimited.
+- Fixed account chat-profile persistence so explicit font size/opacity values and intentionally unset theme, font, and text-shadow fields round-trip exactly. Loaded font settings are also applied to already-open DM/group windows.
+- Changed public/DM/group message composers to one-line textareas to avoid Android Chrome Autofill accessory UI on normal chat inputs without changing login/password fields.
+- Changed Android administrator emoji upload selection to use the generic system file/DocumentsUI picker path while retaining server-side image validation.
+
+### HTTP, SSE, logging, and operator behavior
+
+- Raised the default SSE limits to **10 connections per resolved client IP / 500 total** and improved HTTP 429 diagnostics and reverse-proxy client-IP guidance.
+- Repeated operational HTTP/network failures now use a state-aware logging policy: the first failure and changed failure states are logged immediately, identical repeats are suppressed/summarized, and recovery is reported once.
+- When `commands.broadcast-result-to-web-chat: true`, the localized Web-command execution notice is also delivered to online Minecraft players without adding a duplicate console/audit broadcast.
+- During the project-address transition, the update checker tries canonical Modrinth `kokoto-webchat` first and falls back to the existing `bluemapwebchat` publication; a warning is emitted only when both sources fail.
+
+### Configuration and migration
 
 - Added EN/KO/JA/ZH `config.yml` comment templates. `ui.language` selects the presentation language used for rebuilt config/reference/migration output while preserving parsed operator values.
 - Added a complete **394-setting** administrator input guide with setting type/default, accepted values, ranges, units, and special zero/negative meanings.
 - Configuration migration/difference output now compares semantic YAML paths and values rather than formatting and keeps structured list/map values as readable physical multi-line YAML. Difference blocks show only changed value blocks instead of duplicating long comments.
-- Fixed structured relay reconstruction so multiple groups/peers are preserved without inserting duplicate empty `groups: []` or collapsing list entries onto one line.
 - Aligned platform loader fallbacks with the canonical defaults for captured whispers and game-click Reply settings.
-- Repeated operational HTTP/network failures now use a state-aware logging policy: the first failure and changed failure states are logged immediately, identical repeats are suppressed/summarized, and recovery is reported once.
-- During the project-address transition, the update checker tries canonical Modrinth `kokoto-webchat` first and falls back to the existing `bluemapwebchat` publication; a warning is emitted only when both sources fail.
 
-### Documentation
+### Compatibility and packaging
 
-- Reorganized the documentation into User Guide, Installation & Operations, Technical Reference, and Complete Reference sets in English, Korean, Japanese, and Simplified Chinese.
-- Added and synchronized Relay, Reply, deployment, configuration-language migration, upload-security, Web Push, architecture, Wiki diagrams, and localized primary/upstream reference indexes.
-
-### Compatibility
-
+- Fixed Fabric 1.18.2 startup by moving the legacy chat mixin into a dedicated mixin package so the Fabric entrypoint is not treated as a mixin class by older Mixin runtimes.
+- Fixed NeoForge startup metadata for Minecraft 1.21.1 and other targets using the same modern NeoForge metadata template, resolving `InvalidModFileException: Missing ModLoader`.
+- Fixed Forge 1.18.2–1.19.4 distribution packaging so the required SnakeYAML and SQLite JDBC runtime libraries are embedded in the deployable JARs.
+- Fixed Forge/NeoForge runtime target reporting so each JAR reads its generated target metadata instead of reporting a hard-coded `Minecraft=26.2` value.
 - Bukkit/Paper/Spigot: Minecraft **1.18–26.2**
 - Fabric: **16 exact targets**, Minecraft **1.18.2–26.2**
 - NeoForge: **12 exact targets**, Minecraft **1.20.2–26.2**
 - Forge: **16 exact targets**, Minecraft **1.18.2–26.2**
 - Loader builds select Java **17 / 21 / 25** according to the Minecraft target; Bukkit remains Java 17.
+
+### Documentation and source distribution
+
+- Reorganized documentation into language-specific User Guide, Installation & Operations, Technical Reference, Upgrade, and Wiki documentation in English, Korean, Japanese, and Simplified Chinese.
+- Consolidated version-specific Upgrade documents and duplicate long-form reference pages, and deduplicated Wiki diagrams so each flow has one canonical explanation page.
+- Public source packages include the product/build source, documentation, and the release build/validation scripts required by `validate-release-windows.bat`. Development-only browser regression tooling is distributed separately as validation-tools so test-only code is not mixed into the buildable release source.
 
 ## 5.0.0
 
@@ -972,9 +1003,3 @@ search:
 - Expanded the Caddy HTTPS setup guide.
 - Expanded the nginx + Certbot HTTPS setup guide.
 - Added installation examples under `examples/caddy` and `examples/nginx`.
-
-
-
-
-- Added Forge Stage 1 source/build matrix with 16 exact Minecraft targets from 1.18.2 through 26.2, using common + four compatibility source layers; Forge 26.1.2/26.2 optionally integrate BlueMap through BlueMapAPI while older targets use loader-neutral map adapters.
-- Forge exact-target build helpers now select the required JDK 17/21/25 launcher per Minecraft target, including explicit Windows override variables (`KWC_JAVA17_HOME`, `KWC_JAVA21_HOME`, `KWC_JAVA25_HOME`).

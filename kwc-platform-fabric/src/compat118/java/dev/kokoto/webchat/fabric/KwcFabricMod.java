@@ -22,7 +22,14 @@ public final class KwcFabricMod implements ModInitializer {
     private static final FabricWebChatHost COMMAND_HOST = new FabricWebChatHost(RUNTIME);
     private static final GameCommandService GAME_COMMANDS = new GameCommandService(COMMAND_HOST, RUNTIME::webServer);
 
-    static KwcFabricRuntime runtime() { return RUNTIME; }
+    /** Internal bridge used by the 1.18.2 mixin package without exposing package-private helpers. */
+    public static KwcFabricRuntime mixinRuntime() { return RUNTIME; }
+
+    /** Internal bridge used by the 1.18.2 mixin package to render/send a KWC system message. */
+    public static void sendMixinMessage(ServerPlayer player, String message) {
+        if (player == null) return;
+        FabricCompat.sendPlayerMessage(player, FabricGameMessageRenderer.plain(message));
+    }
 
     @Override
     public void onInitialize() {

@@ -4,7 +4,9 @@
 
 ![아키텍처 개요](docs/assets/architecture-5.1.0.svg)
 
-> 시각 매뉴얼, 움직이는 흐름도, 편집 가능한 다이어그램 원본, 참조 표준 목록은 `docs/assets/`, `docs/VISUAL_DOCUMENTATION.md`, `docs/REFERENCES.md`에 포함되어 있습니다.
+[PNG](docs/assets/architecture-5.1.0.png) · [SVG](docs/assets/architecture-5.1.0.svg)
+
+> 시각 매뉴얼, 움직이는 흐름도, 편집 가능한 다이어그램 원본, 참조 표준 목록은 `docs/assets/`, `docs/en/VISUAL_DOCUMENTATION.md`, `docs/en/REFERENCES.md`에 포함되어 있습니다.
 
 ## 5.1.0 릴리스
 
@@ -32,7 +34,7 @@ Bukkit/Paper/Spigot에서는 BlueMap, squaremap, Dynmap, Pl3xMap, LiveAtlas, uNm
 - 공개/그룹 및 선택형 DM에 공통 적용되는 Unicode 금지어 필터: 차단/마스킹/순화어, N:1·1:N·N:N 치환, compact/interleave 우회 탐지
 - UTF-8 `filter-lists/*.txt` 대량 필터 단어 목록 + 목록별 차단/필터링 선택 + 커스텀 차단/마스킹/치환 규칙, Web Admin에서 TXT 가져오기·편집·활성/비활성·삭제 지원
 - Web Admin **Filter/Settings** 관리와 게임 `/kchat filter`, `/kchat settings` 운영 명령
-- 커스텀 규칙 작성법과 Block/Mask/Replace 실제 예: [`docs/CONFIGURATION_KO.md`](docs/CONFIGURATION_KO.md#커스텀-필터-빠른-사용법)
+- 커스텀 규칙 작성법과 Block/Mask/Replace 실제 예: [`docs/ko/CONFIGURATION.md`](docs/ko/CONFIGURATION.md#커스텀-필터-빠른-사용법)
 - 세션 기간 변경 시 기존 USER/MODERATOR 또는 ADMIN 세션을 최초 생성 시각 기준으로 재계산하며 `0`은 무제한
 - `upload.filename-mode: original` 선택 시 새 업로드의 안전한 Unicode 원본 파일명을 보존하고 중복 이름은 덮어쓰지 않음
 - BlueMap/squaremap/Dynmap/Pl3xMap/LiveAtlas/uNmINeD/Overviewer 지도 안 채팅 패널 또는 standalone 페이지 제공
@@ -58,8 +60,8 @@ Bukkit/Paper/Spigot에서는 BlueMap, squaremap, Dynmap, Pl3xMap, LiveAtlas, uNm
 
 KWC 5.1.0은 Bukkit/Paper 계열에서 다음 포크 플러그인 연동을 공식 문서화합니다.
 
-- [**ImageEmojis-Bero**](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) — `plugins/KOKOTO-WebChat/emojis`를 공용 폴더로 사용하고 웹/히스토리/릴레이에는 정규 `:pack/name:` 토큰을 유지하면서 게임에서는 ImageEmojis glyph로 표시할 수 있습니다. `serverIp` + `webServerPort`(대표적으로 TCP 5000)의 리소스팩 HTTP 서버는 Minecraft 클라이언트에서 접근 가능해야 합니다. [`docs/IMAGEEMOJIS_BERO_1_9_0_KO.md`](docs/IMAGEEMOJIS_BERO_1_9_0_KO.md) 참고. 일반 설치·운영은 [원본 ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)를 따릅니다.
-- [**SimpleNicks-Bero**](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) — `player-display.mode: "display-name"`으로 Bukkit display name에 적용된 닉네임을 KWC에 표시하면서 실제 연결 username/UUID는 별도 identity로 유지합니다. [`docs/SIMPLENICKS_BERO_KO.md`](docs/SIMPLENICKS_BERO_KO.md) 참고. 일반 설치·운영은 [원본 SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks)를 따릅니다.
+- [**ImageEmojis-Bero**](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) — `plugins/KOKOTO-WebChat/emojis`를 공용 폴더로 사용하고 웹/히스토리/릴레이에는 정규 `:pack/name:` 토큰을 유지하면서 게임에서는 ImageEmojis glyph로 표시할 수 있습니다. `serverIp` + `webServerPort`(대표적으로 TCP 5000)의 리소스팩 HTTP 서버는 Minecraft 클라이언트에서 접근 가능해야 합니다. [`docs/ko/IMAGEEMOJIS_BERO_1_9_0.md`](docs/ko/IMAGEEMOJIS_BERO_1_9_0.md) 참고. 일반 설치·운영은 [원본 ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)를 따릅니다.
+- [**SimpleNicks-Bero**](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) — `player-display.mode: "display-name"`으로 Bukkit display name에 적용된 닉네임을 KWC에 표시하면서 실제 연결 username/UUID는 별도 identity로 유지합니다. [`docs/ko/SIMPLENICKS_BERO.md`](docs/ko/SIMPLENICKS_BERO.md) 참고. 일반 설치·운영은 [원본 SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks)를 따릅니다.
 
 둘 다 KWC hard dependency가 아니며, 이 Bukkit/Paper 연동 설명은 Fabric/NeoForge/Forge 빌드에서 Bukkit 플러그인 API를 지원한다는 의미가 아닙니다.
 
@@ -107,6 +109,8 @@ kwc-platform-forge\build-all.bat
 
 ### Windows 최종 릴리스 검증
 
+> **릴리스 빌드/검증 워크플로는 source 패키지에 포함되어 있습니다.** `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source에 함께 들어 있습니다. 별도의 `KWC-5.1.0-validation-tools.zip`에는 개발용 브라우저 회귀검증 도구만 들어 있으며 일반 빌드나 릴리스 빌드에는 필요하지 않습니다.
+
 소스 루트에서 `validate-release-windows.bat`를 실행하면 Bukkit, Fabric 16개 target, NeoForge 12개 target, Forge 16개 target을 연속 빌드합니다. `FINAL RELEASE BUILD PASS`가 출력되고 `release-5.1.0/`에 배포용 JAR이 정확히 45개 모이며 `SHA256SUMS.txt`가 생성되어야 실제 빌드까지 최종 검증된 것으로 판정합니다.
 
 Windows 반복 빌드에서는 같은 스크립트로 플랫폼 선택, 증분 캐시, 플랫폼 병렬 빌드와 실시간 진행률을 사용할 수 있습니다.
@@ -118,7 +122,9 @@ validate-release-windows.bat --fabric --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-플랫폼 옵션은 조합할 수 있습니다. `--bukkit`은 Bukkit/Paper 산출물과 필요한 Maven reactor 의존 모듈만 빌드합니다. `--fast`는 `clean`을 생략하고 기존 Maven/Gradle 산출물과 dependency cache를 재사용하며 Gradle build cache를 활성화합니다. `--parallel`은 선택된 빌드 모드는 그대로 유지하면서 Bukkit이 선택되어 있으면 Bukkit을 먼저 빌드하고, Bukkit이 통과한 뒤 나머지 Fabric/NeoForge/Forge를 병렬 실행합니다. 따라서 `validate-release-windows.bat --parallel`은 clean 45-target 최종 검증이며 성공하면 `FINAL RELEASE BUILD PASS`가 출력됩니다. 콘솔에는 경과시간, 전체 완료 target 수, 플랫폼별 완료 수와 현재 Minecraft target이 계속 표시되고 전체 로그는 `validation-logs/`에 남습니다. 부분 빌드 또는 `--fast` 빌드는 `build-5.1.0/`에 저장되며 최종 릴리스 검증으로 취급하지 않습니다. 루트의 `mvn clean package`도 계속 Bukkit 전용 Maven 빌드입니다.
+플랫폼 옵션은 조합할 수 있습니다. `--bukkit`은 Bukkit/Paper 산출물과 필요한 Maven reactor 의존 모듈만 빌드합니다. `--fast`는 `clean`을 생략하고 기존 Maven/Gradle 산출물과 dependency cache를 재사용하며 Gradle build cache를 활성화합니다. `--parallel`은 선택된 빌드 모드는 그대로 유지하면서 Bukkit이 선택되어 있으면 Bukkit을 먼저 빌드하고, Bukkit이 통과한 뒤 Fabric/NeoForge/Forge를 각각 별도 실시간 빌드 창으로 열어 병렬 실행합니다. 따라서 `validate-release-windows.bat --parallel`은 clean 45-target 최종 검증이며 성공하면 `FINAL RELEASE BUILD PASS`가 출력됩니다. 메인 콘솔에는 경과시간, 전체 완료 target 수, 플랫폼별 완료 수와 현재 Minecraft target이 계속 표시되고, 각 작업 창에는 실제 빌드 로그가 표시되며 전체 로그는 `validation-logs/`에 남습니다. 부분 빌드 또는 `--fast` 빌드는 `build-5.1.0/`에 저장되며 최종 릴리스 검증으로 취급하지 않습니다. 루트의 `mvn clean package`도 계속 Bukkit 전용 Maven 빌드입니다.
+Loader 작업이 Gradle cache/workspace 손상 또는 cache 잠금으로 명확히 판별되는 오류(예: `caches/<Gradle>/transforms/.../metadata.bin` 읽기 실패)로 끝나면 검증 runner는 잠겨 있을 수 있는 기본 cache를 자동 삭제하지 않습니다. 대신 `.build-cache/gradle-recovery/` 아래의 새 격리 cache로 해당 플랫폼을 한 번만 다시 시도합니다. 소스 컴파일 오류나 일반적인 dependency/build 실패는 자동 재시도하지 않습니다. 복구 빌드가 성공해도 원래 cache는 그대로 두므로 탐색기, 백신 또는 다른 프로세스의 파일 잠금이 풀린 뒤 필요할 때 수동으로 정리할 수 있습니다.
+
 
 ## 기본 설치
 
@@ -147,7 +153,7 @@ validate-release-windows.bat --parallel
 > **BMWC HTTPS 마이그레이션:** BMWC의 표준 `/bmwc/api` 및 `/bmwc/chat` 공개 구조는 KWC의 새 기본 `/chat` 구조로 바뀝니다. 표준 BMWC API URL 설정은 빈 자동값으로 변환되지만 Caddy/nginx 설정 파일은 자동 변경되지 않으므로 `/chat` prefix 제거 방식으로 직접 수정해야 합니다.
 
 
-KOKOTO WebChat 5.1.0은 명시적인 `groups -> peers`, group별 shared secret, handshake 선행조건 없는 요청별 peer 인증, HKDF-SHA256 방향별 key와 AES-256-GCM hop-by-hop payload 보호를 사용하는 Relay Protocol v2로 전환했습니다. Relay v1/BMWC endpoint는 더 이상 상호운용되지 않고 HTTP 426을 반환합니다. 자세한 내용은 `docs/SERVER_RELAY_KO.md`를 참고하세요.
+KOKOTO WebChat 5.1.0은 명시적인 `groups -> peers`, group별 shared secret, handshake 선행조건 없는 요청별 peer 인증, HKDF-SHA256 방향별 key와 AES-256-GCM hop-by-hop payload 보호를 사용하는 Relay Protocol v2로 전환했습니다. Relay v1/BMWC endpoint는 더 이상 상호운용되지 않고 HTTP 426을 반환합니다. 자세한 내용은 `docs/ko/SERVER_RELAY.md`를 참고하세요.
 
 ## 4.7.0 이모지 다중 업로드 및 호환 범위 확대
 
@@ -172,7 +178,7 @@ group-chat:
 
 4.6.3은 DM/그룹채팅 실시간 갱신 중 영상·오디오가 처음부터 다시 재생되는 문제도 수정합니다. 비공개 채팅 메시지 목록은 일반채팅처럼 stable key 기준으로 기존 메시지를 유지하고 새 메시지와 전달/읽음 메타데이터만 갱신하므로, 이미 로드된 미디어 DOM이 계속 유지됩니다.
 
-자세한 내용은 `docs/UPGRADE_4_6_3_KO.md`를 참고하세요.
+자세한 내용은 `docs/ko/UPGRADE.md`를 참고하세요.
 
 ## 4.6.2 DM·그룹채팅 전송 상태 및 재시도
 
@@ -180,7 +186,7 @@ group-chat:
 
 서버 간 DM을 주고받는 모든 서버는 KOKOTO WebChat 4.6.2 이상을 사용하는 것을 권장합니다.
 
-자세한 내용은 `docs/UPGRADE_4_6_2_KO.md`를 참고하세요.
+자세한 내용은 `docs/ko/UPGRADE.md`를 참고하세요.
 
 ## 4.6.1 타 서버 DM 대상·전송 경로 분리
 
@@ -280,7 +286,7 @@ https://map.example.com/chat # standalone 채팅
 
 URL 설정 참고: `http.path-prefix`는 KWC 내부 API 경로이고 `http.public-prefix`는 외부 리버스 프록시 prefix입니다. 기본값에서는 Caddy/Nginx가 `/chat`을 제거하므로 외부 `/chat`은 내부 `/`, 외부 `/chat/api`는 내부 `/api`로 전달됩니다. adapter와 standalone의 `api-base-url`은 별도 공개 API URL이 필요한 경우가 아니면 비워둡니다.
 
-자세한 내용은 `docs/CADDY_HTTPS_KO.md`를 참고하세요.
+자세한 내용은 `docs/ko/CADDY_HTTPS.md`를 참고하세요.
 
 ## 자주 쓰는 설정
 
@@ -340,7 +346,7 @@ GIF/JPG/JPEG/WEBP 이모지를 업로드하면, PNG만 읽는 게임 측 이모�
 
 웹 UI는 원본 파일을 사용하므로 GIF 애니메이션은 유지됩니다. 게임 측 이모지 플러그인이 같은 이모지 디렉터리를 감시한다면 PNG sidecar를 사용할 수 있습니다. 이모지 추가/변경 후에는 해당 플러그인의 reload 명령을 실행하세요.
 
-ImageEmojis-Bero 1.9.x 공용 폴더, 권한, 명령어 변환, 서버 릴레이 및 문제 해결은 [`docs/IMAGEEMOJIS_BERO_1_9_0_KO.md`](docs/IMAGEEMOJIS_BERO_1_9_0_KO.md)를 참고하세요.
+ImageEmojis-Bero 1.9.x 공용 폴더, 권한, 명령어 변환, 서버 릴레이 및 문제 해결은 [`docs/ko/IMAGEEMOJIS_BERO_1_9_0.md`](docs/ko/IMAGEEMOJIS_BERO_1_9_0.md)를 참고하세요.
 
 ## YouTube Shorts, TikTok, X/Twitter 미리보기
 
@@ -393,20 +399,17 @@ kwc.update.notify
 
 ## 문서
 
-- `docs/USER_MANUAL_KO.md` - 전체 기능 사용자·운영자 통합 매뉴얼
-- `docs/CONFIGURATION_KO.md` - 설정 참고
-- `docs/SERVER_RELAY_KO.md` - Relay Protocol v2 공개채팅·서버 간 DM/읽음 확인·신뢰/forwarding 규칙
-- `docs/UPGRADE_5_0_0_KO.md` - 4.7.0→5.0.0 메이저 업그레이드와 migration
-- `docs/UPGRADE_4_6_2_KO.md` - 4.6.1→4.6.2 업그레이드
-- `docs/UPGRADE_4_6_1_KO.md` - 4.6.0→4.6.1 업그레이드
-- `docs/UPGRADE_4_6_0_KO.md` - 4.5.5→4.6.0 설정/DB 업그레이드
-- `docs/CADDY_HTTPS_KO.md` - HTTPS 리버스 프록시
-- `docs/I18N_KO.md` - 다국어 파일과 fallback
-- `docs/INSTALL_TROUBLESHOOTING_KO.md` - 설치/업그레이드/문제 해결
-- `docs/UPLOAD_SECURITY_KO.md` - 업로드 보안
-- `docs/RELEASE_CHECKLIST_KO.md` - 릴리스 체크리스트
-- `docs/STANDALONE_REVIEW_KO.md` - BlueMap 의존성/standalone 모드 점검
-- `docs/OPERATIONS_SECURITY_KO.md` - 공개 운영, trusted proxy 로그, 보안 체크리스트
+- `docs/ko/USER_MANUAL.md` - 전체 기능 사용자·운영자 통합 매뉴얼
+- `docs/ko/CONFIGURATION.md` - 설정 참고
+- `docs/ko/SERVER_RELAY.md` - Relay Protocol v2 공개채팅·서버 간 DM/읽음 확인·신뢰/forwarding 규칙
+- `docs/ko/UPGRADE.md` - 5.1.0까지의 통합 업그레이드 및 마이그레이션 가이드
+- `docs/ko/CADDY_HTTPS.md` - HTTPS 리버스 프록시
+- `docs/ko/I18N.md` - 다국어 파일과 fallback
+- `docs/ko/INSTALL_TROUBLESHOOTING.md` - 설치/업그레이드/문제 해결
+- `docs/ko/UPLOAD_SECURITY.md` - 업로드 보안
+- `docs/ko/RELEASE_CHECKLIST.md` - 릴리스 체크리스트
+- `docs/ko/STANDALONE_REVIEW.md` - BlueMap 의존성/standalone 모드 점검
+- `docs/ko/OPERATIONS_SECURITY.md` - 공개 운영, trusted proxy 로그, 보안 체크리스트
 
 ## 주의
 
@@ -431,15 +434,15 @@ SQLite 기록 저장소를 사용할 때 채팅 패널 우측 상단 플로팅 �
 기존 config에 `BlueMapWebChat` 또는 `BM WebChat` 같은 레거시 생성 이름이 남아 있으면 기본 placeholder로 처리해 푸시 제목에 그대로 노출되지 않게 했습니다.
 
 
-- Pl3xMap integration: `docs/PL3XMAP_INTEGRATION.md`
+- Pl3xMap integration: `docs/en/PL3XMAP_INTEGRATION.md`
 
-- uNmINeD integration: `docs/UNMINED_INTEGRATION.md`
+- uNmINeD integration: `docs/en/UNMINED_INTEGRATION.md`
 
 ## Overviewer
 
-- Overviewer 연동: `docs/OVERVIEWER_INTEGRATION.md`
+- Overviewer 연동: `docs/en/OVERVIEWER_INTEGRATION.md`
 
-## Forge Stage 1
+## Forge
 
 Forge는 Minecraft 1.18.2~26.2를 하나의 범용 JAR이 아니라 버전별 exact-target 서버 JAR로 제공합니다. 소스는 `src/common`과 `compat118`, `compatClassic`, `compatModern`, `compat26`으로 분리되어 있으며 자세한 대상은 `kwc-platform-forge/README.md`를 참고하세요. BlueMapAPI 직접 연동은 Forge 26.1.2/26.2에만 포함하고, 이전 Forge 대상은 loader-neutral 파일시스템/정적 지도 어댑터를 사용합니다. 전체 빌드는 `kwc-platform-forge/build-all.bat`(Windows) 또는 `build-all.sh`를 사용하며, 스크립트가 exact target에 맞춰 JDK 17/21/25를 자동 선택합니다. 시스템 Java 25 하나로 구형 ForgeGradle을 직접 실행하면 안 됩니다.
 

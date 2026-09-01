@@ -4,7 +4,9 @@
 
 ![アーキテクチャ概要](docs/assets/architecture-5.1.0.svg)
 
-> ビジュアル資料、アニメーションフロー、編集可能な図の source、参照規格一覧は `docs/assets/`、`docs/VISUAL_DOCUMENTATION.md`、`docs/REFERENCES.md` に含まれています。
+[PNG](docs/assets/architecture-5.1.0.png) · [SVG](docs/assets/architecture-5.1.0.svg)
+
+> ビジュアル資料、アニメーションフロー、編集可能な図の source、参照規格一覧は `docs/assets/`、`docs/en/VISUAL_DOCUMENTATION.md`、`docs/en/REFERENCES.md` に含まれています。
 
 ## 5.1.0 リリース
 
@@ -32,7 +34,7 @@ Bukkit/Paper/Spigot では BlueMap、squaremap、Dynmap、Pl3xMap、LiveAtlas、
 - 公開/グループ、任意の DM に共通適用できる Unicode 対応コンテンツフィルター: block/mask/replace、N:1・1:N・N:N 置換、compact/interleave 回避検出
 - UTF-8 `filter-lists/*.txt` の一括フィルター単語リスト（リストごとにブロック/フィルタリングを選択）とカスタム block/mask/replace ルール。Web Admin から TXT の取込・編集・有効/無効・削除が可能
 - Web Admin の **Filter/Settings** とゲーム内 `/kchat filter` / `/kchat settings` 運用コマンド
-- カスタムルールの作成方法と Block/Mask/Replace の例: [`docs/CONFIGURATION_JA.md`](docs/CONFIGURATION_JA.md#カスタムフィルターの簡単な使い方)
+- カスタムルールの作成方法と Block/Mask/Replace の例: [`docs/ja/CONFIGURATION.md`](docs/ja/CONFIGURATION.md#カスタムフィルターの簡単な使い方)
 - セッション期間変更時、既存 USER/MODERATOR または ADMIN セッションを作成時刻基準で再計算し、`0` は無期限
 - `upload.filename-mode: original` で新規アップロードの安全な Unicode 元ファイル名を保持し、同名を上書きせず番号付け
 - BlueMap / squaremap / Dynmap / Pl3xMap / LiveAtlas / uNmINeD / Overviewer 内チャットパネル、または standalone Web チャットページ
@@ -52,8 +54,8 @@ Bukkit/Paper/Spigot では BlueMap、squaremap、Dynmap、Pl3xMap、LiveAtlas、
 
 ## 連携プラグイン
 
-- [**ImageEmojis-Bero**](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) — Bukkit/Paper 系で `plugins/KOKOTO-WebChat/emojis` を共有し、Web/history/relay は canonical token、game は ImageEmojis glyph を利用できます。`serverIp` + `webServerPort` の resource-pack HTTP service は Minecraft client から到達可能である必要があります。詳細: [`docs/IMAGEEMOJIS_BERO_1_9_0_JA.md`](docs/IMAGEEMOJIS_BERO_1_9_0_JA.md)。一般運用は [upstream ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)。
-- [**SimpleNicks-Bero**](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) — `player-display.mode: "display-name"` で Bukkit display name を表示し、実 linked username/UUID identity は別に保持します。詳細: [`docs/SIMPLENICKS_BERO_JA.md`](docs/SIMPLENICKS_BERO_JA.md)。一般運用は [upstream SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks)。
+- [**ImageEmojis-Bero**](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) — Bukkit/Paper 系で `plugins/KOKOTO-WebChat/emojis` を共有し、Web/history/relay は canonical token、game は ImageEmojis glyph を利用できます。`serverIp` + `webServerPort` の resource-pack HTTP service は Minecraft client から到達可能である必要があります。詳細: [`docs/ja/IMAGEEMOJIS_BERO_1_9_0.md`](docs/ja/IMAGEEMOJIS_BERO_1_9_0.md)。一般運用は [upstream ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)。
+- [**SimpleNicks-Bero**](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) — `player-display.mode: "display-name"` で Bukkit display name を表示し、実 linked username/UUID identity は別に保持します。詳細: [`docs/ja/SIMPLENICKS_BERO.md`](docs/ja/SIMPLENICKS_BERO.md)。一般運用は [upstream SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks)。
 
 ## ビルド
 
@@ -99,6 +101,8 @@ script が target ごとに JDK 17/21/25 を選択し、各 target の `build/li
 
 ### Windows 最終 release 検証
 
+> **release build/validation workflow は source package に含まれています。** `validate-release-windows.bat` と、それが必要とする PowerShell helper は source に同梱されています。別の `KWC-5.1.0-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、通常 build / release build には不要です。
+
 source root で `validate-release-windows.bat` を実行すると、Bukkit、Fabric 16 target、NeoForge 12 target、Forge 16 target を連続 build します。`FINAL RELEASE BUILD PASS` が表示され、`release-5.1.0/` に配布用 JAR が正確に 45 個集まり、`SHA256SUMS.txt` が生成された場合のみ実 build まで最終検証済みと判定します。
 
 Windows の反復 build では、同じ script で platform 選択、incremental cache、platform 並列 build、live progress を使用できます。
@@ -112,7 +116,9 @@ validate-release-windows.bat --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-platform option は組み合わせ可能です。`--bukkit` は Bukkit/Paper artifact と必要な Maven reactor dependency だけを build します。`--fast` は `clean` を省略し、既存の Maven/Gradle 出力と dependency cache を再利用して Gradle build cache を有効化します。`--parallel` は選択した build mode を維持し、Bukkit が選択されている場合は Bukkit を先に build し、PASS 後に残りの Fabric/NeoForge/Forge を並列実行します。そのため `validate-release-windows.bat --parallel` は clean 45-target 最終検証として扱われ、成功時は `FINAL RELEASE BUILD PASS` を表示します。console には経過時間、全体完了 target 数、platform 別完了数と現在の Minecraft target が live 表示され、詳細 log は `validation-logs/` に残ります。部分 build または `--fast` build は `build-5.1.0/` に出力され、最終 release validation にはなりません。source root の `mvn clean package` は引き続き Bukkit 専用 Maven build です。
+platform option は組み合わせ可能です。`--bukkit` は Bukkit/Paper artifact と必要な Maven reactor dependency だけを build します。`--fast` は `clean` を省略し、既存の Maven/Gradle 出力と dependency cache を再利用して Gradle build cache を有効化します。`--parallel` は選択した build mode を維持し、Bukkit が選択されている場合は Bukkit を先に build し、PASS 後に Fabric/NeoForge/Forge をそれぞれ別の live build window で並列実行します。そのため `validate-release-windows.bat --parallel` は clean 45-target 最終検証として扱われ、成功時は `FINAL RELEASE BUILD PASS` を表示します。main console には経過時間、全体完了 target 数、platform 別完了数と現在の Minecraft target が表示され、各 worker window には実際の build log が表示されます。詳細 log は `validation-logs/` に残ります。部分 build または `--fast` build は `build-5.1.0/` に出力され、最終 release validation にはなりません。source root の `mvn clean package` は引き続き Bukkit 専用 Maven build です。
+Loader worker が Gradle cache/workspace の破損または cache lock と明確に判定できるエラー（例: `caches/<Gradle>/transforms/.../metadata.bin` の読み取り失敗）で終了した場合、検証 runner は lock されている可能性がある既存 cache を自動削除しません。代わりに `.build-cache/gradle-recovery/` 配下の新しい分離 cache を使って、その platform を 1 回だけ再試行します。ソースのコンパイルエラーや通常の dependency/build failure は自動再試行しません。復旧ビルドが成功しても元の cache は変更しないため、Explorer・antivirus・他プロセスの lock が解除された後に必要に応じて手動で整理できます。
+
 
 ## インストール
 
@@ -141,7 +147,7 @@ platform option は組み合わせ可能です。`--bukkit` は Bukkit/Paper art
 > **BMWC HTTPS migration:** BMWC の標準 `/bmwc/api`、`/bmwc/chat` 公開構成は KWC の `/chat` 構成へ移行します。標準 BMWC API URL 設定は空の自動値へ正規化されますが、Caddy/nginx file は自動変更されないため `/chat` prefix stripping 構成へ手動変更してください。
 
 
-KOKOTO WebChat 5.1.0 は明示的な `groups -> peers`、group 単位 shared secret、handshake 前提なしの request 単位 peer 認証、HKDF-SHA256 directional key、AES-256-GCM hop-by-hop payload protection を使用する Relay Protocol v2 に移行しました。Relay v1/BMWC endpoint は相互運用せず HTTP 426 を返します。詳細は `docs/SERVER_RELAY_JA.md` を参照してください。
+KOKOTO WebChat 5.1.0 は明示的な `groups -> peers`、group 単位 shared secret、handshake 前提なしの request 単位 peer 認証、HKDF-SHA256 directional key、AES-256-GCM hop-by-hop payload protection を使用する Relay Protocol v2 に移行しました。Relay v1/BMWC endpoint は相互運用せず HTTP 426 を返します。詳細は `docs/ja/SERVER_RELAY.md` を参照してください。
 
 ## 4.7.0 絵文字の複数アップロードと互換範囲
 
@@ -166,13 +172,13 @@ group-chat:
 
 4.6.3 では DM / グループチャットのライブ更新中に動画・音声が先頭から再生される問題も修正します。プライベートチャットのメッセージ一覧は通常チャットと同様に stable key で既存メッセージを維持し、新規メッセージと配信/既読メタデータだけを更新するため、読み込み済みメディア DOM が保持されます。
 
-詳細は `docs/UPGRADE_4_6_3_JA.md` を参照してください。
+詳細は `docs/ja/UPGRADE.md` を参照してください。
 
 ### 4.6.2 DM / グループチャットの配信状態と再試行
 
 他サーバーへの DM は、宛先サーバーが実際に保存したことを確認するまで `pending` のままです。保存確認後に `delivered` となり、経路・通信・タイムアウトなどの失敗時は `failed` となって同じ relay ID で再試行できます。これにより応答だけが失われた場合でも受信側に同じメッセージを重複保存しません。Web DM とグループチャットも client message ID を使い、不確実な HTTP 応答後の再送を重複なく処理します。サーバー指定のない DM 名は現在サーバーのプレイヤーだけを解決します。DM と group chat のすべての message は時刻の横に既読状態を表示します。1 対 1 DM は受信者が読む前は `未読`、読んだ後は `✓`、group chat は未読受信者数を数字で表示し 0 人になると `✓` になります。送信状態も短く `送信中`、失敗時は `失敗 · 再試行` のみ表示します。
 
-サーバー間 DM を交換するすべてのサーバーでは KOKOTO WebChat 4.6.2 以降を推奨します。詳細は `docs/UPGRADE_4_6_2_JA.md` を参照してください。
+サーバー間 DM を交換するすべてのサーバーでは KOKOTO WebChat 4.6.2 以降を推奨します。詳細は `docs/ja/UPGRADE.md` を参照してください。
 
 ## standalone の URL
 
@@ -219,7 +225,7 @@ emoji:
   show-storage-limit: true
 ```
 
-詳細は `docs/CADDY_HTTPS_JA.md` を参照してください。
+詳細は `docs/ja/CADDY_HTTPS.md` を参照してください。
 
 ## よく使う設定
 
@@ -270,7 +276,7 @@ GIF/JPG/JPEG/WEBP 絵文字をアップロードすると、PNG のみを読む�
 
 Web UI は元ファイルを使い続けるため、GIF アニメーションは維持されます。同じ絵文字ディレクトリを監視するゲーム側絵文字プラグインは PNG sidecar を利用できます。絵文字の追加や変更後は、そのプラグインの reload コマンドを実行してください。
 
-ImageEmojis-Bero 1.9.x の共有フォルダー、権限、command 変換、relay、troubleshooting は [`docs/IMAGEEMOJIS_BERO_1_9_0_JA.md`](docs/IMAGEEMOJIS_BERO_1_9_0_JA.md) を参照してください。
+ImageEmojis-Bero 1.9.x の共有フォルダー、権限、command 変換、relay、troubleshooting は [`docs/ja/IMAGEEMOJIS_BERO_1_9_0.md`](docs/ja/IMAGEEMOJIS_BERO_1_9_0.md) を参照してください。
 
 ## YouTube Shorts、TikTok、X/Twitter プレビュー
 
@@ -323,20 +329,17 @@ kwc.update.notify
 
 ## ドキュメント
 
-- `docs/USER_MANUAL_JA.md` - 全機能のユーザー・運用総合マニュアル
-- `docs/CONFIGURATION_JA.md`
-- `docs/SERVER_RELAY_JA.md` - Relay Protocol v2 公開チャット・サーバー間 DM/既読 receipt・trust/forwarding 規則
-- `docs/UPGRADE_5_0_0_JA.md` - 4.7.0→5.0.0 major upgrade / migration
-- `docs/UPGRADE_4_6_2_JA.md` - 4.6.1→4.6.2 upgrade
-- `docs/UPGRADE_4_6_1_JA.md` - 4.6.0→4.6.1 upgrade
-- `docs/UPGRADE_4_6_0_JA.md` - 4.5.5→4.6.0 設定/DB 更新
-- `docs/CADDY_HTTPS_JA.md`
-- `docs/I18N_JA.md`
-- `docs/INSTALL_TROUBLESHOOTING_JA.md`
-- `docs/UPLOAD_SECURITY_JA.md`
-- `docs/RELEASE_CHECKLIST_JA.md`
-- `docs/STANDALONE_REVIEW_JA.md`
-- `docs/OPERATIONS_SECURITY_JA.md`
+- `docs/ja/USER_MANUAL.md` - 全機能のユーザー・運用総合マニュアル
+- `docs/ja/CONFIGURATION.md`
+- `docs/ja/SERVER_RELAY.md` - Relay Protocol v2 公開チャット・サーバー間 DM/既読 receipt・trust/forwarding 規則
+- `docs/ja/UPGRADE.md` - 5.1.0 までの統合アップグレード / 移行ガイド
+- `docs/ja/CADDY_HTTPS.md`
+- `docs/ja/I18N.md`
+- `docs/ja/INSTALL_TROUBLESHOOTING.md`
+- `docs/ja/UPLOAD_SECURITY.md`
+- `docs/ja/RELEASE_CHECKLIST.md`
+- `docs/ja/STANDALONE_REVIEW.md`
+- `docs/ja/OPERATIONS_SECURITY.md`
 
 フォント補足: インストール済みフォントは CSS の font-family 名で入力する必要があります。チャット設定の確認ボタンで、権限要求なしに現在のブラウザーで利用できそうか推定できます。
 
@@ -365,15 +368,15 @@ SQLite 履歴ストレージを使用している場合、チャットパネル�
 注: `frontend.standalone.app-name` / `frontend.standalone.app-short-name` でモバイルのホーム画面 Web アプリ名を変更でき、`web-push.notification-title` で既定の Push 通知タイトルを変更できます。`web-push.notification-title` が空の場合は `frontend.standalone.app-name` が使われます。Android/デスクトップブラウザーでは HTTPS と Push API が利用できれば BlueMap addon と standalone ページのどちらからでも Push を有効化できます。iOS/iPadOS では通常のブラウザータブではなく、ホーム画面に追加して Web アプリとして開いたページを使用してください。
 
 
-- Pl3xMap integration: `docs/PL3XMAP_INTEGRATION.md`
+- Pl3xMap integration: `docs/en/PL3XMAP_INTEGRATION.md`
 
-- uNmINeD integration: `docs/UNMINED_INTEGRATION.md`
+- uNmINeD integration: `docs/en/UNMINED_INTEGRATION.md`
 
 ## Overviewer
 
-- Overviewer integration: `docs/OVERVIEWER_INTEGRATION.md`
+- Overviewer integration: `docs/en/OVERVIEWER_INTEGRATION.md`
 
-## Forge Stage 1
+## Forge
 
 Forge は Minecraft 1.18.2〜26.2 を単一の広域 JAR ではなく、Minecraft バージョン別の exact-target サーバー JAR として提供します。ソースは `src/common` と `compat118` / `compatClassic` / `compatModern` / `compat26` に分離されています。詳細は `kwc-platform-forge/README.md` を参照してください。BlueMapAPI の直接統合は Forge 26.1.2/26.2 のみです。 全ターゲットのビルドには `kwc-platform-forge/build-all.bat`（Windows）または `build-all.sh` を使用し、スクリプトが各 exact target に必要な JDK 17/21/25 を選択します。
 

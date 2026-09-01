@@ -4,7 +4,9 @@
 
 ![Architecture overview](docs/assets/architecture-5.1.0.svg)
 
-> Visual manuals, animated flows, editable diagram sources, and standards references are included under `docs/assets/`, `docs/VISUAL_DOCUMENTATION.md`, and `docs/REFERENCES.md`.
+[PNG](docs/assets/architecture-5.1.0.png) · [SVG](docs/assets/architecture-5.1.0.svg)
+
+> Visual manuals, animated flows, editable diagram sources, and standards references are included under `docs/assets/`, `docs/en/VISUAL_DOCUMENTATION.md`, and `docs/en/REFERENCES.md`.
 
 ## 5.1.0 release
 
@@ -34,7 +36,7 @@ A multi-platform server-side web chat for Minecraft. The Bukkit/Paper/Spigot pla
 - Shared Unicode-aware content filter for public/group chat and optional DM, with block/mask/replace, N:1/1:N/N:N replacement rules, and DeathWord-style compact/interleave anti-evasion matching
 - UTF-8 `filter-lists/*.txt` bulk filter-word lists with per-list Block/Filter mode plus custom block/mask/replace rules; Web Admin can import and manage list files
 - Web Admin **Filter** and **Settings** controls plus `/kchat filter` / `/kchat settings` operational commands
-- Custom rule recipes and concrete Block/Mask/Replace examples: [`docs/CONFIGURATION_EN.md`](docs/CONFIGURATION_EN.md#custom-filter-quick-guide)
+- Custom rule recipes and concrete Block/Mask/Replace examples: [`docs/en/CONFIGURATION.md`](docs/en/CONFIGURATION.md#custom-filter-quick-guide)
 - Session lifetime changes recalculate existing USER/MODERATOR or ADMIN sessions from their original creation time; `0` means unlimited
 - Optional `upload.filename-mode: original` preserves safe Unicode source filenames for new uploads and resolves collisions without overwriting
 - BlueMap/squaremap/Dynmap/Pl3xMap/LiveAtlas/uNmINeD/Overviewer embedded chat panel and standalone web chat page
@@ -59,8 +61,8 @@ A multi-platform server-side web chat for Minecraft. The Bukkit/Paper/Spigot pla
 
 KWC 5.1.0 documents two optional Bukkit/Paper-family companion-plugin paths:
 
-- [**ImageEmojis-Bero**](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) — share `plugins/KOKOTO-WebChat/emojis`, keep canonical `:pack/name:` tokens across web/history/relay, and let ImageEmojis render the game glyph. Its resource-pack server (`serverIp` + `webServerPort`, commonly TCP 5000) must be reachable by Minecraft clients. See [`docs/IMAGEEMOJIS_BERO_1_9_0_EN.md`](docs/IMAGEEMOJIS_BERO_1_9_0_EN.md). General plugin operation remains documented by [upstream ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis).
-- [**SimpleNicks-Bero**](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) — set `player-display.mode: "display-name"` so KWC shows the Bukkit display name produced by the nickname plugin while retaining the linked username/UUID as the real identity. See [`docs/SIMPLENICKS_BERO_EN.md`](docs/SIMPLENICKS_BERO_EN.md). General plugin operation remains documented by [upstream SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks).
+- [**ImageEmojis-Bero**](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) — share `plugins/KOKOTO-WebChat/emojis`, keep canonical `:pack/name:` tokens across web/history/relay, and let ImageEmojis render the game glyph. Its resource-pack server (`serverIp` + `webServerPort`, commonly TCP 5000) must be reachable by Minecraft clients. See [`docs/en/IMAGEEMOJIS_BERO_1_9_0.md`](docs/en/IMAGEEMOJIS_BERO_1_9_0.md). General plugin operation remains documented by [upstream ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis).
+- [**SimpleNicks-Bero**](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) — set `player-display.mode: "display-name"` so KWC shows the Bukkit display name produced by the nickname plugin while retaining the linked username/UUID as the real identity. See [`docs/en/SIMPLENICKS_BERO.md`](docs/en/SIMPLENICKS_BERO.md). General plugin operation remains documented by [upstream SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks).
 
 These integrations do not turn ImageEmojis/SimpleNicks into hard dependencies, and they should not be interpreted as Bukkit-plugin API support on KWC's Fabric/NeoForge/Forge server builds.
 
@@ -122,6 +124,8 @@ The Forge build helpers select JDK 17/21/25 per target and produce `KOKOTO-WebCh
 
 ### Final Windows release acceptance
 
+> **The release build/validation workflow is included in the source package.** `validate-release-windows.bat` and the PowerShell helpers it requires are shipped with the source. The separate `KWC-5.1.0-validation-tools.zip` contains development-only browser regression tooling and is not required for normal or release builds.
+
 Run `validate-release-windows.bat` from the source root to build Bukkit, all 16 Fabric targets, all 12 NeoForge targets, and all 16 Forge targets in one pass. A fully build-validated release must end with `FINAL RELEASE BUILD PASS`, collect exactly 45 deployable JARs under `release-5.1.0/`, and generate `SHA256SUMS.txt`.
 
 For normal development builds on Windows, the same script supports platform selection, incremental cache reuse, parallel platform scheduling, and live progress:
@@ -133,7 +137,9 @@ validate-release-windows.bat --fabric --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-Platform flags may be combined. `--bukkit` builds only the Bukkit/Paper artifact and its required Maven reactor dependencies. `--fast` skips `clean`, reuses existing Maven/Gradle outputs and dependency caches, and enables the Gradle build cache. `--parallel` keeps the selected build mode, builds Bukkit first when it is selected, and after Bukkit passes runs the remaining selected loaders concurrently; therefore `validate-release-windows.bat --parallel` is still a clean 45-target release validation and may print `FINAL RELEASE BUILD PASS`. The console continuously shows elapsed time, overall completed targets, each platform count, and the current Minecraft target while full logs remain in `validation-logs/`. Partial or `--fast` builds are written under `build-5.1.0/` and never count as final release validation. Root `mvn clean package` remains a valid Bukkit-only Maven build and does not build Fabric/NeoForge/Forge.
+Platform flags may be combined. `--bukkit` builds only the Bukkit/Paper artifact and its required Maven reactor dependencies. `--fast` skips `clean`, reuses existing Maven/Gradle outputs and dependency caches, and enables the Gradle build cache. `--parallel` keeps the selected build mode, builds Bukkit first when it is selected, and after Bukkit passes opens separate live build windows for Fabric, NeoForge, and Forge and runs them concurrently; therefore `validate-release-windows.bat --parallel` is still a clean 45-target release validation and may print `FINAL RELEASE BUILD PASS`. The main console continuously shows elapsed time, overall completed targets, each platform count, and the current Minecraft target while each worker window shows its actual build log and full logs remain in `validation-logs/`. Partial or `--fast` builds are written under `build-5.1.0/` and never count as final release validation. Root `mvn clean package` remains a valid Bukkit-only Maven build and does not build Fabric/NeoForge/Forge.
+If a loader worker fails with a recognized Gradle cache/workspace corruption or cache-lock signature (for example an unreadable `caches/<Gradle>/transforms/.../metadata.bin`), the validation runner does not delete the possibly locked primary cache. It retries that platform once with a fresh isolated cache under `.build-cache/gradle-recovery/`. Source compilation and ordinary dependency/build failures are never retried. A successful recovery leaves the original cache untouched so it can be cleaned manually after Explorer, antivirus, or another locking process releases it.
+
 
 ## Fabric / NeoForge exact-target platforms
 
@@ -173,7 +179,7 @@ The previous BlueMapWebChat 4.x installation is migration input only: KOKOTO Web
 
 Platform-neutral chat/session/security models, public/DM/group persistence, signed relay, HTTP/SSE, Web Push and endpoint orchestration live in `kwc-core`. Shared BlueMap assets/config generation and Bukkit `webapp.conf` integration live in `kwc-adapter-bluemap`; the Java 25 `kwc-adapter-bluemap-api` bridge supplies Fabric/NeoForge and Forge 26.1.2/26.2 BlueMapAPI registration; squaremap web-directory/index integration lives in `kwc-adapter-squaremap`; Dynmap `webpath`/index integration lives in `kwc-adapter-dynmap`; Pl3xMap `settings.web-directory.path`/index integration lives in `kwc-adapter-pl3xmap`; LiveAtlas static-web-root/index integration lives in `kwc-adapter-liveatlas`; uNmINeD static-export/index integration lives in `kwc-adapter-unmined`; standalone assets live independently in `kwc-standalone-frontend`; loader lifecycle and Minecraft integration live in `kwc-platform-bukkit`, `kwc-platform-fabric`, `kwc-platform-neoforge`, and the exact-target `kwc-platform-forge` tree.
 
-KOKOTO WebChat 5.1.0 uses Relay Protocol v2 with explicit `groups -> peers`, one shared secret per group, independent request-by-request peer authentication, a stateless diagnostic handshake endpoint, HKDF-SHA256 directional keys, and AES-256-GCM hop-by-hop payload protection. Relay v1/BMWC endpoints are no longer interoperable and return HTTP 426; see `docs/SERVER_RELAY_EN.md`.
+KOKOTO WebChat 5.1.0 uses Relay Protocol v2 with explicit `groups -> peers`, one shared secret per group, independent request-by-request peer authentication, a stateless diagnostic handshake endpoint, HKDF-SHA256 directional keys, and AES-256-GCM hop-by-hop payload protection. Relay v1/BMWC endpoints are no longer interoperable and return HTTP 426; see `docs/en/SERVER_RELAY.md`.
 
 ## 4.7.0 multi-upload and compatibility
 
@@ -183,13 +189,17 @@ KOKOTO WebChat 5.1.0 uses Relay Protocol v2 with explicit `groups -> peers`, one
 
 The Bukkit/Spigot API baseline is lowered from 1.21 to 1.18 while the plugin remains on Java 17. The conservative supported Minecraft range for this release is **1.18 through 26.2**. Paper-specific `AsyncChatEvent` handling remains reflection-based and the Bukkit legacy chat event remains the fallback.
 
-## 4.6.3 administrator group-chat audit
+## 4.6.3 administrator DM and group-chat audit
 
-4.6.3 added optional read-only administrator access to group-chat message bodies. In 5.1.0, DM and group content auditing remain independent: `direct-message.admin-audit.enabled` controls DM-body audit and `group-chat.admin-audit.enabled` controls group-body audit. Both also require an exact account in `private-chat-super-admins`. Audit views are read-only and do not send, reply, hide, join, or change read state. Each audit page read is logged without copying message bodies into the audit log.
+4.6.3 added optional read-only administrator access to group-chat message bodies. In 5.1.0, DM and group content auditing remain independent: `direct-message.admin-audit.enabled` controls DM-body audit and `group-chat.admin-audit.enabled` controls group-body audit. Both also require an exact account in `private-chat-super-admins`. Audit views are read-only and do not send, reply, hide, join, or change read state. DM audit reads are logged as `admin.dm-audit-read`; group-chat audit reads are logged as `admin.group-audit-read`. Message bodies are not copied into the audit log.
 
 ```yaml
 private-chat-super-admins:
   - "ExactMinecraftNameOrUUID"
+
+direct-message:
+  admin-audit:
+    enabled: true
 
 group-chat:
   admin-audit:
@@ -198,7 +208,7 @@ group-chat:
 
 4.6.3 also fixes DM/group native video and audio playback during live refreshes. Private-chat message lists now reconcile existing messages by stable key like public chat, so loaded media DOM remains mounted while new messages and delivery/read metadata are updated. Playback therefore continues instead of restarting from the beginning.
 
-See `docs/UPGRADE_4_6_3_EN.md` for upgrade details.
+See `docs/en/UPGRADE.md` for upgrade details.
 
 ## 4.6.2 reliable private-message delivery
 
@@ -206,7 +216,7 @@ Remote DMs now remain `pending` until the destination server confirms that the m
 
 All servers exchanging cross-server DMs should run KOKOTO WebChat 4.6.2 or later.
 
-See `docs/UPGRADE_4_6_2_EN.md` for upgrade details.
+See `docs/en/UPGRADE.md` for upgrade details.
 
 ## 4.6.1 exact cross-server DM routing
 
@@ -308,7 +318,7 @@ https://map.example.com/chat # standalone chat
 
 URL settings note: `http.path-prefix` is the internal KWC API route and `http.public-prefix` is the external reverse-proxy prefix. With the defaults, Caddy/Nginx strips `/chat`, so external `/chat` reaches internal `/` and external `/chat/api` reaches internal `/api`. Adapter and standalone `api-base-url` values normally stay empty unless a separate public API URL is required.
 
-See `docs/CADDY_HTTPS_EN.md` for details.
+See `docs/en/CADDY_HTTPS.md` for details.
 
 ## Common options
 
@@ -373,7 +383,7 @@ When GIF/JPG/JPEG/WEBP emoji files are uploaded, KOKOTO WebChat also creates a s
 
 The web UI keeps using the original file, so GIF animation is preserved. A game-side emoji plugin may use the PNG sidecar if it watches the same emoji directory. Run that plugin's reload command after adding or changing emoji files.
 
-Detailed setup, relay, reply-command, permission, reload, and troubleshooting notes: [`docs/IMAGEEMOJIS_BERO_1_9_0_EN.md`](docs/IMAGEEMOJIS_BERO_1_9_0_EN.md).
+Detailed setup, relay, reply-command, permission, reload, and troubleshooting notes: [`docs/en/IMAGEEMOJIS_BERO_1_9_0.md`](docs/en/IMAGEEMOJIS_BERO_1_9_0.md).
 
 ## YouTube Shorts, TikTok, and X/Twitter previews
 
@@ -426,22 +436,18 @@ kwc.update.notify
 
 ## Documentation
 
-- `docs/USER_MANUAL_EN.md` - complete user and operator manual for all features
-- `docs/CONFIGURATION_EN.md` - configuration reference
-- `docs/SERVER_RELAY_EN.md` - Relay Protocol v2 public chat, cross-server DM/read receipts, trust and forwarding rules
-- `docs/UPGRADE_5_0_0_EN.md` - 4.7.0 to 5.0.0 major upgrade and migration
-- `docs/UPGRADE_4_7_0_EN.md` - 4.6.3 to 4.7.0 upgrade
+- `docs/en/USER_MANUAL.md` - complete user and operator manual for all features
+- `docs/en/CONFIGURATION.md` - configuration reference
+- `docs/en/SERVER_RELAY.md` - Relay Protocol v2 public chat, cross-server DM/read receipts, trust and forwarding rules
+- `docs/en/UPGRADE.md` - consolidated upgrade and migration guide through 5.1.0
 - `wiki/` - GitHub Wiki source pages using safe page names without `and` / `&`
-- `docs/UPGRADE_4_6_2_EN.md` - 4.6.1 to 4.6.2 upgrade
-- `docs/UPGRADE_4_6_1_EN.md` - 4.6.0 to 4.6.1 upgrade
-- `docs/UPGRADE_4_6_0_EN.md` - 4.5.5 to 4.6.0 config/database upgrade
-- `docs/CADDY_HTTPS_EN.md` - HTTPS reverse proxy setup
-- `docs/I18N_EN.md` - language files and fallback behavior
-- `docs/INSTALL_TROUBLESHOOTING_EN.md` - install, upgrade, troubleshooting
-- `docs/UPLOAD_SECURITY_EN.md` - upload security notes
-- `docs/RELEASE_CHECKLIST_EN.md` - release checklist
-- `docs/STANDALONE_REVIEW_EN.md` - BlueMap dependency and standalone mode review
-- `docs/OPERATIONS_SECURITY_EN.md` - public deployment, trusted proxy logs, and security checklist
+- `docs/en/CADDY_HTTPS.md` - HTTPS reverse proxy setup
+- `docs/en/I18N.md` - language files and fallback behavior
+- `docs/en/INSTALL_TROUBLESHOOTING.md` - install, upgrade, troubleshooting
+- `docs/en/UPLOAD_SECURITY.md` - upload security notes
+- `docs/en/RELEASE_CHECKLIST.md` - release checklist
+- `docs/en/STANDALONE_REVIEW.md` - BlueMap dependency and standalone mode review
+- `docs/en/OPERATIONS_SECURITY.md` - public deployment, trusted proxy logs, and security checklist
 
 ## Security note
 
@@ -462,17 +468,17 @@ Note: `frontend.standalone.app-name` / `frontend.standalone.app-short-name` can 
 Existing configs that still contain legacy generated display names such as `BlueMapWebChat` or `BM WebChat` are treated as placeholders so they no longer appear as push titles by default.
 
 
-- Pl3xMap integration: `docs/PL3XMAP_INTEGRATION.md`
-- LiveAtlas integration: `docs/LIVEATLAS_INTEGRATION.md`
-- uNmINeD integration: `docs/UNMINED_INTEGRATION.md`
+- Pl3xMap integration: `docs/en/PL3XMAP_INTEGRATION.md`
+- LiveAtlas integration: `docs/en/LIVEATLAS_INTEGRATION.md`
+- uNmINeD integration: `docs/en/UNMINED_INTEGRATION.md`
 
 ## Overviewer
 
-- Overviewer integration: `docs/OVERVIEWER_INTEGRATION.md`
+- Overviewer integration: `docs/en/OVERVIEWER_INTEGRATION.md`
 
-## Forge Stage 1
+## Forge
 
-Forge uses exact-target server JARs for Minecraft 1.18.2 through 26.2. The Forge tree is split into `src/common` plus `compat118`, `compatClassic`, `compatModern`, and `compat26`; see `kwc-platform-forge/README.md` and `docs/FORGE_INTEGRATION.md`. Direct BlueMapAPI integration is limited to Forge 26.1.2/26.2; older Forge targets use the loader-neutral filesystem/static-map adapters. Build helpers select JDK 17/21/25 per exact target; use `kwc-platform-forge/build-all.bat` (Windows) or `build-all.sh` instead of forcing every ForgeGradle generation through one system JVM.
+Forge uses exact-target server JARs for Minecraft 1.18.2 through 26.2. The Forge tree is split into `src/common` plus `compat118`, `compatClassic`, `compatModern`, and `compat26`; see `kwc-platform-forge/README.md` and `docs/en/FORGE_INTEGRATION.md`. Direct BlueMapAPI integration is limited to Forge 26.1.2/26.2; older Forge targets use the loader-neutral filesystem/static-map adapters. Build helpers select JDK 17/21/25 per exact target; use `kwc-platform-forge/build-all.bat` (Windows) or `build-all.sh` instead of forcing every ForgeGradle generation through one system JVM.
 
 ## AI assistance disclosure
 

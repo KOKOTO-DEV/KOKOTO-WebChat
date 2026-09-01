@@ -430,7 +430,7 @@ public final class KwcFabricRuntime {
         return "Fabric Server";
     }
     public String minecraftVersion() {
-        return FabricLoader.getInstance().getModContainer("minecraft").map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("26.2");
+        return FabricLoader.getInstance().getModContainer("minecraft").map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("unknown");
     }
     public void info(String message) { LOGGER.info("{}", message); }
     public void warn(String message) { LOGGER.warn("{}", message); }

@@ -9989,3 +9989,63 @@ body.kwc-standalone-mode {
   font-size: inherit;
   text-shadow: inherit;
 }
+
+/* 5.1.0: compact custom emoji sizing for notification inbox and pinned-message UI. */
+/* Compact custom-emoji contexts use glyph-like sizing when text is mixed in.
+   Emoji-only notification rows and the collapsed pinned preview use natural image
+   size with a cap; smaller source images are never enlarged to the cap. */
+.kwc-notification-inbox-backdrop .kwc-notification-row-title .kwc-custom-emoji,
+.kwc-notification-inbox-backdrop .kwc-notification-row-body .kwc-custom-emoji {
+  width: auto !important;
+  height: 1.3em !important;
+  max-width: none !important;
+  max-height: 1.3em !important;
+  vertical-align: -0.22em;
+}
+
+.kwc-notification-inbox-backdrop .kwc-notification-row-title.kwc-emoji-only,
+.kwc-notification-inbox-backdrop .kwc-notification-row-body.kwc-emoji-only {
+  overflow: hidden;
+  text-overflow: clip;
+  line-height: normal;
+}
+
+.kwc-notification-inbox-backdrop .kwc-notification-row-title.kwc-emoji-only .kwc-custom-emoji,
+.kwc-notification-inbox-backdrop .kwc-notification-row-body.kwc-emoji-only .kwc-custom-emoji {
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 50px !important;
+  vertical-align: middle;
+}
+
+#kwc-root .kwc-pinned-open .kwc-custom-emoji {
+  width: auto !important;
+  height: 1.3em !important;
+  max-width: none !important;
+  max-height: 1.3em !important;
+  vertical-align: -0.22em;
+}
+
+#kwc-root .kwc-pinned-open #kwc-pinned-label.kwc-emoji-only .kwc-custom-emoji,
+#kwc-root .kwc-pinned-open #kwc-pinned-label .kwc-pinned-summary-title.kwc-emoji-only .kwc-custom-emoji {
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: var(--kwc-pinned-emoji-max-height, 28px) !important;
+  vertical-align: middle;
+}
+
+#kwc-root .kwc-pinned-open #kwc-pinned-label .kwc-pinned-summary-title.kwc-emoji-only {
+  display: flex;
+  align-items: center;
+  line-height: normal;
+}
+
+.kwc-pinned-backdrop .kwc-pinned-item .kwc-custom-emoji {
+  width: auto !important;
+  height: 1.3em !important;
+  max-width: none !important;
+  max-height: 1.3em !important;
+  vertical-align: -0.22em;
+}

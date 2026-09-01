@@ -1,4 +1,4 @@
-# KOKOTO WebChat - Forge Stage 1
+# KOKOTO WebChat - Forge
 
 Server-side Forge platform for KOKOTO WebChat 5.1.0. Forge is built as **exact Minecraft-version JARs** rather than one broad-range binary because Forge/Minecraft APIs changed across the supported span.
 
@@ -59,7 +59,10 @@ Build all declared targets:
 build-all.bat
 ```
 
-For repeat Windows builds, append `--fast` to `build-all.bat` or `build-target.bat <minecraft-version>` to skip `clean` and enable the Gradle build cache. The root `validate-release-windows.bat --parallel` option is the clean full-matrix path that builds Bukkit first and then runs Fabric/NeoForge/Forge concurrently with live progress.
+
+> `validate-release-windows.bat` and its required PowerShell helpers are included in the source archive. The separate `KWC-5.1.0-validation-tools.zip` contains development-only browser regression tooling and is not required to run release builds.
+
+For repeat Windows builds, append `--fast` to `build-all.bat` or `build-target.bat <minecraft-version>` to skip `clean` and enable the Gradle build cache. The root `validate-release-windows.bat --parallel` option is the clean full-matrix path that builds Bukkit first, then opens separate live Fabric/NeoForge/Forge build windows while the main console aggregates progress.
 
 ```bash
 ./build-all.sh

@@ -4,7 +4,9 @@
 
 ![架构总览](docs/assets/architecture-5.1.0.svg)
 
-> 可视化手册、动态图、可编辑的图表源文件以及参考标准列表位于 `docs/assets/`、`docs/VISUAL_DOCUMENTATION.md` 和 `docs/REFERENCES.md`。
+[PNG](docs/assets/architecture-5.1.0.png) · [SVG](docs/assets/architecture-5.1.0.svg)
+
+> 可视化手册、动态图、可编辑的图表源文件以及参考标准列表位于 `docs/assets/`、`docs/en/VISUAL_DOCUMENTATION.md` 和 `docs/en/REFERENCES.md`。
 
 ## 5.1.0 版本
 
@@ -32,7 +34,7 @@
 - 可用于公共/群组及可选 DM 的 Unicode 内容过滤：block/mask/replace、N:1/1:N/N:N 替换、compact/interleave 规避检测
 - UTF-8 `filter-lists/*.txt` 批量过滤词列表，可为每个列表选择拦截/过滤，并支持自定义 block/mask/replace 规则；Web Admin 可导入、编辑、启用/禁用和删除 TXT 列表
 - Web Admin **Filter/Settings** 管理，以及游戏内 `/kchat filter` / `/kchat settings` 运维命令
-- 自定义规则写法与 Block/Mask/Replace 示例: [`docs/CONFIGURATION_ZH_CN.md`](docs/CONFIGURATION_ZH_CN.md#自定义过滤器快速用法)
+- 自定义规则写法与 Block/Mask/Replace 示例: [`docs/zh-CN/CONFIGURATION.md`](docs/zh-CN/CONFIGURATION.md#自定义过滤器快速用法)
 - 会话期限变更会按原始创建时间重算现有 USER/MODERATOR 或 ADMIN 会话，`0` 表示无限期
 - `upload.filename-mode: original` 可为新上传保留安全的 Unicode 原文件名，同名文件自动编号且不覆盖
 - BlueMap / squaremap / Dynmap / Pl3xMap / LiveAtlas / uNmINeD / Overviewer 内嵌聊天面板，或 standalone Web 聊天页面
@@ -52,8 +54,8 @@
 
 ## 配套插件集成
 
-- [**ImageEmojis-Bero**](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) — Bukkit/Paper 系列可共用 `plugins/KOKOTO-WebChat/emojis`，Web/history/relay 保留 canonical token，游戏侧由 ImageEmojis 显示 glyph。`serverIp` + `webServerPort` 的资源包 HTTP 服务必须能被 Minecraft 客户端访问。详见 [`docs/IMAGEEMOJIS_BERO_1_9_0_ZH_CN.md`](docs/IMAGEEMOJIS_BERO_1_9_0_ZH_CN.md)；常规运维参考 [上游 ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)。
-- [**SimpleNicks-Bero**](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) — 使用 `player-display.mode: "display-name"` 显示 Bukkit display name，同时保留真实 linked username/UUID identity。详见 [`docs/SIMPLENICKS_BERO_ZH_CN.md`](docs/SIMPLENICKS_BERO_ZH_CN.md)；常规运维参考 [上游 SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks)。
+- [**ImageEmojis-Bero**](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) — Bukkit/Paper 系列可共用 `plugins/KOKOTO-WebChat/emojis`，Web/history/relay 保留 canonical token，游戏侧由 ImageEmojis 显示 glyph。`serverIp` + `webServerPort` 的资源包 HTTP 服务必须能被 Minecraft 客户端访问。详见 [`docs/zh-CN/IMAGEEMOJIS_BERO_1_9_0.md`](docs/zh-CN/IMAGEEMOJIS_BERO_1_9_0.md)；常规运维参考 [上游 ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)。
+- [**SimpleNicks-Bero**](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) — 使用 `player-display.mode: "display-name"` 显示 Bukkit display name，同时保留真实 linked username/UUID identity。详见 [`docs/zh-CN/SIMPLENICKS_BERO.md`](docs/zh-CN/SIMPLENICKS_BERO.md)；常规运维参考 [上游 SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks)。
 
 ## 构建
 
@@ -99,6 +101,8 @@ kwc-platform-forge\build-all.bat
 
 ### Windows 最终发布验证
 
+> **发布构建/验证工作流包含在 source 包中。** `validate-release-windows.bat` 及其所需的 PowerShell helper 会随 source 一起提供。单独的 `KWC-5.1.0-validation-tools.zip` 只包含开发专用的浏览器回归测试工具，普通构建和发布构建都不需要它。
+
 在源码根目录运行 `validate-release-windows.bat`，会依次构建 Bukkit、16 个 Fabric target、12 个 NeoForge target 和 16 个 Forge target。只有输出 `FINAL RELEASE BUILD PASS`、在 `release-5.1.0/` 收集到准确 45 个可发布 JAR，并生成 `SHA256SUMS.txt` 后，才判定实际构建也完成最终验证。
 
 Windows 下进行重复构建时，同一脚本支持平台选择、增量缓存、平台并行构建和实时进度：
@@ -112,7 +116,9 @@ validate-release-windows.bat --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-平台选项可以组合使用。`--bukkit` 只构建 Bukkit/Paper 产物及其所需的 Maven reactor 依赖模块。`--fast` 会跳过 `clean`，复用已有 Maven/Gradle 输出与 dependency cache，并启用 Gradle build cache。`--parallel` 保持所选 clean/fast 模式不变；如果选择了 Bukkit，会先构建 Bukkit，Bukkit 通过后再并行运行剩余的 Fabric/NeoForge/Forge，因此 `validate-release-windows.bat --parallel` 仍是 clean 的 45-target 最终验证，成功时会输出 `FINAL RELEASE BUILD PASS`。控制台会持续显示经过时间、总体完成 target 数、各平台完成数和当前 Minecraft target，完整日志保留在 `validation-logs/`。部分构建或 `--fast` 构建写入 `build-5.1.0/`，不视为最终发布验证。源码根目录的 `mvn clean package` 仍然只是 Bukkit Maven 构建。
+平台选项可以组合使用。`--bukkit` 只构建 Bukkit/Paper 产物及其所需的 Maven reactor 依赖模块。`--fast` 会跳过 `clean`，复用已有 Maven/Gradle 输出与 dependency cache，并启用 Gradle build cache。`--parallel` 保持所选 clean/fast 模式不变；如果选择了 Bukkit，会先构建 Bukkit，Bukkit 通过后分别打开 Fabric、NeoForge、Forge 的实时构建窗口并并行运行，因此 `validate-release-windows.bat --parallel` 仍是 clean 的 45-target 最终验证，成功时会输出 `FINAL RELEASE BUILD PASS`。主控制台会持续显示经过时间、总体完成 target 数、各平台完成数和当前 Minecraft target，各工作窗口显示实际构建日志，完整日志保留在 `validation-logs/`。部分构建或 `--fast` 构建写入 `build-5.1.0/`，不视为最终发布验证。源码根目录的 `mvn clean package` 仍然只是 Bukkit Maven 构建。
+如果 Loader worker 因可明确识别的 Gradle cache/workspace 损坏或 cache 锁定错误而失败（例如无法读取 `caches/<Gradle>/transforms/.../metadata.bin`），验证 runner 不会自动删除可能仍被锁定的主 cache，而会改用 `.build-cache/gradle-recovery/` 下的全新隔离 cache 对该平台仅重试一次。源码编译错误以及普通 dependency/build 失败不会自动重试。即使恢复构建成功，原 cache 也保持不变，可在资源管理器、杀毒软件或其他进程释放文件锁后再手动清理。
+
 
 ## 安装
 
@@ -141,7 +147,7 @@ validate-release-windows.bat --parallel
 > **BMWC HTTPS 迁移：** BMWC 标准的 `/bmwc/api`、`/bmwc/chat` 公开布局会迁移到 KWC 的 `/chat` 布局。标准 BMWC API URL 设置会规范化为空的自动值，但 Caddy/nginx 文件不会自动修改，必须手动改为 `/chat` 前缀剥离方式。
 
 
-KOKOTO WebChat 5.1.0 已迁移到 Relay Protocol v2，使用显式 `groups -> peers`、group 级 shared secret、无需预先 handshake 的逐请求 peer 认证、HKDF-SHA256 方向性 key 与 AES-256-GCM hop-by-hop payload protection。Relay v1/BMWC endpoint 不再互操作，并返回 HTTP 426。详见 `docs/SERVER_RELAY_ZH_CN.md`。
+KOKOTO WebChat 5.1.0 已迁移到 Relay Protocol v2，使用显式 `groups -> peers`、group 级 shared secret、无需预先 handshake 的逐请求 peer 认证、HKDF-SHA256 方向性 key 与 AES-256-GCM hop-by-hop payload protection。Relay v1/BMWC endpoint 不再互操作，并返回 HTTP 426。详见 `docs/zh-CN/SERVER_RELAY.md`。
 
 ## 4.7.0 表情批量上传与兼容范围
 
@@ -166,13 +172,13 @@ group-chat:
 
 4.6.3 还修复了私信/群聊实时刷新时视频和音频从头重新播放的问题。私聊消息列表现在与普通聊天一样按 stable key 保留现有消息，只更新新消息以及投递/已读元数据，因此已加载的媒体 DOM 会持续保持连接。
 
-详情见 `docs/UPGRADE_4_6_3_ZH_CN.md`。
+详情见 `docs/zh-CN/UPGRADE.md`。
 
 ### 4.6.2 私信与群聊投递状态和重试
 
 跨服务器私信在目标服务器确认消息已实际写入之前保持 `pending`；确认后才变为 `delivered`。路由、传输或超时失败会变为可重试的 `failed`，重试继续使用同一个 relay ID，因此即使只是 HTTP 响应丢失，也不会在接收端重复保存消息。Web 私信和群聊同样使用 client message ID，使浏览器在结果不确定时可以安全重试。没有服务器限定的私信名称只解析当前服务器玩家。私信与群聊的每一条消息都会在时间旁边显示已读状态。一对一私信在接收者阅读前显示 `未读`，阅读后显示 `✓`；群聊继续显示未读接收者人数，人数降至 0 时显示 `✓`。发送状态也使用短文本：处理中显示 `发送中`，失败时显示 `失败 · 重试`。
 
-建议所有交换跨服务器私信的服务器使用 KOKOTO WebChat 4.6.2 或更高版本。详见 `docs/UPGRADE_4_6_2_ZH_CN.md`。
+建议所有交换跨服务器私信的服务器使用 KOKOTO WebChat 4.6.2 或更高版本。详见 `docs/zh-CN/UPGRADE.md`。
 
 ## standalone URL
 
@@ -219,7 +225,7 @@ emoji:
   show-storage-limit: true
 ```
 
-更多内容见 `docs/CADDY_HTTPS_ZH_CN.md`。
+更多内容见 `docs/zh-CN/CADDY_HTTPS.md`。
 
 ## 常用设置
 
@@ -257,7 +263,7 @@ KOKOTO WebChat 会在 Web 历史和服务器中继 payload 中保留规范的表
 
 Web UI 会继续使用原始文件，因此 GIF 动画会保留。如果游戏侧表情插件监视同一个表情目录，它可以使用 PNG sidecar。添加或更改表情后，请运行该插件的 reload 命令。
 
-ImageEmojis-Bero 1.9.x 的共用目录、权限、命令转换、服务器中继及故障排除参见 [`docs/IMAGEEMOJIS_BERO_1_9_0_ZH_CN.md`](docs/IMAGEEMOJIS_BERO_1_9_0_ZH_CN.md)。
+ImageEmojis-Bero 1.9.x 的共用目录、权限、命令转换、服务器中继及故障排除参见 [`docs/zh-CN/IMAGEEMOJIS_BERO_1_9_0.md`](docs/zh-CN/IMAGEEMOJIS_BERO_1_9_0.md)。
 
 ## YouTube Shorts、TikTok 和 X/Twitter 预览
 
@@ -310,20 +316,17 @@ kwc.update.notify
 
 ## 文档
 
-- `docs/USER_MANUAL_ZH_CN.md` - 所有功能的完整用户与运维手册
-- `docs/CONFIGURATION_ZH_CN.md`
-- `docs/SERVER_RELAY_ZH_CN.md` - Relay Protocol v2 公共聊天、跨服务器私信/已读 receipt、信任与 forwarding 规则
-- `docs/UPGRADE_5_0_0_ZH_CN.md` - 4.7.0→5.0.0 major upgrade / migration
-- `docs/UPGRADE_4_6_2_ZH_CN.md` - 4.6.1→4.6.2 升级
-- `docs/UPGRADE_4_6_1_ZH_CN.md` - 4.6.0→4.6.1 升级
-- `docs/UPGRADE_4_6_0_ZH_CN.md` - 4.5.5→4.6.0 配置/数据库升级
-- `docs/CADDY_HTTPS_ZH_CN.md`
-- `docs/I18N_ZH_CN.md`
-- `docs/INSTALL_TROUBLESHOOTING_ZH_CN.md`
-- `docs/UPLOAD_SECURITY_ZH_CN.md`
-- `docs/RELEASE_CHECKLIST_ZH_CN.md`
-- `docs/STANDALONE_REVIEW_ZH_CN.md`
-- `docs/OPERATIONS_SECURITY_ZH_CN.md`
+- `docs/zh-CN/USER_MANUAL.md` - 所有功能的完整用户与运维手册
+- `docs/zh-CN/CONFIGURATION.md`
+- `docs/zh-CN/SERVER_RELAY.md` - Relay Protocol v2 公共聊天、跨服务器私信/已读 receipt、信任与 forwarding 规则
+- `docs/zh-CN/UPGRADE.md` - 截至 5.1.0 的统一升级与迁移指南
+- `docs/zh-CN/CADDY_HTTPS.md`
+- `docs/zh-CN/I18N.md`
+- `docs/zh-CN/INSTALL_TROUBLESHOOTING.md`
+- `docs/zh-CN/UPLOAD_SECURITY.md`
+- `docs/zh-CN/RELEASE_CHECKLIST.md`
+- `docs/zh-CN/STANDALONE_REVIEW.md`
+- `docs/zh-CN/OPERATIONS_SECURITY.md`
 
 字体说明：已安装字体需要输入 CSS font-family 名称。聊天设置中的检测按钮可在不请求本地字体权限的情况下，估算当前浏览器是否可使用该名称。
 
@@ -367,15 +370,15 @@ DM 使用独立于公开聊天历史的专用存储。`direct-message.storage: a
 注意：`frontend.standalone.app-name` / `frontend.standalone.app-short-name` 可更改移动端主屏幕 Web App 名称，`web-push.notification-title` 可更改默认推送标题。`web-push.notification-title` 留空时使用 `frontend.standalone.app-name`。Android/桌面浏览器在 HTTPS 与 Push API 可用时，可从 BlueMap addon 或 standalone 页面启用推送。iOS/iPadOS 请使用已添加到主屏幕并作为 Web App 打开的页面，而不是普通浏览器标签页。
 
 
-- Pl3xMap integration: `docs/PL3XMAP_INTEGRATION.md`
+- Pl3xMap integration: `docs/en/PL3XMAP_INTEGRATION.md`
 
-- uNmINeD integration: `docs/UNMINED_INTEGRATION.md`
+- uNmINeD integration: `docs/en/UNMINED_INTEGRATION.md`
 
 ## Overviewer
 
-- Overviewer 集成: `docs/OVERVIEWER_INTEGRATION.md`
+- Overviewer 集成: `docs/en/OVERVIEWER_INTEGRATION.md`
 
-## Forge Stage 1
+## Forge
 
 Forge 对 Minecraft 1.18.2～26.2 使用按 Minecraft 版本区分的 exact-target 服务端 JAR，而不是单个宽版本 JAR。源码分为 `src/common`、`compat118`、`compatClassic`、`compatModern`、`compat26`。详细目标见 `kwc-platform-forge/README.md`。BlueMapAPI 直接集成仅包含在 Forge 26.1.2/26.2 中。 全部目标请使用 `kwc-platform-forge/build-all.bat`（Windows）或 `build-all.sh`；脚本会按 exact target 自动选择 JDK 17/21/25，不能让旧版 ForgeGradle 直接使用系统 Java 25。
 

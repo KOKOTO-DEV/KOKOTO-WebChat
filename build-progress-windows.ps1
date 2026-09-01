@@ -9,6 +9,8 @@ $ErrorActionPreference = 'Stop'
 $Root = [System.IO.Path]::GetFullPath($Root)
 $LogDir = [System.IO.Path]::GetFullPath($LogDir)
 $Validator = Join-Path $Root 'validate-release-windows.bat'
+$WorkerRunner = Join-Path $Root 'build-worker-windows.ps1'
+$script:OpenWorkerWindows = ($Parallel -ne 0)
 $Selected = @($Platforms.Split(',') | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
 
 $definitions = [ordered]@{
@@ -41,32 +43,61 @@ foreach ($name in $Selected) {
         Stream = $null
         LogPath = Join-Path $LogDir $def.Log
         WorkerPath = Join-Path $LogDir ("_worker-{0}.bat" -f $name)
+        WindowPath = Join-Path $LogDir ("_window-{0}.bat" -f $name)
         ExitCodePath = Join-Path $LogDir ("_worker-{0}.exitcode" -f $name)
         ExitCode = $null
     }
 }
 
 function Write-WorkerFile([object]$state) {
-    $exitTmpPath = $state.ExitCodePath + '.tmp'
-    $lines = @(
-        '@echo off',
-        'setlocal',
-        ('call "{0}" --internal-worker {1} > "{2}" 2>&1' -f $Validator, $state.Name, $state.LogPath),
-        'set "KWC_WORKER_RC=%ERRORLEVEL%"',
-        ('> "{0}" echo %KWC_WORKER_RC%' -f $exitTmpPath),
-        ('move /y "{0}" "{1}" >nul 2>&1' -f $exitTmpPath, $state.ExitCodePath),
-        'exit /b %KWC_WORKER_RC%'
-    )
-    [System.IO.File]::WriteAllLines($state.WorkerPath, $lines, [System.Text.Encoding]::Default)
+    if ($script:OpenWorkerWindows) {
+        $workerLines = @(
+            '@echo off',
+            'setlocal',
+            ('call "{0}" --internal-worker {1} 2>&1' -f $Validator, $state.Name),
+            'exit /b %ERRORLEVEL%'
+        )
+        [System.IO.File]::WriteAllLines($state.WorkerPath, $workerLines, [System.Text.Encoding]::Default)
+
+        $title = "KWC 5.1.0 - $($state.FullLabel) build"
+        $windowLines = @(
+            '@echo off',
+            ('title {0}' -f $title),
+            ('powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "{0}" -WorkerPath "{1}" -LogPath "{2}" -ExitCodePath "{3}" -WindowTitle "{4}" -ProjectRoot "{5}" -Platform "{6}"' -f $WorkerRunner, $state.WorkerPath, $state.LogPath, $state.ExitCodePath, $title, $Root, $state.Name),
+            'exit /b %ERRORLEVEL%'
+        )
+        [System.IO.File]::WriteAllLines($state.WindowPath, $windowLines, [System.Text.Encoding]::Default)
+    } else {
+        # The PowerShell worker runner owns log capture and exit-code publication in
+        # both sequential and parallel modes so Gradle-cache recovery behaves the same.
+        $lines = @(
+            '@echo off',
+            'setlocal',
+            ('call "{0}" --internal-worker {1} 2>&1' -f $Validator, $state.Name),
+            'exit /b %ERRORLEVEL%'
+        )
+        [System.IO.File]::WriteAllLines($state.WorkerPath, $lines, [System.Text.Encoding]::Default)
+    }
 }
 
 function Start-State([object]$state) {
     if (Test-Path -LiteralPath $state.LogPath) { Remove-Item -LiteralPath $state.LogPath -Force }
     if (Test-Path -LiteralPath $state.ExitCodePath) { Remove-Item -LiteralPath $state.ExitCodePath -Force }
     if (Test-Path -LiteralPath ($state.ExitCodePath + '.tmp')) { Remove-Item -LiteralPath ($state.ExitCodePath + '.tmp') -Force }
+    if (Test-Path -LiteralPath $state.WindowPath) { Remove-Item -LiteralPath $state.WindowPath -Force }
     Write-WorkerFile $state
-    $arg = '/d /c ""{0}""' -f $state.WorkerPath
-    $state.Process = Start-Process -FilePath $env:ComSpec -ArgumentList $arg -PassThru -NoNewWindow
+
+    if ($script:OpenWorkerWindows) {
+        if (-not (Test-Path -LiteralPath $WorkerRunner)) { throw "Worker runner not found: $WorkerRunner" }
+        $arg = '/d /c ""{0}""' -f $state.WindowPath
+        # Deliberately omit -NoNewWindow: each selected platform gets its own CMD console.
+        $state.Process = Start-Process -FilePath $env:ComSpec -ArgumentList $arg -WorkingDirectory $Root -PassThru
+    } else {
+        if (-not (Test-Path -LiteralPath $WorkerRunner)) { throw "Worker runner not found: $WorkerRunner" }
+        $title = "KWC 5.1.0 - $($state.FullLabel) build"
+        $runnerArgs = '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "{0}" -WorkerPath "{1}" -LogPath "{2}" -ExitCodePath "{3}" -WindowTitle "{4}" -ProjectRoot "{5}" -Platform "{6}"' -f $WorkerRunner, $state.WorkerPath, $state.LogPath, $state.ExitCodePath, $title, $Root, $state.Name
+        $state.Process = Start-Process -FilePath 'powershell.exe' -ArgumentList $runnerArgs -PassThru -NoNewWindow
+    }
     $state.Status = 'RUNNING'
 }
 
@@ -212,11 +243,13 @@ function Close-State([object]$state) {
     if ($null -ne $state.Stream) { $state.Stream.Dispose(); $state.Stream = $null }
     if ($null -ne $state.Process) { $state.Process.Dispose(); $state.Process = $null }
     if (Test-Path -LiteralPath $state.WorkerPath) { Remove-Item -LiteralPath $state.WorkerPath -Force -ErrorAction SilentlyContinue }
+    if (Test-Path -LiteralPath $state.WindowPath) { Remove-Item -LiteralPath $state.WindowPath -Force -ErrorAction SilentlyContinue }
     if (Test-Path -LiteralPath $state.ExitCodePath) { Remove-Item -LiteralPath $state.ExitCodePath -Force -ErrorAction SilentlyContinue }
     if (Test-Path -LiteralPath ($state.ExitCodePath + '.tmp')) { Remove-Item -LiteralPath ($state.ExitCodePath + '.tmp') -Force -ErrorAction SilentlyContinue }
 }
 
 if (-not (Test-Path -LiteralPath $Validator)) { throw "Validator not found: $Validator" }
+if ($script:OpenWorkerWindows -and -not (Test-Path -LiteralPath $WorkerRunner)) { throw "Worker runner not found: $WorkerRunner" }
 if (-not (Test-Path -LiteralPath $LogDir)) { [void](New-Item -ItemType Directory -Force -Path $LogDir) }
 
 $timer = [Diagnostics.Stopwatch]::StartNew()
@@ -255,7 +288,7 @@ try {
 
         if ($bukkitFirst -and -not $parallelLoadersStarted) {
             if ($bukkitState.Status -eq 'PASS') {
-                $script:phaseLabel = 'Phase 2/2 Loaders'
+                $script:phaseLabel = 'Phase 2/2 Loader windows'
                 foreach ($state in @($states | Where-Object { $_.Status -eq 'PENDING' })) { Start-State $state }
                 $parallelLoadersStarted = $true
             } elseif ($bukkitState.Status -eq 'FAIL') {

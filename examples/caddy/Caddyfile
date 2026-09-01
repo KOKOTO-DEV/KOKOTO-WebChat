@@ -1,7 +1,7 @@
 # KOKOTO WebChat + BlueMap HTTPS reverse proxy example for Caddy v2
 #
 # Replace map.example.com with your actual domain.
-# Install notes: see examples/caddy/INSTALL.md and docs/CADDY_HTTPS_EN.md.
+# Install notes: see examples/caddy/INSTALL.md and docs/en/CADDY_HTTPS.md.
 #
 # External URLs:
 #   https://map.example.com/

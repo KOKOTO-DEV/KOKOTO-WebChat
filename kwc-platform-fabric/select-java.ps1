@@ -8,6 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $ScriptRoot = Split-Path -Parent $PSCommandPath
 $LocalJdkRoot = Join-Path $ScriptRoot '.jdks'
 $LocalJdkHome = Join-Path $LocalJdkRoot ("jdk-{0}" -f $Major)
@@ -124,7 +125,8 @@ function Install-LocalTemurin([int]$Version) {
         if (Test-Path -LiteralPath $extract) { Remove-Item -LiteralPath $extract -Recurse -Force }
         New-Item -ItemType Directory -Path $extract -Force | Out-Null
         Write-Host "[KWC Fabric] Extracting JDK $Version..."
-        Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
+        $extractor = Join-Path (Split-Path -Parent $ScriptRoot) 'extract-zip-progress-windows.ps1'
+        & $extractor -ZipPath $zip -DestinationPath $extract -Label "[KWC Fabric] JDK $Version"
 
         $jdk = Get-ChildItem -LiteralPath $extract -Directory -ErrorAction Stop |
             Where-Object { (Test-Path -LiteralPath (Join-Path $_.FullName 'bin\java.exe')) -and (Test-Path -LiteralPath (Join-Path $_.FullName 'bin\javac.exe')) } |

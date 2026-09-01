@@ -1790,6 +1790,89 @@
     return `<img class="kwc-custom-emoji" src="${esc(item.url)}" alt="" role="img" title="${esc(title)}" aria-label="${esc(title)}" data-emoji-title="${esc(title)}" loading="eager" decoding="async" draggable="false" width="${size}" height="${size}" style="width:${size}px;height:${size}px;">`;
   }
 
+  function customEmojiRetryUrl(rawUrl, attempt) {
+    const original = String(rawUrl || "").trim();
+    if (!original || Number(attempt || 0) < 1) return original;
+    try {
+      const url = new URL(original, window.location.href);
+      if (url.protocol === "http:" || url.protocol === "https:") {
+        // Cache-bust every retry, including the first one. Some reverse proxies
+        // and browser caches can retain a transient failed image response long
+        // enough for a same-URL retry after page refresh to fail again.
+        url.searchParams.set("_kwc_emoji_retry", String(Date.now()) + "-" + String(attempt));
+        return url.href;
+      }
+    } catch (_) {}
+    return original;
+  }
+
+  function installCustomEmojiImageRecovery(root) {
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll("img.kwc-custom-emoji").forEach(img => {
+      if (!img || img.dataset.kwcEmojiRecoveryInstalled === "1") return;
+      img.dataset.kwcEmojiRecoveryInstalled = "1";
+      const originalSrc = String(img.getAttribute("src") || "").trim();
+      if (!originalSrc) return;
+      let attempts = 0;
+      let retryTimer = null;
+      let retryScheduled = false;
+      const retryDelays = [120, 420, 1200, 3000];
+
+      const retry = () => {
+        if (retryScheduled || attempts >= retryDelays.length || !img.isConnected) return;
+        retryScheduled = true;
+        const nextAttempt = attempts + 1;
+        const delay = retryDelays[Math.min(retryDelays.length - 1, attempts)];
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          retryScheduled = false;
+          if (!img.isConnected || attempts >= retryDelays.length) return;
+          attempts = nextAttempt;
+          const retrySrc = customEmojiRetryUrl(originalSrc, attempts);
+          // Clearing first forces a new element-level request. Every retry gets a
+          // cache-buster, preventing a transient refresh-time failure from being
+          // reused by the browser or an intermediate map/reverse-proxy cache.
+          img.removeAttribute("src");
+          requestAnimationFrame(() => {
+            if (img.isConnected) img.setAttribute("src", retrySrc);
+          });
+        }, delay);
+      };
+
+      img.addEventListener("error", retry);
+      img.addEventListener("load", () => {
+        if (Number(img.naturalWidth || 0) <= 0) {
+          retry();
+          return;
+        }
+        if (retryTimer) clearTimeout(retryTimer);
+        retryTimer = null;
+        retryScheduled = false;
+      });
+      // A cached failed request can already be complete by the time innerHTML
+      // returns and listeners are attached. Detect that state explicitly.
+      setTimeout(() => {
+        if (img.isConnected && img.complete && Number(img.naturalWidth || 0) <= 0) retry();
+      }, 0);
+    });
+  }
+
+  function customEmojiOnlyElement(el) {
+    if (!el || !el.querySelectorAll) return false;
+    const images = el.querySelectorAll("img.kwc-custom-emoji");
+    if (!images.length) return false;
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll("img.kwc-custom-emoji").forEach(node => node.remove());
+    return String(clone.textContent || "").trim() === "";
+  }
+
+  function updateCustomEmojiOnlyClass(el) {
+    if (!el || !el.classList) return false;
+    const only = customEmojiOnlyElement(el);
+    el.classList.toggle("kwc-emoji-only", only);
+    return only;
+  }
+
 
   function emojiPickerSizePx() {
     return Math.max(24, Math.min(1024, Number(state.emojiPickerSizePx || (state.config && state.config.emojiPickerSizePx) || 44)));
@@ -5648,6 +5731,8 @@
       <div class="kwc-text">${messageTextHtml(msg)}</div>
       ${safeImagePreviews(plainDisplayMessageText(msg), key)}
     `;
+    installCustomEmojiImageRecovery(el);
+    updateCustomEmojiOnlyClass(el.querySelector(".kwc-text"));
     installSenderIdentityToggle(el);
     installTimeToggle(el);
     el.querySelectorAll("[data-dm-target-uuid]").forEach(btn => {
@@ -8263,6 +8348,85 @@
     updateEmojiResizeHandleVisibility();
   }
 
+  function emojiCatalogCacheKey() {
+    return "kwc.emojiCatalog.v2." + encodeURIComponent(String(apiBase || "default"));
+  }
+
+  function restoreCachedEmojiCatalog() {
+    if (!state.config || state.config.emojiEnabled === false) return false;
+    try {
+      const raw = localStorage.getItem(emojiCatalogCacheKey());
+      if (!raw) return false;
+      const cached = JSON.parse(raw);
+      if (!cached || !Array.isArray(cached.items)) return false;
+      // Keep this only as a startup/retry bridge. A successful /emojis request
+      // immediately replaces it, and very old browser state is ignored.
+      const age = Date.now() - Number(cached.savedAt || 0);
+      if (!Number.isFinite(age) || age < 0 || age > 7 * 24 * 60 * 60 * 1000) return false;
+      state.emojiEnabled = cached.enabled !== false;
+      state.emojiPacks = Array.isArray(cached.packs) ? cached.packs : [];
+      state.emojiItems = cached.items.map(item => Object.assign({}, item, {url: apiResourceUrl(item && item.url)}));
+      rebuildCustomEmojiLookups(state.emojiItems);
+      state.emojiRenderSizePx = Math.max(16, Math.min(1024, Number(cached.renderSizePx ?? state.emojiRenderSizePx ?? 32)));
+      state.emojiPickerSizePx = Math.max(24, Math.min(1024, Number(cached.pickerSizePx ?? state.emojiPickerSizePx ?? 44)));
+      state.emojiMessageTokenLimit = Math.max(0, Math.floor(Number(cached.messageTokenLimit ?? state.emojiMessageTokenLimit ?? 0)));
+      state.emojiTokenFormat = normalizeEmojiTokenFormat(cached.tokenFormat ?? state.emojiTokenFormat);
+      applyEmojiPickerSize();
+      return state.emojiItems.length > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function storeEmojiCatalogCache(payload) {
+    if (!payload || payload.enabled === false || !Array.isArray(payload.items)) return;
+    try {
+      const compact = {
+        savedAt: Date.now(),
+        enabled: payload.enabled !== false,
+        packs: Array.isArray(payload.packs) ? payload.packs : [],
+        items: payload.items,
+        renderSizePx: payload.renderSizePx,
+        pickerSizePx: payload.pickerSizePx,
+        messageTokenLimit: payload.messageTokenLimit,
+        tokenFormat: payload.tokenFormat
+      };
+      localStorage.setItem(emojiCatalogCacheKey(), JSON.stringify(compact));
+    } catch (_) {}
+  }
+
+  function refreshCustomEmojiRenderedSurfaces() {
+    if (state.messages && state.messages.length) scheduleVirtualRender({preserveScroll: true, deferDuringScroll: false});
+    renderPinnedBar();
+    refreshOpenPinnedModal();
+    if (state.dmModalOpen && Array.isArray(state.dmMessages)) {
+      try { renderDirectMessageMessages(state.dmMessages, {preserveScroll: true}); } catch (_) {}
+    }
+    if (state.groupModalOpen && Array.isArray(state.groupMessages)) {
+      try { renderGroupChatMessages(state.groupMessages, {preserveScroll: true}); } catch (_) {}
+    }
+    const notificationWrap = document.querySelector(".kwc-notification-inbox-backdrop");
+    if (notificationWrap) {
+      const items = readNotificationInbox();
+      const rows = notificationWrap.querySelectorAll(".kwc-notification-row");
+      rows.forEach((row, index) => {
+        const item = items[index];
+        if (!item) return;
+        const title = row.querySelector(".kwc-notification-row-title");
+        const body = row.querySelector(".kwc-notification-row-body");
+        if (title) {
+          title.innerHTML = renderCustomEmojiTokens(item.title || configuredNotificationTitle(), false, true);
+          updateCustomEmojiOnlyClass(title);
+        }
+        if (body) {
+          body.innerHTML = renderCustomEmojiTokens(item.body || "", false, true);
+          updateCustomEmojiOnlyClass(body);
+        }
+      });
+      installCustomEmojiImageRecovery(notificationWrap);
+    }
+  }
+
   function clearEmojiRetryTimer() {
     if (!state.emojiRetryTimer) return;
     clearTimeout(state.emojiRetryTimer);
@@ -8271,9 +8435,9 @@
 
   function emojiRetryDelayMs() {
     const attempt = Math.max(0, Number(state.emojiRetryAttempt || 0));
-    const base = Math.min(60000, 1000 * Math.pow(2, attempt));
-    const jitter = Math.floor(Math.random() * 500);
-    return Math.max(1000, Math.floor(base + jitter));
+    const base = attempt === 0 ? 250 : attempt === 1 ? 750 : Math.min(60000, 2000 * Math.pow(2, attempt - 2));
+    const jitter = Math.floor(Math.random() * Math.min(350, Math.max(80, base * 0.2)));
+    return Math.max(200, Math.floor(base + jitter));
   }
 
   function scheduleEmojiRetry(reason = "catalog-load-failed") {
@@ -8322,9 +8486,10 @@
       // Zero is a valid server value meaning unlimited; do not use `||` here.
       state.emojiMessageTokenLimit = Math.max(0, Math.floor(Number(res.messageTokenLimit ?? state.emojiMessageTokenLimit ?? 0)));
       state.emojiTokenFormat = normalizeEmojiTokenFormat(res.tokenFormat ?? state.emojiTokenFormat);
+      storeEmojiCatalogCache(res);
       clearEmojiRetryTimer();
       state.emojiRetryAttempt = 0;
-      if (state.messages && state.messages.length) scheduleVirtualRender({preserveScroll: true, deferDuringScroll: false});
+      refreshCustomEmojiRenderedSurfaces();
     } catch (e) {
       // A transient catalog failure must not erase the last known-good emoji list.
       // Existing messages/pickers continue using the cached client-side catalog
@@ -9378,6 +9543,32 @@
     return !!state.token || !state.config || state.config.pinnedShowToLoggedOut !== false;
   }
 
+  function applyPinnedBarEmojiSizing(opener, label) {
+    if (!label) return;
+    // A multi-pin summary contains an emoji-rendered first title plus a textual
+    // "and N more" suffix. Classify the title span independently so an emoji-only
+    // first title can use the collapsed-bar cap without making the suffix disappear.
+    label.classList.remove("kwc-emoji-only");
+    label.querySelectorAll(".kwc-pinned-summary-title.kwc-emoji-only").forEach(node => node.classList.remove("kwc-emoji-only"));
+    const titlePart = label.querySelector(".kwc-pinned-summary-title");
+    const emojiTarget = titlePart || label;
+    const emojiOnly = customEmojiOnlyElement(emojiTarget);
+    if (!emojiOnly) return;
+    if (opener) {
+      try {
+        const style = getComputedStyle(opener);
+        const outerHeight = Number(opener.getBoundingClientRect().height || opener.offsetHeight || 0);
+        const borderTop = parseFloat(style.borderTopWidth || "0") || 0;
+        const borderBottom = parseFloat(style.borderBottomWidth || "0") || 0;
+        // Maximum image height stops 2px inside the top and bottom outer edges of
+        // the fixed collapsed pinned box. This is a cap only, never an upscale.
+        const maxHeight = Math.max(1, Math.floor(outerHeight - borderTop - borderBottom - 4));
+        opener.style.setProperty("--kwc-pinned-emoji-max-height", maxHeight + "px");
+      } catch (_) {}
+    }
+    emojiTarget.classList.add("kwc-emoji-only");
+  }
+
   function renderPinnedBar() {
     const root = document.getElementById("kwc-root");
     const bar = document.getElementById("kwc-pinned-bar");
@@ -9413,7 +9604,7 @@
       label.textContent = fmt("pinned.compact", "{count}", {count});
       label.title = count === 1 ? pinnedTooltip(state.pins[0]) : fmt("pinned.multiple", "{title} and {rest} more", {title: pinnedTooltip(state.pins[0]), rest: count - 1});
     } else if (count === 1) {
-      label.textContent = fmt("pinned.single", "{title}", {title: pinnedTitle(state.pins[0])});
+      label.innerHTML = renderCustomEmojiTokens(fmt("pinned.single", "{title}", {title: pinnedTitle(state.pins[0])}), false, true);
       label.title = pinnedTooltip(state.pins[0]);
     } else {
       // Keep the remaining-count suffix visible even when the first pinned title
@@ -9421,13 +9612,15 @@
       label.textContent = "";
       const titlePart = document.createElement("span");
       titlePart.className = "kwc-pinned-summary-title";
-      titlePart.textContent = pinnedTitle(state.pins[0]);
+      titlePart.innerHTML = renderCustomEmojiTokens(pinnedTitle(state.pins[0]), false, true);
       const restPart = document.createElement("span");
       restPart.className = "kwc-pinned-summary-rest";
       restPart.textContent = fmt("pinned.more", "and {rest} more", {rest: count - 1});
       label.append(titlePart, restPart);
       label.title = fmt("pinned.multiple", "{title} and {rest} more", {title: pinnedTooltip(state.pins[0]), rest: count - 1});
     }
+    installCustomEmojiImageRecovery(label);
+    applyPinnedBarEmojiSizing(opener, label);
     if (opener) opener.title = label.title || label.textContent || "";
     if (bar) bar.title = label.title || label.textContent || "";
   }
@@ -11208,8 +11401,8 @@
     applyDetachedModalTheme(wrap);
     const rows = items.length ? items.map(item => `
       <button type="button" class="kwc-notification-row" data-message-id="${esc(item.messageId || "")}" data-dm-thread-id="${esc(item.dmThreadId || "")}" data-dm-message-id="${esc(item.dmMessageId || "")}" data-group-room-id="${esc(item.groupRoomId || "")}" data-group-message-id="${esc(item.groupMessageId || "")}" data-url="${esc(item.url || "")}">
-        <span class="kwc-notification-row-title">${esc(item.title || configuredNotificationTitle())}</span>
-        ${item.body ? `<span class="kwc-notification-row-body">${esc(item.body)}</span>` : ""}
+        <span class="kwc-notification-row-title">${renderCustomEmojiTokens(item.title || configuredNotificationTitle(), false, true)}</span>
+        ${item.body ? `<span class="kwc-notification-row-body">${renderCustomEmojiTokens(item.body, false, true)}</span>` : ""}
         <span class="kwc-notification-row-time">${esc(formatMessageTime(Number(item.time || Date.now())))}</span>
       </button>
     `).join("") : `<div class="kwc-dm-empty">${esc(t("notifications.empty", "No missed notifications."))}</div>`;
@@ -11221,6 +11414,8 @@
       </div>
     `;
     document.body.appendChild(wrap);
+    installCustomEmojiImageRecovery(wrap);
+    wrap.querySelectorAll(".kwc-notification-row-title, .kwc-notification-row-body").forEach(updateCustomEmojiOnlyClass);
     wrap.querySelector("#kwc-notification-close").addEventListener("click", () => wrap.remove());
     wrap.querySelector("#kwc-notification-clear").addEventListener("click", () => {
       writeNotificationInbox([]);
@@ -17421,6 +17616,7 @@
     await loadConfig();
     await loadLang();
     makeRoot();
+    restoreCachedEmojiCatalog();
     await loadEmojis();
     installTimeDisplayDelegation();
     updateFrameSize();

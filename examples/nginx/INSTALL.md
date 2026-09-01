@@ -35,4 +35,4 @@ sudo systemctl reload nginx
 6. Apply `KOKOTO-WebChat-config-overrides.yml` values to `plugins/KOKOTO-WebChat/config.yml`.
 7. Run `/kchat reload` or restart the Minecraft server.
 
-See `docs/NGINX_HTTPS_EN.md` for the full guide.
+See `docs/en/NGINX_HTTPS.md` for the full guide.

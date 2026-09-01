@@ -28,4 +28,4 @@ sudo systemctl reload caddy
 5. Apply `KOKOTO-WebChat-config-overrides.yml` values to `plugins/KOKOTO-WebChat/config.yml`.
 6. Run `/kchat reload` or restart the Minecraft server.
 
-See `docs/CADDY_HTTPS_EN.md` for the full guide.
+See `docs/en/CADDY_HTTPS.md` for the full guide.

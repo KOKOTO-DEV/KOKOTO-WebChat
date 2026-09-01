@@ -1307,7 +1307,7 @@ emoji:
     label-format: ":{id}:"
     # 0 = unlimited. Prevents very long in-game lines when many emoji are sent.
     max-links-per-message: 4
-    # ImageEmojis-Bero 1.9.0 compatibility guide: docs/IMAGEEMOJIS_BERO_1_9_0_EN.md
+    # ImageEmojis-Bero 1.9.0 compatibility guide: docs/en/IMAGEEMOJIS_BERO_1_9_0.md
     # With ImageEmojis/ImageEmojis-Bero, KWC resolves the receiving server's runtime
     # glyph before adding reply and URL click events. Unresolved known tokens fall back to
     # one plain Bukkit line so another game-side emoji renderer can still process them.

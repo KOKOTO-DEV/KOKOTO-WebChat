@@ -170,24 +170,33 @@ if "%BUKKIT_FIRST_PARALLEL%"=="1" (
 ) else (
   echo Scheduling:       SEQUENTIAL
 )
-echo Progress:         live overall/platform target counts
+echo Progress:         live overall/platform target counts; --parallel opens one build window per active platform
 echo Output:           %OUTDIR%
 echo Logs:             %LOGDIR%
 echo.
 
+echo Running Forge build configuration guard...
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-forge-build-config.ps1" -ProjectRoot "%ROOT_PATH%"
+if errorlevel 1 exit /b 1
+
+echo.
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%build-progress-windows.ps1" -Root "%ROOT_PATH%" -LogDir "%LOGDIR%" -Platforms "%PLATFORMS%" -Parallel %PARALLEL_MODE%
 set "RC=%ERRORLEVEL%"
 if not "%RC%"=="0" exit /b %RC%
 
-if "%SEL_BUKKIT%"=="1" call :collectBukkit
-if errorlevel 1 exit /b %ERRORLEVEL%
-if "%SEL_FABRIC%"=="1" call :collectFabric
-if errorlevel 1 exit /b %ERRORLEVEL%
-if "%SEL_NEOFORGE%"=="1" call :collectNeoForge
-if errorlevel 1 exit /b %ERRORLEVEL%
-if "%SEL_FORGE%"=="1" call :collectForge
-if errorlevel 1 exit /b %ERRORLEVEL%
+echo.
+echo Running loader-neutral adapter behavior harness...
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-adapter-harness.ps1" -ProjectRoot "%ROOT_PATH%"
+if errorlevel 1 exit /b 1
 
+echo.
+echo Running loader-neutral config migration regression harness...
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-config-migration-harness.ps1" -ProjectRoot "%ROOT_PATH%"
+if errorlevel 1 exit /b 1
+
+rem Deployable JARs are validated and copied by each platform worker as soon as
+rem that platform passes. This keeps successful outputs available even when a
+rem different parallel loader later fails.
 goto :finalize
 
 :appendPlatform
@@ -226,6 +235,8 @@ exit /b 0
 :collectBukkit
 set "J=%ROOT%kwc-platform-bukkit\target\KOKOTO-WebChat-5.1.0-Bukkit-1.18-26.2.jar"
 if not exist "%J%" (echo ERROR: Bukkit JAR missing: %J% 1>&2& exit /b 1)
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-adapter-packaging.ps1" -JarPath "%J%" -Platform "Bukkit"
+if errorlevel 1 exit /b 1
 copy /y "%J%" "%OUTDIR%\" >nul
 exit /b 0
 
@@ -233,6 +244,12 @@ exit /b 0
 for %%M in (1.18.2 1.19.2 1.19.4 1.20.1 1.20.2 1.20.4 1.20.6 1.21.1 1.21.3 1.21.4 1.21.5 1.21.8 1.21.10 1.21.11 26.1.2 26.2) do (
   set "J=%ROOT%kwc-platform-fabric\targets\%%M\build\libs\KOKOTO-WebChat-5.1.0-Fabric-%%M.jar"
   if not exist "!J!" (echo ERROR: Fabric %%M JAR missing: !J! 1>&2& exit /b 1)
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-release-mod-jar.ps1" -JarPath "!J!" -Platform "Fabric" -MinecraftVersion "%%M"
+  if errorlevel 1 exit /b 1
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-mod-runtime-dependencies.ps1" -JarPath "!J!" -Platform "Fabric" -MinecraftVersion "%%M"
+  if errorlevel 1 exit /b 1
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-adapter-packaging.ps1" -JarPath "!J!" -Platform "Fabric" -MinecraftVersion "%%M"
+  if errorlevel 1 exit /b 1
   copy /y "!J!" "%OUTDIR%\" >nul
 )
 exit /b 0
@@ -241,6 +258,14 @@ exit /b 0
 for %%M in (1.20.2 1.20.4 1.20.6 1.21.1 1.21.3 1.21.4 1.21.5 1.21.8 1.21.10 1.21.11 26.1.2 26.2) do (
   set "J=%ROOT%kwc-platform-neoforge\targets\%%M\build\libs\KOKOTO-WebChat-5.1.0-NeoForge-%%M.jar"
   if not exist "!J!" (echo ERROR: NeoForge %%M JAR missing: !J! 1>&2& exit /b 1)
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-release-mod-jar.ps1" -JarPath "!J!" -Platform "NeoForge" -MinecraftVersion "%%M"
+  if errorlevel 1 exit /b 1
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-mod-runtime-dependencies.ps1" -JarPath "!J!" -Platform "NeoForge" -MinecraftVersion "%%M"
+  if errorlevel 1 exit /b 1
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-neoforge-metadata.ps1" -JarPath "!J!" -MinecraftVersion "%%M" -ProjectRoot "%ROOT_PATH%"
+  if errorlevel 1 exit /b 1
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-adapter-packaging.ps1" -JarPath "!J!" -Platform "NeoForge" -MinecraftVersion "%%M"
+  if errorlevel 1 exit /b 1
   copy /y "!J!" "%OUTDIR%\" >nul
 )
 exit /b 0
@@ -249,6 +274,12 @@ exit /b 0
 for %%M in (1.18.2 1.19.2 1.19.4 1.20.1 1.20.2 1.20.4 1.20.6 1.21.1 1.21.3 1.21.4 1.21.5 1.21.8 1.21.10 1.21.11 26.1.2 26.2) do (
   set "J=%ROOT%kwc-platform-forge\targets\%%M\build\libs\KOKOTO-WebChat-5.1.0-Forge-%%M.jar"
   if not exist "!J!" (echo ERROR: Forge %%M JAR missing: !J! 1>&2& exit /b 1)
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-release-mod-jar.ps1" -JarPath "!J!" -Platform "Forge" -MinecraftVersion "%%M"
+  if errorlevel 1 exit /b 1
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-mod-runtime-dependencies.ps1" -JarPath "!J!" -Platform "Forge" -MinecraftVersion "%%M"
+  if errorlevel 1 exit /b 1
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-adapter-packaging.ps1" -JarPath "!J!" -Platform "Forge" -MinecraftVersion "%%M"
+  if errorlevel 1 exit /b 1
   copy /y "!J!" "%OUTDIR%\" >nul
 )
 exit /b 0
@@ -282,6 +313,12 @@ set "WORKER_PLATFORM=%~2"
 if "%WORKER_PLATFORM%"=="" exit /b 2
 call :setupCommon
 if errorlevel 1 exit /b %ERRORLEVEL%
+if not defined OUTDIR if defined KWC_VALIDATION_OUTDIR set "OUTDIR=%KWC_VALIDATION_OUTDIR%"
+if not defined OUTDIR (
+  echo ERROR: Internal worker output directory is not defined. 1>&2
+  exit /b 2
+)
+if not exist "%OUTDIR%" mkdir "%OUTDIR%" >nul 2>&1
 if /I "%WORKER_PLATFORM%"=="bukkit" goto :workerBukkit
 if /I "%WORKER_PLATFORM%"=="fabric" goto :workerFabric
 if /I "%WORKER_PLATFORM%"=="neoforge" goto :workerNeoForge
@@ -316,20 +353,34 @@ call "%MAVEN_CMD%" -Dmaven.repo.local="%KWC_MAVEN_REPO%" -pl kwc-platform-bukkit
 set "RC=%ERRORLEVEL%"
 popd
 if not "%RC%"=="0" exit /b %RC%
+call :collectBukkit
+if errorlevel 1 exit /b %ERRORLEVEL%
 echo [KWC Bukkit] OK
 exit /b 0
 
 :workerFabric
 call "%ROOT%kwc-platform-fabric\build-all.bat"
-exit /b %ERRORLEVEL%
+set "RC=%ERRORLEVEL%"
+if not "%RC%"=="0" exit /b %RC%
+call :collectFabric
+if errorlevel 1 exit /b %ERRORLEVEL%
+exit /b 0
 
 :workerNeoForge
 call "%ROOT%kwc-platform-neoforge\build-all.bat"
-exit /b %ERRORLEVEL%
+set "RC=%ERRORLEVEL%"
+if not "%RC%"=="0" exit /b %RC%
+call :collectNeoForge
+if errorlevel 1 exit /b %ERRORLEVEL%
+exit /b 0
 
 :workerForge
 call "%ROOT%kwc-platform-forge\build-all.bat"
-exit /b %ERRORLEVEL%
+set "RC=%ERRORLEVEL%"
+if not "%RC%"=="0" exit /b %RC%
+call :collectForge
+if errorlevel 1 exit /b %ERRORLEVEL%
+exit /b 0
 
 :bootstrapMaven
 set "MAVEN_VERSION=3.9.16"
@@ -337,7 +388,7 @@ set "MAVEN_TOOL_ROOT=%ROOT%.tools"
 set "MAVEN_HOME=%MAVEN_TOOL_ROOT%\apache-maven-%MAVEN_VERSION%"
 set "MAVEN_CMD=%MAVEN_HOME%\bin\mvn.cmd"
 if exist "%MAVEN_CMD%" exit /b 0
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $v='%MAVEN_VERSION%'; $toolRoot='%MAVEN_TOOL_ROOT%'; $mavenHome='%MAVEN_HOME%'; $null=New-Item -ItemType Directory -Force -Path $toolRoot; $zip=Join-Path $toolRoot ('apache-maven-'+$v+'-bin.zip'); $shaFile=$zip+'.sha512'; $sources=@(@{Zip='https://dlcdn.apache.org/maven/maven-3/'+$v+'/binaries/apache-maven-'+$v+'-bin.zip';Sha='https://downloads.apache.org/maven/maven-3/'+$v+'/binaries/apache-maven-'+$v+'-bin.zip.sha512'},@{Zip='https://archive.apache.org/dist/maven/maven-3/'+$v+'/binaries/apache-maven-'+$v+'-bin.zip';Sha='https://archive.apache.org/dist/maven/maven-3/'+$v+'/binaries/apache-maven-'+$v+'-bin.zip.sha512'}); $ok=$false; foreach($src in $sources){ try { Write-Host ('[KWC Bukkit] Downloading Apache Maven '+$v+' from '+$src.Zip); Invoke-WebRequest -UseBasicParsing -Uri $src.Zip -OutFile $zip; Invoke-WebRequest -UseBasicParsing -Uri $src.Sha -OutFile $shaFile; $ok=$true; break } catch { Write-Host ('[KWC Bukkit] Maven download source failed: '+$_.Exception.Message) } }; if(-not $ok){ throw 'Unable to download Apache Maven from official mirrors.' }; $expected=((Get-Content -LiteralPath $shaFile -Raw).Trim() -split '\s+')[0].ToLowerInvariant(); $actual=(Get-FileHash -Algorithm SHA512 -LiteralPath $zip).Hash.ToLowerInvariant(); if($expected -ne $actual){ throw ('Maven SHA-512 mismatch. Expected '+$expected+', got '+$actual) }; Write-Host '[KWC Bukkit] Maven SHA-512 verified.'; if(Test-Path -LiteralPath $mavenHome){ Remove-Item -LiteralPath $mavenHome -Recurse -Force }; Expand-Archive -LiteralPath $zip -DestinationPath $toolRoot -Force; Remove-Item -LiteralPath $zip,$shaFile -Force -ErrorAction SilentlyContinue; if(-not (Test-Path -LiteralPath (Join-Path $mavenHome 'bin\mvn.cmd'))){ throw 'Maven extraction completed but mvn.cmd is missing.' }"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%bootstrap-maven-windows.ps1" -Version "%MAVEN_VERSION%" -ToolRoot "%MAVEN_TOOL_ROOT%"
 if errorlevel 1 (
   echo ERROR: Apache Maven bootstrap failed. 1>&2
   echo        Install Maven manually or make mvn.cmd available on PATH, then retry. 1>&2
@@ -382,12 +433,15 @@ echo   ^(default^)   Clean selected build outputs before compiling.
 echo   --fast       Skip clean, reuse existing outputs/dependency caches,
 echo                and enable the Gradle build cache. Not final validation.
 echo   --parallel   If Bukkit is selected, build Bukkit first; after it passes,
-echo                run the remaining selected loaders in parallel. Clean is
+echo                open Fabric / NeoForge / Forge in separate build windows and run them in parallel. Clean is
 echo                still performed unless --fast is also supplied.
 echo.
 echo Progress:
-echo   A live status line shows elapsed time, overall completed targets,
-echo   each platform count, and the currently building Minecraft target.
+echo   The main window shows elapsed time, overall completed targets,
+echo   each platform count, and the current target. In --parallel mode,
+echo   each platform also has its own live build window. A platform is validated
+echo   and copied to the output as soon as that platform passes; successful
+echo   outputs remain available even if another parallel platform later fails.
 echo   Full logs remain under validation-logs\.
 echo.
 echo Examples:
