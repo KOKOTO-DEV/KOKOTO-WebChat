@@ -201,9 +201,15 @@ public final class SqliteHistoryStore implements AutoCloseable {
 
     public synchronized void insert(ChatMessage msg) {
         if (msg == null || msg.id == null || msg.id.isBlank()) return;
-        String sql = "INSERT OR REPLACE INTO chat_messages "
+        // Message IDs are immutable history identities. Do not use INSERT OR REPLACE here:
+        // SQLite REPLACE deletes the existing row before inserting a new one, which assigns
+        // a new AUTOINCREMENT seq. History paging is seq-based, so a reconnect/replay of an
+        // already persisted message could move an old message to the newest edge and make the
+        // web viewport jump. First writer wins for an existing id; this also prevents a replay
+        // from resurrecting a row that was already hidden by moderation.
+        String sql = "INSERT INTO chat_messages "
                 + "(id,time,source,sender,real_sender,player_uuid,relay_id,origin_server_id,origin_server_name,relay_hop,role,message,i18n_key,i18n_args,reply_to_id,reply_to_sender,reply_to_preview,hidden) "
-                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             bindMessage(ps, msg);
             ps.executeUpdate();
@@ -233,26 +239,42 @@ public final class SqliteHistoryStore implements AutoCloseable {
         ps.setInt(18, msg.hidden ? 1 : 0);
     }
 
+    private static final class Cursor {
+        final long time;
+        final long seq;
+
+        Cursor(long time, long seq) {
+            this.time = time;
+            this.seq = seq;
+        }
+    }
+
     public synchronized Page page(String beforeId, String afterId, int limit, long cutoff) {
         Page page = new Page();
         int actualLimit = limit <= 0 ? 500 : Math.max(1, Math.min(500, limit));
         try {
             if (afterId != null && !afterId.isBlank()) {
-                Long seq = seqForId(afterId);
-                if (seq == null) return latest(actualLimit, cutoff);
-                try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM chat_messages WHERE seq > ? AND time >= ? AND hidden = 0 ORDER BY seq ASC LIMIT ?")) {
-                    ps.setLong(1, seq);
-                    ps.setLong(2, cutoff);
-                    ps.setInt(3, actualLimit);
+                Cursor cursor = cursorForId(afterId);
+                if (cursor == null) return latest(actualLimit, cutoff);
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT * FROM chat_messages WHERE (time > ? OR (time = ? AND seq > ?)) AND time >= ? AND hidden = 0 ORDER BY time ASC, seq ASC LIMIT ?")) {
+                    ps.setLong(1, cursor.time);
+                    ps.setLong(2, cursor.time);
+                    ps.setLong(3, cursor.seq);
+                    ps.setLong(4, cutoff);
+                    ps.setInt(5, actualLimit);
                     readInto(page.messages, ps);
                 }
             } else if (beforeId != null && !beforeId.isBlank()) {
-                Long seq = seqForId(beforeId);
-                if (seq == null) return latest(actualLimit, cutoff);
-                try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM chat_messages WHERE seq < ? AND time >= ? AND hidden = 0 ORDER BY seq DESC LIMIT ?")) {
-                    ps.setLong(1, seq);
-                    ps.setLong(2, cutoff);
-                    ps.setInt(3, actualLimit);
+                Cursor cursor = cursorForId(beforeId);
+                if (cursor == null) return latest(actualLimit, cutoff);
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT * FROM chat_messages WHERE (time < ? OR (time = ? AND seq < ?)) AND time >= ? AND hidden = 0 ORDER BY time DESC, seq DESC LIMIT ?")) {
+                    ps.setLong(1, cursor.time);
+                    ps.setLong(2, cursor.time);
+                    ps.setLong(3, cursor.seq);
+                    ps.setLong(4, cutoff);
+                    ps.setInt(5, actualLimit);
                     readInto(page.messages, ps);
                 }
                 Collections.reverse(page.messages);
@@ -269,7 +291,13 @@ public final class SqliteHistoryStore implements AutoCloseable {
     public synchronized Page latest(int limit, long cutoff) {
         Page page = new Page();
         int actualLimit = limit <= 0 ? 500 : Math.max(1, Math.min(500, limit));
-        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM chat_messages WHERE time >= ? AND hidden = 0 ORDER BY seq DESC LIMIT ?")) {
+        // `seq` is an insertion-order tie breaker only. Older KWC builds used
+        // INSERT OR REPLACE for duplicate message IDs, which could move a replayed
+        // old row to a very large seq and make it look like the newest message
+        // after restart. Ordering by the immutable message timestamp first makes
+        // existing affected databases self-heal without rewriting or deleting rows.
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT * FROM chat_messages WHERE time >= ? AND hidden = 0 ORDER BY time DESC, seq DESC LIMIT ?")) {
             ps.setLong(1, cutoff);
             ps.setInt(2, actualLimit);
             readInto(page.messages, ps);
@@ -285,27 +313,33 @@ public final class SqliteHistoryStore implements AutoCloseable {
         AroundPage result = new AroundPage();
         if (targetId == null || targetId.isBlank()) return result;
         try {
-            Long targetSeq = seqForId(targetId);
-            if (targetSeq == null) return result;
+            Cursor target = cursorForId(targetId);
+            if (target == null) return result;
             List<ChatMessage> beforeList = new ArrayList<>();
-            try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM chat_messages WHERE seq < ? AND time >= ? AND hidden = 0 ORDER BY seq DESC LIMIT ?")) {
-                ps.setLong(1, targetSeq);
-                ps.setLong(2, cutoff);
-                ps.setInt(3, Math.max(0, before));
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT * FROM chat_messages WHERE (time < ? OR (time = ? AND seq < ?)) AND time >= ? AND hidden = 0 ORDER BY time DESC, seq DESC LIMIT ?")) {
+                ps.setLong(1, target.time);
+                ps.setLong(2, target.time);
+                ps.setLong(3, target.seq);
+                ps.setLong(4, cutoff);
+                ps.setInt(5, Math.max(0, before));
                 readInto(beforeList, ps);
             }
             Collections.reverse(beforeList);
-            ChatMessage target = messageBySeq(targetSeq);
+            ChatMessage targetMessage = messageBySeq(target.seq);
             List<ChatMessage> afterList = new ArrayList<>();
-            try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM chat_messages WHERE seq > ? AND time >= ? AND hidden = 0 ORDER BY seq ASC LIMIT ?")) {
-                ps.setLong(1, targetSeq);
-                ps.setLong(2, cutoff);
-                ps.setInt(3, Math.max(0, after));
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT * FROM chat_messages WHERE (time > ? OR (time = ? AND seq > ?)) AND time >= ? AND hidden = 0 ORDER BY time ASC, seq ASC LIMIT ?")) {
+                ps.setLong(1, target.time);
+                ps.setLong(2, target.time);
+                ps.setLong(3, target.seq);
+                ps.setLong(4, cutoff);
+                ps.setInt(5, Math.max(0, after));
                 readInto(afterList, ps);
             }
             result.messages.addAll(beforeList);
             result.targetIndex = result.messages.size();
-            if (target != null) result.messages.add(target);
+            if (targetMessage != null) result.messages.add(targetMessage);
             result.messages.addAll(afterList);
             fillPageEdges(result, cutoff);
         } catch (SQLException ex) {
@@ -347,7 +381,7 @@ public final class SqliteHistoryStore implements AutoCloseable {
             params.add(like);
             params.add(like);
         }
-        sql.append("ORDER BY seq DESC LIMIT ?");
+        sql.append("ORDER BY time DESC, seq DESC LIMIT ?");
         params.add(actualLimit);
         try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
             bindParams(ps, params);
@@ -376,7 +410,7 @@ public final class SqliteHistoryStore implements AutoCloseable {
             params.add(to);
         }
         appendSourceFilter(sql, params, sourceFilter, includeSystem);
-        sql.append("ORDER BY seq DESC LIMIT ?");
+        sql.append("ORDER BY time DESC, seq DESC LIMIT ?");
         params.add(actualLimit);
         try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
             bindParams(ps, params);
@@ -424,6 +458,35 @@ public final class SqliteHistoryStore implements AutoCloseable {
         }
     }
 
+    /** Returns the inclusive persisted chronological range between two visible public messages. */
+    public synchronized List<ChatMessage> rangeInclusive(String firstId, String lastId, int limit, long cutoff) {
+        List<ChatMessage> out = new ArrayList<>();
+        if (firstId == null || firstId.isBlank() || lastId == null || lastId.isBlank()) return out;
+        int max = Math.max(1, Math.min(limit <= 0 ? 1000 : limit, ConversationArchiveStore.MAX_CONFIGURED_MESSAGES_PER_ARCHIVE));
+        try {
+            Cursor first = cursorForId(firstId);
+            Cursor last = cursorForId(lastId);
+            if (first == null || last == null) return out;
+            Cursor lo = compareCursor(first, last) <= 0 ? first : last;
+            Cursor hi = compareCursor(first, last) <= 0 ? last : first;
+            String sql = "SELECT * FROM chat_messages WHERE "
+                    + "(time > ? OR (time = ? AND seq >= ?)) AND "
+                    + "(time < ? OR (time = ? AND seq <= ?)) AND "
+                    + "time >= ? AND hidden=0 ORDER BY time ASC, seq ASC LIMIT ?";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, lo.time); ps.setLong(2, lo.time); ps.setLong(3, lo.seq);
+                ps.setLong(4, hi.time); ps.setLong(5, hi.time); ps.setLong(6, hi.seq);
+                ps.setLong(7, cutoff); ps.setInt(8, max + 1);
+                readInto(out, ps);
+            }
+            if (out.size() > max) return new ArrayList<>();
+            return out;
+        } catch (SQLException ex) {
+            warn("Failed to read SQLite chat history range", ex);
+            return new ArrayList<>();
+        }
+    }
+
     public synchronized ChatMessage find(String id) {
         if (id == null || id.isBlank()) return null;
         try {
@@ -463,18 +526,13 @@ public final class SqliteHistoryStore implements AutoCloseable {
                 }
             }
             if (maxMessages > 0) {
-                Long threshold = null;
-                try (PreparedStatement ps = conn.prepareStatement("SELECT seq FROM chat_messages ORDER BY seq DESC LIMIT 1 OFFSET ?")) {
-                    ps.setInt(1, Math.max(0, maxMessages - 1));
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) threshold = rs.getLong(1);
-                    }
-                }
-                if (threshold != null) {
-                    try (PreparedStatement ps = conn.prepareStatement("DELETE FROM chat_messages WHERE seq < ?")) {
-                        ps.setLong(1, threshold);
-                        ps.executeUpdate();
-                    }
+                // Retain the chronologically newest rows. This also prevents a
+                // legacy replay-inflated seq from protecting an old row while a
+                // genuinely newer message is pruned.
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "DELETE FROM chat_messages WHERE id NOT IN (SELECT id FROM chat_messages ORDER BY time DESC, seq DESC LIMIT ?)")) {
+                    ps.setInt(1, maxMessages);
+                    ps.executeUpdate();
                 }
             }
         } catch (SQLException ex) {
@@ -543,10 +601,10 @@ public final class SqliteHistoryStore implements AutoCloseable {
         ChatMessage last = page.messages.get(page.messages.size() - 1);
         page.oldestId = nz(first.id);
         page.newestId = nz(last.id);
-        Long firstSeq = seqForId(first.id);
-        Long lastSeq = seqForId(last.id);
-        page.hasBefore = firstSeq != null && existsSeq("seq < ?", firstSeq, cutoff);
-        page.hasAfter = lastSeq != null && existsSeq("seq > ?", lastSeq, cutoff);
+        Cursor firstCursor = cursorForId(first.id);
+        Cursor lastCursor = cursorForId(last.id);
+        page.hasBefore = firstCursor != null && existsBefore(firstCursor, cutoff);
+        page.hasAfter = lastCursor != null && existsAfter(lastCursor, cutoff);
     }
 
     private boolean hasAny(long cutoff) throws SQLException {
@@ -558,23 +616,45 @@ public final class SqliteHistoryStore implements AutoCloseable {
         }
     }
 
-    private boolean existsSeq(String predicate, long seq, long cutoff) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM chat_messages WHERE " + predicate + " AND time >= ? AND hidden = 0 LIMIT 1")) {
-            ps.setLong(1, seq);
-            ps.setLong(2, cutoff);
+    private boolean existsBefore(Cursor cursor, long cutoff) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT 1 FROM chat_messages WHERE (time < ? OR (time = ? AND seq < ?)) AND time >= ? AND hidden = 0 LIMIT 1")) {
+            ps.setLong(1, cursor.time);
+            ps.setLong(2, cursor.time);
+            ps.setLong(3, cursor.seq);
+            ps.setLong(4, cutoff);
+            try (ResultSet rs = ps.executeQuery()) { return rs.next(); }
+        }
+    }
+
+    private boolean existsAfter(Cursor cursor, long cutoff) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT 1 FROM chat_messages WHERE (time > ? OR (time = ? AND seq > ?)) AND time >= ? AND hidden = 0 LIMIT 1")) {
+            ps.setLong(1, cursor.time);
+            ps.setLong(2, cursor.time);
+            ps.setLong(3, cursor.seq);
+            ps.setLong(4, cutoff);
+            try (ResultSet rs = ps.executeQuery()) { return rs.next(); }
+        }
+    }
+
+    private Cursor cursorForId(String id) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT time,seq FROM chat_messages WHERE id = ? AND hidden = 0")) {
+            ps.setString(1, id);
             try (ResultSet rs = ps.executeQuery()) {
-                return rs.next();
+                return rs.next() ? new Cursor(rs.getLong(1), rs.getLong(2)) : null;
             }
         }
     }
 
+    private static int compareCursor(Cursor a, Cursor b) {
+        int byTime = Long.compare(a.time, b.time);
+        return byTime != 0 ? byTime : Long.compare(a.seq, b.seq);
+    }
+
     private Long seqForId(String id) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT seq FROM chat_messages WHERE id = ? AND hidden = 0")) {
-            ps.setString(1, id);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rs.getLong(1) : null;
-            }
-        }
+        Cursor cursor = cursorForId(id);
+        return cursor == null ? null : cursor.seq;
     }
 
     private ChatMessage messageBySeq(long seq) throws SQLException {

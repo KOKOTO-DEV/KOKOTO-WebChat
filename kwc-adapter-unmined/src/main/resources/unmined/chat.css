@@ -4138,15 +4138,111 @@ body.kwc-emoji-resizing {
   user-select: none !important;
 }
 
+.kwc-emoji-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0 0 7px 0;
+}
+
 .kwc-emoji-tabs {
   display: flex;
   gap: 5px;
-  flex: 0 0 auto;
-  margin: 0 0 7px 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
   overflow-x: auto;
   overflow-y: hidden;
   padding-bottom: 2px;
   scrollbar-width: thin;
+}
+
+@supports selector(::-webkit-scrollbar) {
+  .kwc-emoji-tabs {
+    scrollbar-width: auto;
+  }
+}
+
+.kwc-emoji-tabs::-webkit-scrollbar {
+  height: 12px;
+}
+
+.kwc-emoji-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kwc-emoji-tabs::-webkit-scrollbar-thumb {
+  background: var(--kwc-border-color, rgba(255,255,255,0.24));
+  border-radius: 999px;
+}
+
+.kwc-emoji-tabs::-webkit-scrollbar-thumb:hover {
+  background: var(--kwc-muted-text, rgba(255,255,255,0.42));
+}
+
+.kwc-emoji-search-toggle {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--kwc-border-color, rgba(255,255,255,0.14));
+  border-radius: 999px;
+  background: var(--kwc-button-bg, rgba(255,255,255,0.13));
+  color: var(--kwc-button-text, #fff);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.kwc-emoji-search-toggle:hover,
+.kwc-emoji-search-toggle.kwc-active {
+  background: var(--kwc-button-hover-bg, rgba(255,255,255,0.22));
+}
+
+/* Emoji search is deliberately not another row inside the picker. The search
+   button lives immediately before Recent, while the active search field floats
+   over the current message composer so it is visually unambiguous that typing
+   is filtering emojis rather than composing a message. */
+#kwc-root .kwc-form {
+  position: relative;
+}
+
+.kwc-emoji-search-overlay {
+  position: absolute;
+  z-index: 120;
+  display: flex;
+  align-items: stretch;
+  box-sizing: border-box;
+  padding: 2px;
+  border: 1px solid var(--kwc-border-color, rgba(255,255,255,0.22));
+  border-radius: 8px;
+  background: rgb(var(--kwc-panel-bg-rgb, 18, 18, 22));
+  box-shadow: 0 6px 18px var(--kwc-shadow-color, rgba(0,0,0,0.38));
+}
+
+.kwc-emoji-search-float-icon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  pointer-events: none;
+  font-size: 13px;
+  line-height: 1;
+  opacity: .86;
+}
+
+.kwc-emoji-search-overlay .kwc-emoji-search-input {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-left: 31px !important;
+  margin: 0 !important;
+  background: rgb(var(--kwc-panel-bg-rgb, 18, 18, 22)) !important;
 }
 
 .kwc-emoji-tab {
@@ -4172,6 +4268,64 @@ body.kwc-emoji-resizing {
   align-content: start;
   scroll-margin-top: 0;
   box-sizing: border-box;
+}
+
+.kwc-emoji-item-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.kwc-emoji-item-wrap > .kwc-emoji-item {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.kwc-emoji-favorite-toggle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 3;
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  border: 1px solid var(--kwc-border-color, rgba(255,255,255,0.18));
+  border-radius: 999px;
+  background: rgb(var(--kwc-panel-bg-rgb, 18, 18, 22));
+  color: var(--kwc-button-text, #fff);
+  box-shadow: 0 2px 7px var(--kwc-shadow-color, rgba(0,0,0,0.28));
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: scale(.9);
+  transition: opacity .12s ease, transform .12s ease, background .12s ease;
+}
+
+.kwc-emoji-item-wrap:hover .kwc-emoji-favorite-toggle,
+.kwc-emoji-item-wrap:focus-within .kwc-emoji-favorite-toggle {
+  opacity: .82;
+  visibility: visible;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+.kwc-emoji-favorite-toggle:hover,
+.kwc-emoji-favorite-toggle:focus-visible {
+  background: var(--kwc-button-hover-bg, rgba(255,255,255,0.22));
+}
+
+.kwc-emoji-favorite-toggle.kwc-active {
+  font-weight: 800;
+  color: #ffd54a;
+}
+.kwc-emoji-item-wrap:hover .kwc-emoji-favorite-toggle.kwc-active,
+.kwc-emoji-item-wrap:focus-within .kwc-emoji-favorite-toggle.kwc-active {
+  opacity: .96;
+  color: #ffd54a;
 }
 
 .kwc-emoji-item {
@@ -4557,14 +4711,18 @@ body.kwc-emoji-resizing #kwc-root.kwc-theme-system .kwc-emoji-resize-handle::bef
 
 
 /* Reply UI */
-#kwc-root .kwc-reply-action {
+#kwc-root .kwc-reply-action,
+#kwc-root .kwc-reaction-action {
   display: inline-block !important;
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
 }
 #kwc-root .kwc-msg:hover .kwc-reply-action,
-#kwc-root .kwc-msg:focus-within .kwc-reply-action {
+#kwc-root .kwc-msg:focus-within .kwc-reply-action,
+#kwc-root .kwc-msg:hover .kwc-reaction-action,
+#kwc-root .kwc-msg:focus-within .kwc-reaction-action,
+#kwc-root .kwc-msg.kwc-reaction-touch-open .kwc-reaction-action {
   visibility: visible !important;
   opacity: 1 !important;
   pointer-events: auto !important;
@@ -8723,6 +8881,22 @@ body.kwc-standalone-mode {
   white-space: nowrap;
 }
 
+.kwc-group-visibility-badge,
+.kwc-group-password-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.82;
+  padding: 1px 6px;
+  border: 1px solid var(--kwc-border-color, rgba(255,255,255,0.18));
+  border-radius: 999px;
+  white-space: nowrap;
+  user-select: none;
+}
+.kwc-group-password-badge { padding-inline: 5px; }
+
 .kwc-group-online-state {
   display: inline-flex;
   align-items: center;
@@ -9593,9 +9767,9 @@ body.kwc-standalone-mode {
    the folder they affect instead of collecting unrelated buttons in one row. */
 .kwc-admin-emoji-toolbar {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px 16px;
-  align-items: start;
+  align-items: center;
 }
 
 .kwc-admin-emoji-toolbar .kwc-admin-emoji-upload-row {
@@ -9604,7 +9778,7 @@ body.kwc-standalone-mode {
 
 .kwc-admin-emoji-limit-lines {
   min-width: 0;
-  justify-self: end;
+  justify-self: start;
   align-self: center;
   text-align: left;
   line-height: 1.35;
@@ -9612,6 +9786,52 @@ body.kwc-standalone-mode {
 
 .kwc-admin-emoji-limit-lines small {
   white-space: nowrap;
+}
+
+.kwc-admin-emoji-reaction-actions {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+}
+
+.kwc-admin-reaction-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kwc-admin-reaction-heading h4 {
+  margin: 0 !important;
+}
+
+/* Reaction behavior uses the same rounded Settings form grammar as the rest
+   of Web Admin. The checkbox belongs inside the rounded row; no special
+   text-only box or square outer surface is drawn here. */
+.kwc-admin-reaction-settings-stack {
+  margin: 9px 0 12px;
+}
+
+.kwc-admin-reaction-options-card {
+  margin-top: 0;
+}
+
+.kwc-admin-reaction-options .kwc-admin-setting-item > span {
+  flex: 1 1 auto;
+}
+
+.kwc-admin-reaction-options .kwc-admin-setting-item small {
+  opacity: .72;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.kwc-reaction-admin-aliases {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 150px;
+  resize: vertical;
+  line-height: 1.45;
 }
 
 .kwc-admin-emoji-pack-actions {
@@ -9687,7 +9907,14 @@ body.kwc-standalone-mode {
     justify-self: stretch;
     display: flex;
     flex-wrap: wrap;
+    justify-content: center;
     gap: 2px 12px;
+  }
+  .kwc-admin-emoji-reaction-actions {
+    justify-self: stretch;
+  }
+  .kwc-admin-emoji-reaction-actions .kwc-button {
+    width: 100%;
   }
   .kwc-admin-emoji-control-row {
     grid-template-columns: 1fr;
@@ -9782,24 +10009,31 @@ body.kwc-standalone-mode {
   vertical-align: top;
 }
 
-/* Private DM/group reply UI. Keep this presentation intentionally identical to
-   the public/open-chat reply component; only the modal's horizontal inset differs
-   because the DM/group compose row owns its own 9px padding. */
-.kwc-dm-modal-backdrop .kwc-reply-action {
-  /* Do not reserve permanent metadata width for an action that is invisible
-     most of the time. The old visibility:hidden rule still consumed the button's
-     width and made full date/time + read state wrap a line too early. */
-  display: none !important;
+/* Private DM/group reply + reaction actions. Detached private-chat modals live
+   outside #kwc-root, so mirror the public hover model explicitly. Keep the
+   action group in layout but invisible/non-clickable until hover/focus/touch.
+   Reserving its width also prevents Reply from moving underneath a pointer that
+   was pressed on React. Child action rules inherit the group's visibility state;
+   they must never force themselves visible independently. */
+.kwc-dm-modal-backdrop .kwc-dm-message .kwc-dm-message-meta .kwc-mini-actions {
+  display: inline-flex !important;
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
 }
-.kwc-dm-modal-backdrop .kwc-msg:hover .kwc-reply-action,
-.kwc-dm-modal-backdrop .kwc-msg:focus-within .kwc-reply-action {
-  display: inline-block !important;
+.kwc-dm-modal-backdrop .kwc-dm-message:hover .kwc-dm-message-meta .kwc-mini-actions,
+.kwc-dm-modal-backdrop .kwc-dm-message:focus-within .kwc-dm-message-meta .kwc-mini-actions,
+.kwc-dm-modal-backdrop .kwc-dm-message.kwc-reaction-touch-open .kwc-dm-message-meta .kwc-mini-actions {
   visibility: visible !important;
   opacity: 1 !important;
   pointer-events: auto !important;
+}
+.kwc-dm-modal-backdrop .kwc-dm-message .kwc-mini-actions .kwc-reply-action,
+.kwc-dm-modal-backdrop .kwc-dm-message .kwc-mini-actions .kwc-reaction-action {
+  display: inline-block !important;
+  visibility: inherit !important;
+  opacity: inherit !important;
+  pointer-events: inherit !important;
 }
 .kwc-dm-modal-backdrop .kwc-dm-message-meta .kwc-time-actions {
   /* Do not keep time/reply/read-state in one reserved flex block. Let each
@@ -10013,3 +10247,314 @@ body.kwc-standalone-mode {
   max-height: 1.3em !important;
   vertical-align: -0.22em;
 }
+
+/* 5.2.0 public message reactions */
+.kwc-msg { position: relative; }
+.kwc-reactions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  min-height: 0;
+}
+.kwc-reactions:empty { display: none; }
+.kwc-reaction-wrap { position: relative; display: inline-flex; align-items: center; }
+.kwc-reaction-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 22px;
+  padding: 2px 6px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.07);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: default;
+}
+.kwc-reaction-pill.kwc-active {
+  border-color: rgba(120,185,255,0.72);
+  background: rgba(90,155,230,0.18);
+  cursor: pointer;
+}
+.kwc-reaction-pill.kwc-active:hover { background: rgba(255,255,255,0.14); }
+.kwc-reactions-disabled .kwc-reaction-pill { cursor: default; pointer-events: none; }
+/* New reactions are opened from the message-level Reaction action beside
+   Reply. Empty messages therefore render no reaction row and keep the original
+   8px message spacing. Existing chips stay below the message; only a chip that
+   belongs to the current user is clickable, and clicking it removes that
+   reaction. */
+.kwc-reaction-count { opacity: .88; }
+.kwc-reaction-emoji {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+.kwc-reaction-tooltip {
+  display: none;
+  position: absolute;
+  z-index: 1000007;
+  left: 0;
+  bottom: calc(100% + 5px);
+  width: max-content;
+  min-width: 112px;
+  max-width: min(260px, calc(100vw - 20px));
+  padding: 6px;
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 7px;
+  background: rgba(20,20,24,.98);
+  color: #fff;
+  box-shadow: 0 5px 18px rgba(0,0,0,.36);
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: left;
+}
+.kwc-reaction-wrap:hover > .kwc-reaction-tooltip,
+.kwc-reaction-wrap:focus-within > .kwc-reaction-tooltip { display: block; }
+.kwc-reaction-tooltip-title { display: block; font-weight: 700; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kwc-reaction-actors {
+  display: block;
+  max-height: calc(1.35em * 4 + 8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.kwc-reaction-actor-row { display: block; min-height: 1.35em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kwc-reaction-picker {
+  position: fixed;
+  z-index: 1000005;
+  width: min(340px, calc(100vw - 12px));
+  max-height: min(390px, calc(100vh - 12px));
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 9px;
+  background: rgba(20,20,24,0.99);
+  color: #fff;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.42);
+  font-family: inherit;
+}
+.kwc-reaction-categories {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(28px, 1fr));
+  gap: 4px;
+}
+.kwc-reaction-category,
+.kwc-reaction-choice {
+  min-width: 0;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.08);
+  color: inherit;
+  cursor: pointer;
+  font-size: 18px;
+}
+.kwc-reaction-category { font-size: 16px; }
+.kwc-reaction-category.kwc-active { outline: 2px solid rgba(120,185,255,.75); outline-offset: -2px; background: rgba(90,155,230,.18); }
+.kwc-reaction-category:hover,
+.kwc-reaction-choice:hover { background: rgba(255,255,255,0.16); }
+.kwc-reaction-input-row {
+  display: flex;
+  gap: 5px;
+  margin: 7px 0;
+}
+.kwc-reaction-input { min-width: 0; flex: 1 1 auto; }
+.kwc-reaction-search { flex: 0 0 auto; }
+.kwc-reaction-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(28px, 1fr));
+  gap: 4px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+.kwc-reaction-choice .kwc-reaction-emoji { width: 22px; height: 22px; }
+.kwc-reaction-empty { grid-column: 1 / -1; padding: 18px 8px; text-align: center; opacity: .7; font-size: 11px; }
+.kwc-reaction-admin-list { width: 100%; box-sizing: border-box; resize: vertical; min-height: 68px; font-size: 18px; line-height: 1.5; }
+#kwc-root.kwc-theme-light ~ .kwc-reaction-picker,
+.kwc-theme-light .kwc-reaction-picker,
+#kwc-root.kwc-theme-light ~ * .kwc-reaction-tooltip,
+.kwc-theme-light .kwc-reaction-tooltip {
+  background: rgba(250,250,252,0.99);
+  color: #17171b;
+  border-color: rgba(0,0,0,0.14);
+}
+/* KWC 5.2.0 conversation archive + event-driven typing indicators. */
+.kwc-typing-anchor {
+  position: relative;
+}
+.kwc-typing-indicator {
+  position: absolute;
+  left: 4px;
+  bottom: calc(100% + 5px);
+  z-index: 36;
+  max-width: calc(100% - 8px);
+  min-height: 20px;
+  padding: 3px 10px 4px;
+  box-sizing: border-box;
+  border: 1px solid var(--kwc-border-color, rgba(255,255,255,0.14));
+  border-radius: 999px;
+  background: rgba(var(--kwc-panel-bg-rgb, 18,18,22), 0.97);
+  box-shadow: 0 3px 12px var(--kwc-shadow-color, rgba(0,0,0,0.34));
+  opacity: 0.98;
+  font-size: var(--kwc-typing-font-size, 13px);
+  line-height: 1.25;
+  color: var(--kwc-ui-text-color, var(--kwc-text-color, #fff));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kwc-typing-identity[data-real-sender] {
+  cursor: pointer;
+  font-weight: 650;
+}
+.kwc-typing-identity[data-real-sender]:hover,
+.kwc-typing-identity[data-real-sender]:focus {
+  text-decoration: underline;
+}
+.kwc-private-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  padding-right: 10px;
+  border-bottom: 1px solid var(--kwc-border-color, rgba(255,255,255,0.10));
+}
+.kwc-private-title-row > .kwc-dm-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 0 !important;
+}
+/* Match the group-chat title bar: the Back hover surface spans the full title row,
+   including the settings-button area, instead of stopping at a visual seam before the button. */
+.kwc-private-title-row.kwc-private-title-row-back:hover {
+  background: var(--kwc-button-hover-bg, rgba(255,255,255,0.10));
+}
+.kwc-private-title-row.kwc-private-title-row-back > .kwc-dm-title.kwc-dm-title-back:hover {
+  background: transparent;
+}
+.kwc-private-title-row > .kwc-private-title-actions {
+  min-width: 0;
+}
+.kwc-private-title-actions,
+.kwc-group-actions {
+  flex: 0 0 auto !important;
+  flex-wrap: nowrap !important;
+  white-space: nowrap !important;
+}
+.kwc-group-modal .kwc-group-title:not(.kwc-admin-meta-row):not(.kwc-group-title-audit) {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  grid-template-areas: "main actions" !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+.kwc-group-modal .kwc-group-title.kwc-group-title-audit {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  grid-template-areas: "main meta" !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+.kwc-group-modal .kwc-group-title > .kwc-group-title-main { grid-area: main; overflow: hidden; }
+.kwc-group-modal .kwc-group-title > .kwc-group-actions { grid-area: actions; }
+.kwc-group-modal .kwc-group-title > small { grid-area: meta; min-width: 0; max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kwc-group-modal .kwc-group-title-main { width: 100%; min-width: 0 !important; }
+.kwc-group-modal .kwc-group-title-name { min-width: 0 !important; flex: 1 1 auto !important; }
+.kwc-archive-selection-banner {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--kwc-border-color, rgba(255,255,255,0.18));
+  border-radius: 8px;
+  background: var(--kwc-surface-2, rgba(255,255,255,0.07));
+  font-size: 12px;
+}
+.kwc-archive-selecting .kwc-msg { cursor: pointer !important; }
+.kwc-msg.kwc-archive-range-start,
+.kwc-msg.kwc-archive-range-end,
+.kwc-msg.kwc-archive-range-selected {
+  outline: 2px solid var(--kwc-link-color, #60a5fa);
+  outline-offset: -1px;
+}
+.kwc-msg.kwc-archive-range-selected { background: color-mix(in srgb, var(--kwc-link-color, #60a5fa) 10%, transparent) !important; }
+.kwc-archive-list { display: flex; flex-direction: column; gap: 7px; max-height: min(60vh, 520px); overflow: auto; }
+.kwc-archive-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px 10px; align-items: center; padding: 9px; border: 1px solid var(--kwc-border-color, rgba(255,255,255,0.14)); border-radius: 9px; }
+.kwc-archive-row-main { min-width: 0; }
+.kwc-archive-row-title { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kwc-archive-row-meta { font-size: 11px; opacity: .72; }
+.kwc-archive-row-actions { display: inline-flex; flex-wrap: nowrap; gap: 5px; }
+.kwc-archive-viewer { width: min(780px, 94vw); max-height: 92vh; }
+.kwc-archive-view-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kwc-archive-view-head > div:first-child { min-width: 0; }
+.kwc-archive-view-title { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kwc-archive-view-meta { font-size: 11px; opacity: .72; }
+.kwc-archive-messages { overflow: auto; max-height: 70vh; padding: 8px 3px; }
+.kwc-archive-date-separator { text-align: center; font-size: 11px; opacity: .68; margin: 14px 0 8px; }
+.kwc-archive-message { position: relative; margin-bottom: 8px; }
+.kwc-archive-identity { font-weight: 700; }
+.kwc-archive-server-badge { font-size: 10px; opacity: .76; margin-right: 4px; }
+.kwc-archive-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.kwc-archive-reactions .kwc-reaction-pill { pointer-events: none; }
+.kwc-archive-image { display: block; max-width: min(100%, 720px); max-height: 720px; object-fit: contain; margin-top: 6px; border-radius: 8px; }
+.kwc-archive-attachment-lost { font-size: 11px; opacity: .72; margin-top: 4px; }
+.kwc-archive-reply { border-left: 3px solid var(--kwc-border-color, rgba(255,255,255,.24)); padding: 3px 7px; margin: 4px 0; font-size: 11px; opacity: .82; }
+.kwc-archive-reply-sender { font-weight: 700; margin-bottom: 1px; }
+@media print {
+  .kwc-archive-print .kwc-button, .kwc-archive-print .kwc-dm-message-hide, .kwc-archive-print .kwc-mini-actions { display: none !important; }
+  .kwc-archive-print .kwc-archive-messages { max-height: none !important; overflow: visible !important; }
+  .kwc-archive-print .kwc-archive-message { break-inside: avoid; page-break-inside: avoid; }
+  .kwc-archive-print .kwc-archive-image { max-height: 680px; break-inside: avoid; }
+}
+
+/* KWC 5.2.0: reaction identity toggle and group-room polish. */
+.kwc-reaction-actor-toggle {
+  cursor: pointer;
+  border-radius: 3px;
+}
+.kwc-reaction-actor-toggle:hover,
+.kwc-reaction-actor-toggle:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
+/* The group conversation Settings menu has more actions than the generic
+   account-action row. Keep every button inside the modal at all widths. */
+.kwc-conversation-settings-modal {
+  width: min(360px, calc(100vw - 24px)) !important;
+  box-sizing: border-box !important;
+}
+.kwc-conversation-settings-modal .kwc-account-actions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+.kwc-conversation-settings-modal .kwc-account-actions .kwc-button {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 330px) {
+  .kwc-conversation-settings-modal .kwc-account-actions {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+

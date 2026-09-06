@@ -1,0 +1,20 @@
+digraph G {
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans", labelloc="t"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=LR;
+  browser [label="Administrator browser", fillcolor="#E0F2FE"];
+  proxy [label="Optional Caddy / NGINX\nHTTPS + trusted-proxy boundary", fillcolor="#FEF3C7"];
+  http [label="KWC HTTP boundary\nexact leaf paths\nbody/rate/SSE limits\nclient-IP resolution", fillcolor="#DBEAFE", penwidth=2];
+  auth [label="Session + role/permission checks\nADMIN / MODERATOR policy", fillcolor="#DCFCE7"];
+  admin [label="Admin handlers\nmessages / emoji / reactions\nfilter / settings / sessions", fillcolor="#ECFEFF"];
+  data [label="Runtime settings + stores", fillcolor="#F1F5F9"];
+  audit [label="Append-only audit log\nfor administrative actions", fillcolor="#F3E8FF"];
+
+  browser -> proxy [label="HTTPS"];
+  proxy -> http;
+  browser -> http [style=dashed,label="direct deployment"];
+  http -> auth -> admin -> data;
+  admin -> audit [label="security-sensitive actions"];
+}

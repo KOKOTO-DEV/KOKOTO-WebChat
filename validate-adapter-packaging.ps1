@@ -11,7 +11,8 @@ try {
   $names=[System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
   foreach($e in $zip.Entries){ [void]$names.Add($e.FullName) }
   $required=[System.Collections.Generic.List[string]]::new()
-  foreach($p in @('standalone/chat.js','standalone/chat.css')) { $required.Add($p) }
+  foreach($p in @('standalone/chat.js','standalone/chat.css',
+    'reaction-search-aliases.txt')) { $required.Add($p) }
   $adapters=@('bluemap','squaremap','dynmap','liveatlas','unmined','overviewer')
   if($Platform -ne 'Forge') { $adapters += 'pl3xmap' }
   if($Platform -eq 'Bukkit') { $adapters=@('bluemap','squaremap','dynmap','pl3xmap','liveatlas','unmined','overviewer') }

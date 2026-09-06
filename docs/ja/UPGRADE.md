@@ -1,6 +1,6 @@
 # KOKOTO WebChat アップグレードガイド
 
-この文書は 4.5.5 から 5.1.0 までのアップグレード手順を統合したものです。複数バージョンを飛ばす場合は、バージョン順に各セクションを確認してください。
+この文書は 4.5.5 から 5.2.0 までのアップグレード手順を統合したものです。複数バージョンを飛ばす場合は、バージョン順に各セクションを確認してください。
 
 ## 4.5.5 から 4.6.0 へのアップグレード
 
@@ -293,7 +293,7 @@ Bukkit の既存 `plugins/BlueMapWebChat` は初回 KWC 起動時の migration i
 ### Release acceptance
 
 
-> `validate-release-windows.bat` と必要な PowerShell helper は source archive に含まれています。別の `KWC-5.1.0-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、release build の実行には不要です。
+> `validate-release-windows.bat` と必要な PowerShell helper は source archive に含まれています。別の `KWC-5.2.0-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、release build の実行には不要です。
 
 `validate-release-windows.bat` が `FINAL RELEASE BUILD PASS`、deployable JAR 45 個、static/config/i18n/document validation、主要 flow の smoke test をすべて通過した候補だけを正式配布します。
 
@@ -361,7 +361,7 @@ SSE の既定上限は **解決済みクライアント IP ごとに 10 接続**
 - `/kchat reload` は外部公開 HTTP listener と direct HTTP Relay peer を再確認し、該当するローカライズ警告をサーバーログだけでなくコマンド実行者にも表示します。
 - `commands.broadcast-result-to-web-chat: true` の場合、Web コマンド実行通知はオンラインの Minecraft プレイヤーにも送信されます.
 - 公開チャット、DM、グループのメッセージ入力欄だけを通常の text `<input>` から 1 行の `<textarea>` に変更し、`autocomplete="off"`、Enter 送信、カーソル位置と絵文字挿入の動作は維持します。Android 版 Chrome が無関係な通常入力欄にもパスワード・住所・支払い方法の Autofill accessory を表示する経路を回避するための変更で、ログイン/パスワード欄は変更しません。
-- プロジェクト URL 移行中は updater が canonical Modrinth `kokoto-webchat` を先に確認し、`bluemapwebchat` へ fallback します。BMWC は移行完了まで実際の update source として維持し、両方の取得に失敗した場合だけ警告します。
+- 5.2.0 以降、updater は canonical Modrinth `kokoto-webchat` のみを確認し、旧 BMWC project URL は update source として照会しません。
 - 外部公開された平文 HTTP listener と直接 HTTP Relay peer には、ローカライズされたセキュリティ警告を表示します。
 
 ### アップグレード後の確認
@@ -372,3 +372,14 @@ SSE の既定上限は **解決済みクライアント IP ごとに 10 接続**
 4. プロキシ配下では解決済みクライアント IP と SSE の動作を確認し、トラブルシューティング時だけ `http.log-client-ip-resolution` を一時的に有効化します。
 5. 実際の運用環境で、公開チャット、DM/グループ Reply、カスタム絵文字、アップロード、Web Push/通知、使用中のマップ/standalone frontend をテストします。
 6. 通常運用と保持期間クリーンアップを確認するまで、アップグレード前のバックアップを保持します。
+
+## KOKOTO WebChat 5.1.0 から 5.2.0 へのアップグレード
+
+upgrade 前に KWC data directory を backup してください。通常の 5.1.0 → 5.2.0 migration は対応 operator value と既存 Relay v2 group/secret/peer を保持します。relay trust reset は歴史的な pre-5.1.0 → 5.1.0 migration のみに適用されます。現在 reference は `config-reference-5.2.0.yml`、自動 review は管理者が正確な `config-version: "5.2.0"` を選ぶまで `5.2.0_auto_migration` を使用します。
+
+5.2.0 は backward-compatible 2.x capability revision として Relay Protocol 2.1 を導入します。Protocol major `2` が compatibility 境界で、KWC product version は診断専用です。公開 reaction、participant server のみに送る cross-server DM reaction、remote DM typing は 2.1 extension を使用し、共通 v2 public/DM/read は 2.x compatibility baseline に残ります。
+
+新しい user data として `chat.conversation-archive.enabled` が true の場合に private saved-conversation snapshot の `conversation-archives.db`、reaction state の `public-reactions.jsonl`（historical filename のまま public/DM/group reaction を保存）、管理者 reaction picker 設定の `reaction-catalog.json` が追加されます。他の KWC data と一緒に backup してください。snapshot は attachment bytes を複製せず、管理者 source/room delete と private-room lock policy が個人 archive より優先されます。 `reaction-catalog.json` には管理者の reaction 全体 ON/OFF 状態と custom emoji 許可も保存され、機能を OFF にしても既存の `public-reactions.jsonl` data は削除しません。
+
+upgrade 後、公開 reaction、public/DM/group typing、保存済み会話と PDF/print、private-room Settings/Invite/Leave permission、公開/DM/group 32px bottom-follow を確認してください。複数 relay server で reaction/typing extension を一貫して利用する場合は全 peer を 5.2.0/Relay 2.1 へ更新することを推奨します。
+

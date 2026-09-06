@@ -100,7 +100,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
         proxy_buffering off;
@@ -114,7 +114,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
     }
@@ -231,4 +231,4 @@ For public servers, serve both BlueMap and KOKOTO WebChat under the same HTTPS o
 - [NGINX `ngx_http_proxy_module`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html)
 - [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
 
-KWC-specific path-prefix, trusted-proxy, SSE, upload and authentication behavior is defined by the KWC 5.1.0 source/configuration rather than by these external references.
+KWC-specific path-prefix, trusted-proxy, SSE, upload and authentication behavior is defined by the KWC 5.2.0 source/configuration rather than by these external references.

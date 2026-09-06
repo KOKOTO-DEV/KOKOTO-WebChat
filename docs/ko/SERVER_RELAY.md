@@ -1,13 +1,19 @@
-# 서버 릴레이 — Protocol v2
+# 서버 릴레이 — Protocol 2.1
+
+반응 authority, 직결/다단 전달, 원문 서버 단절 outbox, 작성자 알림 그림은 [REACTIONS.md](REACTIONS.md)를 참고하세요.
 
 
 ![Relay Protocol v2 요청별 인증 및 암호화 메시지 흐름](../assets/relay-v2-flow.svg)
+
+![Reaction authority routing](../assets/reaction-authority-routing.svg)
+
+[PNG](../assets/reaction-authority-routing.png) · [SVG](../assets/reaction-authority-routing.svg)
 
 [Animated GIF](../assets/relay-v2-flow.gif) · [PNG](../assets/relay-v2-flow.png) · [SVG](../assets/relay-v2-flow.svg)
 
 > **보안 경계:** Relay v2는 종단간 암호화가 아니라 **hop-by-hop authenticated encryption**입니다. 전달에 참여하는 KWC 서버는 신뢰 경계 안의 참가자입니다.
 
-KOKOTO WebChat 5.1.0은 5.0.0의 flat relay trust 구조를 **Relay Protocol v2**로 교체합니다. 공개 채팅과 타 서버 1:1 DM/읽음 확인은 같은 group 기반 인증 전송을 사용합니다. 그룹 채팅 방 자체는 로컬 기능이며 relay하지 않습니다.
+KOKOTO WebChat 5.2.0은 5.1.0에서 도입한 Relay v2 신뢰/암호화 모델 위에 **Relay Protocol 2.1** capability revision을 사용합니다. Protocol major `2`가 wire compatibility 경계이고, 2.1은 `public`, `dm`, `read`, `reaction`, `reaction-authority`, `typing` capability를 알립니다. KWC 제품 버전은 진단 정보일 뿐 호환성 키가 아닙니다. 공개채팅과 타 서버 1:1 DM/읽음 확인은 같은 group 기반 인증 전송을 사용하고, 공개 reaction, 참가자 서버로만 전달되는 타 서버 DM reaction, 원격 DM typing은 2.1 확장을 사용하며, 그룹채팅 방 자체는 로컬 기능입니다.
 
 
 ## 보안상 우선 업그레이드 대상
@@ -109,7 +115,7 @@ Endpoint는 다음 두 개입니다.
 /relay/v2/message
 ```
 
-구형 v1 endpoint (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, `/relay/dm/read`)는 **HTTP 426**과 protocol `2` / version `5.1.0` 요구를 반환합니다.
+구형 v1 endpoint (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, `/relay/dm/read`)는 **HTTP 426**과 protocol major `2` / revision `2.1` 요구를 반환합니다.
 
 ## 암호화와 인증
 

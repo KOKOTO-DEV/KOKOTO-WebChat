@@ -1,11 +1,23 @@
-# KOKOTO WebChat 5.1.0 — 기술 참고서
+# KOKOTO WebChat 5.2.0 — 기술 참고서
+
+반응 authority, 직결/다단 전달, 원문 서버 단절 outbox, 작성자 알림 그림은 [REACTIONS.md](REACTIONS.md)를 참고하세요.
 
 
-![KOKOTO WebChat 5.1.0 아키텍처 개요](../assets/architecture-5.1.0.svg)
+![KOKOTO WebChat 5.2.0 아키텍처 개요](../assets/architecture-5.2.0.svg)
 
-[PNG](../assets/architecture-5.1.0.png) · [SVG](../assets/architecture-5.1.0.svg)
+[PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg)
 
 > **참고:** 도식은 이해를 돕는 보조 자료입니다. KWC 고유 동작의 기준은 실제 소스와 이 문서의 설명입니다.
+
+## 구조와 데이터 흐름 그림
+
+![KWC 5.2.0 전체 구조](../assets/architecture-5.2.0.svg)
+
+![관리자/HTTP 보안 경계](../assets/admin-security-boundary.svg)
+
+![히스토리 검색/이동 흐름](../assets/history-search-navigation.svg)
+
+그림은 컴포넌트 경계를 빠르게 파악하기 위한 요약이며, 세부 동작은 아래 절과 `REACTIONS.md`, `SERVER_RELAY.md`, `UPLOAD_SECURITY.md`에서 설명합니다.
 
 ## 아키텍처
 `kwc-core`가 loader-neutral chat, HTTP/SSE transport, history/private-chat store, profile/security helper, Web Push, Relay v2를 담당합니다. Bukkit/Fabric/Forge/NeoForge는 host/adapter 경계를 통해 player/permission/thread/console/native-message와 같은 loader-specific 기능만 제공합니다. map adapter와 standalone frontend도 같은 core 동작을 사용합니다.
@@ -25,7 +37,7 @@ public history, direct message, group chat은 SQLite store를 사용하며 `PRAG
 ## 플랫폼 abstraction과 exact-target build
 `PlatformAdapter`와 관련 host interface가 loader API를 core에서 분리합니다. release matrix는 Bukkit 1 + Fabric 16 + NeoForge 12 + Forge 16 = **45 deployable artifacts**입니다. build helper가 Minecraft 세대에 따라 Java 17/21/25를 선택합니다. Windows에서는 exact-target 임시 경로가 검증된 path profile을 넘지 않도록 Gradle/Maven 전에 path-length preflight를 수행합니다.
 
-## Relay Protocol v2 trust model
+## Relay Protocol 2.1 compatibility and Relay v2 trust model
 Relay v2는 명시적인 `groups -> peers` 구조를 사용합니다. group 하나가 symmetric trust domain이며 group shared secret도 하나뿐이고 peer별 secret은 없습니다. 32자 미만 group secret은 거부합니다. 단, 빈 group secret은 provisioning 요청으로 처리되어 startup/reload 시 암호학적으로 안전한 32바이트 URL-safe secret을 생성해 `config.yml`에 저장하며, 비어 있지 않은 값은 자동 재생성하지 않습니다. 동일 peer ID를 여러 local group에 등록할 수 없고 양쪽 서버가 같은 group에서 서로를 peer로 등록해야 합니다.
 
 `/relay/v2/handshake`는 protocol/product version, group, sender/target ID, timestamp, nonce, sender outbound transport를 group secret HMAC으로 인증합니다. receiver는 group membership, target identity, clock skew, nonce replay를 검사합니다. 이 endpoint는 상태를 저장하지 않는 진단용 identity/health probe이며 route 상태를 만들지 않습니다. direct `/relay/v2/message`는 각 요청을 독립적으로 인증합니다. receiver는 sender를 같은 group과 같은 shared secret으로 상호 등록해야 합니다. v1 endpoint는 HTTP 426을 반환합니다.
@@ -59,3 +71,11 @@ DM/group Reply는 표시 문자열에서 추측하지 않고 metadata로 저장�
 - [WHATWG — Server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html)
 - [SQLite — Write-Ahead Logging](https://sqlite.org/wal.html)
 - [Oracle Java SE 17 — HttpServer](https://docs.oracle.com/en/java/javase/17/docs/api/jdk.httpserver/com/sun/net/httpserver/HttpServer.html)
+## 대화 저장 persistence와 관리자 삭제 우선권
+`chat.conversation-archive.enabled`가 true일 때 `ConversationArchiveStore`는 사용자별 snapshot을 `conversation-archives.db`에 저장합니다. false이면 archive store를 열거나 만들지 않고 archive API도 등록하지 않습니다. 클라이언트가 snapshot 내용을 신뢰 입력으로 보내는 방식이 아니라 범위 식별자만 보내고, `WebChatServer`가 공개/DM/그룹 저장소에서 해당 범위를 다시 읽어 계정 접근권한을 검증한 뒤 저장합니다. 관리자 강제 삭제를 나중에 반영할 수 있도록 DB 내부에는 원본 message identity를 유지하지만 브라우저 projection에는 sender UUID를 내보내지 않습니다. 첨부 바이트는 archive에 복제하지 않습니다. 저장 한도는 설정 가능하며 기본값은 계정당 archive 100개, archive당 1,000메시지, 계정당 총 10,000 저장메시지입니다. loader는 각각 1-1000, 1-10000, 1-100000 범위로 보정하고 archive API는 실제 적용값을 반환합니다. 한도를 낮춰도 기존 snapshot을 삭제하거나 숨기지 않으며 새 저장에 적용합니다.
+
+일반 history/private retention은 이미 저장된 snapshot을 삭제하지 않습니다. 관리자 원본 메시지 삭제, 공개 history 전체 삭제, 관리자 DM thread/group room 삭제, 비공개 방 lock 정책은 개인 archive보다 항상 우선합니다.
+
+## Typing 상태
+공개/DM/그룹 typing은 ephemeral 상태입니다. 브라우저 input event 한 번이 5초 window를 만들고 그 기간의 추가 key 입력은 클라이언트에서 억제합니다. SQLite/JSONL에 기록하지 않고 polling이나 상시 typing worker도 없습니다. 로컬 그룹 상태는 기존 SSE를 통해 현재 방 멤버에게만 전달하고, 타 서버 DM typing은 Relay Protocol 2.1을 사용합니다.
+

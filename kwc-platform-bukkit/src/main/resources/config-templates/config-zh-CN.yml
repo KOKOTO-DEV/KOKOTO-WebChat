@@ -2,14 +2,14 @@
 # 核心设置
 # =============================================================================
 
-# KOKOTO WebChat 5.1.0
+# KOKOTO WebChat 5.2.0
 # KWC config-comment-language: zh-CN
 
 
 # 配置版本。旧版本迁移时会尽量保留现有设置值。
 # <version>_auto_migration 状态会继续应用同版本模板补全。
 # 修改 ui.language 时可保留设置值，只重新生成注释/布局语言。
-config-version: "5.1.0"
+config-version: "5.2.0"
 
 # 总开关。false 时仍可使用 /kchat reload，但不会启动 Web/聊天服务。
 # 新配置默认生成为 false，便于检查后再启用。
@@ -230,6 +230,34 @@ chat:
   # 设为 0 时，memory/JSONL 历史不设置显式分页上限，但 SQLite 仍应用内置的 500
   # 行查询安全上限。
   history-page-size: 80
+
+  # 按账号保存会话快照的功能。
+  # 设为 false 时，不注册 archive API，不打开或新建 conversation-archives.db，
+  # Web UI 也不会生成会话保存相关 DOM。已有 archive 数据不会被删除。
+  # 保存的 snapshot 不会因普通聊天 retention 自动过期，只会由用户删除或管理员策略移除。
+  conversation-archive:
+    enabled: true
+    # 降低这些上限不会删除已有保存会话；只有会超过新上限的新保存会被拒绝。
+    # 单个账号可拥有的保存会话最大数量。允许范围：1-1000。
+    max-archives-per-user: 100
+    # 单个保存 snapshot 可包含的最大消息数。允许范围：1-10000。
+    max-messages-per-archive: 1000
+    # 单个账号在全部保存会话中可保存的消息总数上限。允许范围：1-100000。
+    # 若该值小于 max-messages-per-archive，则更小的账号总量限制优先。
+    max-messages-per-user: 10000
+
+  # 输入中提示的可用性是对所有客户端统一生效的服务器策略。
+  # 各范围开关控制输入状态是否发送并可供显示。
+  # user-display-control 为 true 时，登录用户可仅关闭自己屏幕上的输入中提示。
+  # 关闭个人显示不会停止发送该用户自己的输入中状态。
+  typing-indicator:
+    user-display-control: false
+    open-chat:
+      enabled: false
+    dm:
+      enabled: true
+    group-chat:
+      enabled: true
   # KWC 接受的普通公开聊天消息最大长度。
   # 0 表示不限制此长度。
   max-message-length: 120
@@ -921,7 +949,7 @@ ui:
     min-px: 200
   # 自动跟随最新消息时，仍视为处于底部跟随状态的底部距离（px）。
   # 运行时范围为 2-300，超出范围会钳制到边界值。
-  auto-follow-bottom-threshold-px: 80
+  auto-follow-bottom-threshold-px: 32
   # 用户直接滚动后，自动 scroll/follow 逻辑可恢复前的静默时间（ms）。
   # 运行时范围为 50-1000，超出范围会钳制到边界值。
   scroll-interaction-idle-ms: 160
@@ -946,17 +974,18 @@ notifications:
   notify-dm: true
   # 允许新群组房间消息产生浏览器通知。
   notify-group-chat: true
-  # 按 KWC mention 匹配当前用户被提及时允许浏览器通知。
+  # 允许显式 @提及通知。KWC 在 @ 后优先匹配已登记真实名/显示名中的最长名称；
+  # 多个账户使用完全相同的显示名时会全部被提及。
   notify-mentions: true
   # 有消息 Reply 当前用户相关消息/会话时允许浏览器通知。
   notify-replies: true
+  # 消息收到新的表情反应时允许浏览器通知和 Web Push。
+  notify-reactions: true
   # 允许服务器/system announcement 通知。
   # 支持时用户设置还可进一步选择 all、仅 join/leave 或 off。
   notify-system: true
   # 允许由用户/管理员关键词通知规则触发的浏览器通知。
   notify-keywords: true
-  # 在符合条件的浏览器通知中包含安全的消息文本预览，而不是只有标题/类别。
-  show-message-preview: true
 web-push:
   # 创建 Web Push subscription 使用的 VAPID public key。
   # 为空时由 KWC 在需要 Web Push 时生成/管理密钥对。
@@ -1244,6 +1273,14 @@ emoji:
   enabled: true
   # emoji 功能可用时在 Web 聊天 composer 中显示 custom emoji picker 按钮。
   show-button: true
+  favorites:
+    # 启用 custom emoji picker 的 Favorites 伪文件夹与星标控件。
+    enabled: true
+    # account = 与 chat history 存储方式无关，保存到当前登录 KWC 账号的 user-preferences（默认）。
+    # browser = 仅在当前浏览器 localStorage 中保存收藏的 emoji ID。
+    storage: "account"
+    # 收藏 emoji ID 的最大保留数量。0 = 无限制。browser 模式也使用同一值。
+    max-per-account: 100
   # KWC custom emoji 文件及 pack 子目录扫描/存储使用的数据目录相对文件夹。
   directory: "emojis"
   # custom emoji 文件的公开 URL base。

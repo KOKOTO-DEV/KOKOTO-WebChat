@@ -1,0 +1,24 @@
+digraph G {
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans", labelloc="t"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=LR;
+  click [label="Remote reaction request", fillcolor="#E0F2FE"];
+  route [shape=diamond, label="Origin route\nreachable?", fillcolor="#FEF3C7"];
+  authority [label="Origin server\nvalidates + commits", fillcolor="#DCFCE7", penwidth=2];
+  outbox [label="Bounded in-memory outbox\nkey: target + relayId + actor + reaction\nnewest desired state replaces older", fillcolor="#FCE7F3"];
+  retry [label="Retry every few seconds\nwithin request lifetime", fillcolor="#F1F5F9"];
+  committed [label="Committed\nmirrors update", fillcolor="#DCFCE7"];
+  rejected [label="Permanent reject\nremove pending request", fillcolor="#FEE2E2"];
+  expired [label="Expired\nremove pending request", fillcolor="#FEE2E2"];
+
+  click -> route;
+  route -> authority [label="yes"];
+  route -> outbox [label="no / retryable"];
+  outbox -> retry;
+  retry -> route [label="retry"];
+  authority -> committed [label="accepted"];
+  authority -> rejected [label="policy/message reject"];
+  outbox -> expired [label="TTL reached"];
+}

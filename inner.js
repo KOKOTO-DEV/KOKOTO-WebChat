@@ -1,5 +1,5 @@
 (() => {
-  const KWC_INNER_IFRAME_MARKER_296 = true;
+  const KWC_INNER_IFRAME_MARKER_297 = true;
   const cfg = window.KokotoWebChatConfig || window.BlueMapWebChatConfig || {};
   function migrateLegacyBrowserState() {
     try {
@@ -53,12 +53,15 @@
     config: null,
     token: localStorage.getItem("kwc.token") || "",
     username: localStorage.getItem("kwc.username") || "",
+    userUuid: "",
     role: localStorage.getItem("kwc.role") || "",
     guestName: localStorage.getItem("kwc.guestName") || "",
     captcha: null,
     captchaPass: localStorage.getItem("kwc.captchaPass") || "",
     isPip: runtimeMode.pip,
     isStandalone: runtimeMode.standalone,
+    hostPageVisible: true,
+    hostPageFocused: true,
     minimized: (runtimeMode.pip || runtimeMode.standalone) ? false : localStorage.getItem("kwc.minimized") === "1",
     eventSource: null,
     streamGeneration: 0,
@@ -80,6 +83,13 @@
     historyOldestId: "",
     historyNewestId: "",
     historyPageSize: 20,
+    conversationArchiveEnabled: false,
+    typingUserDisplayControl: false,
+    typingDisplayEnabled: true,
+    typingPreferenceLoaded: false,
+    typingOpenChatEnabled: false,
+    typingDmEnabled: true,
+    typingGroupChatEnabled: true,
     frameMinimizedHeight: 71,
     frameNormalWidth: 372,
     frameNormalHeight: 462,
@@ -143,6 +153,14 @@
     dmMessagesLoading: false,
     dmBottomRetryInFlight: false,
     dmLastBottomRetryAt: 0,
+    publicTypingNextAllowedAt: 0,
+    publicTypingInFlight: false,
+    publicTypingEntries: new Map(),
+    publicTypingTimer: null,
+    publicTypingClientId: "pt-" + Math.random().toString(36).slice(2) + Date.now().toString(36),
+    dmTypingNextAllowedAt: 0,
+    dmTypingEntry: null,
+    dmTypingTimer: null,
 
     groupChatEnabled: false,
     groupChatAllowWebSend: true,
@@ -186,14 +204,38 @@
     groupMessagesLoading: false,
     groupBottomRetryInFlight: false,
     groupLastBottomRetryAt: 0,
+    groupTypingNextAllowedAt: 0,
+    groupTypingEntries: new Map(),
+    groupTypingTimer: null,
+    groupNotificationSeen: new Set(),
     groupScrollbarDragActive: false,
     groupScrollbarDragLastX: null,
     groupScrollbarDragLastY: null,
+
+    archiveSelection: null,
+    archiveSelectionHandler: null,
+    archiveSelectionBanner: null,
+    archiveModalOpen: false,
+
+    reactionCatalog: null,
+    reactionCatalogLoadedAt: 0,
+    reactionPending: new Map(),
+    reactionPickerCategory: "smileys",
+    reactionRecent: (() => {
+      try {
+        const raw = JSON.parse(localStorage.getItem("kwc.reactionRecent") || "[]");
+        return Array.isArray(raw) ? raw.map(String).filter(Boolean).slice(0, 24) : [];
+      } catch (_) { return []; }
+    })(),
 
     activeComposeInputId: "kwc-message",
 
     emojiEnabled: false,
     emojiShowButton: true,
+    emojiFavoritesEnabled: true,
+    emojiFavoritesStorage: "account",
+    emojiFavoritesMaxPerAccount: 100,
+    emojiFavoritesLoaded: false,
     emojiRenderSizePx: 32,
     emojiPickerSizePx: 44,
     emojiMessageTokenLimit: 12,
@@ -203,6 +245,26 @@
     emojiById: new Map(),
     emojiByAlias: new Map(),
     emojiPanelOpen: false,
+    emojiSelectedPack: localStorage.getItem("kwc.emojiPack") || "",
+    emojiSearchOpen: false,
+    emojiSearchQuery: "",
+    emojiRecent: (() => {
+      try {
+        const raw = JSON.parse(localStorage.getItem("kwc.emojiRecent") || "[]");
+        return Array.isArray(raw) ? raw.map(String).filter(Boolean).slice(0, 24) : [];
+      } catch (_) { return []; }
+    })(),
+    emojiFavorites: (() => {
+      try {
+        const raw = JSON.parse(localStorage.getItem("kwc.emojiFavorites") || "[]");
+        return Array.isArray(raw) ? raw.map(String).filter(Boolean) : [];
+      } catch (_) { return []; }
+    })(),
+    dmEmojiSelectedPack: "",
+    dmEmojiSearchOpen: false,
+    dmEmojiSearchQuery: "",
+    groupEmojiSearchOpen: false,
+    groupEmojiSearchQuery: "",
     emojiLoading: false,
     emojiRetryTimer: null,
     emojiRetryAttempt: 0,
@@ -227,6 +289,7 @@
     suppressAutoFollowUpdate: false,
     suppressScrollRenderUntil: 0,
     preventBottomStickUntil: 0,
+    nonScrollLayoutUntil: 0,
     forceHistoryEndNoticeUntil: 0,
     youtubeExpanded: new Set(),
     youtubeOpen: new Set(),
@@ -297,9 +360,9 @@
     browserNotificationsNotifyGroupChat: true,
     browserNotificationsNotifyMentions: true,
     browserNotificationsNotifyReplies: true,
+    browserNotificationsNotifyReactions: true,
     browserNotificationsNotifySystem: true,
     browserNotificationsNotifyKeywords: true,
-    browserNotificationsShowMessagePreview: true,
     webPushEnabled: false,
     webPushAvailable: false,
     webPushVapidPublicKey: "",
@@ -315,9 +378,9 @@
     webPushNotifyGroupChat: true,
     webPushNotifyMentions: true,
     webPushNotifyReplies: true,
+    webPushNotifyReactions: true,
     webPushNotifySystem: true,
     webPushNotifyKeywords: true,
-    webPushShowMessagePreview: true,
     webPushRegistering: false,
     webPushLastError: "",
     webPushSubscriptionActive: false,
@@ -330,7 +393,9 @@
     userProfilesAllowImportExport: true,
     accountProfiles: [],
     accountProfilesLoading: false,
-    notificationInboxUnread: 0
+    notificationInboxUnread: 0,
+    notificationAccountDmViews: new Map(),
+    notificationAccountGroupViews: new Map()
   };
 
   function normalizeCommandMaxLength(value, fallback = 0) {
@@ -1768,6 +1833,127 @@
     return null;
   }
 
+  const KWC_EMOJI_RECENT_PACK = "__kwc_recent__";
+  const KWC_EMOJI_FAVORITES_PACK = "__kwc_favorites__";
+
+  function normalizeCustomEmojiSearchText(value) {
+    let text = String(value || "").trim();
+    try { text = text.normalize("NFKC"); } catch (_) {}
+    return text.toLocaleLowerCase();
+  }
+
+  function customEmojiSearchText(item) {
+    if (!item) return "";
+    const aliases = Array.isArray(item.aliases) ? item.aliases : [];
+    return normalizeCustomEmojiSearchText([
+      item.id || "", item.name || "", item.label || "", item.pack || "", ...aliases
+    ].join(" "));
+  }
+
+  function searchCustomEmojiItems(items, query) {
+    const needle = normalizeCustomEmojiSearchText(query);
+    const arr = Array.isArray(items) ? items : [];
+    if (!needle) return arr;
+    return arr.filter(item => customEmojiSearchText(item).includes(needle));
+  }
+
+  function recentCustomEmojiItems(items) {
+    const arr = Array.isArray(items) ? items : [];
+    const byId = new Map(arr.map(item => [String(item && item.id || ""), item]));
+    return (Array.isArray(state.emojiRecent) ? state.emojiRecent : [])
+      .map(id => byId.get(String(id || "")))
+      .filter(Boolean);
+  }
+
+  function rememberRecentCustomEmoji(id) {
+    const value = String(id || "").trim();
+    if (!value || !customEmojiById(value)) return;
+    state.emojiRecent = [value, ...(Array.isArray(state.emojiRecent) ? state.emojiRecent : []).filter(v => String(v) !== value)].slice(0, 24);
+    try { localStorage.setItem("kwc.emojiRecent", JSON.stringify(state.emojiRecent)); } catch (_) {}
+  }
+
+  function emojiFavoritesAvailable() {
+    if (!state.emojiFavoritesEnabled) return false;
+    if (state.emojiFavoritesStorage === "account") return !!state.token && !!state.userUuid;
+    return true;
+  }
+
+  function favoriteCustomEmojiItems(items) {
+    if (!emojiFavoritesAvailable()) return [];
+    const arr = Array.isArray(items) ? items : [];
+    const byId = new Map(arr.map(item => [String(item && item.id || ""), item]));
+    return (Array.isArray(state.emojiFavorites) ? state.emojiFavorites : [])
+      .map(id => byId.get(String(id || "")))
+      .filter(Boolean);
+  }
+
+  function isFavoriteCustomEmoji(id) {
+    if (!emojiFavoritesAvailable()) return false;
+    const value = String(id || "").trim();
+    return !!value && (Array.isArray(state.emojiFavorites) ? state.emojiFavorites : []).some(v => String(v) === value);
+  }
+
+  function limitEmojiFavoriteIds(values) {
+    const ids = Array.isArray(values) ? values.map(String).filter(Boolean) : [];
+    const limit = Math.max(0, Math.floor(Number(state.emojiFavoritesMaxPerAccount) || 0));
+    return limit > 0 ? ids.slice(0, limit) : ids;
+  }
+
+  async function loadAccountEmojiFavorites() {
+    if (!state.emojiFavoritesEnabled || state.emojiFavoritesStorage !== "account" || !state.token || !state.userUuid) {
+      if (state.emojiFavoritesStorage === "account") state.emojiFavorites = [];
+      state.emojiFavoritesLoaded = state.emojiFavoritesStorage !== "account";
+      refreshFavoriteEmojiUi();
+      return;
+    }
+    try {
+      const res = await api("/preferences/emoji-favorites", {timeoutMs: 8000});
+      state.emojiFavorites = limitEmojiFavoriteIds(res && res.favorites);
+      state.emojiFavoritesLoaded = true;
+      refreshFavoriteEmojiUi();
+    } catch (_) {
+      state.emojiFavorites = [];
+      state.emojiFavoritesLoaded = false;
+      refreshFavoriteEmojiUi();
+    }
+  }
+
+  async function toggleFavoriteCustomEmoji(id) {
+    if (!emojiFavoritesAvailable()) return false;
+    const value = String(id || "").trim();
+    if (!value || !customEmojiById(value)) return false;
+    const current = Array.isArray(state.emojiFavorites) ? state.emojiFavorites.map(String).filter(Boolean) : [];
+    const active = current.some(v => v === value);
+    if (!active && state.emojiFavoritesMaxPerAccount > 0 && current.length >= state.emojiFavoritesMaxPerAccount) {
+      alert(fmt("emoji.favoriteLimitReached", "You can save up to {count} favorite emojis.", {count: state.emojiFavoritesMaxPerAccount}));
+      return false;
+    }
+    if (state.emojiFavoritesStorage === "account") {
+      try {
+        const res = await api("/preferences/emoji-favorites", {
+          method: "POST",
+          body: JSON.stringify({emojiId: value, active: !active}),
+          timeoutMs: 8000,
+          returnHttpErrorResponse: true
+        });
+        if (!res || res.ok === false) {
+          if (res && res.error === "favorite_limit_reached") alert(fmt("emoji.favoriteLimitReached", "You can save up to {count} favorite emojis.", {count: state.emojiFavoritesMaxPerAccount}));
+          else alert(t("emoji.favoriteSaveFailed", "Could not save emoji favorites."));
+          return false;
+        }
+        state.emojiFavorites = limitEmojiFavoriteIds(res.favorites);
+        state.emojiFavoritesLoaded = true;
+        return !active;
+      } catch (_) {
+        alert(t("emoji.favoriteSaveFailed", "Could not save emoji favorites."));
+        return false;
+      }
+    }
+    state.emojiFavorites = active ? current.filter(v => v !== value) : limitEmojiFavoriteIds([value, ...current.filter(v => v !== value)]);
+    try { localStorage.setItem("kwc.emojiFavorites", JSON.stringify(state.emojiFavorites)); } catch (_) {}
+    return !active;
+  }
+
   function emojiRenderSizePx() {
     return Math.max(16, Math.min(1024, Number(state.emojiRenderSizePx || (state.config && state.config.emojiRenderSizePx) || 32)));
   }
@@ -1897,8 +2083,9 @@
   function emojiPanelMinHeightPx(panel = null) {
     panel = panel || document.getElementById("kwc-emoji-panel");
     const fallbackItemHeight = emojiPanelFallbackItemHeightPx();
-    const fallbackTabsHeight = Array.isArray(state.emojiPacks) && state.emojiPacks.length > 1 ? 30 : 0;
-    const fallback = 16 + fallbackTabsHeight + fallbackItemHeight;
+    const fallbackTabsHeight = Array.isArray(state.emojiItems) && state.emojiItems.length ? 30 : 0;
+    const fallbackSearchHeight = 0;
+    const fallback = 16 + fallbackTabsHeight + fallbackSearchHeight + fallbackItemHeight;
     if (!panel || panel.classList.contains("kwc-hidden")) return Math.max(56, Math.ceil(fallback));
 
     const panelStyle = getComputedStyle(panel);
@@ -1906,15 +2093,22 @@
     const padBottom = parseFloat(panelStyle.paddingBottom || "0") || 0;
     const borderTop = parseFloat(panelStyle.borderTopWidth || "0") || 0;
     const borderBottom = parseFloat(panelStyle.borderBottomWidth || "0") || 0;
-    const tabs = panel.querySelector(".kwc-emoji-tabs");
+    const toolbar = panel.querySelector(".kwc-emoji-toolbar");
+    const searchRow = panel.querySelector(".kwc-emoji-search-row:not(.kwc-hidden)");
     const item = panel.querySelector(".kwc-emoji-item");
 
     let tabsHeight = 0;
-    if (tabs) {
-      const tabsStyle = getComputedStyle(tabs);
-      tabsHeight = Number(tabs.getBoundingClientRect().height || tabs.offsetHeight || fallbackTabsHeight);
-      tabsHeight += parseFloat(tabsStyle.marginTop || "0") || 0;
-      tabsHeight += parseFloat(tabsStyle.marginBottom || "0") || 0;
+    if (toolbar) {
+      const toolbarStyle = getComputedStyle(toolbar);
+      tabsHeight = Number(toolbar.getBoundingClientRect().height || toolbar.offsetHeight || fallbackTabsHeight);
+      tabsHeight += parseFloat(toolbarStyle.marginTop || "0") || 0;
+      tabsHeight += parseFloat(toolbarStyle.marginBottom || "0") || 0;
+    }
+    if (searchRow) {
+      const searchStyle = getComputedStyle(searchRow);
+      tabsHeight += Number(searchRow.getBoundingClientRect().height || searchRow.offsetHeight || 0);
+      tabsHeight += parseFloat(searchStyle.marginTop || "0") || 0;
+      tabsHeight += parseFloat(searchStyle.marginBottom || "0") || 0;
     }
 
     const itemHeight = item ? Number(item.getBoundingClientRect().height || item.offsetHeight || 0) : 0;
@@ -2020,6 +2214,7 @@
       }
       if (!options || options.snapScroll !== false) snapEmojiPanelScrollTop(panel);
     }
+    if (state.emojiSearchOpen) requestAnimationFrame(() => positionEmojiSearchOverlay("public"));
     return height;
   }
 
@@ -2383,6 +2578,477 @@
 
   function messageTextHtml(msg) {
     return renderMessageTokenLines(plainDisplayMessageText(msg));
+  }
+
+
+  function reactionValueHtml(value) {
+    const raw = String(value || "");
+    if (raw.startsWith(":") && raw.endsWith(":") && raw.length > 2) {
+      let token = raw.slice(1, -1);
+      if (token.startsWith("emoji:")) token = token.slice("emoji:".length);
+      const item = customEmojiByToken(token);
+      if (item && item.url) {
+        const label = customEmojiTooltipText(item);
+        return `<img class="kwc-reaction-emoji" src="${esc(item.url)}" alt="" role="img" aria-label="${esc(label)}" loading="eager" decoding="async" draggable="false">`;
+      }
+    }
+    return esc(raw);
+  }
+
+  function reactionValueLabel(value) {
+    const raw = String(value || "");
+    if (raw.startsWith(":") && raw.endsWith(":") && raw.length > 2) {
+      let token = raw.slice(1, -1);
+      if (token.startsWith("emoji:")) token = token.slice("emoji:".length);
+      const item = customEmojiByToken(token);
+      if (item) return customEmojiTooltipText(item) || item.label || item.name || item.id || raw;
+    }
+    return raw;
+  }
+
+  function reactionActorListHtml(reaction) {
+    if (state.reactionCatalog && state.reactionCatalog.showActorList === false) return "";
+    const legacyActors = Array.isArray(reaction && reaction.actors) ? reaction.actors : [];
+    const actorIdentities = Array.isArray(reaction && reaction.actorIdentities) ? reaction.actorIdentities : [];
+    const identities = actorIdentities.length
+      ? actorIdentities
+      : legacyActors.map(value => ({displayName: String(value || ""), username: ""}));
+    if (!identities.length) return "";
+    const rows = identities.map(identity => {
+      const display = plainMinecraftName(String(identity && (identity.displayName || identity.label || identity.username) || "")).trim() || t("sender.unknown", "Unknown");
+      const real = plainMinecraftName(String(identity && identity.username || "")).trim();
+      const hasReal = !!real && real.toLowerCase() !== display.toLowerCase();
+      const shown = hasReal ? preferredSenderText(display, real) : display;
+      const attrs = hasReal
+        ? ` data-kwc-identity-toggle="reaction" data-display-sender="${esc(display)}" data-real-sender="${esc(real)}" data-source="game" data-showing-real="${state.senderIdentityMode === "real" ? "1" : "0"}" role="button" tabindex="0" title="${esc(state.senderIdentityMode === "real" ? senderDisplayTitle(display) : senderOriginalTitle(real))}" aria-label="${esc(state.senderIdentityMode === "real" ? senderDisplayTitle(display) : senderOriginalTitle(real))}"`
+        : "";
+      return `<span class="kwc-reaction-actor-row${hasReal ? " kwc-reaction-actor-toggle" : ""}"${attrs}>${esc(shown)}</span>`;
+    }).join("");
+    const header = `${reactionValueLabel(reaction && reaction.value)} · ${Number(reaction && reaction.count || identities.length || 0)}`;
+    return `<span class="kwc-reaction-tooltip" role="tooltip"><span class="kwc-reaction-tooltip-title">${esc(header)}</span><span class="kwc-reaction-actors">${rows}</span></span>`;
+  }
+
+  function reactionBarHtml(msg) {
+    if (!msg || msg.hidden) return "";
+    const featureEnabled = !state.reactionCatalog || state.reactionCatalog.enabled !== false;
+    const reactions = Array.isArray(msg.reactions) ? msg.reactions : [];
+    const pills = reactions.filter(r => r && Number(r.count || 0) > 0).map(r => {
+      const value = String(r.value || "");
+      const label = reactionValueLabel(value);
+      const mine = !!r.mine;
+      const actionLabel = mine ? t("reaction.remove", "Remove reaction") : t("reaction.addSame", "Add the same reaction");
+      const title = mine ? t("reaction.remove", "Remove reaction") : t("reaction.addSame", "Add the same reaction");
+      return `<span class="kwc-reaction-wrap"><button type="button" class="kwc-reaction-pill${mine ? " kwc-active" : ""}" data-reaction-value="${esc(value)}" aria-label="${esc(actionLabel)}" title="${esc(title)}">${reactionValueHtml(value)}<span class="kwc-reaction-count">${esc(String(r.count || 0))}</span></button>${reactionActorListHtml(r)}</span>`;
+    }).join("");
+    if (!pills) return "";
+    const classes = `kwc-reactions kwc-has-reactions${featureEnabled ? "" : " kwc-reactions-disabled"}`;
+    return `<div class="${classes}" data-reaction-message="${esc(msg.id || "")}">${pills}</div>`;
+  }
+
+  function updateReactionBarElement(el, msg) {
+    if (!el || !msg) return;
+    let bar = el.querySelector(":scope > .kwc-reactions");
+    const holder = document.createElement("div");
+    holder.innerHTML = reactionBarHtml(msg);
+    const next = holder.firstElementChild;
+    if (!next) {
+      if (bar) bar.remove();
+      return;
+    }
+    if (bar) bar.replaceWith(next);
+    else el.appendChild(next);
+    installReactionHandlers(el, msg);
+    installSenderIdentityToggle(next);
+    installCustomEmojiImageRecovery(next);
+  }
+
+  function refreshVisibleReactionBars() {
+    const box = document.getElementById("kwc-messages");
+    if (box) {
+      box.querySelectorAll(":scope > .kwc-msg").forEach(el => {
+        const msg = messageById(String(el.dataset.id || ""));
+        if (msg) {
+          updateReactionBarElement(el, msg);
+          syncMessageElementActions(el, msg);
+        }
+      });
+    }
+    const dmBox = document.getElementById("kwc-dm-messages");
+    if (dmBox) (state.dmMessages || []).forEach(msg => {
+      const el = dmBox.querySelector(`[data-dm-message-id="${cssEscape(String(msg && msg.id || ""))}"]`);
+      if (el) syncPrivateMessageElement(el, msg, "dm");
+    });
+    const groupBox = document.getElementById("kwc-group-messages");
+    if (groupBox) (state.groupMessages || []).forEach(msg => {
+      const el = groupBox.querySelector(`[data-group-message-id="${cssEscape(String(msg && msg.id || ""))}"]`);
+      if (el) syncPrivateMessageElement(el, msg, "group");
+    });
+  }
+
+  function reactionContextType(msg) {
+    const type = String(msg && msg._kwcReactionContextType || "").toLowerCase();
+    return type === "dm" || type === "group" ? type : "public";
+  }
+
+  function reactionContextId(msg) {
+    const type = reactionContextType(msg);
+    if (type === "dm") return String(msg && (msg._kwcReactionContextId || msg.threadId) || "");
+    if (type === "group") return String(msg && (msg._kwcReactionContextId || msg.roomId) || "");
+    return "";
+  }
+
+  function reactionPendingKey(messageId, value, contextType = "public", contextId = "") {
+    return String(contextType || "public") + "\u0000" + String(contextId || "") + "\u0000" + String(messageId || "") + "\u0000" + String(value || "");
+  }
+
+  function pendingReactionState(messageId, value, contextType = "public", contextId = "") {
+    if (!(state.reactionPending instanceof Map)) state.reactionPending = new Map();
+    return state.reactionPending.get(reactionPendingKey(messageId, value, contextType, contextId)) || null;
+  }
+
+  function setPendingReactionState(messageId, value, active, contextType = "public", contextId = "") {
+    if (!(state.reactionPending instanceof Map)) state.reactionPending = new Map();
+    state.reactionPending.set(reactionPendingKey(messageId, value, contextType, contextId), {
+      contextType: String(contextType || "public"), contextId: String(contextId || ""),
+      messageId: String(messageId || ""), reaction: String(value || ""), active: !!active, time: Date.now()
+    });
+  }
+
+  function clearSettledPendingReactions(msg) {
+    if (!msg || !(state.reactionPending instanceof Map) || !state.reactionPending.size) return;
+    const id = String(msg.id || "");
+    const contextType = reactionContextType(msg);
+    const contextId = reactionContextId(msg);
+    const reactions = Array.isArray(msg.reactions) ? msg.reactions : [];
+    for (const [key, pending] of state.reactionPending.entries()) {
+      if (!pending || String(pending.messageId || "") !== id
+          || String(pending.contextType || "public") !== contextType
+          || String(pending.contextId || "") !== contextId) continue;
+      const row = reactions.find(item => item && String(item.value || "") === String(pending.reaction || ""));
+      const authoritativeActive = !!(row && row.mine);
+      if (authoritativeActive === !!pending.active) state.reactionPending.delete(key);
+    }
+  }
+
+  function applyReactionUpdate(data) {
+    if (!data || !Array.isArray(data.reactions)) return;
+    const id = String(data.messageId || "");
+    const type = String(data.contextType || "public").toLowerCase();
+    const contextId = String(data.contextId || "");
+    let msg = null;
+    let box = null;
+    let selector = "";
+    if (type === "dm") {
+      if (contextId && state.dmActiveThreadId && contextId !== String(state.dmActiveThreadId)) return;
+      msg = (state.dmMessages || []).find(item => String(item && item.id || "") === id) || null;
+      box = document.getElementById("kwc-dm-messages");
+      selector = `[data-dm-message-id="${cssEscape(id)}"]`;
+    } else if (type === "group") {
+      if (contextId && state.groupActiveRoomId && contextId !== String(state.groupActiveRoomId)) return;
+      msg = (state.groupMessages || []).find(item => String(item && item.id || "") === id) || null;
+      box = document.getElementById("kwc-group-messages");
+      selector = `[data-group-message-id="${cssEscape(id)}"]`;
+    } else {
+      msg = messageById(id);
+      box = document.getElementById("kwc-messages");
+      selector = `.kwc-msg[data-id="${cssEscape(id)}"]`;
+    }
+    if (!msg) return;
+    msg.reactions = data.reactions;
+    if (type === "dm" || type === "group") {
+      msg._kwcReactionContextType = type;
+      msg._kwcReactionContextId = contextId || (type === "dm" ? String(msg.threadId || "") : String(msg.roomId || ""));
+    }
+    clearSettledPendingReactions(msg);
+    if (!box) return;
+    box.querySelectorAll(selector).forEach(el => updateReactionBarElement(el, msg));
+  }
+
+  function handleReactionRequestStatus(data) {
+    if (!data) return;
+    const messageId = String(data.messageId || "");
+    const value = String(data.reaction || "");
+    if (!messageId || !value || !(state.reactionPending instanceof Map)) return;
+    const key = reactionPendingKey(messageId, value, String(data.contextType || "public"), String(data.contextId || ""));
+    const pending = state.reactionPending.get(key);
+    if (!pending) return;
+    const status = String(data.state || "").toLowerCase();
+    if (status === "committed" || status === "failed" || status === "expired") state.reactionPending.delete(key);
+  }
+
+  async function setMessageReaction(msg, value, active = null) {
+    if (!state.token || !msg || !msg.id || !value) return;
+    const messageId = String(msg.id);
+    const reaction = String(value);
+    const contextType = reactionContextType(msg);
+    const contextId = reactionContextId(msg);
+    let desired = active;
+    if (desired === null) {
+      const pending = pendingReactionState(messageId, reaction, contextType, contextId);
+      if (pending) desired = !pending.active;
+      else {
+        const row = (Array.isArray(msg.reactions) ? msg.reactions : []).find(item => item && String(item.value || "") === reaction);
+        desired = !(row && row.mine);
+      }
+    }
+    desired = !!desired;
+    if (desired && state.reactionCatalog && state.reactionCatalog.enabled === false) return;
+    const body = {messageId, reaction, active: desired};
+    if (contextType !== "public") { body.contextType = contextType; body.contextId = contextId; }
+    try {
+      const res = await api("/reactions", {method: "POST", body: JSON.stringify(body)});
+      if (res && res.ok) {
+        rememberRecentReaction(reaction);
+        if (res.pending === true) setPendingReactionState(messageId, reaction, desired, contextType, contextId);
+        if (Array.isArray(res.reactions)) applyReactionUpdate(res);
+      }
+    } catch (_) {}
+  }
+
+  function defaultReactionCatalog() {
+    return {
+      enabled: true,
+      customEmojiEnabled: true,
+      showActorList: true,
+      categories: [
+        {id:"smileys", items:["😀","😃","😄","😁","😆","😅","😂","🙂","🙃","😉","😊","😍","🥰","😘","😎","🤔","😮","😢","😭","😡","🤯","🥳"]},
+        {id:"people", items:["👍","👎","👌","✌️","🤞","🤟","🤘","👏","🙌","🫶","🙏","💪","👀","🧠","❤️","💔","💯"]},
+        {id:"animals", items:["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐸","🐵","🐔","🐧","🐦","🦄","🐝","🦋","🌸","🌈"]},
+        {id:"food", items:["🍎","🍊","🍋","🍉","🍇","🍓","🍒","🍑","🍔","🍟","🍕","🌭","🍿","🍩","🍪","🎂","🍰","☕","🍺"]},
+        {id:"activities", items:["⚽","🏀","🏈","⚾","🎾","🏐","🎮","🎲","🎯","🎵","🎤","🎧","🎬","📷","🚗","✈️","🚀","🎉","🎊"]},
+        {id:"objects", items:["💡","🔥","⭐","✨","⚡","💥","💎","🎁","🏆","🥇","📌","📎","🔒","🔑","🛠️","🧪","💻","📱","⏰"]},
+        {id:"symbols", items:["✅","❌","⭕","❗","❓","⚠️","♻️","➕","➖","➡️","⬆️","⬇️","🔴","🟠","🟡","🟢","🔵","🟣","⚫","⚪"]}
+      ]
+    };
+  }
+
+  async function loadReactionCatalog(force = false) {
+    if (!state.token) return defaultReactionCatalog();
+    if (!force && state.reactionCatalog && Date.now() - Number(state.reactionCatalogLoadedAt || 0) < 60000) return state.reactionCatalog;
+    try {
+      const res = await api("/reaction-catalog");
+      if (res && res.ok && res.catalog) {
+        state.reactionCatalog = res.catalog;
+        state.reactionCatalogLoadedAt = Date.now();
+        return res.catalog;
+      }
+    } catch (_) {}
+    if (!state.reactionCatalog) state.reactionCatalog = defaultReactionCatalog();
+    return state.reactionCatalog;
+  }
+
+  function rememberRecentReaction(value) {
+    const raw = String(value || "");
+    if (!raw) return;
+    state.reactionRecent = [raw, ...(Array.isArray(state.reactionRecent) ? state.reactionRecent : []).filter(v => v !== raw)].slice(0, 24);
+    try { localStorage.setItem("kwc.reactionRecent", JSON.stringify(state.reactionRecent)); } catch (_) {}
+  }
+
+  function reactionCategoryDefs(catalog) {
+    const defs = [
+      {id:"recent", icon:"🕘", key:"reaction.categoryRecent", fallback:"Recent"},
+      {id:"smileys", icon:"😀", key:"reaction.categorySmileys", fallback:"Smileys"},
+      {id:"people", icon:"🧑", key:"reaction.categoryPeople", fallback:"People"},
+      {id:"animals", icon:"🐾", key:"reaction.categoryAnimals", fallback:"Animals & nature"},
+      {id:"food", icon:"🍔", key:"reaction.categoryFood", fallback:"Food"},
+      {id:"activities", icon:"⚽", key:"reaction.categoryActivities", fallback:"Activities"},
+      {id:"objects", icon:"💡", key:"reaction.categoryObjects", fallback:"Objects"},
+      {id:"symbols", icon:"🔣", key:"reaction.categorySymbols", fallback:"Symbols"}
+    ];
+    if (catalog && catalog.customEmojiEnabled !== false && Array.isArray(state.emojiItems) && state.emojiItems.length) {
+      defs.push({id:"custom", icon:"K", key:"reaction.categoryCustom", fallback:"KWC emoji"});
+    }
+    return defs;
+  }
+
+
+
+  const REACTION_CATEGORY_SEARCH_ALIASES = Object.freeze({
+    smileys:"face faces emoji emoticon expression 표정 얼굴 이모지 顔 絵文字 表情 表情 表情符号",
+    people:"people person hand hands gesture 사람 인물 손 제스처 人 手 ジェスチャー 人 手 手势",
+    animals:"animal animals nature pet 동물 자연 반려동물 動物 自然 ペット 动物 自然 宠物",
+    food:"food foods drink 음식 먹을것 음료 食べ物 飲み物 食物 饮料",
+    activities:"activity activities sport leisure 활동 스포츠 여가 活動 スポーツ レジャー 活动 体育 休闲",
+    objects:"object objects thing 물건 사물 物 オブジェクト 物品",
+    symbols:"symbol symbols mark 기호 표시 記号 マーク 符号 标记"
+  });
+
+
+  function reactionUnicodeSearchText(value, categoryId, catalog) {
+    const raw = String(value || "");
+    const def = reactionCategoryDefs(catalog).find(item => item.id === String(categoryId || ""));
+    return [
+      raw,
+      (catalog && catalog.searchNames && catalog.searchNames[raw]) || "",
+      (catalog && catalog.searchAliases && catalog.searchAliases[raw]) || "",
+      REACTION_CATEGORY_SEARCH_ALIASES[String(categoryId || "")] || "",
+      def ? t(def.key, def.fallback) : ""
+    ].filter(Boolean).join(" ").normalize("NFKC").toLowerCase();
+  }
+
+  function reactionCatalogUnicodeItems(catalog, categoryId) {
+    const categories = Array.isArray(catalog && catalog.categories) ? catalog.categories : [];
+    const row = categories.find(item => String(item && item.id || "") === String(categoryId || ""));
+    return Array.isArray(row && row.items) ? row.items.map(String).filter(Boolean) : [];
+  }
+
+  function reactionPickerItems(catalog, categoryId, query = "") {
+    const q = String(query || "").trim().normalize("NFKC").toLowerCase();
+    const unicodeItems = [];
+    const categories = Array.isArray(catalog && catalog.categories) ? catalog.categories : [];
+    const addUnicode = (value, category) => {
+      const raw = String(value);
+      unicodeItems.push({value:raw, label:raw, category:String(category || ""), custom:false, search:reactionUnicodeSearchText(raw, category, catalog)});
+    };
+    if (q) {
+      categories.forEach(row => (Array.isArray(row && row.items) ? row.items : []).forEach(value => addUnicode(value, row.id)));
+    } else if (categoryId === "recent") {
+      const allowed = new Set(categories.flatMap(row => Array.isArray(row && row.items) ? row.items.map(String) : []));
+      const customAllowed = catalog && catalog.customEmojiEnabled !== false;
+      return (Array.isArray(state.reactionRecent) ? state.reactionRecent : []).filter(value => {
+        const raw = String(value || "");
+        return raw.startsWith(":") ? customAllowed && !!customEmojiByToken(raw.slice(1,-1)) : allowed.has(raw);
+      }).map(value => ({value:String(value), label:reactionValueLabel(value), category:"recent", custom:String(value).startsWith(":")}));
+    } else if (categoryId !== "custom") {
+      reactionCatalogUnicodeItems(catalog, categoryId).forEach(value => addUnicode(value, categoryId));
+    }
+
+    const custom = catalog && catalog.customEmojiEnabled !== false
+      ? (Array.isArray(state.emojiItems) ? state.emojiItems : []).map(item => ({
+          value:`:${item.id}:`, label:String(item.label || item.name || item.id || ""), category:"custom", custom:true,
+          search:[
+            item.id, item.label, item.name, item.pack,
+            ...(Array.isArray(item.aliases) ? item.aliases : [])
+          ].filter(Boolean).join(" ").normalize("NFKC").toLowerCase()
+        }))
+      : [];
+    let items = q ? unicodeItems.concat(custom) : (categoryId === "custom" ? custom : unicodeItems);
+    if (q) {
+      items = items.filter(item => {
+        if (String(item.value || "").toLowerCase().includes(q)) return true;
+        if (String(item.label || "").toLowerCase().includes(q)) return true;
+        if (String(item.search || "").includes(q)) return true;
+        const def = reactionCategoryDefs(catalog).find(d => d.id === item.category);
+        return !!def && t(def.key, def.fallback).toLowerCase().includes(q);
+      });
+    }
+    const seen = new Set();
+    return items.filter(item => item.value && !seen.has(item.value) && seen.add(item.value));
+  }
+
+  function closeReactionPicker() {
+    const old = document.querySelector(".kwc-reaction-picker");
+    if (!old) return;
+    if (old._kwcOutsidePointerHandler) {
+      document.removeEventListener("pointerdown", old._kwcOutsidePointerHandler, true);
+      old._kwcOutsidePointerHandler = null;
+    }
+    old.remove();
+  }
+
+  async function openReactionPicker(anchor, msg) {
+    if (!state.token || !anchor || !msg) return;
+    closeReactionPicker();
+    const catalog = await loadReactionCatalog();
+    if (!anchor.isConnected || !catalog || catalog.enabled === false) return;
+    const picker = document.createElement("div");
+    picker.className = "kwc-reaction-picker";
+    document.body.appendChild(picker);
+    applyDetachedModalTheme(picker);
+
+    const render = (query = "") => {
+      const defs = reactionCategoryDefs(catalog);
+      if (!defs.some(def => def.id === state.reactionPickerCategory)) state.reactionPickerCategory = defs[0]?.id || "smileys";
+      const items = reactionPickerItems(catalog, state.reactionPickerCategory, query);
+      const tabs = defs.map(def => `<button type="button" class="kwc-reaction-category${state.reactionPickerCategory === def.id && !query ? " kwc-active" : ""}" data-reaction-category="${esc(def.id)}" title="${esc(t(def.key, def.fallback))}" aria-label="${esc(t(def.key, def.fallback))}">${esc(def.icon)}</button>`).join("");
+      const grid = items.map(item => `<button type="button" class="kwc-reaction-choice${item.custom ? " kwc-reaction-custom" : ""}" data-reaction-pick="${esc(item.value)}" title="${esc(item.label || item.value)}" aria-label="${esc(item.label || item.value)}">${reactionValueHtml(item.value)}</button>`).join("") || `<div class="kwc-reaction-empty">${esc(t("reaction.searchEmpty", "No matching reactions."))}</div>`;
+      picker.innerHTML = `<div class="kwc-reaction-categories">${tabs}</div>`
+        + `<div class="kwc-reaction-input-row"><input class="kwc-input kwc-reaction-input" type="search" maxlength="64" value="${esc(query)}" placeholder="${esc(t("reaction.searchPlaceholder", "Search emoji"))}"><button type="button" class="kwc-button kwc-reaction-search">${esc(t("button.search", "Search"))}</button></div>`
+        + `<div class="kwc-reaction-grid">${grid}</div>`;
+      installCustomEmojiImageRecovery(picker);
+      picker.querySelectorAll("[data-reaction-category]").forEach(btn => btn.addEventListener("click", event => {
+        event.preventDefault(); event.stopPropagation();
+        state.reactionPickerCategory = btn.dataset.reactionCategory || "smileys";
+        // Keep the picker at the position where it was opened. Category contents
+        // have different heights; re-clamping after every render made larger
+        // categories jump to the chat viewport's top-left corner.
+        render("");
+      }));
+      picker.querySelectorAll("[data-reaction-pick]").forEach(btn => btn.addEventListener("click", event => {
+        event.preventDefault(); event.stopPropagation();
+        setMessageReaction(msg, btn.dataset.reactionPick || "");
+        closeReactionPicker();
+      }));
+      const input = picker.querySelector(".kwc-reaction-input");
+      const search = picker.querySelector(".kwc-reaction-search");
+      const doSearch = () => render(String(input && input.value || "").trim());
+      if (search) search.addEventListener("click", doSearch);
+      if (input) {
+        input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); doSearch(); } });
+      }
+    };
+
+    render("");
+    positionReactionPicker(picker, anchor);
+    const input = picker.querySelector(".kwc-reaction-input");
+    if (input) input.focus();
+    const outsidePointerHandler = event => {
+      if (!picker.isConnected) {
+        document.removeEventListener("pointerdown", outsidePointerHandler, true);
+        return;
+      }
+      if (picker.contains(event.target) || anchor.contains(event.target)) return;
+      closeReactionPicker();
+    };
+    picker._kwcOutsidePointerHandler = outsidePointerHandler;
+    setTimeout(() => {
+      if (picker.isConnected) document.addEventListener("pointerdown", outsidePointerHandler, true);
+    }, 0);
+  }
+
+  function positionReactionPicker(picker, anchor) {
+    if (!picker || !anchor || !picker.isConnected || !anchor.isConnected) return;
+    const rect = anchor.getBoundingClientRect();
+    picker.style.left = Math.max(6, Math.min(window.innerWidth - picker.offsetWidth - 6, rect.left)) + "px";
+    picker.style.top = Math.max(6, Math.min(window.innerHeight - picker.offsetHeight - 6, rect.bottom + 4)) + "px";
+  }
+
+  function installReactionHandlers(el, msg) {
+    if (!el || !msg) return;
+    el.querySelectorAll(".kwc-reaction-pill[data-reaction-value]").forEach(btn => {
+      if (btn.dataset.kwcReactionBound === "1") return;
+      btn.dataset.kwcReactionBound = "1";
+      btn.addEventListener("click", event => {
+        event.preventDefault(); event.stopPropagation();
+        if (!state.token) return;
+        if (state.reactionCatalog && state.reactionCatalog.enabled === false) return;
+        const value = btn.dataset.reactionValue || "";
+        const row = (Array.isArray(msg.reactions) ? msg.reactions : []).find(item => item && String(item.value || "") === value);
+        // Existing chips are normal reaction toggles: join a reaction started by
+        // another user, or remove it when this account is already participating.
+        setMessageReaction(msg, value, !(row && row.mine));
+      });
+    });
+    el.querySelectorAll(".kwc-reaction-action[data-reaction-open]").forEach(btn => {
+      if (btn.dataset.kwcReactionBound === "1") return;
+      btn.dataset.kwcReactionBound = "1";
+      btn.addEventListener("click", event => {
+        event.preventDefault(); event.stopPropagation();
+        openReactionPicker(btn, msg);
+      });
+    });
+    if (el.dataset.kwcReactionTouchBound !== "1") {
+      el.dataset.kwcReactionTouchBound = "1";
+      el.addEventListener("pointerup", event => {
+        if (event.pointerType !== "touch" || state.archiveSelection) return;
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target || target.closest("a,button,input,textarea,select,label,[role=button],.kwc-media,.kwc-reaction-tooltip")) return;
+        document.querySelectorAll(".kwc-msg.kwc-reaction-touch-open").forEach(node => { if (node !== el) node.classList.remove("kwc-reaction-touch-open"); });
+        el.classList.add("kwc-reaction-touch-open");
+        clearTimeout(el._kwcReactionTouchTimer);
+        el._kwcReactionTouchTimer = setTimeout(() => el.classList.remove("kwc-reaction-touch-open"), 5000);
+      }, {passive:true});
+    }
   }
 
   function replyPreviewPlain(msg) {
@@ -3372,6 +4038,7 @@
   }
 
   async function refreshParentUserPreferences(profileStatus = "") {
+    if (state.token) await loadAccountTypingPreferences();
     if (serverUserProfilesActive()) await loadAccountProfiles();
     const payload = buildUserPreferencesPayload();
     if (profileStatus) payload.profileStatus = String(profileStatus);
@@ -3383,7 +4050,19 @@
       if (!trustedParentMessageEvent(event)) return;
       const data = event.data || {};
       if (!data || data.source !== "KWCParent") return;
-      if (data.type === "parentResized") {
+      if (data.type === "notificationSuppressionQuery") {
+        const port = event.ports && event.ports[0];
+        if (port) {
+          const suppress = accountNotificationTargetActivelyViewed({dmThreadId:data.dmThreadId || "", groupRoomId:data.groupRoomId || ""});
+          try { port.postMessage({suppress}); } catch (_) {}
+        }
+        return;
+      }
+      if (data.type === "hostAttention") {
+        state.hostPageVisible = data.visible !== false;
+        state.hostPageFocused = data.focused === true;
+        publishNotificationViewState();
+      } else if (data.type === "parentResized") {
         const b = resizeBounds();
         state.frameNormalWidth = clampNumber(data.width, b.minW, b.maxW, state.frameNormalWidth);
         state.frameNormalHeight = clampNumber(data.height, b.minH, b.maxH, state.frameNormalHeight);
@@ -3511,6 +4190,7 @@
         else if (data.key === "inputBackgroundColor") setUserInputBackgroundColor(data.value);
         else if (data.key === "language") setUserLanguage(data.value);
         else if (data.key === "theme") setUserTheme(data.value);
+        else if (data.key === "typingDisplayEnabled") setAccountTypingDisplayEnabled(data.value !== false).catch(() => {});
       } else if (data.type === "userPreferencesApplyStorage") {
         applyChatSettingPresetStorage(data.storage || {});
         applyFontSizeConfig();
@@ -3814,6 +4494,18 @@
           return;
         }
         addMessage(msg);
+        return;
+      }
+      if (eventType === "reaction") {
+        applyReactionUpdate(JSON.parse(rawData || "{}"));
+        return;
+      }
+      if (eventType === "reaction-status") {
+        handleReactionRequestStatus(JSON.parse(rawData || "{}"));
+        return;
+      }
+      if (eventType === "typing") {
+        handleTypingEvent(JSON.parse(rawData || "{}"));
         return;
       }
       if (eventType === "delete") {
@@ -4168,7 +4860,8 @@
             </button>
             <button type="button" class="kwc-mini-action kwc-reply-cancel" id="kwc-reply-cancel" title="${t("button.cancel", "Cancel")}">×</button>
           </div>
-          <div class="kwc-row">
+          <div class="kwc-row kwc-typing-anchor">
+            <div class="kwc-typing-indicator kwc-hidden" id="kwc-public-typing" aria-live="polite"></div>
             <textarea class="kwc-input kwc-chat-composer" id="kwc-message" rows="1" autocomplete="off" enterkeyhint="send" maxlength="2048" placeholder="${t("placeholder.message", "message")}"></textarea>
             <button class="kwc-button kwc-command kwc-hidden" id="kwc-command" title="${t("button.commands", "Commands")}">/</button>
             <button class="kwc-button kwc-emoji-button kwc-hidden" id="kwc-emoji" title="${t("button.emoji", "Emoji")}">☺</button>
@@ -4290,6 +4983,7 @@
     messageInput.addEventListener("input", () => {
       normalizeSingleLineComposer(messageInput);
       scheduleCommandPanelUpdate();
+      if (String(messageInput.value || "").trim()) notifyPublicTyping();
     });
     messageInput.addEventListener("focus", scheduleCommandPanelUpdate);
     messageInput.addEventListener("blur", () => setTimeout(hideCommandPanel, 160));
@@ -4399,7 +5093,18 @@
   function clearLoginStorage() {
     state.token = "";
     state.username = "";
+    state.userUuid = "";
     state.role = "";
+    state.typingDisplayEnabled = true;
+    state.typingPreferenceLoaded = false;
+    state.notificationAccountDmViews = new Map();
+    state.notificationAccountGroupViews = new Map();
+    scheduleTypingIndicatorRefresh();
+    if (state.emojiFavoritesStorage === "account") {
+      state.emojiFavorites = [];
+      state.emojiFavoritesLoaded = false;
+      refreshFavoriteEmojiUi();
+    }
     try {
       localStorage.removeItem("kwc.token");
       localStorage.removeItem("kwc.username");
@@ -4464,6 +5169,7 @@
 
   function handleAuthExpired(reason = "expired", options = {}) {
     const hadToken = !!state.token;
+    if (hadToken) publishWebPushViewState(true, false).catch(() => {});
     clearLoginStorage();
     clearPrivateChatForAuthLoss();
     updateLoginState();
@@ -5156,6 +5862,18 @@
     state.historyEndNoticePendingUserBottomUntil = 0;
   }
 
+  function markNonScrollLayoutChange(ms = 420) {
+    markNonScrollUiAction();
+    const now = Date.now();
+    const duration = Math.max(120, Math.min(1200, Number(ms) || 420));
+    state.nonScrollLayoutUntil = Math.max(Number(state.nonScrollLayoutUntil || 0), now + duration);
+    // Opening/closing a compose-side panel can resize the message viewport and
+    // emit a synthetic scroll event. Preserve the visible position and do not
+    // let that layout-only event immediately trigger a bottom correction.
+    state.preventBottomStickUntil = Math.max(Number(state.preventBottomStickUntil || 0), now + duration);
+    state.suppressScrollRenderUntil = Math.max(Number(state.suppressScrollRenderUntil || 0), now + duration);
+  }
+
   function deferRenderUntilScrollIdle(options = {}) {
     state.pendingScrollRenderOptions = mergeRenderOptions(state.pendingScrollRenderOptions, options);
     markScrollInteraction();
@@ -5405,7 +6123,7 @@
   function autoFollowBottomThresholdPx(box) {
     const c = state.config || {};
     const configured = Number(c.uiAutoFollowBottomThresholdPx);
-    const base = Number.isFinite(configured) ? Math.max(2, Math.min(300, configured)) : 80;
+    const base = Number.isFinite(configured) ? Math.max(2, Math.min(300, configured)) : 32;
     const viewport = Math.max(1, box && box.clientHeight ? box.clientHeight : 1);
     // Do not let the near-bottom zone become too large on very small or mobile windows.
     return Math.max(2, Math.min(base, Math.round(viewport * 0.35)));
@@ -5719,10 +6437,11 @@
     const canDelete = actions.canDelete;
     const canPin = actions.canPin;
     const canReply = actions.canReply;
-    const miniActionsHtml = (canReply || canPin || canDelete)
-      ? `<span class="kwc-mini-actions">${canReply ? `<button class="kwc-mini-action kwc-reply-action" data-reply="${esc(msg.id)}">${t("button.reply", "reply")}</button>` : ""}${canPin ? `<button class="kwc-mini-action" data-pin="${esc(msg.id)}">${t("button.pin", "pin")}</button>` : ""}${canDelete ? `<button class="kwc-mini-action" data-delete="${esc(msg.id)}">${t("button.delete", "delete")}</button>` : ""}</span>`
+    const canReact = actions.canReact;
+    const miniActionsHtml = (canReply || canReact || canPin || canDelete)
+      ? `<span class="kwc-mini-actions">${canReply ? `<button class="kwc-mini-action kwc-reply-action" data-reply="${esc(msg.id)}">${t("button.reply", "reply")}</button>` : ""}${canReact ? `<button class="kwc-mini-action kwc-reaction-action" data-reaction-open="${esc(msg.id)}" title="${esc(t("reaction.add", "Add reaction"))}" aria-label="${esc(t("reaction.add", "Add reaction"))}">${t("button.react", "React")}</button>` : ""}${canPin ? `<button class="kwc-mini-action" data-pin="${esc(msg.id)}">${t("button.pin", "pin")}</button>` : ""}${canDelete ? `<button class="kwc-mini-action" data-delete="${esc(msg.id)}">${t("button.delete", "delete")}</button>` : ""}</span>`
       : "";
-    el.classList.toggle("kwc-has-mini-actions", !!(canReply || canPin || canDelete));
+    el.classList.toggle("kwc-has-mini-actions", !!(canReply || canReact || canPin || canDelete));
     el.innerHTML = `
       <div class="kwc-meta">
         <span class="kwc-sender${originalSender ? " kwc-sender-has-real" : ""}"${senderAttrs}>${originalSender ? senderNameHtml(shownSender, originalSender, msg.source) : minecraftNameHtml(renderedSender, shouldRenderMinecraftNameColors() && sourceMayRenderMinecraftNameColors(msg.source))}</span><span class="kwc-meta-sep" aria-hidden="true">·</span>${messageOriginSourceHtml(msg)}<span class="kwc-meta-sep" aria-hidden="true">·</span><span class="kwc-time-actions"><span class="kwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(time)}</span>${miniActionsHtml}</span>
@@ -5730,8 +6449,10 @@
       ${replyReferenceHtml(msg)}
       <div class="kwc-text">${messageTextHtml(msg)}</div>
       ${safeImagePreviews(plainDisplayMessageText(msg), key)}
+      ${reactionBarHtml(msg)}
     `;
     installCustomEmojiImageRecovery(el);
+    installReactionHandlers(el, msg);
     updateCustomEmojiOnlyClass(el.querySelector(".kwc-text"));
     installSenderIdentityToggle(el);
     installTimeToggle(el);
@@ -5869,8 +6590,11 @@
     const moderationEnabled = !state.config || state.config.moderationEnabled !== false;
     const canModerate = state.token && moderationEnabled && (state.role === "ADMIN" || state.role === "MODERATOR");
     const canReply = !!(msg && msg.id && !msg.hidden);
+    const reactionsEnabled = !state.reactionCatalog || state.reactionCatalog.enabled !== false;
+    const canReact = !!(state.token && reactionsEnabled && msg && msg.id && !msg.hidden);
     return {
       canReply,
+      canReact,
       canDelete: state.moderationActionsVisible && canModerate && msg && msg.id && !msg.hidden && (state.role === "ADMIN" || !state.config || state.config.allowModeratorMessageDelete !== false),
       canPin: state.moderationActionsVisible && state.token && (state.role === "ADMIN" || state.role === "MODERATOR") && state.pinsEnabled !== false && state.pinsCanPin !== false && msg && msg.id && !msg.hidden && !isMessagePinned(msg.id)
     };
@@ -5884,7 +6608,7 @@
     meta.querySelectorAll(":scope > .kwc-mini-actions, :scope > .kwc-mini-action[data-pin], :scope > .kwc-mini-action[data-delete], :scope .kwc-time-actions > .kwc-mini-actions").forEach(btn => btn.remove());
 
     const actions = messageActionAvailability(msg);
-    const hasActions = !!(actions.canReply || actions.canPin || actions.canDelete);
+    const hasActions = !!(actions.canReply || actions.canReact || actions.canPin || actions.canDelete);
     el.classList.toggle("kwc-has-mini-actions", hasActions);
     if (!hasActions) return;
 
@@ -5916,6 +6640,23 @@
         startReplyToMessage(messageById(String(msg.id)) || msg);
       });
       wrap.appendChild(reply);
+    }
+
+    if (actions.canReact) {
+      const react = document.createElement("button");
+      react.className = "kwc-mini-action kwc-reaction-action";
+      react.type = "button";
+      react.setAttribute("data-reaction-open", String(msg.id));
+      react.textContent = t("button.react", "React");
+      react.title = t("reaction.add", "Add reaction");
+      react.setAttribute("aria-label", t("reaction.add", "Add reaction"));
+      react.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        openReactionPicker(react, messageById(String(msg.id)) || msg);
+      });
+      react.dataset.kwcReactionBound = "1";
+      wrap.appendChild(react);
     }
 
     if (actions.canPin) {
@@ -6798,7 +7539,12 @@
     root.style.setProperty("--kwc-input-font-size", fontPx(state.config.uiInputFontSize, baseFontSize));
     root.style.setProperty("--kwc-button-font-size", fontPx(state.config.uiButtonFontSize, 12));
     root.style.setProperty("--kwc-badge-font-size", fontPx(state.config.uiBadgeFontSize, 10));
-    root.style.setProperty("--kwc-chat-message-font-size", fontPx(userSize == null ? configuredMessageSize : userSize, configuredMessageSize));
+    const effectiveMessageSize = Number(userSize == null ? configuredMessageSize : userSize) || configuredMessageSize;
+    // Typing pills follow the user's chat-message size without becoming tiny.
+    // The configured UI base size is the floor; larger user sizes use about 80%.
+    const typingFontSize = Math.max(baseFontSize, effectiveMessageSize * 0.80);
+    root.style.setProperty("--kwc-chat-message-font-size", fontPx(effectiveMessageSize, configuredMessageSize));
+    root.style.setProperty("--kwc-typing-font-size", fontPx(typingFontSize, baseFontSize));
     syncDetachedModalThemeVariables();
   }
 
@@ -7269,6 +8015,15 @@
       state.userProfilesAllowImportExport = data.uiUserProfilesAllowImportExport !== false;
       const pageSize = Number(data.historyPageSize);
       state.historyPageSize = Number.isFinite(pageSize) && pageSize >= 0 ? Math.floor(pageSize) : 20;
+      state.conversationArchiveEnabled = data.conversationArchiveEnabled === true;
+      state.typingUserDisplayControl = data.typingUserDisplayControl === true;
+      state.typingOpenChatEnabled = data.typingOpenChatEnabled === true;
+      state.typingDmEnabled = data.typingDmEnabled !== false;
+      state.typingGroupChatEnabled = data.typingGroupChatEnabled !== false;
+      if (!state.typingOpenChatEnabled) state.publicTypingEntries.clear();
+      if (!state.typingDmEnabled) state.dmTypingEntry = null;
+      if (!state.typingGroupChatEnabled) state.groupTypingEntries.clear();
+      scheduleTypingIndicatorRefresh();
       state.serverVersion = data.serverVersion || "";
       applyWindowSizeConfig();
       applyWebFontsConfig();
@@ -7305,9 +8060,9 @@
       state.browserNotificationsNotifyGroupChat = data.browserNotificationsNotifyGroupChat !== false;
       state.browserNotificationsNotifyMentions = data.browserNotificationsNotifyMentions !== false;
       state.browserNotificationsNotifyReplies = data.browserNotificationsNotifyReplies !== false;
+      state.browserNotificationsNotifyReactions = data.browserNotificationsNotifyReactions !== false;
       state.browserNotificationsNotifySystem = data.browserNotificationsNotifySystem !== false;
       state.browserNotificationsNotifyKeywords = data.browserNotificationsNotifyKeywords !== false;
-      state.browserNotificationsShowMessagePreview = data.browserNotificationsShowMessagePreview !== false;
       state.webPushEnabled = data.webPushEnabled === true;
       state.webPushAvailable = data.webPushAvailable === true;
       state.webPushVapidPublicKey = data.webPushVapidPublicKey || "";
@@ -7322,11 +8077,18 @@
       state.webPushNotifyGroupChat = data.webPushNotifyGroupChat !== false;
       state.webPushNotifyMentions = data.webPushNotifyMentions !== false;
       state.webPushNotifyReplies = data.webPushNotifyReplies !== false;
+      state.webPushNotifyReactions = data.webPushNotifyReactions !== false;
       state.webPushNotifySystem = data.webPushNotifySystem !== false;
       state.webPushNotifyKeywords = data.webPushNotifyKeywords !== false;
-      state.webPushShowMessagePreview = data.webPushShowMessagePreview !== false;
       state.emojiEnabled = data.emojiEnabled !== false;
       state.emojiShowButton = data.emojiShowButton !== false;
+      state.emojiFavoritesEnabled = data.emojiFavoritesEnabled !== false;
+      state.emojiFavoritesStorage = String(data.emojiFavoritesStorage || "account").toLowerCase() === "browser" ? "browser" : "account";
+      const emojiFavoritesMaxRaw = Number(data.emojiFavoritesMaxPerAccount);
+      state.emojiFavoritesMaxPerAccount = Number.isFinite(emojiFavoritesMaxRaw) ? Math.max(0, Math.floor(emojiFavoritesMaxRaw)) : 100;
+      state.emojiFavoritesLoaded = state.emojiFavoritesStorage !== "account";
+      if (!state.emojiFavoritesEnabled || state.emojiFavoritesStorage === "account") state.emojiFavorites = [];
+      else state.emojiFavorites = limitEmojiFavoriteIds(state.emojiFavorites);
       state.emojiRenderSizePx = Math.max(16, Math.min(1024, Number(data.emojiRenderSizePx) || 32));
       state.emojiPickerSizePx = Math.max(24, Math.min(1024, Number(data.emojiPickerSizePx) || 44));
       applyEmojiPickerSize();
@@ -7596,12 +8358,13 @@
       if (state.minimized || guestChatHidden()) return;
       const now = Date.now();
       const directScrollInputActive = now - Number(state.lastDirectScrollInputAt || 0) <= Math.max(220, scrollInteractionIdleMs() + 120);
+      const nonScrollLayoutChange = !directScrollInputActive && now < Number(state.nonScrollLayoutUntil || 0);
       let replyProgrammaticScroll = now < Number(state.replyJumpUntil || 0);
       if (replyProgrammaticScroll && !directScrollInputActive && replyJumpLooksUserMoved(box, Number(state.replyJumpStartedAt || 0))) {
         cancelReplyJumpForUserScroll("scroll-drift");
         replyProgrammaticScroll = false;
       }
-      const programmaticScroll = !directScrollInputActive && (now < Number(state.suppressScrollRenderUntil || 0) || replyProgrammaticScroll);
+      const programmaticScroll = !directScrollInputActive && (now < Number(state.suppressScrollRenderUntil || 0) || replyProgrammaticScroll || nonScrollLayoutChange);
       const keepBottom = isAutoFollowBottom(box) && !state.historyHasAfter;
       const preloadThreshold = historyPreloadThresholdPx(box);
       const shouldLoadOlder = box.scrollTop <= preloadThreshold;
@@ -7616,7 +8379,9 @@
         maybeShowHistoryEndNoticeFromUserScroll(box, "scroll");
       }
 
-      if (!state.suppressAutoFollowUpdate && !programmaticScroll) {
+      if (nonScrollLayoutChange) {
+        // Preserve the existing follow intent. A panel resize is not user scroll.
+      } else if (!state.suppressAutoFollowUpdate && !programmaticScroll) {
         state.lastUserScrollAt = Date.now();
         state.autoFollowLatest = keepBottom && Date.now() >= Number(state.preventBottomStickUntil || 0);
         markScrollInteraction();
@@ -8079,6 +8844,21 @@
       markStreamActivity();
       loadEmojis({force: true, retryOnFailure: true}).catch(() => {});
     });
+    es.addEventListener("reaction-catalog", () => {
+      markStreamActivity();
+      state.reactionCatalog = null;
+      state.reactionCatalogLoadedAt = 0;
+      closeReactionPicker();
+      loadReactionCatalog(true).then(refreshVisibleReactionBars).catch(() => {});
+    });
+    es.addEventListener("notification-view-state", e => {
+      markStreamActivity();
+      try { applyAccountNotificationViewState(JSON.parse(e.data || "{}")); } catch (_) {}
+    });
+    es.addEventListener("typing-config", () => {
+      markStreamActivity();
+      loadConfig().catch(() => {});
+    });
     es.addEventListener("chat", e => {
       markStreamActivity();
       publishStandalonePipStream("chat", e.data || "");
@@ -8092,9 +8872,29 @@
           refreshScrollAffordances(document.getElementById("kwc-messages"));
           return;
         }
+        clearTypingIndicatorsFromMessages("public", [msg]);
         addMessage(msg);
         maybeNotifyChatMessage(msg);
       } catch (_) {}
+    });
+    es.addEventListener("reaction", e => {
+      markStreamActivity();
+      publishStandalonePipStream("reaction", e.data || "");
+      try { applyReactionUpdate(JSON.parse(e.data || "{}")); } catch (_) {}
+    });
+    es.addEventListener("reaction-status", e => {
+      markStreamActivity();
+      publishStandalonePipStream("reaction-status", e.data || "");
+      try { handleReactionRequestStatus(JSON.parse(e.data || "{}")); } catch (_) {}
+    });
+    es.addEventListener("reaction-notification", e => {
+      markStreamActivity();
+      try { maybeNotifyReaction(JSON.parse(e.data || "{}")); } catch (_) {}
+    });
+    es.addEventListener("typing", e => {
+      markStreamActivity();
+      publishStandalonePipStream("typing", e.data || "");
+      try { handleTypingEvent(JSON.parse(e.data || "{}")); } catch (_) {}
     });
     es.addEventListener("delete", e => {
       publishStandalonePipStream("delete", e.data || "");
@@ -8105,10 +8905,12 @@
       try {
         const data = JSON.parse(e.data || "{}");
         if (!state.directMessageEnabled || !state.token) return;
+        const eventThreadId = String(data.threadId || "").trim();
+        const wasVisible = accountNotificationTargetActivelyViewed({dmThreadId: eventThreadId});
         loadDirectMessageThreads(true).then(() => {
-          const thread = (state.dmThreads || []).find(t => String(t.id || "") === String(data.threadId || ""));
-          if (thread) maybeNotifyDirectThread(thread);
-          if (state.dmModalOpen && state.dmActiveThreadId && (!data.threadId || data.threadId === state.dmActiveThreadId)) {
+          const thread = (state.dmThreads || []).find(t => String(t.id || "") === eventThreadId);
+          if (thread && !wasVisible && !accountNotificationTargetActivelyViewed({dmThreadId: eventThreadId})) maybeNotifyDirectThread(thread);
+          if (state.dmModalOpen && state.dmActiveThreadId && (!eventThreadId || eventThreadId === String(state.dmActiveThreadId || ""))) {
             loadDirectMessageMessages(state.dmActiveThreadId);
           }
         });
@@ -8119,10 +8921,12 @@
       try {
         const data = JSON.parse(e.data || "{}");
         if (!state.groupChatEnabled || !state.token) return;
+        const eventRoomId = String(data.roomId || "").trim();
+        const wasVisible = accountNotificationTargetActivelyViewed({groupRoomId: eventRoomId});
         loadGroupChatRooms(true).then(() => {
-          const room = (state.groupRooms || []).find(r => String(r.id || "") === String(data.roomId || ""));
-          if (room) maybeNotifyGroupRoom(room);
-          if (state.groupModalOpen && state.groupActiveRoomId && (!data.roomId || data.roomId === state.groupActiveRoomId)) {
+          const room = (state.groupRooms || []).find(r => String(r.id || "") === eventRoomId);
+          if (room && data.message && typeof data.message === "object" && !wasVisible && !accountNotificationTargetActivelyViewed({groupRoomId: eventRoomId})) maybeNotifyGroupMessage(data.message, room);
+          if (state.groupModalOpen && state.groupActiveRoomId && (!eventRoomId || eventRoomId === String(state.groupActiveRoomId || ""))) {
             loadGroupChatMessages(state.groupActiveRoomId);
           }
         });
@@ -8185,14 +8989,17 @@
   }
 
   function hideEmojiPanel() {
-    state.emojiPanelOpen = false;
     const panel = document.getElementById("kwc-emoji-panel");
+    if (state.emojiPanelOpen || (panel && !panel.classList.contains("kwc-hidden"))) markNonScrollLayoutChange();
+    state.emojiPanelOpen = false;
+    resetEmojiSearchState("public");
     if (panel) panel.classList.add("kwc-hidden");
     updateEmojiResizeHandleVisibility();
   }
 
   function toggleEmojiPanel() {
     if (!canUseCustomEmoji()) return;
+    markNonScrollLayoutChange();
     state.emojiPanelOpen = !state.emojiPanelOpen;
     renderEmojiPanel();
   }
@@ -8268,6 +9075,7 @@
       input.value = current + token;
       try { input.selectionStart = input.selectionEnd = input.value.length; } catch (_) {}
     }
+    rememberRecentCustomEmoji(id);
     input.focus();
   }
 
@@ -8282,13 +9090,367 @@
     if (!item || !item.id || !item.url) return "";
     const label = item.label || item.name || item.id;
     const size = emojiPickerSizePx();
-    return `<button type="button" class="kwc-emoji-item" data-emoji-id="${esc(item.id)}" title="${esc(label)}"><img src="${esc(item.url)}" alt="${esc(label)}" loading="lazy" draggable="false" style="width:${size}px;height:${size}px;"><span>${esc(label)}</span></button>`;
+    const favorite = isFavoriteCustomEmoji(item.id);
+    const favoriteLabel = favorite
+      ? t("emoji.favoriteRemove", "Remove from favorites")
+      : t("emoji.favoriteAdd", "Add to favorites");
+    const favoriteControl = emojiFavoritesAvailable()
+      ? `<button type="button" class="kwc-emoji-favorite-toggle${favorite ? " kwc-active" : ""}" data-emoji-favorite-id="${esc(item.id)}" title="${esc(favoriteLabel)}" aria-label="${esc(favoriteLabel)}">${favorite ? "★" : "☆"}</button>`
+      : "";
+    return `<div class="kwc-emoji-item-wrap">`
+      + `<button type="button" class="kwc-emoji-item" data-emoji-id="${esc(item.id)}" title="${esc(label)}"><img src="${esc(item.url)}" alt="${esc(label)}" loading="lazy" draggable="false" style="width:${size}px;height:${size}px;"><span>${esc(label)}</span></button>`
+      + favoriteControl
+      + `</div>`;
+  }
+
+  function syncFavoriteCustomEmojiButtons(root = document) {
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll("[data-emoji-favorite-id]").forEach(btn => {
+      const active = isFavoriteCustomEmoji(btn.dataset.emojiFavoriteId || "");
+      const label = active
+        ? t("emoji.favoriteRemove", "Remove from favorites")
+        : t("emoji.favoriteAdd", "Add to favorites");
+      btn.classList.toggle("kwc-active", active);
+      btn.textContent = active ? "★" : "☆";
+      btn.title = label;
+      btn.setAttribute("aria-label", label);
+    });
+  }
+
+  function updateEmojiVirtualTabCounts(root = document) {
+    if (!root || !root.querySelectorAll) return;
+    const counts = new Map([
+      [KWC_EMOJI_RECENT_PACK, recentCustomEmojiItems(state.emojiItems).length],
+      [KWC_EMOJI_FAVORITES_PACK, favoriteCustomEmojiItems(state.emojiItems).length]
+    ]);
+    counts.forEach((count, packId) => {
+      root.querySelectorAll(`[data-emoji-pack="${packId}"] .kwc-emoji-tab-count`).forEach(node => {
+        node.textContent = String(count);
+      });
+    });
+  }
+
+  function refreshFavoriteEmojiGridIfVisible(panel) {
+    if (!panel || !panel.isConnected) return;
+    const kind = panel.id === "kwc-dm-emoji-panel" ? "dm" : (panel.id === "kwc-group-emoji-panel" ? "group" : "public");
+    const ctx = emojiPanelContext(kind);
+    if (ctx.searchOpen || ctx.selected !== KWC_EMOJI_FAVORITES_PACK) return;
+    const scroll = panel.querySelector(".kwc-emoji-scroll");
+    if (!scroll) return;
+    const oldTop = Number(scroll.scrollTop || 0);
+    const shown = favoriteCustomEmojiItems(state.emojiItems);
+    scroll.innerHTML = emojiPanelGridHtml(shown, ctx.selected, false, "");
+    installEmojiItemHandlers(panel);
+    requestAnimationFrame(() => {
+      if (scroll.isConnected) scroll.scrollTop = Math.max(0, Math.min(oldTop, scroll.scrollHeight - scroll.clientHeight));
+    });
+  }
+
+  function refreshFavoriteEmojiUi() {
+    ["kwc-emoji-panel", "kwc-dm-emoji-panel", "kwc-group-emoji-panel"].forEach(id => {
+      const panel = document.getElementById(id);
+      if (panel) refreshFavoriteEmojiGridIfVisible(panel);
+    });
+    syncFavoriteCustomEmojiButtons(document);
+    updateEmojiVirtualTabCounts(document);
   }
 
   function installEmojiItemHandlers(panel) {
     panel.querySelectorAll("[data-emoji-id]").forEach(btn => {
-      btn.addEventListener("click", () => insertCustomEmoji(btn.dataset.emojiId || ""));
+      if (btn.dataset.kwcEmojiPickInstalled === "1") return;
+      btn.dataset.kwcEmojiPickInstalled = "1";
+      btn.addEventListener("click", () => {
+        insertCustomEmoji(btn.dataset.emojiId || "");
+        refreshRecentEmojiGridIfVisible(panel);
+        updateEmojiVirtualTabCounts(document);
+      });
     });
+    panel.querySelectorAll("[data-emoji-favorite-id]").forEach(btn => {
+      if (btn.dataset.kwcEmojiFavoriteInstalled === "1") return;
+      btn.dataset.kwcEmojiFavoriteInstalled = "1";
+      btn.addEventListener("click", async event => {
+        event.preventDefault();
+        if (btn.disabled) return;
+        btn.disabled = true;
+        try { await toggleFavoriteCustomEmoji(btn.dataset.emojiFavoriteId || ""); }
+        finally { btn.disabled = false; refreshFavoriteEmojiUi(); }
+      });
+    });
+  }
+
+  function emojiPanelContext(kind = "public") {
+    if (kind === "dm") return {
+      selected: String(state.dmEmojiSelectedPack || ""),
+      setSelected: value => { state.dmEmojiSelectedPack = String(value || ""); },
+      searchOpen: !!state.dmEmojiSearchOpen,
+      setSearchOpen: value => { state.dmEmojiSearchOpen = !!value; },
+      query: String(state.dmEmojiSearchQuery || ""),
+      setQuery: value => { state.dmEmojiSearchQuery = String(value || ""); }
+    };
+    if (kind === "group") return {
+      selected: String(state.groupEmojiSelectedPack || ""),
+      setSelected: value => { state.groupEmojiSelectedPack = String(value || ""); },
+      searchOpen: !!state.groupEmojiSearchOpen,
+      setSearchOpen: value => { state.groupEmojiSearchOpen = !!value; },
+      query: String(state.groupEmojiSearchQuery || ""),
+      setQuery: value => { state.groupEmojiSearchQuery = String(value || ""); }
+    };
+    return {
+      selected: String(state.emojiSelectedPack || localStorage.getItem("kwc.emojiPack") || ""),
+      setSelected: value => {
+        state.emojiSelectedPack = String(value || "");
+        try { localStorage.setItem("kwc.emojiPack", state.emojiSelectedPack); } catch (_) {}
+      },
+      searchOpen: !!state.emojiSearchOpen,
+      setSearchOpen: value => { state.emojiSearchOpen = !!value; },
+      query: String(state.emojiSearchQuery || ""),
+      setQuery: value => { state.emojiSearchQuery = String(value || ""); }
+    };
+  }
+
+  function emojiPanelElement(kind = "public") {
+    if (kind === "dm") return document.getElementById("kwc-dm-emoji-panel");
+    if (kind === "group") return document.getElementById("kwc-group-emoji-panel");
+    return document.getElementById("kwc-emoji-panel");
+  }
+
+  function emojiComposeInput(kind = "public") {
+    if (kind === "dm") return document.getElementById("kwc-dm-input");
+    if (kind === "group") return document.getElementById("kwc-group-input");
+    return document.getElementById("kwc-message");
+  }
+
+  function emojiSearchHost(kind = "public") {
+    if (kind === "dm") {
+      const input = document.getElementById("kwc-dm-input");
+      return input ? input.closest(".kwc-dm-conversation") : null;
+    }
+    if (kind === "group") {
+      const input = document.getElementById("kwc-group-input");
+      return input ? input.closest(".kwc-dm-conversation") : null;
+    }
+    const input = document.getElementById("kwc-message");
+    return input ? input.closest(".kwc-form") : null;
+  }
+
+  function emojiSearchOverlay(kind = "public") {
+    const host = emojiSearchHost(kind);
+    return host ? host.querySelector(`:scope > .kwc-emoji-search-overlay[data-emoji-search-kind="${kind}"]`) : null;
+  }
+
+  function resetEmojiSearchState(kind = "public") {
+    const ctx = emojiPanelContext(kind);
+    ctx.setSearchOpen(false);
+    ctx.setQuery("");
+    const overlay = emojiSearchOverlay(kind);
+    if (overlay) overlay.remove();
+  }
+
+  function positionEmojiSearchOverlay(kind = "public") {
+    const overlay = emojiSearchOverlay(kind);
+    const host = emojiSearchHost(kind);
+    const compose = emojiComposeInput(kind);
+    if (!overlay || !host || !compose || !compose.isConnected) return;
+    const hostRect = host.getBoundingClientRect();
+    const rect = compose.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    overlay.style.left = Math.round(rect.left - hostRect.left - 1) + "px";
+    overlay.style.top = Math.round(rect.top - hostRect.top - 1) + "px";
+    overlay.style.width = Math.round(rect.width + 2) + "px";
+    overlay.style.height = Math.round(Math.max(32, rect.height + 2)) + "px";
+  }
+
+  function refreshEmojiSearchOverlayPositions() {
+    if (state.emojiSearchOpen) positionEmojiSearchOverlay("public");
+    if (state.dmEmojiSearchOpen) positionEmojiSearchOverlay("dm");
+    if (state.groupEmojiSearchOpen) positionEmojiSearchOverlay("group");
+  }
+
+  function updateEmojiSearchResults(kind = "public") {
+    const panel = emojiPanelElement(kind);
+    if (!panel) return;
+    const current = emojiPanelContext(kind);
+    const scroll = panel.querySelector(".kwc-emoji-scroll");
+    if (!scroll) return;
+    const matches = emojiPanelShownItems(state.emojiItems, current.selected, true, current.query);
+    scroll.innerHTML = emojiPanelGridHtml(matches, current.selected, true, current.query);
+    scroll.scrollTop = 0;
+    installEmojiItemHandlers(panel);
+  }
+
+  function renderEmojiSearchOverlay(kind = "public", focus = false) {
+    const ctx = emojiPanelContext(kind);
+    const host = emojiSearchHost(kind);
+    if (!ctx.searchOpen || !host) {
+      const old = emojiSearchOverlay(kind);
+      if (old) old.remove();
+      return;
+    }
+    let overlay = emojiSearchOverlay(kind);
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.className = "kwc-emoji-search-overlay";
+      overlay.dataset.emojiSearchKind = kind;
+      overlay.innerHTML = `<span class="kwc-emoji-search-float-icon" aria-hidden="true">🔍</span><input type="search" class="kwc-input kwc-emoji-search-input" data-emoji-search-input maxlength="80" placeholder="${esc(t("emoji.searchPlaceholder", "Search emojis"))}">`;
+      host.appendChild(overlay);
+      const input = overlay.querySelector("[data-emoji-search-input]");
+      if (input) {
+        input.addEventListener("input", () => {
+          const current = emojiPanelContext(kind);
+          current.setQuery(input.value || "");
+          updateEmojiSearchResults(kind);
+        });
+        input.addEventListener("keydown", event => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          event.stopPropagation();
+          closeEmojiSearch(kind);
+        });
+      }
+    }
+    const input = overlay.querySelector("[data-emoji-search-input]");
+    if (input && input.value !== ctx.query) input.value = ctx.query;
+    positionEmojiSearchOverlay(kind);
+    if (focus && input) {
+      setTimeout(() => {
+        if (!input.isConnected) return;
+        input.focus();
+        try { input.select(); } catch (_) {}
+      }, 0);
+    }
+  }
+
+  function closeEmojiSearch(kind = "public", options = {}) {
+    const panel = emojiPanelElement(kind);
+    const ctx = emojiPanelContext(kind);
+    if (!ctx.searchOpen && !ctx.query && !emojiSearchOverlay(kind)) return;
+    resetEmojiSearchState(kind);
+    if (options.render !== false && panel && panel.isConnected && !panel.classList.contains("kwc-hidden")) {
+      renderCustomEmojiPanel(panel, kind);
+    }
+  }
+
+  function installEmojiSearchDismissHandlers() {
+    if (document.documentElement.dataset.kwcEmojiSearchDismissInstalled === "1") return;
+    document.documentElement.dataset.kwcEmojiSearchDismissInstalled = "1";
+    document.addEventListener("click", event => {
+      const target = event.target && event.target.closest ? event.target : null;
+      if (!target) return;
+      if (target.closest(".kwc-emoji-search-overlay") || target.closest("[data-emoji-search-toggle]")) return;
+      if (state.emojiSearchOpen) closeEmojiSearch("public");
+      if (state.dmEmojiSearchOpen) closeEmojiSearch("dm");
+      if (state.groupEmojiSearchOpen) closeEmojiSearch("group");
+    });
+    window.addEventListener("resize", refreshEmojiSearchOverlayPositions, {passive: true});
+  }
+
+  function emojiPanelShownItems(items, selectedPack, searchOpen, query) {
+    const arr = Array.isArray(items) ? items : [];
+    if (searchOpen && normalizeCustomEmojiSearchText(query)) return searchCustomEmojiItems(arr, query);
+    if (selectedPack === KWC_EMOJI_RECENT_PACK) return recentCustomEmojiItems(arr);
+    if (selectedPack === KWC_EMOJI_FAVORITES_PACK) return favoriteCustomEmojiItems(arr);
+    return selectedPack ? arr.filter(item => String(item && item.pack || "") === selectedPack) : arr;
+  }
+
+  function emojiPanelGridHtml(shown, selectedPack, searchOpen, query) {
+    const arr = Array.isArray(shown) ? shown : [];
+    if (arr.length) return `<div class="kwc-emoji-grid">${arr.map(emojiButtonHtml).join("")}</div>`;
+    const searching = searchOpen && !!normalizeCustomEmojiSearchText(query);
+    const text = searching
+      ? t("emoji.searchEmpty", "No matching emojis.")
+      : selectedPack === KWC_EMOJI_RECENT_PACK
+        ? t("emoji.emptyRecent", "No recently used emojis.")
+        : selectedPack === KWC_EMOJI_FAVORITES_PACK
+          ? t("emoji.emptyFavorites", "No favorite emojis.")
+          : t("emoji.emptyPack", "No emojis here.");
+    return `<div class="kwc-emoji-empty">${esc(text)}</div>`;
+  }
+
+  function setRenderedEmojiPanelHeight(kind, panel) {
+    if (kind === "dm") setDirectMessageEmojiPanelHeight(panel);
+    else if (kind === "group") setGroupChatEmojiPanelHeight(panel);
+    else setEmojiPanelHeight(emojiPanelHeightPx(), false);
+  }
+
+  function refreshRecentEmojiGridIfVisible(panel) {
+    if (!panel || !panel.isConnected) return;
+    const kind = panel.id === "kwc-dm-emoji-panel" ? "dm" : (panel.id === "kwc-group-emoji-panel" ? "group" : "public");
+    const ctx = emojiPanelContext(kind);
+    if (ctx.searchOpen || ctx.selected !== KWC_EMOJI_RECENT_PACK) return;
+    const scroll = panel.querySelector(".kwc-emoji-scroll");
+    if (!scroll) return;
+    const shown = recentCustomEmojiItems(state.emojiItems);
+    scroll.innerHTML = emojiPanelGridHtml(shown, ctx.selected, false, "");
+    installEmojiItemHandlers(panel);
+  }
+
+  function renderCustomEmojiPanel(panel, kind = "public") {
+    if (!panel) return;
+    const previousTabs = panel.querySelector(".kwc-emoji-tabs");
+    const previousTabsScrollLeft = previousTabs ? Number(previousTabs.scrollLeft || 0) : 0;
+    const packs = Array.isArray(state.emojiPacks) ? state.emojiPacks : [];
+    const items = Array.isArray(state.emojiItems) ? state.emojiItems : [];
+    if (!items.length) {
+      panel.innerHTML = `<div class="kwc-emoji-scroll"><div class="kwc-emoji-empty">${esc(t("emoji.empty", "No emojis configured."))}</div></div>`;
+      panel.classList.remove("kwc-hidden");
+      setRenderedEmojiPanelHeight(kind, panel);
+      installEmojiPanelWheelStep(panel);
+      if (kind === "public") updateEmojiResizeHandleVisibility();
+      return;
+    }
+
+    const ctx = emojiPanelContext(kind);
+    let selectedPack = ctx.selected;
+    const realPackIds = new Set(packs.map(pack => String(pack && pack.id || "")).filter(Boolean));
+    if (selectedPack === KWC_EMOJI_FAVORITES_PACK && !emojiFavoritesAvailable()) selectedPack = "";
+    if (selectedPack !== KWC_EMOJI_RECENT_PACK && selectedPack !== KWC_EMOJI_FAVORITES_PACK && (!selectedPack || !realPackIds.has(selectedPack))) {
+      selectedPack = packs[0] && packs[0].id ? String(packs[0].id) : "";
+      ctx.setSelected(selectedPack);
+    }
+    const recentCount = recentCustomEmojiItems(items).length;
+    const favoriteCount = favoriteCustomEmojiItems(items).length;
+    const tabs = [
+      `<button type="button" class="kwc-emoji-tab kwc-emoji-recent-tab${selectedPack === KWC_EMOJI_RECENT_PACK && !ctx.searchOpen ? " kwc-active" : ""}" data-emoji-pack="${KWC_EMOJI_RECENT_PACK}">${esc(t("emoji.recent", "Recent"))} <span class="kwc-emoji-tab-count">${esc(String(recentCount))}</span></button>`,
+      ...(emojiFavoritesAvailable() ? [`<button type="button" class="kwc-emoji-tab kwc-emoji-favorites-tab${selectedPack === KWC_EMOJI_FAVORITES_PACK && !ctx.searchOpen ? " kwc-active" : ""}" data-emoji-pack="${KWC_EMOJI_FAVORITES_PACK}">${esc(t("emoji.favorites", "Favorites"))} <span class="kwc-emoji-tab-count">${esc(String(favoriteCount))}</span></button>`] : []),
+      ...packs.map(pack => {
+        const id = String(pack.id || "");
+        return `<button type="button" class="kwc-emoji-tab${id === selectedPack && !ctx.searchOpen ? " kwc-active" : ""}" data-emoji-pack="${esc(id)}">${esc(pack.label || id)} <span>${esc(pack.count || "")}</span></button>`;
+      })
+    ].join("");
+    const shown = emojiPanelShownItems(items, selectedPack, ctx.searchOpen, ctx.query);
+    panel.innerHTML = `<div class="kwc-emoji-toolbar"><button type="button" class="kwc-emoji-search-toggle${ctx.searchOpen ? " kwc-active" : ""}" data-emoji-search-toggle title="${esc(t("button.search", "Search"))}" aria-label="${esc(t("button.search", "Search"))}">🔍</button><div class="kwc-emoji-tabs">${tabs}</div></div>`
+      + `<div class="kwc-emoji-scroll">${emojiPanelGridHtml(shown, selectedPack, ctx.searchOpen, ctx.query)}</div>`;
+    panel.classList.remove("kwc-hidden");
+    const renderedTabs = panel.querySelector(".kwc-emoji-tabs");
+    if (renderedTabs && previousTabsScrollLeft > 0) {
+      const maxScrollLeft = Math.max(0, renderedTabs.scrollWidth - renderedTabs.clientWidth);
+      renderedTabs.scrollLeft = Math.min(previousTabsScrollLeft, maxScrollLeft);
+    }
+    setRenderedEmojiPanelHeight(kind, panel);
+    installEmojiPanelWheelStep(panel);
+    installEmojiSearchDismissHandlers();
+    renderEmojiSearchOverlay(kind, false);
+
+    panel.querySelectorAll("[data-emoji-pack]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const next = String(btn.dataset.emojiPack || "");
+        ctx.setSelected(next);
+        ctx.setSearchOpen(false);
+        ctx.setQuery("");
+        renderCustomEmojiPanel(panel, kind);
+      });
+    });
+    const toggle = panel.querySelector("[data-emoji-search-toggle]");
+    if (toggle) toggle.addEventListener("click", () => {
+      const current = emojiPanelContext(kind);
+      const open = !current.searchOpen;
+      current.setSearchOpen(open);
+      if (!open) current.setQuery("");
+      renderCustomEmojiPanel(panel, kind);
+      if (open) renderEmojiSearchOverlay(kind, true);
+    });
+    installEmojiItemHandlers(panel);
+    if (kind === "public") updateEmojiResizeHandleVisibility();
   }
 
   function renderEmojiPanel() {
@@ -8298,54 +9460,7 @@
       hideEmojiPanel();
       return;
     }
-
-    const packs = Array.isArray(state.emojiPacks) ? state.emojiPacks : [];
-    const items = Array.isArray(state.emojiItems) ? state.emojiItems : [];
-    if (!items.length) {
-      panel.innerHTML = `<div class="kwc-emoji-scroll"><div class="kwc-emoji-empty">${esc(t("emoji.empty", "No emojis configured."))}</div></div>`;
-      panel.classList.remove("kwc-hidden");
-      setEmojiPanelHeight(emojiPanelHeightPx(), false);
-      installEmojiPanelWheelStep(panel);
-      updateEmojiResizeHandleVisibility();
-      return;
-    }
-
-    let selectedPack = String(state.emojiSelectedPack || localStorage.getItem("kwc.emojiPack") || "");
-    if (!selectedPack || (packs.length && !packs.some(pack => String(pack.id || "") === selectedPack))) {
-      selectedPack = packs[0] && packs[0].id ? String(packs[0].id) : "";
-    }
-    state.emojiSelectedPack = selectedPack;
-    try { localStorage.setItem("kwc.emojiPack", selectedPack); } catch (_) {}
-
-    const packTabs = packs.length > 1
-      ? `<div class="kwc-emoji-tabs">${packs.map(pack => {
-          const id = String(pack.id || "");
-          return `<button type="button" class="kwc-emoji-tab${id === selectedPack ? " kwc-active" : ""}" data-emoji-pack="${esc(id)}">${esc(pack.label || id)} <span>${esc(pack.count || "")}</span></button>`;
-        }).join("")}</div>`
-      : "";
-    const shown = selectedPack ? items.filter(item => String(item.pack || "") === selectedPack) : items;
-    panel.innerHTML = packTabs + `<div class="kwc-emoji-scroll"><div class="kwc-emoji-grid">${shown.map(emojiButtonHtml).join("")}</div></div>`;
-    panel.classList.remove("kwc-hidden");
-    setEmojiPanelHeight(emojiPanelHeightPx(), false);
-    installEmojiPanelWheelStep(panel);
-
-    panel.querySelectorAll("[data-emoji-pack]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const pack = btn.dataset.emojiPack || "";
-        state.emojiSelectedPack = pack;
-        try { localStorage.setItem("kwc.emojiPack", pack); } catch (_) {}
-        panel.querySelectorAll(".kwc-emoji-tab").forEach(tab => tab.classList.toggle("kwc-active", tab === btn));
-        const grid = panel.querySelector(".kwc-emoji-grid");
-        if (grid) grid.innerHTML = items.filter(item => String(item.pack || "") === pack).map(emojiButtonHtml).join("");
-        const scroll = emojiScrollElement(panel);
-        if (scroll) scroll.scrollTop = 0;
-        setEmojiPanelHeight(emojiPanelHeightPx(), false);
-        installEmojiItemHandlers(panel);
-        updateEmojiResizeHandleVisibility();
-      });
-    });
-    installEmojiItemHandlers(panel);
-    updateEmojiResizeHandleVisibility();
+    renderCustomEmojiPanel(panel, "public");
   }
 
   function emojiCatalogCacheKey() {
@@ -9629,7 +10744,7 @@
     const msg = Object.assign({}, pin, {id: pin.messageId || pin.pinId});
     const el = renderMessageElement(msg);
     el.classList.add("kwc-pinned-item");
-    el.querySelectorAll(".kwc-mini-actions, [data-delete], [data-pin], [data-reply]").forEach(node => node.remove());
+    el.querySelectorAll(".kwc-mini-actions, [data-delete], [data-pin], [data-reply], [data-reaction-open]").forEach(node => node.remove());
     el.classList.remove("kwc-has-mini-actions");
     const meta = el.querySelector(".kwc-meta");
     if (meta) {
@@ -9824,7 +10939,7 @@
     markMessageDeleted(id);
   }
 
-  async function openAdminModal() {
+  async function openAdminModal(initialPanel = "summary") {
     if (!state.token || !(state.role === "ADMIN" || state.role === "MODERATOR")) return;
 
     const canManageMutes = (!state.config || state.config.moderationEnabled !== false) && (state.role === "ADMIN" || (!state.config || state.config.allowModeratorGuestMute !== false));
@@ -9853,7 +10968,7 @@
     wrap.querySelectorAll("[data-panel]").forEach(btn => {
       btn.onclick = () => loadAdminPanel(wrap, btn.dataset.panel);
     });
-    await loadAdminPanel(wrap, "summary");
+    await loadAdminPanel(wrap, state.role === "ADMIN" ? initialPanel : (initialPanel === "mutes" ? "mutes" : "summary"));
   }
 
   async function loadAdminPanel(wrap, panel) {
@@ -9866,6 +10981,7 @@
       // Compatibility for any stale in-page state that still references the old Sessions tab.
       if (panel === "sessions") return renderAdminAccounts(content);
       if (panel === "emojis") return renderAdminEmojis(content);
+      if (panel === "reactions") return renderAdminReactions(content);
       if (panel === "filter") return renderAdminFilter(content);
       if (panel === "settings") return renderAdminSettings(content);
     } catch (e) {
@@ -9963,7 +11079,7 @@
       syncAdminSettingElements(content, persisted, selector, true);
       // Refresh public runtime config after the Admin form has been verified. It is
       // intentionally not used as the source of truth for the form itself.
-      loadConfig().catch(() => {});
+      await loadConfig();
       if (resultBox) resultBox.textContent = fmt("admin.settingsSaved", "Saved. Sessions updated: {updated}, expired: {expired}", {updated:Number(res.sessionsUpdated || 0), expired:Number(res.sessionsExpired || 0)});
       return true;
     } catch (err) {
@@ -9973,6 +11089,91 @@
     } finally {
       if (saveButton) saveButton.disabled = false;
     }
+  }
+
+  function reactionAdminCategoryLabel(id) {
+    const map = {
+      smileys:["reaction.categorySmileys","Smileys"], people:["reaction.categoryPeople","People"],
+      animals:["reaction.categoryAnimals","Animals & nature"], food:["reaction.categoryFood","Food"],
+      activities:["reaction.categoryActivities","Activities"], objects:["reaction.categoryObjects","Objects"],
+      symbols:["reaction.categorySymbols","Symbols"]
+    };
+    const row = map[String(id || "")] || ["admin.reactions", String(id || "")];
+    return t(row[0], row[1]);
+  }
+
+  function reactionAliasEditorText(catalog) {
+    const aliases = catalog && catalog.searchAliases && typeof catalog.searchAliases === "object" ? catalog.searchAliases : {};
+    const seen = new Set();
+    const lines = [];
+    const categories = Array.isArray(catalog && catalog.categories) ? catalog.categories : [];
+    categories.forEach(row => (Array.isArray(row && row.items) ? row.items : []).forEach(value => {
+      const emoji = String(value || "");
+      if (!emoji || seen.has(emoji)) return;
+      seen.add(emoji);
+      const words = String(aliases[emoji] || "").trim();
+      if (words) lines.push(`${emoji} = ${words}`);
+    }));
+    Object.keys(aliases).forEach(emoji => {
+      if (seen.has(emoji)) return;
+      const words = String(aliases[emoji] || "").trim();
+      if (words) lines.push(`${emoji} = ${words}`);
+    });
+    return lines.join("\n");
+  }
+
+  async function renderAdminReactions(content) {
+    const data = await adminApi("/admin/reactions");
+    const catalog = data && data.catalog ? data.catalog : defaultReactionCatalog();
+    const categories = Array.isArray(catalog.categories) ? catalog.categories : [];
+    content.innerHTML = `<div class="kwc-admin-reaction-heading"><h4>${esc(t("admin.reactionCatalog", "Reaction icons"))}</h4></div>
+      <p><small>${esc(t("admin.reactionCatalogHint", "Choose which Unicode icons appear in the reaction picker. Removing an icon prevents new use but does not delete existing reactions."))}</small></p>
+      <div class="kwc-admin-section-stack kwc-settings-stack kwc-admin-reaction-settings-stack">
+        <section class="kwc-admin-section-card kwc-admin-reaction-options-card"><div class="kwc-admin-list kwc-admin-group-list kwc-admin-reaction-options">
+          <label class="kwc-admin-item kwc-admin-setting-item"><span><strong>${esc(t("admin.reactionEnabled", "Enable reaction icons"))}</strong><small>${esc(t("admin.reactionEnabledHint", "Turning this off blocks new reaction activity and hides the add/picker controls without deleting stored reactions."))}</small></span><input type="checkbox" id="kwc-reaction-enabled" ${catalog.enabled !== false ? "checked" : ""}></label>
+          <label class="kwc-admin-item kwc-admin-setting-item"><span><strong>${esc(t("admin.reactionCustomEmoji", "Allow KWC custom emoji in reactions"))}</strong></span><input type="checkbox" id="kwc-reaction-custom-enabled" ${catalog.customEmojiEnabled !== false ? "checked" : ""}></label>
+          <label class="kwc-admin-item kwc-admin-setting-item"><span><strong>${esc(t("admin.reactionShowActors", "Show who reacted"))}</strong><small>${esc(t("admin.reactionShowActorsHint", "When disabled, reactor display names are not included in reaction responses or shown in tooltips."))}</small></span><input type="checkbox" id="kwc-reaction-show-actors" ${catalog.showActorList !== false ? "checked" : ""}></label>
+        </div></section>
+      </div>
+      <div class="kwc-admin-section-stack kwc-reaction-admin-stack">${categories.map(row => `<section class="kwc-admin-section-card"><div class="kwc-admin-section-title">${esc(reactionAdminCategoryLabel(row.id))}</div><textarea class="kwc-input kwc-reaction-admin-list" data-reaction-admin-category="${esc(row.id || "")}" rows="3">${esc((Array.isArray(row.items) ? row.items : []).join(" "))}</textarea><small>${esc(t("admin.reactionCategoryHint", "Separate emoji with spaces. Order here is the picker order."))}</small></section>`).join("")}<section class="kwc-admin-section-card"><div class="kwc-admin-section-title">${esc(t("admin.reactionSearchAliases", "Search aliases"))}</div><textarea class="kwc-input kwc-reaction-admin-aliases" id="kwc-reaction-search-aliases" rows="10">${esc(reactionAliasEditorText(catalog))}</textarea><small>${esc(t("admin.reactionSearchAliasesHint", "One emoji per line: emoji = search words. Add aliases here when you add a new Unicode reaction icon."))}</small></section></div>
+      <div class="kwc-row kwc-admin-save-row"><button class="kwc-button" type="button" id="kwc-reaction-admin-save">${esc(t("button.save", "Save"))}</button><button class="kwc-button" type="button" id="kwc-reaction-admin-reset">${esc(t("button.reset", "Reset"))}</button><small class="kwc-admin-result" id="kwc-reaction-admin-result"></small></div>`;
+    const result = content.querySelector("#kwc-reaction-admin-result");
+    const applyCatalog = next => {
+      if (!next) return;
+      state.reactionCatalog = next;
+      state.reactionCatalogLoadedAt = Date.now();
+      closeReactionPicker();
+      refreshVisibleReactionBars();
+    };
+    const save = content.querySelector("#kwc-reaction-admin-save");
+    if (save) save.onclick = async () => {
+      const fields = {
+        enabled:String(!!content.querySelector("#kwc-reaction-enabled")?.checked),
+        customEmojiEnabled:String(!!content.querySelector("#kwc-reaction-custom-enabled")?.checked),
+        showActorList:String(!!content.querySelector("#kwc-reaction-show-actors")?.checked),
+        searchAliases:String(content.querySelector("#kwc-reaction-search-aliases")?.value || "")
+      };
+      content.querySelectorAll("[data-reaction-admin-category]").forEach(el => { fields[el.dataset.reactionAdminCategory] = String(el.value || ""); });
+      save.disabled = true; if (result) result.textContent = t("admin.settingsSaving", "Saving...");
+      try {
+        const res = await adminWrite("/admin/reactions", fields);
+        if (!res?.ok) throw new Error(res?.error || "save_failed");
+        applyCatalog(res.catalog);
+        if (result) result.textContent = t("admin.reactionSaved", "Reaction icons saved.");
+        await renderAdminReactions(content);
+      } catch (e) { if (result) result.textContent = fmt("admin.failed", "Failed: {error}", {error:e.message || "error"}); }
+      finally { if (save.isConnected) save.disabled = false; }
+    };
+    const reset = content.querySelector("#kwc-reaction-admin-reset");
+    if (reset) reset.onclick = async () => {
+      if (!confirmPlain(t("admin.reactionResetConfirm", "Reset the reaction icon catalog to defaults?"))) return;
+      try {
+        const res = await adminWrite("/admin/reactions", {action:"reset"});
+        if (!res?.ok) throw new Error(res?.error || "reset_failed");
+        applyCatalog(res.catalog);
+        await renderAdminReactions(content);
+      } catch (e) { if (result) result.textContent = fmt("admin.failed", "Failed: {error}", {error:e.message || "error"}); }
+    };
   }
 
   async function renderAdminSettings(content) {
@@ -10007,6 +11208,12 @@
       adminSettingInput("ui.user-profiles.max-profiles", v["ui.user-profiles.max-profiles"], "number"),
       adminSettingInput("ui.user-profiles.allow-import-export", v["ui.user-profiles.allow-import-export"], "boolean")
     ];
+    const typingRows = [
+      adminSettingInput("chat.typing-indicator.user-display-control", v["chat.typing-indicator.user-display-control"], "boolean"),
+      adminSettingInput("chat.typing-indicator.open-chat.enabled", v["chat.typing-indicator.open-chat.enabled"], "boolean"),
+      adminSettingInput("chat.typing-indicator.dm.enabled", v["chat.typing-indicator.dm.enabled"], "boolean"),
+      adminSettingInput("chat.typing-indicator.group-chat.enabled", v["chat.typing-indicator.group-chat.enabled"], "boolean")
+    ];
     const uploadRows = [
       adminSettingInput("upload.enabled", v["upload.enabled"], "boolean"),
       adminSettingInput("upload.allow-guest-upload", v["upload.allow-guest-upload"], "boolean"),
@@ -10040,6 +11247,7 @@
         ${adminSettingGroup("admin.settingsGroupGuestCaptcha", "Guest & CAPTCHA", guestCaptchaRows)}
         ${adminSettingGroup("admin.settingsGroupAuthSessions", "Authentication & sessions", authSessionRows)}
         ${adminSettingGroup("admin.settingsGroupProfiles", "User profiles", profileRows)}
+        ${adminSettingGroup("admin.settingsGroupTyping", "Typing indicators", typingRows)}
         ${adminSettingGroup("admin.settingsGroupUploads", "Uploads", uploadRows)}
         ${adminSettingGroup("admin.settingsGroupDiscordAlerts", "Discord admin alerts", discordAlertRows)}
       </div>
@@ -10421,14 +11629,14 @@
       </div>
       <br>
       <div class="kwc-row kwc-admin-actions-row">
-        <button class="kwc-button" id="kwc-clear-history">${t("button.clearHistory", "Clear web history")}</button>
+        <button class="kwc-button" id="kwc-clear-history">${t("button.clearHistory", "Delete all public chat history")}</button>
         <button class="kwc-button" id="kwc-toggle-moderation-actions" type="button" aria-pressed="${state.moderationActionsVisible ? "true" : "false"}">${moderationActionsToggleLabel()}</button>
       </div>
     `;
     installSenderIdentityToggle(content);
     const clear = content.querySelector("#kwc-clear-history");
     if (clear) clear.onclick = async () => {
-      if (!confirmPlain(t("alert.confirmClearHistory", "Clear web chat history?"))) return;
+      if (!confirmPlain(t("alert.confirmClearHistory", "WARNING: All public chat history, related reactions, and saved public-chat archives will be permanently deleted from the server. This cannot be undone or recovered. Are you sure you want to delete them?"))) return;
       const res = await adminWrite("/admin/clear-history", {});
       if (!res.ok) alertResponse("alert.failed", "Failed: {error}", res);
     };
@@ -10534,6 +11742,9 @@
             <input id="kwc-emoji-upload-file" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp" hidden style="display:none !important;">
           </div>
           <div class="kwc-admin-emoji-limit-lines">${limitLines.join("")}</div>
+          <div class="kwc-admin-emoji-reaction-actions">
+            <button class="kwc-button" id="kwc-emoji-reaction-manage" type="button">${esc(t("admin.reactionCatalogManage", "Manage reaction icons"))}</button>
+          </div>
         </div>
         <div class="kwc-upload-progress kwc-admin-emoji-upload-stage kwc-hidden" id="kwc-emoji-upload-stage" aria-live="polite">
           <div class="kwc-upload-progress-head">
@@ -10604,6 +11815,8 @@
     const uploadBtn = content.querySelector("#kwc-emoji-upload");
     const uploadCancelBtn = content.querySelector("#kwc-emoji-upload-cancel");
     const createBtn = content.querySelector("#kwc-emoji-pack-create");
+    const reactionManageBtn = content.querySelector("#kwc-emoji-reaction-manage");
+    if (reactionManageBtn) reactionManageBtn.onclick = () => renderAdminReactions(content);
     let emojiUploadXhr = null;
     let emojiUploadCancelRequested = false;
     let emojiUploadActive = false;
@@ -11616,6 +12829,11 @@
 
   const WEB_PUSH_DEVICE_ID_KEY = "kwc.webPush.deviceId";
   let webPushDeviceIdMemory = "";
+  const WEB_PUSH_VIEW_HEARTBEAT_MS = 4000;
+  const webPushViewClientId = "pv_" + Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+  let webPushViewTimer = null;
+  let webPushViewLastSignature = "";
+  let webPushViewLastSentAt = 0;
 
   function webPushDeviceId() {
     if (webPushDeviceIdMemory) return webPushDeviceIdMemory;
@@ -11645,9 +12863,11 @@
     {name: "groupChat", key: "kwc.notify.groupChat", label: "notifyGroupChat", fallback: () => notificationServerDefault("groupChat")},
     {name: "mentions", key: "kwc.notify.mentions", label: "notifyMentions", fallback: () => notificationServerDefault("mentions")},
     {name: "replies", key: "kwc.notify.replies", label: "notifyReplies", fallback: () => notificationServerDefault("replies")},
+    // Builds before the dedicated Reactions preference used the Reply option for reaction attention.
+    // If this new key is absent, inherit the browser's previous Reply choice once.
+    {name: "reactions", key: "kwc.notify.reactions", label: "notifyReactions", fallback: () => readStoredBool("kwc.notify.replies", notificationServerDefault("reactions"))},
     {name: "system", key: "kwc.notify.system", label: "notifySystem", fallback: () => notificationServerDefault("system")},
-    {name: "keywords", key: "kwc.notify.keywords", label: "notifyKeywords", fallback: () => notificationServerDefault("keywords")},
-    {name: "preview", key: "kwc.notify.preview", label: "notifyPreview", fallback: () => notificationServerDefault("preview")}
+    {name: "keywords", key: "kwc.notify.keywords", label: "notifyKeywords", fallback: () => notificationServerDefault("keywords")}
   ];
 
   function browserNotificationServerAllows(name) {
@@ -11656,9 +12876,9 @@
     if (name === "groupChat") return state.browserNotificationsNotifyGroupChat !== false;
     if (name === "mentions") return state.browserNotificationsNotifyMentions !== false;
     if (name === "replies") return state.browserNotificationsNotifyReplies !== false;
+    if (name === "reactions") return state.browserNotificationsNotifyReactions !== false;
     if (name === "system") return state.browserNotificationsNotifySystem !== false;
     if (name === "keywords") return state.browserNotificationsNotifyKeywords !== false;
-    if (name === "preview") return state.browserNotificationsShowMessagePreview !== false;
     return true;
   }
 
@@ -11668,9 +12888,9 @@
     if (name === "groupChat") return state.webPushNotifyGroupChat !== false;
     if (name === "mentions") return state.webPushNotifyMentions !== false;
     if (name === "replies") return state.webPushNotifyReplies !== false;
+    if (name === "reactions") return state.webPushNotifyReactions !== false;
     if (name === "system") return state.webPushNotifySystem !== false;
     if (name === "keywords") return state.webPushNotifyKeywords !== false;
-    if (name === "preview") return state.webPushShowMessagePreview !== false;
     return true;
   }
 
@@ -11895,15 +13115,19 @@
     const systemJoinLeaveLabel = normalizeNotifySystemModeLabel("join-leave", labels.notifySystemJoinLeave || "");
     const systemOffLabel = normalizeNotifySystemModeLabel("off", labels.notifySystemOff || "");
     const systemSelect = `<label class="kwc-notify-option${systemAllowed ? "" : " kwc-notify-option-disabled"}"${systemTitle}><span>${esc(systemLabel)}</span><select id="${prefix}-system-mode" data-kwc-notify-system-mode ${systemAllowed ? "" : "disabled"}><option value="all"${systemMode === "all" ? " selected" : ""}>${esc(systemAllLabel)}</option><option value="join-leave"${systemMode === "join-leave" ? " selected" : ""}>${esc(systemJoinLeaveLabel)}</option><option value="off"${systemMode === "off" ? " selected" : ""}>${esc(systemOffLabel)}</option></select></label>`;
+    const typingRow = typingDisplayPreferenceAvailable()
+      ? `<label class="kwc-notify-option"><input id="kwc-prefs-typing-display" type="checkbox" ${state.typingDisplayEnabled !== false ? "checked" : ""}> <span>${esc(labels.showTypingIndicator || "Show typing indicators")}</span></label>`
+      : "";
     return `<div class="kwc-notify-options">
       ${row("normalChat", "Normal chat")}
       ${row("dm", "DM")}
       ${row("groupChat", "Group chat")}
-      ${row("mentions", "Mentions")}
+      ${typingRow}
+      ${row("mentions", "@Mention")}
       ${row("replies", "Replies")}
+      ${row("reactions", "Reactions")}
       ${systemSelect}
       ${row("keywords", "Keyword alerts")}
-      ${row("preview", "Message preview")}
     </div>`;
   }
 
@@ -12031,6 +13255,152 @@
     }
   }
 
+  function notificationHostActivelyViewed() {
+    if (state.minimized) return false;
+    if (state.hostPageVisible === false || state.hostPageFocused === false) return false;
+    if (document.hidden || document.visibilityState === "hidden") return false;
+    try {
+      const parentWindow = window.parent && window.parent !== window ? window.parent : window;
+      const parentDocument = parentWindow.document || document;
+      if (parentDocument.hidden || parentDocument.visibilityState === "hidden") return false;
+      if (typeof parentDocument.hasFocus === "function" && !parentDocument.hasFocus()) return false;
+    } catch (_) {
+      if (typeof document.hasFocus === "function" && !document.hasFocus()) return false;
+    }
+    return true;
+  }
+
+  function notificationViewStatePayload() {
+    return {
+      active: notificationHostActivelyViewed(),
+      dmThreadId: state.dmModalOpen && !state.dmAuditMode ? String(state.dmActiveThreadId || "") : "",
+      groupRoomId: state.groupModalOpen && !state.groupAuditMode ? String(state.groupActiveRoomId || "") : ""
+    };
+  }
+
+  function activePrivateNotificationView() {
+    const view = notificationViewStatePayload();
+    if (!view.active) return {active:false, dmThreadId:"", groupRoomId:""};
+    const dmThreadId = String(view.dmThreadId || "").trim();
+    const groupRoomId = String(view.groupRoomId || "").trim();
+    if (!dmThreadId && !groupRoomId) return {active:false, dmThreadId:"", groupRoomId:""};
+    return {active:true, dmThreadId, groupRoomId};
+  }
+
+  function publishWebPushViewState(force = false, overrideActive = null) {
+    // Active private-conversation viewing is account attention state. Report it
+    // even when this browser itself has no Push subscription, so a foreground
+    // desktop session can suppress duplicate Push on the same account's phone.
+    if (!state.token) return Promise.resolve(false);
+    const view = activePrivateNotificationView();
+    if (overrideActive === false) {
+      view.active = false;
+      view.dmThreadId = "";
+      view.groupRoomId = "";
+    }
+    const signature = [view.active ? "1" : "0", view.dmThreadId || "", view.groupRoomId || ""].join("|");
+    const now = Date.now();
+    if (!force && signature === webPushViewLastSignature && now - webPushViewLastSentAt < WEB_PUSH_VIEW_HEARTBEAT_MS - 250) {
+      return Promise.resolve(true);
+    }
+    webPushViewLastSignature = signature;
+    webPushViewLastSentAt = now;
+    return api("/push/view-state", {
+      method: "POST",
+      body: JSON.stringify({
+        deviceId: webPushDeviceId(),
+        clientId: webPushViewClientId,
+        active: view.active === true,
+        dmThreadId: view.dmThreadId || "",
+        groupRoomId: view.groupRoomId || ""
+      }),
+      timeoutMs: 5000,
+      keepalive: true,
+      returnHttpErrorResponse: true
+    }).then(res => !!(res && res.ok !== false)).catch(() => false);
+  }
+
+  function startWebPushViewHeartbeat() {
+    if (webPushViewTimer) return;
+    webPushViewTimer = setInterval(() => { publishWebPushViewState(false).catch(() => {}); }, WEB_PUSH_VIEW_HEARTBEAT_MS);
+    const refresh = () => {
+      publishNotificationViewState();
+      publishWebPushViewState(true).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", refresh, true);
+    window.addEventListener("focus", refresh, true);
+    window.addEventListener("blur", refresh, true);
+    window.addEventListener("pagehide", () => { publishWebPushViewState(true, false).catch(() => {}); }, true);
+    window.addEventListener("beforeunload", () => { publishWebPushViewState(true, false).catch(() => {}); }, true);
+  }
+
+  function publishNotificationViewState() {
+    const view = notificationViewStatePayload();
+    if (window.parent && window.parent !== window && !state.isPip) {
+      postFrame("notificationViewState", view);
+    }
+    publishWebPushViewState(true).catch(() => {});
+  }
+
+  function notificationTargetCurrentlyVisible(options = {}) {
+    if (!notificationHostActivelyViewed()) return false;
+    const dmThreadId = String(options.dmThreadId || "").trim();
+    if (dmThreadId) {
+      const modal = document.querySelector(".kwc-dm-modal-backdrop:not(.kwc-group-modal-backdrop) .kwc-dm-modal");
+      if (modal && state.dmModalOpen && !state.dmAuditMode && String(state.dmActiveThreadId || "") === dmThreadId) return true;
+    }
+    const groupRoomId = String(options.groupRoomId || "").trim();
+    if (groupRoomId) {
+      const modal = document.querySelector(".kwc-group-modal-backdrop .kwc-group-modal");
+      if (modal && state.groupModalOpen && !state.groupAuditMode && String(state.groupActiveRoomId || "") === groupRoomId) return true;
+    }
+    return false;
+  }
+
+  function applyAccountNotificationViewState(data) {
+    const now = Date.now();
+    const serverTime = Number(data && data.serverTime || 0);
+    const hasServerClock = Number.isFinite(serverTime) && serverTime > 0;
+    const dm = new Map();
+    const group = new Map();
+    const addEntries = (target, items) => {
+      if (!Array.isArray(items)) return;
+      for (const item of items) {
+        if (!item || typeof item !== "object") continue;
+        const id = String(item.id || "").trim();
+        const serverExpiresAt = Number(item.expiresAt || 0);
+        if (!id || !Number.isFinite(serverExpiresAt)) continue;
+        const expiresAt = hasServerClock ? now + Math.max(0, serverExpiresAt - serverTime) : serverExpiresAt;
+        if (!Number.isFinite(expiresAt) || expiresAt <= now) continue;
+        const previous = Number(target.get(id) || 0);
+        if (expiresAt > previous) target.set(id, expiresAt);
+      }
+    };
+    addEntries(dm, data && data.dmThreads);
+    addEntries(group, data && data.groupRooms);
+    state.notificationAccountDmViews = dm;
+    state.notificationAccountGroupViews = group;
+  }
+
+  function accountNotificationTargetActivelyViewed(options = {}) {
+    if (notificationTargetCurrentlyVisible(options)) return true;
+    const now = Date.now();
+    const lookup = (map, id) => {
+      if (!map || !id) return false;
+      const expiresAt = Number(map.get(id) || 0);
+      if (!Number.isFinite(expiresAt) || expiresAt <= now) {
+        if (typeof map.delete === "function") map.delete(id);
+        return false;
+      }
+      return true;
+    };
+    const dmThreadId = String(options.dmThreadId || "").trim();
+    if (dmThreadId && lookup(state.notificationAccountDmViews, dmThreadId)) return true;
+    const groupRoomId = String(options.groupRoomId || "").trim();
+    if (groupRoomId && lookup(state.notificationAccountGroupViews, groupRoomId)) return true;
+    return false;
+  }
+
   function attentionNeededForNotification(force = false) {
     if (force) return true;
     if (!state.browserNotificationsOnlyWhenHidden) return true;
@@ -12039,6 +13409,7 @@
 
   function showBrowserNotification(title, body, options = {}) {
     if (!state.browserNotificationsEnabled || !notificationsEnabledLocal()) return false;
+    if (options.force !== true && accountNotificationTargetActivelyViewed(options)) return false;
     const finalTitle = title || configuredNotificationTitle();
     const finalBody = String(body || "");
     const navUrl = options.url || notificationNavigationUrl(options);
@@ -12048,7 +13419,8 @@
     // the page Notification API copy so the same keyword/message cannot ring twice.
     if (state.webPushSubscriptionActive && options.force !== true) return false;
     if (!attentionNeededForNotification(options.force === true)) return false;
-    const visibleBody = browserNotificationOption("preview") ? String(body || "") : "";
+    // Message preview is built in for eligible notifications; there is no user/admin option.
+    const visibleBody = String(body || "");
     if (window.parent && window.parent !== window && !state.isPip) {
       postFrame("showNotification", {
         title: finalTitle,
@@ -12095,18 +13467,26 @@
 
   function currentUserMatchesMessage(msg) {
     if (!msg) return false;
+    const userUuid = String(state.userUuid || "").trim().toLowerCase();
+    const senderUuid = String(msg.senderUuid || msg.actorUuid || "").trim().toLowerCase();
+    if (userUuid && senderUuid && userUuid === senderUuid) return true;
     const username = String(state.username || "").toLowerCase();
     const senderUsername = String(msg.senderUsername || msg.realSender || msg.sender || "").toLowerCase();
     if (username && senderUsername && username === senderUsername) return true;
     return false;
   }
 
-  function messageMentionsCurrentUser(text) {
-    const name = String(state.username || "").trim();
+  function messageMentionsCurrentUser(msg) {
+    if (!msg || typeof msg !== "object") return false;
+    // 5.2.0 resolves @mentions on the server against real names and visible
+    // display names. The per-viewer boolean also preserves longest-name wins
+    // and same-display-name team mentions without exposing account UUID lists.
+    if (Object.prototype.hasOwnProperty.call(msg, "mentioned")) return msg.mentioned === true;
+    // Compatibility fallback for an older peer/page payload: require @ and the
+    // complete real username. Never treat an unprefixed name as a mention.
+    const name = plainMinecraftName(String(state.username || "")).trim();
     if (!name) return false;
-    const body = String(text || "").toLowerCase();
-    const lower = name.toLowerCase();
-    return body.includes("@" + lower) || body.includes(lower);
+    return String(msg.message || "").toLowerCase().includes("@" + name.toLowerCase());
   }
 
   function messageRepliesToCurrentUser(msg) {
@@ -12121,6 +13501,22 @@
 
   function replyNotificationTitle(sender) {
     return fmt("notifications.replyTitle", "Reply from {sender}", {sender: sender || configuredNotificationTitle()});
+  }
+
+  function maybeNotifyReaction(data) {
+    if (!data || !state.token) return;
+    const actor = plainMinecraftName(String(data.actorLabel || "")).trim() || t("sender.unknown", "Unknown");
+    const reaction = String(data.reaction || "");
+    const messageId = String(data.messageId || "");
+    if (!reaction || !messageId) return;
+    const title = t("reaction.notificationTitle", "Reaction");
+    const body = fmt("reaction.notificationBody", "{user} reacted with {reaction}.", {user: actor, reaction});
+    const tag = "kwc-reaction-" + messageId + "-" + String(data.actorUuid || "") + "-" + reaction;
+    // Match the other notification categories: one shared account preference
+    // controls the browser/in-chat notification path, while the same preference
+    // is synchronized to background Web Push subscriptions server-side.
+    if (!browserNotificationOption("reactions")) return;
+    showBrowserNotification(title, body, {type:"reaction", tag, messageId});
   }
 
   function maybeNotifyChatMessage(msg) {
@@ -12142,7 +13538,7 @@
       showBrowserNotification(replyNotificationTitle(sender), body, {tag: "kwc-reply-" + String(msg.replyToId || msg.id || ""), type: "reply", messageId: msg.id || ""});
       return;
     }
-    const mention = messageMentionsCurrentUser(msg.message || "");
+    const mention = messageMentionsCurrentUser(msg);
     if (system) {
       if (!systemAllowed) return;
     } else if (mention) {
@@ -12155,6 +13551,8 @@
 
   function maybeNotifyDirectMessage(message, threadId) {
     if (!message) return;
+    const targetThreadId = String(threadId || message.threadId || "").trim();
+    if (accountNotificationTargetActivelyViewed({dmThreadId: targetThreadId})) return;
     const own = currentUserMatchesMessage(message);
     if (own) return;
     const sender = plainNotificationText(message.senderDisplayName || message.senderUsername || t("dm.title", "Messages"), 80);
@@ -12170,6 +13568,7 @@
 
   function maybeNotifyDirectThread(thread) {
     if (!thread || Number(thread.unread || 0) <= 0) return;
+    if (accountNotificationTargetActivelyViewed({dmThreadId: String(thread.id || "")})) return;
     const sender = plainNotificationText(thread.otherLabel || thread.otherDisplayName || thread.otherUsername || t("dm.title", "Messages"), 80);
     const body = plainNotificationText(thread.lastMessage || "", 180);
     const keyword = notificationKeywordMatch(sender + " " + body);
@@ -12183,6 +13582,7 @@
 
   function maybeNotifyGroupRoom(room) {
     if (!room || Number(room.unread || 0) <= 0) return;
+    if (accountNotificationTargetActivelyViewed({groupRoomId: String(room.id || "")})) return;
     const roomName = plainNotificationText(room.name || t("group.title", "Group chats"), 80);
     const body = plainNotificationText(room.lastMessage || "", 180);
     const keyword = notificationKeywordMatch(roomName + " " + body);
@@ -12196,18 +13596,32 @@
 
   function maybeNotifyGroupMessage(message, room) {
     if (!message) return;
+    const roomId = String(room && room.id || message.roomId || "").trim();
+    if (accountNotificationTargetActivelyViewed({groupRoomId: roomId})) return;
+    const messageId = String(message.id || "").trim();
+    const notificationKey = roomId && messageId ? roomId + ":" + messageId : "";
+    if (notificationKey) {
+      if (state.groupNotificationSeen.has(notificationKey)) return;
+      state.groupNotificationSeen.add(notificationKey);
+      while (state.groupNotificationSeen.size > 512) {
+        const oldest = state.groupNotificationSeen.values().next().value;
+        if (oldest == null) break;
+        state.groupNotificationSeen.delete(oldest);
+      }
+    }
     const own = currentUserMatchesMessage(message);
     if (own) return;
     const roomName = plainNotificationText(room && room.name || t("group.title", "Group chats"), 80);
     const sender = plainNotificationText(message.senderDisplayName || message.senderUsername || "", 60);
-    const body = plainNotificationText(message.body || "", 180);
+    const membershipEvent = message.eventType === "member_join" || message.eventType === "member_leave";
+    const body = plainNotificationText(membershipEvent ? groupMembershipEventText(message) : (message.body || ""), 180);
     const keyword = notificationKeywordMatch(roomName + " " + sender + " " + body);
     if (keyword && browserNotificationOption("keywords")) {
-      showBrowserNotification(keywordNotificationTitle(keyword), roomName + (sender ? " · " + sender : "") + (body ? " · " + body : ""), {tag: "kwc-keyword-" + keyword, type: "keyword", groupRoomId: room && room.id || message.roomId || "", groupMessageId: message.id || ""});
+      showBrowserNotification(keywordNotificationTitle(keyword), membershipEvent ? (roomName + (body ? " · " + body : "")) : (roomName + (sender ? " · " + sender : "") + (body ? " · " + body : "")), {tag: "kwc-keyword-" + keyword, type: "keyword", groupRoomId: roomId, groupMessageId: message.id || ""});
       return;
     }
     if (!browserNotificationOption("groupChat")) return;
-    showBrowserNotification(roomName + (sender ? " · " + sender : ""), body, {tag: "kwc-group-" + String(room && room.id || message.roomId || ""), groupRoomId: room && room.id || message.roomId || "", groupMessageId: message.id || ""});
+    showBrowserNotification(membershipEvent ? roomName : (roomName + (sender ? " · " + sender : "")), body, {tag: "kwc-group-" + roomId, groupRoomId: roomId, groupMessageId: message.id || ""});
   }
 
   function base64UrlToUint8Array(value) {
@@ -12493,18 +13907,19 @@
         notifyGroupChat: opts.groupChat === true,
         notifyMentions: opts.mentions === true,
         notifyReplies: opts.replies === true,
+        notifyReactions: opts.reactions === true,
         notifySystem: opts.system === true,
         notifySystemMode: opts.systemMode || (opts.system === true ? "all" : "off"),
         notifyKeywords: opts.keywords === true,
         keywords: notificationKeywordsText(),
         language: selectedLocale(),
-        openUrl: notificationOpenUrl(),
-        showMessagePreview: opts.preview === true
+        openUrl: notificationOpenUrl()
       })});
       writeStorageValue(LEGACY_WEB_PUSH_ENABLED_KEY, null);
       state.webPushLastError = "";
       state.webPushSubscriptionActive = true;
       clearWebPushAutomaticFailure();
+      publishWebPushViewState(true).catch(() => {});
       return true;
     } catch (e) {
       const pushServiceFailure = noteWebPushAutomaticFailure(e);
@@ -12519,6 +13934,9 @@
 
   async function disableWebPush() {
     try {
+      // Viewing-state heartbeat is independent from this device's Push
+      // subscription. Turning Push off here must not make another device alert
+      // while this account is still actively reading the exact private room.
       const endpoint = await unsubscribeWebPushBrowserSubscription();
       if (state.token) await api("/push/unsubscribe", {method: "POST", body: JSON.stringify({
         endpoint,
@@ -12557,9 +13975,9 @@
       groupChat: opts.groupChat === true,
       mentions: opts.mentions === true,
       replies: opts.replies === true,
+      reactions: opts.reactions === true,
       systemMode: opts.systemMode || (opts.system === true ? "all" : "off"),
       keywords: opts.keywords === true,
-      preview: opts.preview === true,
       keywordText: notificationKeywordsText()
     };
   }
@@ -12596,7 +14014,7 @@
       state.applyingAccountNotificationPreferences = true;
       try {
         setNotificationSystemMode(prefs.systemMode || (prefs.system === false ? "off" : "all"));
-        ["normalChat", "dm", "groupChat", "mentions", "replies", "keywords", "preview"].forEach(name => {
+        ["normalChat", "dm", "groupChat", "mentions", "replies", "reactions", "keywords"].forEach(name => {
           if (Object.prototype.hasOwnProperty.call(prefs, name)) setNotificationOption(name, prefs[name] === true);
         });
         if (Object.prototype.hasOwnProperty.call(prefs, "keywordText")) setNotificationKeywordsText(prefs.keywordText || "");
@@ -12607,6 +14025,63 @@
     } catch (_) {
       return false;
     }
+  }
+
+  async function loadAccountTypingPreferences() {
+    if (!state.token) {
+      state.typingDisplayEnabled = true;
+      state.typingPreferenceLoaded = false;
+      scheduleTypingIndicatorRefresh();
+      return false;
+    }
+    try {
+      const res = await api("/preferences/typing", {timeoutMs: 8000});
+      if (res && Object.prototype.hasOwnProperty.call(res, "enabled")) state.typingUserDisplayControl = res.enabled === true;
+      state.typingDisplayEnabled = !res || res.displayEnabled !== false;
+      state.typingPreferenceLoaded = true;
+      scheduleTypingIndicatorRefresh();
+      return true;
+    } catch (_) {
+      state.typingPreferenceLoaded = false;
+      return false;
+    }
+  }
+
+  async function setAccountTypingDisplayEnabled(enabled) {
+    if (!state.token || !state.typingUserDisplayControl) return false;
+    const previous = state.typingDisplayEnabled !== false;
+    state.typingDisplayEnabled = enabled !== false;
+    scheduleTypingIndicatorRefresh();
+    try {
+      const res = await api("/preferences/typing", {
+        method: "POST",
+        body: JSON.stringify({displayEnabled: state.typingDisplayEnabled}),
+        timeoutMs: 8000,
+        returnHttpErrorResponse: true
+      });
+      if (!res || res.ok === false) throw new Error(String(res && res.error || "typing_preferences_save_failed"));
+      const prefs = res.preferences && typeof res.preferences === "object" ? res.preferences : res;
+      state.typingDisplayEnabled = !prefs || prefs.displayEnabled !== false;
+      state.typingPreferenceLoaded = true;
+      scheduleTypingIndicatorRefresh();
+      return true;
+    } catch (_) {
+      state.typingDisplayEnabled = previous;
+      scheduleTypingIndicatorRefresh();
+      return false;
+    }
+  }
+
+  function typingDisplayPreferenceAvailable() {
+    // Prefer either freshly loaded source of truth. The public config and the
+    // account preference endpoint normally agree, but using both prevents a
+    // transient refresh/order mismatch from hiding the per-account control.
+    return !!(state.token && (state.typingUserDisplayControl || (state.config && state.config.typingUserDisplayControl === true)));
+  }
+
+  function typingDisplayAllowedForCurrentUser() {
+    if (!state.typingUserDisplayControl || !state.token) return true;
+    return state.typingDisplayEnabled !== false;
   }
 
   async function ensurePreferredWebPush() {
@@ -12675,6 +14150,9 @@
         textShadowCustomPlaceholder: t("preferences.textShadowCustomPlaceholder", "0 1px 2px rgba(0, 0, 0, 0.85)"),
         backgroundColor: t("preferences.backgroundColor", "Background color"),
         inputBackgroundColor: t("preferences.inputBackgroundColor", "Input background color"),
+        chatBehavior: t("preferences.chatBehavior", "Chat behavior"),
+        showTypingIndicator: t("preferences.showTypingIndicator", "Show typing indicators"),
+        showTypingIndicatorHelp: t("preferences.showTypingIndicatorHelp", "Show other users' typing activity on this screen. This setting is saved to your KWC account and does not stop your own typing activity from being sent."),
         notifications: t("preferences.notifications", "Notifications"),
         notificationsPage: t("preferences.notificationsPage", "Browser system notifications"),
         notificationsPageHelp: t("preferences.notificationsPageHelp", "Browser notifications are available only in supported browsers."),
@@ -12708,8 +14186,9 @@
         notifyNormalChat: t("preferences.notifyNormalChat", "Normal chat"),
         notifyDm: t("preferences.notifyDm", "DM"),
         notifyGroupChat: t("preferences.notifyGroupChat", "Group chat"),
-        notifyMentions: t("preferences.notifyMentions", "Mentions"),
+        notifyMentions: t("preferences.notifyMentions", "@Mention"),
         notifyReplies: t("preferences.notifyReplies", "Replies"),
+        notifyReactions: t("preferences.notifyReactions", "Reactions"),
         notifySystem: t("preferences.notifySystem", "Server"),
         notifySystemAll: t("preferences.notifySystemAll", "All"),
         notifySystemJoinLeave: t("preferences.notifySystemJoinLeave", "Join/leave only"),
@@ -12722,7 +14201,6 @@
         notifyKeywordsNeedsApply: t("preferences.notifyKeywordsNeedsApply", "Keyword list changed. Tap Apply keywords to update push filtering."),
         notifyDisabledByServer: t("preferences.notifyDisabledByServer", "Disabled by server configuration."),
         keywordNotificationTitle: t("preferences.keywordNotificationTitle", "Keyword: {keyword}"),
-        notifyPreview: t("preferences.notifyPreview", "Message preview"),
         presetName: t("preferences.presetName", "Preset name"),
         presets: t("preferences.presets", "Saved chat settings"),
         presetSave: t("preferences.presetSave", "Save"),
@@ -12763,6 +14241,8 @@
       textShadowCustom: effectiveUserTextShadowCustom(),
       backgroundColor: effectiveUserBackgroundColor(),
       inputBackgroundColor: effectiveUserInputBackgroundColor(),
+      typingDisplayPreferenceAvailable: typingDisplayPreferenceAvailable(),
+      typingDisplayEnabled: state.typingDisplayEnabled !== false,
       notificationsEnabled: notificationsEnabledLocal(),
       webPushEnabledLocal: notificationsEnabledLocal() && canUseWebPush(),
       webPushAvailable: canUseWebPush(),
@@ -12804,7 +14284,7 @@
     "kwc.emojiPanelHeightPx", "kwc.windowWidth", "kwc.windowHeight",
     "kwc.resizeLocked", "kwc.minimized", NOTIFICATION_ENABLED_KEY,
     "kwc.notify.normalChat", "kwc.notify.dm", "kwc.notify.groupChat", "kwc.notify.mentions",
-    "kwc.notify.system", "kwc.notify.keywords", "kwc.notify.keywords.list", "kwc.notify.preview",
+    "kwc.notify.replies", "kwc.notify.reactions", "kwc.notify.system", "kwc.notify.keywords", "kwc.notify.keywords.list",
     "kwc.parentFramePosition", "kwc.parentUserPrefsModalPos", "kwc.localUserPrefsModalPos"
   ];
 
@@ -12854,6 +14334,7 @@
     if (migratedNotificationEnabled !== null) setNotificationsEnabledLocal(migratedNotificationEnabled);
     if (notificationsEnabledLocal()) ensurePreferredWebPush().catch(() => {});
     else disableWebPush().catch(() => {});
+    scheduleTypingIndicatorRefresh();
   }
 
   function loadChatSettingPresets() {
@@ -13263,6 +14744,7 @@
     const languageSelect = wrap.querySelector("#kwc-prefs-language");
     const notificationsToggle = wrap.querySelector("#kwc-prefs-notifications-toggle");
     const notificationsTest = wrap.querySelector("#kwc-prefs-notifications-test");
+    const typingDisplayInput = wrap.querySelector("#kwc-prefs-typing-display");
     const notificationsStatus = wrap.querySelector("#kwc-prefs-notifications-status");
     const presetSelect = wrap.querySelector("#kwc-prefs-preset-select");
     const presetNameInput = null;
@@ -13375,6 +14857,12 @@
     backgroundColorInput.addEventListener("input", () => setUserBackgroundColor(backgroundColorInput.value));
     inputBackgroundColorInput.addEventListener("input", () => setUserInputBackgroundColor(inputBackgroundColorInput.value));
     languageSelect.addEventListener("change", () => setUserLanguage(languageSelect.value));
+
+    if (typingDisplayInput) typingDisplayInput.addEventListener("change", async () => {
+      const wanted = typingDisplayInput.checked;
+      const ok = await setAccountTypingDisplayEnabled(wanted);
+      typingDisplayInput.checked = ok ? (state.typingDisplayEnabled !== false) : !wanted;
+    });
 
     const updateNotificationStatuses = () => {
       if (notificationsStatus) notificationsStatus.textContent = unifiedNotificationStatusText(labels);
@@ -13596,8 +15084,16 @@
   }
 
   async function openUserPreferencesModal(force = false) {
-    if ((state.prefsModalOpen && !force) || !state.config || state.config.uiUserPreferencesControl === false) return;
+    if (state.prefsModalOpen && !force) return;
     state.prefsModalOpen = true;
+    // Refresh the public config when the user opens Chat settings so an admin
+    // change to user-display-control is visible immediately across sessions.
+    await loadConfig();
+    if (!state.config || state.config.uiUserPreferencesControl === false) {
+      state.prefsModalOpen = false;
+      return;
+    }
+    if (state.token) await loadAccountTypingPreferences();
     if (serverUserProfilesActive()) await loadAccountProfiles();
     const payload = buildUserPreferencesPayload();
     if (state.isPip || window.parent === window) {
@@ -13648,7 +15144,7 @@
     if (!root || !backdrop) return;
     const cs = getComputedStyle(root);
     const vars = [
-      "--kwc-font-size", "--kwc-message-font-size", "--kwc-input-font-size", "--kwc-button-font-size", "--kwc-badge-font-size",
+      "--kwc-font-size", "--kwc-message-font-size", "--kwc-input-font-size", "--kwc-button-font-size", "--kwc-badge-font-size", "--kwc-typing-font-size",
       "--kwc-chat-font-family", "--kwc-chat-message-font-size", "--kwc-chat-text-color", "--kwc-chat-ui-text-color", "--kwc-chat-background-color", "--kwc-chat-text-shadow",
       "--kwc-text-color", "--kwc-ui-color", "--kwc-ui-text-color", "--kwc-muted-color", "--kwc-border-color", "--kwc-button-text",
       "--kwc-button-bg", "--kwc-button-hover-bg", "--kwc-input-bg", "--kwc-compose-input-bg", "--kwc-link-color",
@@ -14362,7 +15858,11 @@
     const modal = document.querySelector(".kwc-dm-modal");
     const open = hasDirectMessageConversationOpen();
     if (modal) modal.classList.toggle("kwc-dm-thread-mode", open);
+    const settings = document.getElementById("kwc-dm-settings");
+    if (settings) settings.classList.toggle("kwc-hidden", !state.conversationArchiveEnabled || !open || state.dmAuditMode || !state.dmActiveThreadId);
     const title = document.getElementById("kwc-dm-title");
+    const titleRow = title && title.closest ? title.closest(".kwc-private-title-row") : null;
+    if (titleRow) titleRow.classList.toggle("kwc-private-title-row-back", open);
     if (title) {
       title.classList.toggle("kwc-dm-title-back", open);
       const label = open ? t("dm.backToList", "Back to conversation list") : t("dm.selectThread", "Select a thread");
@@ -14371,6 +15871,23 @@
       title.setAttribute("role", open ? "button" : "heading");
       title.tabIndex = open ? 0 : -1;
     }
+  }
+
+  function openDirectConversationSettingsMenu() {
+    if (!state.conversationArchiveEnabled) return;
+    const thread = state.dmActiveThreadId ? (state.dmThreads || []).find(item => item.id === state.dmActiveThreadId) : null;
+    if (!thread || state.dmAuditMode) return;
+    const wrap = document.createElement("div");
+    wrap.className = "kwc-modal-backdrop kwc-user-prefs-backdrop";
+    applyDetachedModalTheme(wrap);
+    wrap.innerHTML = `<div class="kwc-modal kwc-conversation-settings-modal"><h3>${esc(t("group.settings", "Settings"))} · ${directMessageHeaderIdentityHtml(thread, "kwc-dm-title-name")}</h3><div class="kwc-account-actions"><button class="kwc-button" id="kwc-conv-save">${esc(t("archive.saveConversation", "Save conversation"))}</button><button class="kwc-button" id="kwc-conv-library">${esc(t("archive.library", "Saved conversations"))}</button><button class="kwc-button" id="kwc-conv-close">${esc(t("button.close", "Close"))}</button></div></div>`;
+    document.body.appendChild(wrap);
+    installSenderIdentityToggle(wrap);
+    const close = () => wrap.remove();
+    wrap.addEventListener("click", e => { if (e.target === wrap) close(); });
+    wrap.querySelector("#kwc-conv-close").onclick = close;
+    wrap.querySelector("#kwc-conv-save").onclick = () => { const label = directMessageHeaderPlainLabel(thread, directMessageLabel(thread)); close(); beginConversationArchiveSelection("dm", thread.id, label); };
+    wrap.querySelector("#kwc-conv-library").onclick = () => { close(); openConversationArchiveLibrary(); };
   }
 
   function returnDirectMessageToList() {
@@ -14390,6 +15907,7 @@
   }
 
   function renderDirectMessageThreads() {
+    publishNotificationViewState();
     const list = document.getElementById("kwc-dm-thread-list");
     if (!list) return;
     const threads = Array.isArray(state.dmThreads) ? state.dmThreads : [];
@@ -14870,7 +16388,7 @@
 
   function privateMessageNearBottom(box) {
     if (!box) return true;
-    return Number(box.scrollHeight || 0) - Number(box.scrollTop || 0) - Number(box.clientHeight || 0) <= 56;
+    return bottomGapPx(box) <= autoFollowBottomThresholdPx(box);
   }
 
   function privateMessageMetaHtml(msg, mine, type = "dm") {
@@ -14879,15 +16397,19 @@
     const statusHtml = type === "dm"
       ? (state.dmAuditMode ? "" : privateMessageMetaStatusHtml(msg, mine, "dm"))
       : (state.groupAuditMode ? "" : privateMessageMetaStatusHtml(msg, mine, "group"));
-    return `${directMessageIdentityHtml(senderIdentity, "kwc-sender")}<span class="kwc-meta-sep" aria-hidden="true">·</span><span class="kwc-time-actions"><span class="kwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span>${privateReplyActionHtml(msg, type)}${statusHtml}</span>`;
+    return `${directMessageIdentityHtml(senderIdentity, "kwc-sender")}<span class="kwc-meta-sep" aria-hidden="true">·</span><span class="kwc-time-actions"><span class="kwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span>${statusHtml}${privateReplyActionHtml(msg, type)}</span>`;
   }
 
   function privateReplyActionHtml(msg, type = "dm") {
     const rawMessageId = String(msg && msg.id || "");
     const persisted = /^\d+$/.test(rawMessageId);
-    const canReply = persisted && !(type === "group" ? state.groupAuditMode : state.dmAuditMode);
-    if (!canReply) return "";
-    return `<span class="kwc-mini-actions"><button type="button" class="kwc-mini-action kwc-reply-action" data-private-reply-message="${esc(rawMessageId)}" data-private-reply-type="${type}">${esc(t("button.reply", "reply"))}</button></span>`;
+    const audit = type === "group" ? state.groupAuditMode : state.dmAuditMode;
+    if (!persisted || audit) return "";
+    const reply = `<button type="button" class="kwc-mini-action kwc-reply-action" data-private-reply-message="${esc(rawMessageId)}" data-private-reply-type="${type}">${esc(t("button.reply", "reply"))}</button>`;
+    const react = (!state.reactionCatalog || state.reactionCatalog.enabled !== false)
+      ? `<button type="button" class="kwc-mini-action kwc-reaction-action" data-reaction-open="${esc(rawMessageId)}">${esc(t("button.react", "React"))}</button>`
+      : "";
+    return `<span class="kwc-mini-actions">${reply}${react}</span>`;
   }
 
   function groupMembershipEventText(msg) {
@@ -14898,7 +16420,23 @@
     return fmt("group.memberJoined", "{player} joined the room.", {player});
   }
 
+  function groupMembershipEventHtml(msg) {
+    const marker = "__KWC_GROUP_MEMBER_IDENTITY__";
+    const leaving = String(msg && msg.eventType || "") === "member_leave";
+    const template = fmt(leaving ? "group.memberLeft" : "group.memberJoined", leaving ? "{player} left the room." : "{player} joined the room.", {player: marker});
+    const identityHtml = directMessageIdentityHtml({
+      senderDisplayName: msg && msg.senderDisplayName || "",
+      senderUsername: msg && msg.senderUsername || "",
+      senderUuid: msg && msg.senderUuid || ""
+    }, "kwc-group-membership-identity");
+    const parts = String(template || "").split(marker);
+    if (parts.length < 2) return esc(groupMembershipEventText(msg));
+    return parts.map(esc).join(identityHtml);
+  }
+
   function createPrivateMessageElement(msg, type = "dm") {
+    msg._kwcReactionContextType = type === "group" ? "group" : "dm";
+    msg._kwcReactionContextId = type === "group" ? String(msg.roomId || state.groupActiveRoomId || "") : String(msg.threadId || state.dmActiveThreadId || "");
     const mine = !!(state.username && msg.senderUsername && String(msg.senderUsername).toLowerCase() === String(state.username).toLowerCase());
     const rawMessageId = String(msg.id || "");
     const body = String(msg.body || "");
@@ -14910,7 +16448,7 @@
       el.dataset.kwcPrivateBody = body;
       el.dataset.kwcPrivateEventType = eventType;
       el.dataset.groupMessageId = rawMessageId;
-      el.innerHTML = `<span class="kwc-group-membership-event-text">${esc(groupMembershipEventText(msg))}</span><span class="kwc-group-membership-event-time kwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span>`;
+      el.innerHTML = `<span class="kwc-group-membership-event-text">${groupMembershipEventHtml(msg)}</span><span class="kwc-group-membership-event-time kwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span>`;
       return el;
     }
     el.className = `kwc-msg kwc-dm-message${type === "group" ? " kwc-group-message" : ""}${mine ? " kwc-mine" : ""}`;
@@ -14923,12 +16461,15 @@
       ? (!state.groupAuditMode && persisted ? `<button type="button" class="kwc-dm-message-hide" data-group-hide-message="${esc(rawMessageId)}" title="${esc(t("dm.hideMessage", "Hide this message"))}">×</button>` : "")
       : (state.dmAuditMode ? "" : `<button type="button" class="kwc-dm-message-hide" data-dm-hide-message="${esc(rawMessageId)}" title="${esc(t("dm.hideMessage", "Hide this message"))}" aria-label="${esc(t("dm.hideMessage", "Hide this message"))}">×</button>`);
     el.dataset.kwcPrivateReplySignature = privateReplySignature(msg);
-    el.innerHTML = `<div class="kwc-meta kwc-dm-message-meta">${privateMessageMetaHtml(msg, mine, type)}</div>${hideButton}${privateReplyReferenceHtml(msg, type)}<div class="kwc-text kwc-dm-message-body">${directMessageBodyHtml(body)}</div>${directMessagePreviewHtml(body, rawMessageId, type)}`;
+    el.innerHTML = `<div class="kwc-meta kwc-dm-message-meta">${privateMessageMetaHtml(msg, mine, type)}</div>${hideButton}${privateReplyReferenceHtml(msg, type)}<div class="kwc-text kwc-dm-message-body">${directMessageBodyHtml(body)}</div>${directMessagePreviewHtml(body, rawMessageId, type)}${reactionBarHtml(msg)}`;
+    installReactionHandlers(el, msg);
     return el;
   }
 
   function syncPrivateMessageElement(el, msg, type = "dm") {
     if (!el || !msg) return el;
+    msg._kwcReactionContextType = type === "group" ? "group" : "dm";
+    msg._kwcReactionContextId = type === "group" ? String(msg.roomId || state.groupActiveRoomId || "") : String(msg.threadId || state.dmActiveThreadId || "");
     const eventType = type === "group" ? String(msg.eventType || "") : "";
     if (eventType === "member_join" || eventType === "member_leave") {
       if (String(el.dataset.kwcPrivateEventType || "") !== eventType) {
@@ -14937,7 +16478,7 @@
         return replacement;
       }
       const text = el.querySelector(":scope > .kwc-group-membership-event-text");
-      if (text) text.textContent = groupMembershipEventText(msg);
+      if (text) text.innerHTML = groupMembershipEventHtml(msg);
       const time = el.querySelector(":scope > .kwc-group-membership-event-time");
       if (time) {
         time.dataset.time = String(msg.time || "");
@@ -14967,6 +16508,8 @@
       el.replaceWith(replacement);
       return replacement;
     }
+    updateReactionBarElement(el, msg);
+    installReactionHandlers(el, msg);
     return el;
   }
 
@@ -15119,6 +16662,10 @@
     installSenderIdentityToggle(box);
     installTimeToggle(box);
     installPrivateMessageActions(box, type);
+    arr.forEach(msg => {
+      const el = box.querySelector(`[data-kwc-private-message-key="${cssEscape(privateMessageDomKey(msg, type))}"]`);
+      if (el) installReactionHandlers(el, msg);
+    });
     return {sameConversation, wasNearBottom};
   }
 
@@ -15172,6 +16719,7 @@
       const thread = (state.dmThreads || []).find(t => t.id === threadId);
       const messages = Array.isArray(res.messages) ? res.messages : [];
       state.dmMessages = messages;
+      clearTypingIndicatorsFromMessages("dm", messages);
       state.dmMessagesHasMore = messages.length >= limit;
       renderDirectMessageHeader(thread ? directMessageLabel(thread) : "");
       renderDirectMessageMessages(state.dmMessages, {stickToBottom: true});
@@ -15308,7 +16856,9 @@
   }
 
   function closeDirectMessageEmojiPanel() {
+    if (state.dmEmojiPanelOpen) markNonScrollUiAction();
     state.dmEmojiPanelOpen = false;
+    resetEmojiSearchState("dm");
     const panel = document.getElementById("kwc-dm-emoji-panel");
     if (panel) {
       panel.classList.add("kwc-hidden");
@@ -15323,6 +16873,7 @@
 
   function toggleDirectMessageEmojiPanel() {
     if (!canUseCustomEmoji()) return;
+    markNonScrollUiAction();
     setActiveComposeInput("kwc-dm-input");
     state.dmEmojiPanelOpen = !state.dmEmojiPanelOpen;
     renderDirectMessageEmojiPanel();
@@ -15358,6 +16909,7 @@
     panel.style.minHeight = minHeight + "px";
     if (!options || options.snapScroll !== false) snapEmojiPanelScrollTop(panel);
     updateDirectMessageEmojiResizeHandleVisibility();
+    if (state.dmEmojiSearchOpen) requestAnimationFrame(() => positionEmojiSearchOverlay("dm"));
     return height;
   }
 
@@ -15947,46 +17499,7 @@
       closeDirectMessageEmojiPanel();
       return;
     }
-    const packs = Array.isArray(state.emojiPacks) ? state.emojiPacks : [];
-    const items = Array.isArray(state.emojiItems) ? state.emojiItems : [];
-    if (!items.length) {
-      panel.innerHTML = `<div class="kwc-emoji-scroll"><div class="kwc-emoji-empty">${esc(t("emoji.empty", "No emojis configured."))}</div></div>`;
-      panel.classList.remove("kwc-hidden");
-      setDirectMessageEmojiPanelHeight(panel);
-      installEmojiPanelWheelStep(panel);
-      return;
-    }
-    let selectedPack = String(state.dmEmojiSelectedPack || "");
-    if (!selectedPack || (packs.length && !packs.some(pack => String(pack.id || "") === selectedPack))) {
-      selectedPack = packs[0] && packs[0].id ? String(packs[0].id) : "";
-    }
-    state.dmEmojiSelectedPack = selectedPack;
-    const packTabs = packs.length > 1
-      ? `<div class="kwc-emoji-tabs">${packs.map(pack => {
-          const id = String(pack.id || "");
-          return `<button type="button" class="kwc-emoji-tab${id === selectedPack ? " kwc-active" : ""}" data-emoji-pack="${esc(id)}">${esc(pack.label || id)} <span>${esc(pack.count || "")}</span></button>`;
-        }).join("")}</div>`
-      : "";
-    const shown = selectedPack ? items.filter(item => String(item.pack || "") === selectedPack) : items;
-    panel.innerHTML = packTabs + `<div class="kwc-emoji-scroll"><div class="kwc-emoji-grid">${shown.map(emojiButtonHtml).join("")}</div></div>`;
-    panel.classList.remove("kwc-hidden");
-    setDirectMessageEmojiPanelHeight(panel);
-    installEmojiPanelWheelStep(panel);
-
-    panel.querySelectorAll("[data-emoji-pack]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const pack = btn.dataset.emojiPack || "";
-        state.dmEmojiSelectedPack = pack;
-        panel.querySelectorAll(".kwc-emoji-tab").forEach(tab => tab.classList.toggle("kwc-active", tab === btn));
-        const grid = panel.querySelector(".kwc-emoji-grid");
-        if (grid) grid.innerHTML = items.filter(item => String(item.pack || "") === pack).map(emojiButtonHtml).join("");
-        const scroll = emojiScrollElement(panel);
-        if (scroll) scroll.scrollTop = 0;
-        setDirectMessageEmojiPanelHeight(panel);
-        installEmojiItemHandlers(panel);
-      });
-    });
-    installEmojiItemHandlers(panel);
+    renderCustomEmojiPanel(panel, "dm");
   }
 
   function renderDirectMessagePlayers(players) {
@@ -16098,6 +17611,283 @@
     document.addEventListener("dragend", () => setOver(false), {capture: true});
   }
 
+  function typingIndicatorEnabled(kind) {
+    if (kind === "public") return state.typingOpenChatEnabled === true;
+    if (kind === "dm") return state.typingDmEnabled === true;
+    if (kind === "group") return state.typingGroupChatEnabled === true;
+    return false;
+  }
+
+  // Server scope policy controls whether typing activity exists/sends.
+  // The account preference below is display-only for the current viewer.
+  function typingIndicatorVisible(kind) {
+    return typingIndicatorEnabled(kind) && typingDisplayAllowedForCurrentUser();
+  }
+
+  function plainTypingName(value) {
+    return String(value == null ? "" : value)
+      .replace(/[§&]x(?:[§&][0-9a-f]){6}/gi, "")
+      .replace(/&#[0-9a-f]{6}/gi, "")
+      .replace(/[§&][0-9a-fk-or]/gi, "")
+      .replace(/<[^>]*>/g, "")
+      .replace(/§/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function typingIdentity(entry) {
+    const display = plainTypingName(entry && (entry.fromDisplayName || entry.fromUsername) || "");
+    const username = plainTypingName(entry && entry.fromUsername || "");
+    const real = username && (!display || username.toLowerCase() !== display.toLowerCase()) ? username : "";
+    return {display: display || username, real};
+  }
+
+  function typingIdentityHtml(entry) {
+    const identity = typingIdentity(entry);
+    if (!identity.display) return "";
+    if (!identity.real) return `<span class="kwc-typing-identity">${esc(identity.display)}</span>`;
+    const shown = preferredSenderText(identity.display, identity.real);
+    const title = state.senderIdentityMode === "real" ? senderDisplayTitle(identity.display) : senderOriginalTitle(identity.real);
+    return `<span class="kwc-typing-identity" data-kwc-identity-toggle="typing" data-display-sender="${esc(identity.display)}" data-real-sender="${esc(identity.real)}" data-source="typing" data-showing-real="${state.senderIdentityMode === "real" ? "1" : "0"}" title="${esc(title)}" aria-label="${esc(title)}">${esc(shown)}</span>`;
+  }
+
+  function typingTemplateHtml(key, fallback, values) {
+    let out = esc(t(key, fallback));
+    Object.entries(values || {}).forEach(([name, html]) => { out = out.split("{" + name + "}").join(String(html)); });
+    return out;
+  }
+
+  function currentDirectTypingTarget() {
+    if (state.dmAuditMode) return null;
+    if (state.dmActiveThreadId) {
+      const thread = (state.dmThreads || []).find(t => String(t.id || "") === String(state.dmActiveThreadId));
+      if (!thread) return null;
+      return {
+        uuid: thread.otherPlayerUuid || thread.otherUuid || "",
+        remote: thread.otherRemote === true,
+        serverId: thread.otherServerId || ""
+      };
+    }
+    if (state.dmDraftTarget && state.dmDraftTarget.uuid) {
+      return {uuid: state.dmDraftTarget.uuid, remote: state.dmDraftTarget.remote === true, serverId: state.dmDraftTarget.serverId || ""};
+    }
+    return null;
+  }
+
+  function notifyPublicTyping() {
+    if (!typingIndicatorEnabled("public") || state.publicTypingInFlight) return;
+    const now = Date.now();
+    if (now < Number(state.publicTypingNextAllowedAt || 0)) return;
+    const input = document.getElementById("kwc-message");
+    const message = String(input && input.value || "").trim();
+    if (!message || message.startsWith("/")) return;
+    const body = {clientId: state.publicTypingClientId};
+    if (!state.token) {
+      const guest = document.getElementById("kwc-guest-name");
+      body.guestName = String(guest && guest.value || state.guestName || "").trim();
+    }
+    // Do not start the five-second client cooldown until the server actually
+    // accepts the typing event. Advancing the cooldown before fetch() would make
+    // an HTTP rejection look like a successful send and suppress immediate retry,
+    // unnecessarily difficult while suppressing immediate retry.
+    state.publicTypingInFlight = true;
+    api("/typing", {
+      method: "POST",
+      body: JSON.stringify(body),
+      timeoutMs: 5000,
+      returnHttpErrorResponse: true
+    }).then(res => {
+      if (res && res.ok !== false) {
+        state.publicTypingNextAllowedAt = Date.now() + 5000;
+        return;
+      }
+      state.publicTypingNextAllowedAt = 0;
+      if (res && res.error === "typing_disabled") loadConfig().catch(() => {});
+    }).catch(() => {
+      state.publicTypingNextAllowedAt = 0;
+    }).finally(() => {
+      state.publicTypingInFlight = false;
+    });
+  }
+
+  function notifyDirectTyping() {
+    if (!typingIndicatorEnabled("dm") || !state.token || !state.directMessageEnabled || state.dmAuditMode) return;
+    const target = currentDirectTypingTarget();
+    if (!target || !target.uuid) return;
+    const now = Date.now();
+    if (now < Number(state.dmTypingNextAllowedAt || 0)) return;
+    state.dmTypingNextAllowedAt = now + 5000;
+    const body = {targetUuid: target.uuid};
+    if (target.remote && target.serverId) body.targetServerId = target.serverId;
+    api("/dm/typing", {method: "POST", body: JSON.stringify(body), timeoutMs: 5000}).catch(() => {});
+  }
+
+  function notifyGroupTyping() {
+    if (!typingIndicatorEnabled("group") || !state.token || !state.groupChatEnabled || state.groupAuditMode || !state.groupActiveRoomId) return;
+    const now = Date.now();
+    if (now < Number(state.groupTypingNextAllowedAt || 0)) return;
+    state.groupTypingNextAllowedAt = now + 5000;
+    api("/group/typing", {method: "POST", body: JSON.stringify({roomId: state.groupActiveRoomId}), timeoutMs: 5000}).catch(() => {});
+  }
+
+  function directTypingMatchesActive(entry) {
+    if (!entry || !state.dmModalOpen || state.dmAuditMode) return false;
+    const from = String(entry.fromUuid || "").trim().toLowerCase();
+    if (!from) return false;
+    if (state.dmActiveThreadId) {
+      const thread = (state.dmThreads || []).find(t => String(t.id || "") === String(state.dmActiveThreadId));
+      if (!thread) return false;
+      if (thread.otherRemote === true) return String(thread.otherUuid || "").trim().toLowerCase() === from;
+      return String(thread.otherPlayerUuid || thread.otherUuid || "").trim().toLowerCase() === from;
+    }
+    return false;
+  }
+
+  function typingIndicatorOverflows(element) {
+    if (!element || element.classList.contains("kwc-hidden")) return false;
+    return Number(element.clientWidth || 0) > 0 && Number(element.scrollWidth || 0) > Number(element.clientWidth || 0) + 1;
+  }
+
+  function activeTypingEntries(map, predicate = null) {
+    const out = [];
+    const now = Date.now();
+    for (const [key, value] of Array.from(map.entries())) {
+      if (!value || Number(value.expiresAt || 0) <= now) { map.delete(key); continue; }
+      if (predicate && !predicate(value)) continue;
+      out.push(value);
+    }
+    return out;
+  }
+
+  function renderTypingList(element, entries) {
+    if (!element) return;
+    const valid = (entries || []).filter(entry => typingIdentity(entry).display);
+    element.classList.toggle("kwc-hidden", valid.length === 0);
+    if (!valid.length) { element.textContent = ""; return; }
+    if (valid.length === 1) {
+      element.innerHTML = typingTemplateHtml("typing.user", "{user} is typing...", {user: typingIdentityHtml(valid[0])});
+    } else if (valid.length === 2) {
+      element.innerHTML = typingTemplateHtml("typing.two", "{user1}, {user2} are typing...", {user1: typingIdentityHtml(valid[0]), user2: typingIdentityHtml(valid[1])});
+      if (typingIndicatorOverflows(element)) {
+        element.innerHTML = typingTemplateHtml("typing.count", "{count} people are typing...", {count: "2"});
+      }
+    } else {
+      element.innerHTML = typingTemplateHtml("typing.count", "{count} people are typing...", {count: String(valid.length)});
+    }
+  }
+
+  function renderTypingIndicators() {
+    const now = Date.now();
+    const publicEl = document.getElementById("kwc-public-typing");
+    if (publicEl) {
+      const ownUuid = String(state.userUuid || "").trim().toLowerCase();
+      const entries = typingIndicatorVisible("public") ? activeTypingEntries(state.publicTypingEntries, value => {
+        const from = String(value && value.fromUuid || "").trim().toLowerCase();
+        if (ownUuid && from && ownUuid === from) return false;
+        return String(value && value.clientId || "") !== String(state.publicTypingClientId || "");
+      }) : [];
+      renderTypingList(publicEl, entries);
+    }
+
+    const dm = document.getElementById("kwc-dm-typing");
+    const entry = state.dmTypingEntry;
+    if (dm) {
+      const visible = typingIndicatorVisible("dm") && entry && Number(entry.expiresAt || 0) > now && directTypingMatchesActive(entry);
+      renderTypingList(dm, visible ? [entry] : []);
+    }
+
+    const group = document.getElementById("kwc-group-typing");
+    if (group) {
+      const entries = typingIndicatorVisible("group") ? activeTypingEntries(state.groupTypingEntries, value => String(value.roomId || "") === String(state.groupActiveRoomId || "")) : [];
+      renderTypingList(group, entries);
+    }
+  }
+
+  function scheduleTypingIndicatorRefresh() {
+    clearTimeout(state.publicTypingTimer);
+    clearTimeout(state.dmTypingTimer);
+    clearTimeout(state.groupTypingTimer);
+    let next = 0;
+    const now = Date.now();
+    for (const value of state.publicTypingEntries.values()) {
+      const expires = Number(value && value.expiresAt || 0);
+      if (expires > now && (!next || expires < next)) next = expires;
+    }
+    if (state.dmTypingEntry && Number(state.dmTypingEntry.expiresAt || 0) > now) next = !next ? Number(state.dmTypingEntry.expiresAt) : Math.min(next, Number(state.dmTypingEntry.expiresAt));
+    for (const value of state.groupTypingEntries.values()) {
+      const expires = Number(value && value.expiresAt || 0);
+      if (expires > now && (!next || expires < next)) next = expires;
+    }
+    renderTypingIndicators();
+    if (!next) return;
+    const timer = setTimeout(() => { renderTypingIndicators(); scheduleTypingIndicatorRefresh(); }, Math.max(50, next - now + 25));
+    state.publicTypingTimer = timer;
+    state.dmTypingTimer = timer;
+    state.groupTypingTimer = timer;
+  }
+
+  function handleTypingEvent(data) {
+    if (!data || Number(data.expiresAt || 0) <= Date.now()) return;
+    if (data.kind === "public") {
+      if (!typingIndicatorEnabled("public")) return;
+      if (String(data.clientId || "") === String(state.publicTypingClientId || "")) return;
+      const from = String(data.fromUuid || "").trim().toLowerCase();
+      if (from && state.userUuid && from === String(state.userUuid).trim().toLowerCase()) return;
+      const key = String(data.originServerId || "local") + "|" + (from || String(data.clientId || data.fromDisplayName || ""));
+      if (!key.endsWith("|")) state.publicTypingEntries.set(key, data);
+    } else if (data.kind === "dm") {
+      if (!typingIndicatorEnabled("dm")) return;
+      state.dmTypingEntry = data;
+    } else if (data.kind === "group") {
+      if (!typingIndicatorEnabled("group")) return;
+      const key = String(data.roomId || "") + "|" + String(data.fromUuid || "");
+      if (!data.roomId || !data.fromUuid) return;
+      state.groupTypingEntries.set(key, data);
+    } else return;
+    scheduleTypingIndicatorRefresh();
+  }
+
+  function clearTypingIndicatorsFromMessages(kind, messages, roomId = "") {
+    if (!Array.isArray(messages) || !messages.length) return;
+    const now = Date.now();
+    const recentSenderMessage = (entry) => {
+      const from = String(entry && entry.fromUuid || "").trim().toLowerCase();
+      const fromName = plainTypingName(entry && (entry.fromDisplayName || entry.fromUsername) || "").toLowerCase();
+      const expiresAt = Number(entry && entry.expiresAt || 0);
+      if (!(expiresAt > 0)) return false;
+      const startedAt = expiresAt - 5500;
+      return messages.some(msg => {
+        const sender = String(msg && (msg.senderUuid || msg.playerUuid) || "").trim().toLowerCase();
+        const senderName = plainTypingName(msg && (msg.sender || msg.realSender) || "").toLowerCase();
+        if (from ? (!sender || sender !== from) : (!fromName || senderName !== fromName)) return false;
+        let sentAt = Number(msg && msg.time || 0);
+        if (!Number.isFinite(sentAt) || sentAt <= 0) sentAt = Date.parse(String(msg && msg.time || ""));
+        return Number.isFinite(sentAt) && sentAt >= startedAt && sentAt <= now + 5000;
+      });
+    };
+
+    let changed = false;
+    if (kind === "public") {
+      for (const [key, entry] of Array.from(state.publicTypingEntries.entries())) {
+        if (!recentSenderMessage(entry)) continue;
+        state.publicTypingEntries.delete(key);
+        changed = true;
+      }
+    } else if (kind === "dm" && state.dmTypingEntry && recentSenderMessage(state.dmTypingEntry)) {
+      state.dmTypingEntry = null;
+      changed = true;
+    } else if (kind === "group") {
+      const activeRoom = String(roomId || state.groupActiveRoomId || "");
+      for (const [key, entry] of Array.from(state.groupTypingEntries.entries())) {
+        if (String(entry && entry.roomId || "") !== activeRoom) continue;
+        if (!recentSenderMessage(entry)) continue;
+        state.groupTypingEntries.delete(key);
+        changed = true;
+      }
+    }
+    if (changed) scheduleTypingIndicatorRefresh();
+  }
+
   async function sendDirectMessageFromModal() {
     if (state.dmAuditMode) return;
     if (!state.token || !state.directMessageEnabled || !state.directMessageAllowWebSend) return;
@@ -16140,6 +17930,7 @@
       return;
     }
     input.value = "";
+    state.dmTypingNextAllowedAt = Date.now() + 5000;
     clearPrivateReply("dm");
     state.dmMessages = (state.dmMessages || []).concat([directMessageOptimisticMessage(clientMessageId, message, body, replyTarget)]);
     renderDirectMessageMessages(state.dmMessages, {stickToBottom: true});
@@ -16231,6 +18022,7 @@
   }
 
   function renderGroupChatRooms() {
+    publishNotificationViewState();
     const list = document.getElementById("kwc-group-room-list");
     const invites = document.getElementById("kwc-group-invites");
     if (!list) return;
@@ -16452,6 +18244,7 @@
     const room = state.groupActiveRoom || (state.groupRooms || []).find(r => r.id === state.groupActiveRoomId);
     if (modal) modal.classList.toggle("kwc-dm-thread-mode", !!room);
     if (!room) {
+      title.classList.remove("kwc-group-title-audit");
       title.textContent = t("group.selectRoom", "Select a room");
       title.classList.remove("kwc-dm-title-back");
       title.title = "";
@@ -16463,14 +18256,15 @@
       return;
     }
     if (state.groupAuditMode) {
-      const privacyIcon = room.visibility === "public" ? "🌐" : "🔒";
+      title.classList.add("kwc-group-title-audit");
+      const privacyLabel = room.visibility === "public" ? t("group.public", "public") : t("group.private", "private");
       const backLabel = t("group.backToList", "Back to group chat list");
       title.classList.add("kwc-dm-title-back");
       title.title = backLabel;
       title.setAttribute("aria-label", backLabel);
       title.setAttribute("role", "button");
       title.tabIndex = 0;
-      title.innerHTML = `<span class="kwc-group-title-main"><span class="kwc-group-title-name">🛡 ${privacyIcon} ${esc(groupRoomLabel(room))}</span></span><small>${esc(t("admin.groupAuditReadOnly", "Read-only audit · every access is logged"))}</small>`;
+      title.innerHTML = `<span class="kwc-group-title-main"><span class="kwc-group-visibility-badge">${esc(privacyLabel)}</span><span class="kwc-group-title-name">🛡 ${esc(groupRoomLabel(room))}</span></span><small>${esc(t("admin.groupAuditReadOnly", "Read-only audit · every access is logged"))}</small>`;
       title.onclick = () => returnGroupChatToList();
       title.onkeydown = event => {
         if (!event || (event.key !== "Enter" && event.key !== " ")) return;
@@ -16480,10 +18274,10 @@
       updateGroupChatComposeControls();
       return;
     }
+    title.classList.remove("kwc-group-title-audit");
     const manage = room.role === "owner" || room.role === "admin";
     const privacyLabel = room.visibility === "public" ? t("group.public", "public") : t("group.private", "private");
-    const privacyIcon = room.visibility === "public" ? "🌐" : "🔒";
-    const passwordText = room.passwordProtected ? ` · 🔑 ${esc(t("group.passwordProtected", "password"))}` : "";
+    const passwordBadge = room.passwordProtected ? `<span class="kwc-group-password-badge" title="${esc(t("group.passwordProtected", "password"))}" aria-label="${esc(t("group.passwordProtected", "password"))}">🔑</span>` : "";
     const backLabel = t("group.backToList", "Back to group chat list");
     title.classList.add("kwc-dm-title-back");
     title.title = backLabel;
@@ -16493,7 +18287,7 @@
     const memberCount = Math.max(0, Number(room.memberCount || 0));
     const onlineCount = Math.max(0, Number(room.onlineMemberCount || 0));
     const countText = fmt("group.memberOnlineCount", "{online}/{total} online", {online: onlineCount, total: memberCount});
-    title.innerHTML = `<span class="kwc-group-title-main"><span class="kwc-group-title-name">${privacyIcon} ${esc(groupRoomLabel(room))}</span><span class="kwc-group-member-counts" id="kwc-group-member-counts" role="button" tabindex="0" title="${esc(t("group.members", "Members"))}" aria-label="${esc(t("group.members", "Members"))}">${esc(countText)}</span></span><small>${esc(privacyLabel)}${passwordText}</small><span class="kwc-group-actions">${manage ? `<button class="kwc-button" id="kwc-group-settings">${esc(t("group.settings", "Settings"))}</button><button class="kwc-button" id="kwc-group-invite">${esc(t("group.invite", "Invite"))}</button>` : ""}<button class="kwc-button" id="kwc-group-hide-room">${esc(t("button.hide", "Hide"))}</button><button class="kwc-button" id="kwc-group-leave">${esc(t("group.leave", "Leave"))}</button></span>`;
+    title.innerHTML = `<span class="kwc-group-title-main"><span class="kwc-group-visibility-badge">${esc(privacyLabel)}</span><span class="kwc-group-title-name">${esc(groupRoomLabel(room))}</span>${passwordBadge}<span class="kwc-group-member-counts" id="kwc-group-member-counts" role="button" tabindex="0" title="${esc(t("group.members", "Members"))}" aria-label="${esc(t("group.members", "Members"))}">${esc(countText)}</span></span><span class="kwc-group-actions"><button class="kwc-button" id="kwc-group-settings">${esc(t("group.settings", "Settings"))}</button><button class="kwc-button" id="kwc-group-leave">${esc(t("group.leave", "Leave"))}</button></span>`;
     title.onclick = event => {
       if (event && event.target && event.target.closest && event.target.closest(".kwc-group-actions")) return;
       if (event && event.target && event.target.closest && event.target.closest(".kwc-group-member-counts")) return;
@@ -16505,9 +18299,7 @@
       returnGroupChatToList();
     };
     const settings = document.getElementById("kwc-group-settings");
-    if (settings) settings.onclick = event => { event.preventDefault(); event.stopPropagation(); updateGroupRoomSettings(); };
-    const invite = document.getElementById("kwc-group-invite");
-    if (invite) invite.onclick = event => { event.preventDefault(); event.stopPropagation(); inviteToGroupRoom(); };
+    if (settings) settings.onclick = event => { event.preventDefault(); event.stopPropagation(); openGroupConversationSettingsMenu(); };
     const memberCounts = document.getElementById("kwc-group-member-counts");
     if (memberCounts) {
       memberCounts.onclick = event => { event.preventDefault(); event.stopPropagation(); openGroupManagePanel(); };
@@ -16518,13 +18310,489 @@
         openGroupManagePanel();
       };
     }
-    const hideRoom = document.getElementById("kwc-group-hide-room");
-    if (hideRoom) hideRoom.onclick = event => { event.preventDefault(); event.stopPropagation(); hideGroupRoomForMe(); };
     const leave = document.getElementById("kwc-group-leave");
     if (leave) leave.onclick = event => { event.preventDefault(); event.stopPropagation(); leaveGroupRoom(); };
     updateGroupChatComposeControls();
   }
 
+
+  function conversationArchiveMessageBox(type) {
+    if (type === "dm") return document.getElementById("kwc-dm-messages");
+    if (type === "group") return document.getElementById("kwc-group-messages");
+    return document.getElementById("kwc-messages");
+  }
+
+  function conversationArchiveMessages(type) {
+    if (type === "dm") return Array.isArray(state.dmMessages) ? state.dmMessages : [];
+    if (type === "group") return Array.isArray(state.groupMessages) ? state.groupMessages : [];
+    return Array.isArray(state.messages) ? state.messages : [];
+  }
+
+  function conversationArchiveElementId(el, type) {
+    if (!el) return "";
+    if (type === "dm") return String(el.dataset.dmMessageId || "");
+    if (type === "group") return String(el.dataset.groupMessageId || "");
+    return String(el.dataset.id || "");
+  }
+
+  function conversationArchiveElementSelector(type) {
+    if (type === "dm") return ".kwc-msg[data-dm-message-id]";
+    if (type === "group") return ".kwc-msg[data-group-message-id]";
+    return ".kwc-msg[data-id]";
+  }
+
+  function cancelConversationArchiveSelection() {
+    const sel = state.archiveSelection;
+    const box = sel ? conversationArchiveMessageBox(sel.type) : null;
+    if (box && state.archiveSelectionHandler) box.removeEventListener("click", state.archiveSelectionHandler, true);
+    if (box) {
+      box.classList.remove("kwc-archive-selecting");
+      box.querySelectorAll(".kwc-archive-range-start,.kwc-archive-range-end,.kwc-archive-range-selected").forEach(el => el.classList.remove("kwc-archive-range-start", "kwc-archive-range-end", "kwc-archive-range-selected"));
+    }
+    if (state.archiveSelectionBanner && state.archiveSelectionBanner.isConnected) state.archiveSelectionBanner.remove();
+    state.archiveSelection = null;
+    state.archiveSelectionHandler = null;
+    state.archiveSelectionBanner = null;
+  }
+
+  function archiveSelectionIndex(messages, id) {
+    return messages.findIndex(msg => String(msg && msg.id || "") === String(id || ""));
+  }
+
+  function updateConversationArchiveSelectionHighlights() {
+    const sel = state.archiveSelection;
+    if (!sel) return;
+    const box = conversationArchiveMessageBox(sel.type);
+    if (!box) return;
+    const messages = conversationArchiveMessages(sel.type);
+    const a = archiveSelectionIndex(messages, sel.firstId);
+    const b = archiveSelectionIndex(messages, sel.lastId);
+    box.querySelectorAll(conversationArchiveElementSelector(sel.type)).forEach(el => {
+      el.classList.remove("kwc-archive-range-start", "kwc-archive-range-end", "kwc-archive-range-selected");
+      const id = conversationArchiveElementId(el, sel.type);
+      const idx = archiveSelectionIndex(messages, id);
+      if (id && id === sel.firstId) el.classList.add("kwc-archive-range-start");
+      if (id && id === sel.lastId) el.classList.add("kwc-archive-range-end");
+      if (a >= 0 && b >= 0 && idx >= Math.min(a,b) && idx <= Math.max(a,b)) el.classList.add("kwc-archive-range-selected");
+    });
+  }
+
+  function updateConversationArchiveSelectionBanner() {
+    const sel = state.archiveSelection;
+    const banner = state.archiveSelectionBanner;
+    if (!sel || !banner) return;
+    const text = banner.querySelector(".kwc-archive-selection-text");
+    if (text) text.textContent = !sel.firstId
+      ? t("archive.selectFirst", "Select the first message to save.")
+      : (!sel.lastId ? t("archive.selectLast", "Select the last message to save.") : t("archive.rangeReady", "Conversation range selected."));
+  }
+
+  function beginConversationArchiveSelection(type, sourceId, title) {
+    if (!state.conversationArchiveEnabled || !state.token) return;
+    cancelConversationArchiveSelection();
+    const box = conversationArchiveMessageBox(type);
+    if (!box) return;
+    const banner = document.createElement("div");
+    banner.className = "kwc-archive-selection-banner";
+    banner.innerHTML = `<span class="kwc-archive-selection-text"></span><button type="button" class="kwc-button kwc-archive-selection-cancel">${esc(t("button.cancel", "Cancel"))}</button>`;
+    box.parentNode.insertBefore(banner, box);
+    state.archiveSelection = {type, sourceId: String(sourceId || (type === "public" ? "public" : "")), title: String(title || ""), firstId: "", lastId: ""};
+    state.archiveSelectionBanner = banner;
+    box.classList.add("kwc-archive-selecting");
+    banner.querySelector(".kwc-archive-selection-cancel").onclick = cancelConversationArchiveSelection;
+    const handler = event => {
+      const current = state.archiveSelection;
+      if (!current || current.type !== type) return;
+      const target = event.target && event.target.closest ? event.target.closest(conversationArchiveElementSelector(type)) : null;
+      if (!target || !box.contains(target)) return;
+      const id = conversationArchiveElementId(target, type);
+      if (!id) return;
+      event.preventDefault(); event.stopPropagation();
+      if (!current.firstId) {
+        current.firstId = id;
+        updateConversationArchiveSelectionBanner();
+        updateConversationArchiveSelectionHighlights();
+        return;
+      }
+      if (!current.lastId) {
+        current.lastId = id;
+        updateConversationArchiveSelectionBanner();
+        updateConversationArchiveSelectionHighlights();
+        openConversationArchiveRangeConfirm();
+      }
+    };
+    state.archiveSelectionHandler = handler;
+    box.addEventListener("click", handler, true);
+    updateConversationArchiveSelectionBanner();
+  }
+
+  function archiveSelectionRangeSummary(sel) {
+    const messages = conversationArchiveMessages(sel.type);
+    const a = archiveSelectionIndex(messages, sel.firstId), b = archiveSelectionIndex(messages, sel.lastId);
+    const range = a >= 0 && b >= 0 ? messages.slice(Math.min(a,b), Math.max(a,b) + 1) : [];
+    const first = range.length ? Number(range[0].time || 0) : 0;
+    const last = range.length ? Number(range[range.length - 1].time || 0) : 0;
+    const time = first > 0 && last > 0 ? `${archiveMetadataTime(first)} ~ ${archiveMetadataTime(last)}` : "";
+    return {count: range.length, time};
+  }
+
+  function openConversationArchiveRangeConfirm() {
+    if (!state.conversationArchiveEnabled) return;
+    const sel = state.archiveSelection;
+    if (!sel || !sel.firstId || !sel.lastId) return;
+    const info = archiveSelectionRangeSummary(sel);
+    const wrap = document.createElement("div");
+    wrap.className = "kwc-modal-backdrop kwc-user-prefs-backdrop";
+    applyDetachedModalTheme(wrap);
+    wrap.innerHTML = `<div class="kwc-modal"><h3>${esc(t("archive.saveConversation", "Save conversation"))}</h3><label><span>${esc(t("archive.title", "Title"))}</span><input class="kwc-input" id="kwc-archive-title" maxlength="160" value="${esc(sel.title || t("archive.defaultTitle", "Saved conversation"))}"></label><p class="kwc-admin-meta-note">${esc(fmt("archive.rangeSummary", "{count} messages · {time}", {count: info.count || "?", time: info.time || ""}))}</p><div class="kwc-row"><button class="kwc-button" id="kwc-archive-save">${esc(t("button.save", "Save"))}</button><button class="kwc-button" id="kwc-archive-cancel">${esc(t("button.cancel", "Cancel"))}</button></div></div>`;
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    wrap.querySelector("#kwc-archive-cancel").onclick = () => { close(); cancelConversationArchiveSelection(); };
+    wrap.addEventListener("click", e => { if (e.target === wrap) { close(); cancelConversationArchiveSelection(); } });
+    wrap.querySelector("#kwc-archive-save").onclick = async () => {
+      const button = wrap.querySelector("#kwc-archive-save");
+      button.disabled = true;
+      try {
+        const title = String(wrap.querySelector("#kwc-archive-title").value || "").trim();
+        await api("/archive/save", {method: "POST", body: JSON.stringify({sourceType: sel.type, sourceId: sel.sourceId, firstId: sel.firstId, lastId: sel.lastId, title})});
+        close(); cancelConversationArchiveSelection();
+        alert(t("archive.saved", "Conversation saved."));
+      } catch (e) {
+        button.disabled = false;
+        const response = e.response || {error: e.message || "error"};
+        if (response.error === "archive_locked_by_admin") alert(t("archive.adminLocked", "This conversation cannot be saved because it is locked by an administrator."));
+        else alertResponse("archive.saveFailed", "Could not save conversation: {error}", response);
+      }
+    };
+  }
+
+  function archiveSourceLabel(type) {
+    if (type === "dm") return t("archive.typeDm", "DM");
+    if (type === "group") return t("archive.typeGroup", "Group");
+    return t("archive.typePublic", "Public chat");
+  }
+
+  function archiveMetadataTime(value) {
+    const n = Number(value || 0);
+    if (!(n > 0)) return "";
+    const d = new Date(n);
+    const opts = timeFormatOptions({year: "numeric", month: "long", day: "numeric", weekday: "long", hour: "2-digit", minute: "2-digit"});
+    try { return d.toLocaleString(selectedLocale(), opts); }
+    catch (_) { return d.toLocaleString(undefined, {year: "numeric", month: "long", day: "numeric", weekday: "long", hour: "2-digit", minute: "2-digit"}); }
+  }
+
+  function archiveDateKey(value) {
+    const d = new Date(Number(value || 0));
+    if (!Number.isFinite(d.getTime())) return "";
+    try { return new Intl.DateTimeFormat("en-CA", timeFormatOptions({year: "numeric", month: "2-digit", day: "2-digit"})).format(d); }
+    catch (_) { return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
+  }
+
+  function archiveDateLabel(value) {
+    const d = new Date(Number(value || 0));
+    if (!Number.isFinite(d.getTime())) return "";
+    const opts = timeFormatOptions({year: "numeric", month: "long", day: "numeric", weekday: "long"});
+    try { return d.toLocaleDateString(selectedLocale(), opts); }
+    catch (_) { return d.toLocaleDateString(undefined, {year: "numeric", month: "long", day: "numeric", weekday: "long"}); }
+  }
+
+  async function openConversationArchiveLibrary() {
+    if (!state.conversationArchiveEnabled || !state.token || state.archiveModalOpen) return;
+    state.archiveModalOpen = true;
+    let res;
+    try { res = await api("/archive/list"); }
+    catch (e) { state.archiveModalOpen = false; alertResponse("archive.loadFailed", "Could not load saved conversations: {error}", e.response || {error: e.message || "error"}); return; }
+    const archives = Array.isArray(res.archives) ? res.archives : [];
+    const wrap = document.createElement("div");
+    wrap.className = "kwc-modal-backdrop kwc-user-prefs-backdrop";
+    applyDetachedModalTheme(wrap);
+    const rows = archives.map(item => `<div class="kwc-archive-row" data-archive-row="${esc(item.id || "")}"><div class="kwc-archive-row-main"><div class="kwc-archive-row-title">${esc(item.title || t("archive.defaultTitle", "Saved conversation"))}</div><div class="kwc-archive-row-meta">${esc(archiveSourceLabel(item.sourceType))} · ${esc(String(item.messageCount || 0))} · ${esc(archiveMetadataTime(item.createdAt))}</div></div><div class="kwc-archive-row-actions"><button class="kwc-button" data-archive-open="${esc(item.id || "")}">${esc(t("button.open", "Open"))}</button><button class="kwc-button" data-archive-rename="${esc(item.id || "")}">${esc(t("button.rename", "Rename"))}</button><button class="kwc-button" data-archive-delete="${esc(item.id || "")}">${esc(t("button.delete", "Delete"))}</button></div></div>`).join("") || `<div class="kwc-dm-empty">${esc(t("archive.empty", "No saved conversations."))}</div>`;
+    wrap.innerHTML = `<div class="kwc-modal kwc-archive-library-modal"><h3>${esc(t("archive.library", "Saved conversations"))}</h3><div class="kwc-row"><button class="kwc-button" id="kwc-archive-save-public">${esc(t("archive.savePublic", "Save public chat"))}</button></div><div class="kwc-archive-list">${rows}</div><div class="kwc-row"><button class="kwc-button" id="kwc-archive-library-close">${esc(t("button.close", "Close"))}</button></div></div>`;
+    document.body.appendChild(wrap);
+    const close = () => { if (wrap.isConnected) wrap.remove(); state.archiveModalOpen = false; };
+    wrap.addEventListener("click", e => { if (e.target === wrap) close(); });
+    wrap.querySelector("#kwc-archive-library-close").onclick = close;
+    wrap.querySelector("#kwc-archive-save-public").onclick = () => { close(); beginConversationArchiveSelection("public", "public", t("title.full", "KOKOTO WebChat")); };
+    wrap.querySelectorAll("[data-archive-open]").forEach(btn => btn.onclick = () => openConversationArchive(btn.dataset.archiveOpen || ""));
+    wrap.querySelectorAll("[data-archive-rename]").forEach(btn => btn.onclick = async () => {
+      const id = btn.dataset.archiveRename || "";
+      const item = archives.find(a => String(a.id || "") === id);
+      const title = prompt(t("archive.renamePrompt", "New saved-conversation title"), item ? String(item.title || "") : "");
+      if (title == null || !String(title).trim()) return;
+      try { await api("/archive/rename", {method: "POST", body: JSON.stringify({id, title: String(title).trim()})}); close(); openConversationArchiveLibrary(); }
+      catch (e) { alertResponse("archive.renameFailed", "Could not rename saved conversation: {error}", e.response || {error: e.message || "error"}); }
+    });
+    wrap.querySelectorAll("[data-archive-delete]").forEach(btn => btn.onclick = async () => {
+      const id = btn.dataset.archiveDelete || "";
+      if (!confirmPlain(t("archive.confirmDelete", "Delete this saved conversation?"))) return;
+      try { await api("/archive/delete", {method: "POST", body: JSON.stringify({id})}); close(); openConversationArchiveLibrary(); }
+      catch (e) { alertResponse("archive.deleteFailed", "Could not delete saved conversation: {error}", e.response || {error: e.message || "error"}); }
+    });
+  }
+
+  function archiveIdentityHtml(msg) {
+    const display = plainMinecraftName(msg && (msg.senderDisplayName || msg.senderUsername) || "") || t("sender.unknown", "Unknown");
+    const real = plainMinecraftName(msg && msg.senderUsername || "");
+    const server = String(msg && (msg.serverName || msg.serverId) || "").trim();
+    // Saved/PDF conversations are static, so there is no sender-identity display toggle.
+    // Always preserve both the display name and the real account name, even when
+    // they currently happen to be identical.
+    const realLabel = real || display;
+    const realPart = realLabel ? ` <small>(${esc(realLabel)})</small>` : "";
+    return `${server ? `<span class="kwc-archive-server-badge">[${esc(server)}]</span>` : ""}<span class="kwc-archive-identity">${esc(display)}${realPart}</span>`;
+  }
+
+  function archiveReplyHtml(msg, archive) {
+    if (!msg || (!msg.replyToId && !msg.replyToPreview && !msg.replyToSender)) return "";
+    const replyId = String(msg.replyToId || "");
+    const target = replyId && archive && Array.isArray(archive.messages)
+      ? archive.messages.find(item => String(item && item.id || "") === replyId)
+      : null;
+    // If the replied message is part of the saved snapshot, preserve the same
+    // static display-name + real-account-name identity used by normal archive
+    // messages. For replies outside the selected range, fall back to the reply
+    // label captured by the source message.
+    const identity = target
+      ? archiveIdentityHtml(target)
+      : `<strong>${esc(plainMinecraftName(msg.replyToSender || "").trim() || t("reply.reply", "Reply"))}</strong>`;
+    return `<div class="kwc-archive-reply"><div class="kwc-archive-reply-sender">${identity}</div>${msg.replyToPreview ? `<div>${esc(msg.replyToPreview)}</div>` : ""}</div>`;
+  }
+
+  function archiveReactionHtml(msg) {
+    const items = Array.isArray(msg && msg.reactions) ? msg.reactions : [];
+    const html = items.filter(item => item && Number(item.count || 0) > 0).map(item => `<span class="kwc-reaction-pill${item.mine ? " kwc-active" : ""}">${reactionValueHtml(String(item.value || ""))}<span class="kwc-reaction-count">${esc(String(item.count || 0))}</span></span>`).join("");
+    return html ? `<div class="kwc-archive-reactions">${html}</div>` : "";
+  }
+
+  function archiveImageHtml(body, archiveId, messageId) {
+    const seen = new Set();
+    const urls = parseUrls(body).filter(raw => {
+      const key = String(raw || "");
+      if (!isImageUrl(key) || seen.has(key)) return false;
+      seen.add(key); return true;
+    }).slice(0, 12);
+    if (!urls.length) return "";
+    return urls.map((raw, idx) => {
+      const href = safePreviewUrl(normalizeUrl(raw));
+      if (!href) return "";
+      return `<a class="kwc-image-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer"><img class="kwc-archive-image" src="${esc(href)}" alt="" loading="eager" data-archive-image="${esc(String(archiveId || "") + ":" + String(messageId || "") + ":" + idx)}"></a><div class="kwc-archive-attachment-lost kwc-hidden" data-archive-image-lost="${esc(String(archiveId || "") + ":" + String(messageId || "") + ":" + idx)}">${esc(t("archive.originalLost", "Original unavailable"))}</div>`;
+    }).join("");
+  }
+
+  function hydrateArchiveImages(root) {
+    if (!root) return;
+    root.querySelectorAll("img[data-archive-image]").forEach(img => {
+      const fail = () => {
+        const key = img.getAttribute("data-archive-image") || "";
+        const lost = root.querySelector(`[data-archive-image-lost="${cssEscape(key)}"]`);
+        img.closest("a")?.classList.add("kwc-hidden");
+        if (lost) lost.classList.remove("kwc-hidden");
+      };
+      img.addEventListener("error", fail, {once: true});
+      if (img.complete && img.naturalWidth === 0) fail();
+    });
+  }
+
+  function isLocalArchiveUploadUrl(value) {
+    try {
+      const url = new URL(String(value || ""), window.location.href);
+      if (url.origin !== window.location.origin) return false;
+      return /\/uploads\/[^/]+$/i.test(url.pathname || "");
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function hydrateArchiveAttachmentLinks(root) {
+    if (!root || typeof fetch !== "function") return;
+    root.querySelectorAll("a.kwc-link[href]").forEach(link => {
+      if (link.dataset.kwcArchiveAttachmentChecked === "1") return;
+      const href = link.href || link.getAttribute("href") || "";
+      if (!href || isImageUrl(href) || !isLocalArchiveUploadUrl(href)) return;
+      link.dataset.kwcArchiveAttachmentChecked = "1";
+      fetch(href, {method: "HEAD", cache: "no-store", credentials: "same-origin"}).then(response => {
+        if (response && response.ok) return;
+        if (!response || (response.status !== 404 && response.status !== 410)) return;
+        link.classList.add("kwc-hidden");
+        const lost = document.createElement("span");
+        lost.className = "kwc-archive-attachment-lost";
+        lost.textContent = t("archive.originalLost", "Original unavailable");
+        link.insertAdjacentElement("afterend", lost);
+      }).catch(() => {
+        // A transient network failure is not enough to declare the original lost.
+      });
+    });
+  }
+
+  function hydrateConversationArchiveMedia(root) {
+    hydrateArchiveImages(root);
+    hydrateArchiveAttachmentLinks(root);
+  }
+
+  function archiveMessagesHtml(archive) {
+    const messages = Array.isArray(archive && archive.messages) ? archive.messages : [];
+    let dayKey = "";
+    return messages.map(msg => {
+      const key = archiveDateKey(msg.time);
+      let sep = "";
+      if (key && key !== dayKey) {
+        dayKey = key;
+        sep = `<div class="kwc-archive-date-separator">${esc(archiveDateLabel(msg.time))}</div>`;
+      }
+      const membership = archive.sourceType === "group" && (msg.eventType === "member_join" || msg.eventType === "member_leave");
+      if (membership) {
+        const marker = "__KWC_GROUP_ARCHIVE_IDENTITY__";
+        const leaving = msg.eventType === "member_leave";
+        const template = fmt(leaving ? "group.memberLeft" : "group.memberJoined", leaving ? "{player} left the room." : "{player} joined the room.", {player: marker});
+        const parts = String(template || "").split(marker);
+        const identity = archiveIdentityHtml(msg);
+        const eventHtml = parts.length >= 2 ? parts.map(esc).join(identity) : esc(groupMembershipEventText(msg));
+        return sep + `<div class="kwc-msg kwc-group-message kwc-group-membership-event kwc-archive-message"><span class="kwc-group-membership-event-text">${eventHtml}</span><span class="kwc-group-membership-event-time kwc-time">${esc(formatMessageTime(msg.time))}</span></div>`;
+      }
+      const mine = !!(state.username && msg.senderUsername && String(state.username).toLowerCase() === String(msg.senderUsername).toLowerCase());
+      return sep + `<div class="kwc-msg kwc-dm-message kwc-archive-message${mine ? " kwc-mine" : ""}"><div class="kwc-meta kwc-dm-message-meta">${archiveIdentityHtml(msg)}<span class="kwc-meta-sep" aria-hidden="true">·</span><span class="kwc-time">${esc(formatMessageTime(msg.time))}</span></div>${archiveReplyHtml(msg, archive)}<div class="kwc-text kwc-dm-message-body">${directMessageBodyHtml(msg.body || "")}</div>${archiveImageHtml(msg.body || "", archive.id, msg.id)}${archiveReactionHtml(msg)}</div>`;
+    }).join("");
+  }
+
+  async function openConversationArchive(id) {
+    if (!id) return;
+    let res;
+    try { res = await api("/archive/get?id=" + encodeURIComponent(id)); }
+    catch (e) {
+      const response = e.response || {error: e.message || "error"};
+      if (response.error === "archive_locked_by_admin") alert(t("archive.adminLockedOpen", "This saved conversation is currently locked by an administrator policy."));
+      else alertResponse("archive.loadFailed", "Could not load saved conversation: {error}", response);
+      return;
+    }
+    const archive = res.archive;
+    if (!archive) return;
+    const wrap = document.createElement("div");
+    wrap.className = "kwc-modal-backdrop kwc-dm-modal-backdrop kwc-archive-backdrop";
+    applyDetachedModalTheme(wrap);
+    wrap.innerHTML = `<div class="kwc-modal kwc-archive-viewer"><div class="kwc-archive-view-head"><div><div class="kwc-archive-view-title">${esc(archive.title || t("archive.defaultTitle", "Saved conversation"))}</div><div class="kwc-archive-view-meta">${esc(archiveSourceLabel(archive.sourceType))} · ${esc(String(archive.messageCount || 0))} · ${esc(archiveMetadataTime(archive.firstMessageAt))} ~ ${esc(archiveMetadataTime(archive.lastMessageAt))}</div></div><div class="kwc-row"><button class="kwc-button" id="kwc-archive-pdf">${esc(t("archive.exportPdf", "Export PDF"))}</button><button class="kwc-button" id="kwc-archive-view-close">${esc(t("button.close", "Close"))}</button></div></div><div class="kwc-archive-messages">${archiveMessagesHtml(archive)}</div></div>`;
+    document.body.appendChild(wrap);
+    installSenderIdentityToggle(wrap);
+    hydrateConversationArchiveMedia(wrap);
+    const close = () => wrap.remove();
+    wrap.addEventListener("click", e => { if (e.target === wrap) close(); });
+    wrap.querySelector("#kwc-archive-view-close").onclick = close;
+    wrap.querySelector("#kwc-archive-pdf").onclick = () => exportConversationArchivePdf(archive, wrap);
+  }
+
+  function exportConversationArchivePdf(archive, sourceWrap) {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) { alert(t("archive.popupBlocked", "The PDF export window was blocked by the browser.")); return; }
+    const sourceViewer = sourceWrap.querySelector(".kwc-archive-viewer");
+    const content = sourceViewer ? sourceViewer.cloneNode(true) : null;
+    if (!content) { try { printWindow.close(); } catch (_) {} return; }
+    content.querySelectorAll("button").forEach(btn => btn.remove());
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    const detailed = `${archiveSourceLabel(archive.sourceType)} · ${archiveMetadataTime(archive.firstMessageAt)} ~ ${archiveMetadataTime(archive.lastMessageAt)} · ${t("archive.savedAt", "Saved")} ${archiveMetadataTime(archive.createdAt)}${zone ? " · " + zone : ""}`;
+    const head = content.querySelector(".kwc-archive-view-head");
+    if (head) {
+      const meta = head.querySelector(".kwc-archive-view-meta");
+      if (meta) meta.textContent = detailed;
+    }
+    const baseHref = document.baseURI || window.location.href;
+    const printCss = `
+      @page { size: auto; margin: 14mm 13mm 16mm; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: #fff !important; color: #171717 !important; }
+      body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", "Noto Sans JP", "Noto Sans SC", sans-serif; font-size: 10.5pt; line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .kwc-archive-print { width: 100%; max-width: none; }
+      .kwc-archive-viewer { width: 100% !important; max-width: none !important; max-height: none !important; margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: #fff !important; color: #171717 !important; overflow: visible !important; }
+      .kwc-archive-view-head { display: block !important; margin: 0 0 7mm !important; padding: 0 0 4mm !important; border-bottom: 1px solid #bdbdbd; }
+      .kwc-archive-view-title { margin: 0 0 2mm; font-size: 18pt; line-height: 1.25; font-weight: 750; overflow-wrap: anywhere; }
+      .kwc-archive-view-meta, .kwc-meta, .kwc-time { color: #666 !important; }
+      .kwc-archive-view-meta { font-size: 8.5pt; }
+      .kwc-archive-messages { display: block !important; width: 100% !important; max-height: none !important; overflow: visible !important; padding: 0 !important; }
+      .kwc-archive-date-separator { margin: 5mm 0 3mm; text-align: center; color: #666; font-size: 8.5pt; font-weight: 650; break-after: avoid-page; }
+      .kwc-archive-message { display: block !important; width: 100% !important; max-width: none !important; min-width: 0 !important; margin: 0 0 2.5mm !important; padding: 3mm 3.5mm !important; border: 1px solid #dedede !important; border-radius: 2.5mm !important; background: #fff !important; color: #171717 !important; box-shadow: none !important; break-inside: avoid-page; page-break-inside: avoid; overflow: visible !important; }
+      .kwc-archive-message.kwc-mine { background: #f5f7fa !important; border-color: #cfd6de !important; }
+      .kwc-dm-message-meta { display: flex !important; flex-wrap: wrap; align-items: baseline; gap: 1.2mm; margin: 0 0 1.4mm !important; font-size: 8.7pt; }
+      .kwc-meta-sep { opacity: .55; }
+      .kwc-archive-server-badge { display: inline-block; margin-right: 1mm; font-weight: 700; color: #555; }
+      .kwc-archive-identity { font-weight: 750; color: #111; overflow-wrap: anywhere; }
+      .kwc-archive-identity small { font-size: .88em; font-weight: 500; color: #666; }
+      .kwc-dm-message-body, .kwc-text { display: block !important; margin: 0 !important; white-space: pre-wrap !important; overflow-wrap: anywhere !important; word-break: break-word !important; color: #171717 !important; font-size: 10.5pt !important; line-height: 1.48 !important; }
+      .kwc-token-line { display: block; min-height: 1em; }
+      .kwc-token-line-empty { min-height: 1.25em; }
+      .kwc-archive-reply { margin: 0 0 2mm !important; padding: 2mm 2.5mm !important; border-left: 3px solid #a7a7a7 !important; border-radius: 1.5mm; background: #f4f4f4 !important; color: #3b3b3b !important; font-size: 9pt; break-inside: avoid-page; }
+      .kwc-archive-reply-sender { margin-bottom: .7mm; font-weight: 700; }
+      .kwc-link { color: #0b57d0 !important; text-decoration: underline !important; overflow-wrap: anywhere; word-break: break-all; }
+      .kwc-image-link { display: block !important; width: 100%; margin: 2.5mm 0 0; text-align: center; text-decoration: none !important; break-inside: avoid-page; page-break-inside: avoid; }
+      img.kwc-archive-image { display: inline-block !important; width: auto !important; height: auto !important; max-width: 100% !important; max-height: 165mm !important; margin: 0 auto !important; object-fit: contain !important; border-radius: 2mm; break-inside: avoid-page; page-break-inside: avoid; }
+      img.kwc-emoji, img.kwc-custom-emoji, img.kwc-reaction-emoji { display: inline-block !important; width: auto !important; height: 1.25em !important; max-width: 1.6em !important; object-fit: contain; vertical-align: -0.22em; }
+      .kwc-archive-attachment-lost { display: block; margin-top: 1.5mm; color: #8a4b00; font-size: 8.5pt; }
+      .kwc-archive-reactions { display: flex !important; flex-wrap: wrap; gap: 1.4mm; margin-top: 2mm !important; }
+      .kwc-reaction-pill { display: inline-flex !important; align-items: center; gap: 1mm; min-height: 6mm; padding: 1mm 2mm !important; border: 1px solid #cfcfcf !important; border-radius: 999px !important; background: #f7f7f7 !important; color: #222 !important; font: inherit !important; }
+      .kwc-reaction-count { font-size: 8.5pt; color: #555; }
+      .kwc-group-membership-event { text-align: center; background: #f7f7f7 !important; color: #555 !important; font-size: 9pt; }
+      .kwc-group-membership-event-time { margin-left: 2mm; }
+      .kwc-hidden, .kwc-reaction-tooltip { display: none !important; }
+      .kwc-archive-print-footer { margin-top: 7mm; padding-top: 3mm; border-top: 1px solid #d7d7d7; color: #777; font-size: 8pt; text-align: right; }
+      @media print {
+        a { color: #0b57d0 !important; }
+        .kwc-archive-view-head { break-after: avoid-page; }
+      }
+    `;
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><base href="${esc(baseHref)}"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(archive.title || "KOKOTO WebChat")}</title><style>${printCss}</style></head><body><main class="kwc-archive-print">${content.outerHTML}<footer class="kwc-archive-print-footer">KOKOTO WebChat · ${esc(archiveMetadataTime(Date.now()))}</footer></main></body></html>`);
+    printWindow.document.close();
+    try { printWindow.opener = null; } catch (_) {}
+    const printNow = async () => {
+      try { if (printWindow.document.fonts && printWindow.document.fonts.ready) await printWindow.document.fonts.ready; } catch (_) {}
+      const images = Array.from(printWindow.document.querySelectorAll("img"));
+      const waits = images.map(img => new Promise(resolve => {
+        const done = () => resolve();
+        const failed = () => {
+          if (img.classList.contains("kwc-archive-image")) {
+            const a = img.closest("a"); if (a) a.style.display = "none";
+            const lost = a && a.nextElementSibling; if (lost) lost.classList.remove("kwc-hidden");
+          }
+          resolve();
+        };
+        if (img.complete) { img.naturalWidth > 0 ? done() : failed(); return; }
+        img.addEventListener("load", done, {once:true});
+        img.addEventListener("error", failed, {once:true});
+      }));
+      await Promise.race([Promise.all(waits), new Promise(resolve => setTimeout(resolve, 5000))]);
+      try { printWindow.focus(); printWindow.print(); } catch (_) {}
+    };
+    if (printWindow.document.readyState === "complete") setTimeout(printNow, 150);
+    else printWindow.addEventListener("load", () => setTimeout(printNow, 150), {once:true});
+  }
+
+  function openGroupConversationSettingsMenu() {
+    const room = state.groupActiveRoom;
+    if (!room || !state.groupActiveRoomId || state.groupAuditMode) return;
+    const canManage = room.role === "owner" || room.role === "admin";
+    const wrap = document.createElement("div");
+    wrap.className = "kwc-modal-backdrop kwc-user-prefs-backdrop";
+    applyDetachedModalTheme(wrap);
+    wrap.innerHTML = `<div class="kwc-modal kwc-conversation-settings-modal">
+      <h3>${esc(t("group.settings", "Settings"))} · ${esc(groupRoomLabel(room))}</h3>
+      <div class="kwc-account-actions">
+        ${state.conversationArchiveEnabled ? `<button class="kwc-button" id="kwc-conv-save">${esc(t("archive.saveConversation", "Save conversation"))}</button><button class="kwc-button" id="kwc-conv-library">${esc(t("archive.library", "Saved conversations"))}</button>` : ""}
+        ${canManage ? `<button class="kwc-button" id="kwc-conv-invite">${esc(t("group.invite", "Invite"))}</button><button class="kwc-button" id="kwc-conv-room-settings">${esc(t("group.roomSettings", "Room settings"))}</button>` : ""}
+        <button class="kwc-button" id="kwc-conv-hide">${esc(t("button.hide", "Hide"))}</button>
+        <button class="kwc-button" id="kwc-conv-close">${esc(t("button.close", "Close"))}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    wrap.addEventListener("click", e => { if (e.target === wrap) close(); });
+    wrap.querySelector("#kwc-conv-close").onclick = close;
+    const archiveSave = wrap.querySelector("#kwc-conv-save");
+    if (archiveSave) archiveSave.onclick = () => { close(); beginConversationArchiveSelection("group", room.id, groupRoomLabel(room)); };
+    const archiveLibrary = wrap.querySelector("#kwc-conv-library");
+    if (archiveLibrary) archiveLibrary.onclick = () => { close(); openConversationArchiveLibrary(); };
+    const invite = wrap.querySelector("#kwc-conv-invite");
+    if (invite) invite.onclick = () => { close(); inviteToGroupRoom(); };
+    const settings = wrap.querySelector("#kwc-conv-room-settings");
+    if (settings) settings.onclick = () => { close(); updateGroupRoomSettings(); };
+    wrap.querySelector("#kwc-conv-hide").onclick = () => { close(); hideGroupRoomForMe(); };
+  }
 
   async function hideGroupRoomForMe() {
     const roomId = state.groupActiveRoomId;
@@ -16687,7 +18955,9 @@
   }
 
   function closeGroupChatEmojiPanel() {
+    if (state.groupEmojiPanelOpen) markNonScrollUiAction();
     state.groupEmojiPanelOpen = false;
+    resetEmojiSearchState("group");
     const panel = document.getElementById("kwc-group-emoji-panel");
     if (panel) {
       panel.classList.add("kwc-hidden");
@@ -16702,6 +18972,7 @@
 
   function toggleGroupChatEmojiPanel() {
     if (!canUseCustomEmoji()) return;
+    markNonScrollUiAction();
     setActiveComposeInput("kwc-group-input");
     state.groupEmojiPanelOpen = !state.groupEmojiPanelOpen;
     renderGroupChatEmojiPanel();
@@ -16735,6 +19006,7 @@
     panel.style.minHeight = minHeight + "px";
     if (!options || options.snapScroll !== false) snapEmojiPanelScrollTop(panel);
     updateGroupChatEmojiResizeHandleVisibility();
+    if (state.groupEmojiSearchOpen) requestAnimationFrame(() => positionEmojiSearchOverlay("group"));
     return height;
   }
 
@@ -16806,41 +19078,7 @@
       closeGroupChatEmojiPanel();
       return;
     }
-    const packs = Array.isArray(state.emojiPacks) ? state.emojiPacks : [];
-    const items = Array.isArray(state.emojiItems) ? state.emojiItems : [];
-    if (!items.length) {
-      panel.innerHTML = `<div class="kwc-emoji-scroll"><div class="kwc-emoji-empty">${esc(t("emoji.empty", "No emojis configured."))}</div></div>`;
-      panel.classList.remove("kwc-hidden");
-      setGroupChatEmojiPanelHeight(panel);
-      installEmojiPanelWheelStep(panel);
-      return;
-    }
-    let selectedPack = String(state.groupEmojiSelectedPack || "");
-    if (!selectedPack || (packs.length && !packs.some(pack => String(pack.id || "") === selectedPack))) selectedPack = packs[0] && packs[0].id ? String(packs[0].id) : "";
-    state.groupEmojiSelectedPack = selectedPack;
-    const packTabs = packs.length > 1 ? `<div class="kwc-emoji-tabs">${packs.map(pack => {
-      const id = String(pack.id || "");
-      return `<button type="button" class="kwc-emoji-tab${id === selectedPack ? " kwc-active" : ""}" data-emoji-pack="${esc(id)}">${esc(pack.label || id)} <span>${esc(pack.count || "")}</span></button>`;
-    }).join("")}</div>` : "";
-    const shown = selectedPack ? items.filter(item => String(item.pack || "") === selectedPack) : items;
-    panel.innerHTML = packTabs + `<div class="kwc-emoji-scroll"><div class="kwc-emoji-grid">${shown.map(emojiButtonHtml).join("")}</div></div>`;
-    panel.classList.remove("kwc-hidden");
-    setGroupChatEmojiPanelHeight(panel);
-    installEmojiPanelWheelStep(panel);
-    panel.querySelectorAll("[data-emoji-pack]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const pack = btn.dataset.emojiPack || "";
-        state.groupEmojiSelectedPack = pack;
-        panel.querySelectorAll(".kwc-emoji-tab").forEach(tab => tab.classList.toggle("kwc-active", tab === btn));
-        const grid = panel.querySelector(".kwc-emoji-grid");
-        if (grid) grid.innerHTML = items.filter(item => String(item.pack || "") === pack).map(emojiButtonHtml).join("");
-        const scroll = emojiScrollElement(panel);
-        if (scroll) scroll.scrollTop = 0;
-        setGroupChatEmojiPanelHeight(panel);
-        installEmojiItemHandlers(panel);
-      });
-    });
-    installEmojiItemHandlers(panel);
+    renderCustomEmojiPanel(panel, "group");
   }
 
   function installGroupChatDragAndDropUpload(wrap) {
@@ -16911,7 +19149,7 @@
     const auditNotice = state.groupAuditMode
       ? `<div class="kwc-admin-audit-notice">🛡 ${esc(t("admin.groupAuditReadOnly", "This administrator audit view is read-only. Every access is recorded in the audit log."))}</div>`
       : "";
-    const result = reconcilePrivateMessageList(box, arr, "group", conversationKey, auditNotice, `<div class="kwc-dm-empty">${esc(t("group.emptyRoom", "No messages yet."))}</div>`);
+    const result = reconcilePrivateMessageList(box, arr, "group", conversationKey, auditNotice, `<div class="kwc-dm-empty kwc-group-membership-event kwc-group-empty-event"><span class="kwc-group-membership-event-text">${esc(t("group.emptyRoom", "No messages yet."))}</span></div>`);
     if (options && options.preserveTop) {
       const delta = Math.max(0, Number(box.scrollHeight || 0) - prevHeight);
       box.scrollTop = prevTop + delta;
@@ -16932,6 +19170,7 @@
       const res = await api(path + "?roomId=" + encodeURIComponent(roomId) + "&limit=" + encodeURIComponent(String(limit)));
       state.groupActiveRoomId = roomId;
       state.groupMessages = Array.isArray(res.messages) ? res.messages : [];
+      clearTypingIndicatorsFromMessages("group", state.groupMessages, roomId);
       state.groupMessagesHasMore = state.groupMessages.length >= limit;
       renderGroupChatMessages(state.groupMessages, {stickToBottom: true});
       if (!state.groupAuditMode) {
@@ -17077,6 +19316,7 @@
     const clientMessageId = privateClientMessageId("group");
     const replyTarget = state.groupReplyTarget && String(state.groupReplyTarget.conversationId || "") === privateReplyConversationId("group") ? Object.assign({}, state.groupReplyTarget) : null;
     input.value = "";
+    state.groupTypingNextAllowedAt = Date.now() + 5000;
     clearPrivateReply("group");
     closeGroupChatEmojiPanel();
     state.groupMessages = (state.groupMessages || []).concat([groupOptimisticMessage(clientMessageId, message, replyTarget)]);
@@ -17218,6 +19458,7 @@
     if (state.groupModalOpen) return;
     state.groupModalOpen = true;
     state.groupActiveRoomId = "";
+    publishNotificationViewState();
     state.groupActiveRoom = null;
     state.groupAuditMode = false;
     state.groupAuditRoom = null;
@@ -17228,7 +19469,7 @@
     wrap.style.setProperty("--kwc-emoji-picker-size", emojiPickerSizePx() + "px");
     wrap.style.setProperty("--kwc-emoji-panel-height", emojiPanelHeightPx() + "px");
     wrap.style.setProperty("--kwc-emoji-panel-min-height", emojiPanelMinHeightPx() + "px");
-    wrap.innerHTML = `<div class="kwc-modal kwc-dm-modal kwc-group-modal"><div class="kwc-dm-head"><h3 class="kwc-dm-main-title"><span>${esc(t("group.title", "Group chats"))}</span><span class="kwc-dm-retention" title="${esc(groupRoomRetentionText())}">${esc(groupRoomRetentionText())}</span></h3><button class="kwc-button" id="kwc-group-close">${esc(t("button.close", "Close"))}</button></div><div class="kwc-dm-layout"><aside class="kwc-dm-sidebar"><button type="button" class="kwc-button kwc-dm-new" id="kwc-group-create">${esc(t("group.newRoom", "New room"))}</button><div class="kwc-group-invites" id="kwc-group-invites"></div><div class="kwc-dm-thread-list" id="kwc-group-room-list"></div></aside><section class="kwc-dm-conversation"><div class="kwc-dm-title kwc-group-title" id="kwc-group-title">${esc(t("group.selectRoom", "Select a room"))}</div><div class="kwc-dm-messages" id="kwc-group-messages"></div><div class="kwc-emoji-resize-handle kwc-dm-emoji-resize kwc-hidden" id="kwc-group-emoji-resize" title="${esc(t("button.resizeEmojiPanel", "Drag to resize emoji picker"))}" aria-label="${esc(t("button.resizeEmojiPanel", "Drag to resize emoji picker"))}"></div><div class="kwc-reply-compose kwc-private-reply-compose kwc-hidden" id="kwc-group-reply-compose"><button type="button" class="kwc-reply-compose-main" id="kwc-group-reply-compose-main" title="${esc(t("reply.jump", "Jump to replied message"))}"><span class="kwc-reply-compose-label" id="kwc-group-reply-compose-label"></span><span class="kwc-reply-compose-preview" id="kwc-group-reply-compose-preview"></span></button><button type="button" class="kwc-mini-action kwc-reply-cancel" id="kwc-group-reply-cancel" title="${esc(t("button.cancel", "Cancel"))}">×</button></div><div class="kwc-dm-compose kwc-row"><textarea class="kwc-input kwc-chat-composer" id="kwc-group-input" rows="1" autocomplete="off" enterkeyhint="send" placeholder="${esc(t("placeholder.message", "message"))}" ${state.groupChatMaxMessageLength > 0 ? `maxlength="${state.groupChatMaxMessageLength}"` : ""}></textarea><button class="kwc-button kwc-dm-emoji-button kwc-hidden" id="kwc-group-emoji" title="${esc(t("button.emoji", "Emoji"))}">☺</button><button class="kwc-button kwc-dm-upload kwc-hidden" id="kwc-group-upload" title="${esc(t("button.upload", "Attach"))}">&#128206;</button><button class="kwc-button kwc-dm-send" id="kwc-group-send">${esc(t("button.send", "Send"))}</button><input type="file" id="kwc-group-file" class="kwc-file-input" multiple hidden style="display:none !important;"></div><div class="kwc-emoji-panel kwc-dm-emoji-panel kwc-group-emoji-panel kwc-hidden" id="kwc-group-emoji-panel" aria-live="polite"></div>${uploadProgressHtml("kwc-group-upload-progress")}</section></div><div class="kwc-dm-search-panel kwc-hidden" id="kwc-group-search-panel"><div class="kwc-dm-search-head"><strong>${esc(t("group.searchPlayer", "Search player to invite"))}</strong><button class="kwc-button" id="kwc-group-search-close" type="button">${esc(t("button.close", "Close"))}</button></div><input class="kwc-input" id="kwc-group-search" placeholder="${esc(t("group.searchPlayer", "Search player to invite"))}"><div class="kwc-dm-player-results" id="kwc-group-player-results"></div></div></div>`;
+    wrap.innerHTML = `<div class="kwc-modal kwc-dm-modal kwc-group-modal"><div class="kwc-dm-head"><h3 class="kwc-dm-main-title"><span>${esc(t("group.title", "Group chats"))}</span><span class="kwc-dm-retention" title="${esc(groupRoomRetentionText())}">${esc(groupRoomRetentionText())}</span></h3><button class="kwc-button" id="kwc-group-close">${esc(t("button.close", "Close"))}</button></div><div class="kwc-dm-layout"><aside class="kwc-dm-sidebar"><button type="button" class="kwc-button kwc-dm-new" id="kwc-group-create">${esc(t("group.newRoom", "New room"))}</button><div class="kwc-group-invites" id="kwc-group-invites"></div><div class="kwc-dm-thread-list" id="kwc-group-room-list"></div></aside><section class="kwc-dm-conversation"><div class="kwc-dm-title kwc-group-title" id="kwc-group-title">${esc(t("group.selectRoom", "Select a room"))}</div><div class="kwc-dm-messages" id="kwc-group-messages"></div><div class="kwc-emoji-resize-handle kwc-dm-emoji-resize kwc-hidden" id="kwc-group-emoji-resize" title="${esc(t("button.resizeEmojiPanel", "Drag to resize emoji picker"))}" aria-label="${esc(t("button.resizeEmojiPanel", "Drag to resize emoji picker"))}"></div><div class="kwc-reply-compose kwc-private-reply-compose kwc-hidden" id="kwc-group-reply-compose"><button type="button" class="kwc-reply-compose-main" id="kwc-group-reply-compose-main" title="${esc(t("reply.jump", "Jump to replied message"))}"><span class="kwc-reply-compose-label" id="kwc-group-reply-compose-label"></span><span class="kwc-reply-compose-preview" id="kwc-group-reply-compose-preview"></span></button><button type="button" class="kwc-mini-action kwc-reply-cancel" id="kwc-group-reply-cancel" title="${esc(t("button.cancel", "Cancel"))}">×</button></div><div class="kwc-dm-compose kwc-row kwc-typing-anchor"><div class="kwc-typing-indicator kwc-hidden" id="kwc-group-typing" aria-live="polite"></div><textarea class="kwc-input kwc-chat-composer" id="kwc-group-input" rows="1" autocomplete="off" enterkeyhint="send" placeholder="${esc(t("placeholder.message", "message"))}" ${state.groupChatMaxMessageLength > 0 ? `maxlength="${state.groupChatMaxMessageLength}"` : ""}></textarea><button class="kwc-button kwc-dm-emoji-button kwc-hidden" id="kwc-group-emoji" title="${esc(t("button.emoji", "Emoji"))}">☺</button><button class="kwc-button kwc-dm-upload kwc-hidden" id="kwc-group-upload" title="${esc(t("button.upload", "Attach"))}">&#128206;</button><button class="kwc-button kwc-dm-send" id="kwc-group-send">${esc(t("button.send", "Send"))}</button><input type="file" id="kwc-group-file" class="kwc-file-input" multiple hidden style="display:none !important;"></div><div class="kwc-emoji-panel kwc-dm-emoji-panel kwc-group-emoji-panel kwc-hidden" id="kwc-group-emoji-panel" aria-live="polite"></div>${uploadProgressHtml("kwc-group-upload-progress")}</section></div><div class="kwc-dm-search-panel kwc-hidden" id="kwc-group-search-panel"><div class="kwc-dm-search-head"><strong>${esc(t("group.searchPlayer", "Search player to invite"))}</strong><button class="kwc-button" id="kwc-group-search-close" type="button">${esc(t("button.close", "Close"))}</button></div><input class="kwc-input" id="kwc-group-search" placeholder="${esc(t("group.searchPlayer", "Search player to invite"))}"><div class="kwc-dm-player-results" id="kwc-group-player-results"></div></div></div>`;
     document.body.appendChild(wrap);
     installDirectMessageIdentityToggleGuard(wrap);
     const close = () => {
@@ -17241,9 +19482,12 @@
       state.groupModalOpen = false;
       state.groupActiveRoomId = "";
       state.groupActiveRoom = null;
+      publishNotificationViewState();
       state.groupAuditMode = false;
       state.groupAuditRoom = null;
       state.groupReplyTarget = null;
+      state.groupTypingEntries.clear();
+      renderTypingIndicators();
       if (state.activeComposeInputId === "kwc-group-input") state.activeComposeInputId = "kwc-message";
     };
     wrap.querySelector("#kwc-group-close").onclick = close;
@@ -17299,7 +19543,7 @@
     if (groupUploadCancel) groupUploadCancel.addEventListener("click", cancelCurrentUpload);
     const input = wrap.querySelector("#kwc-group-input");
     input.addEventListener("focus", () => setActiveComposeInput(input));
-    input.addEventListener("input", () => normalizeSingleLineComposer(input));
+    input.addEventListener("input", () => { normalizeSingleLineComposer(input); if (String(input.value || "").trim()) notifyGroupTyping(); });
     input.addEventListener("paste", async e => {
       setActiveComposeInput(input);
       await handlePasteUpload(e);
@@ -17336,6 +19580,7 @@
     if (state.dmModalOpen) return;
     state.dmModalOpen = true;
     state.dmActiveThreadId = "";
+    publishNotificationViewState();
     state.dmDraftTarget = null;
     state.dmAuditMode = false;
     state.dmAuditThread = null;
@@ -17363,11 +19608,12 @@
             <div class="kwc-dm-thread-list" id="kwc-dm-thread-list"></div>
           </aside>
           <section class="kwc-dm-conversation">
-            <div class="kwc-dm-title" id="kwc-dm-title">${t("dm.selectThread", "Select a thread")}</div>
+            <div class="kwc-private-title-row"><div class="kwc-dm-title" id="kwc-dm-title">${t("dm.selectThread", "Select a thread")}</div>${state.conversationArchiveEnabled ? `<div class="kwc-private-title-actions"><button class="kwc-button kwc-hidden" id="kwc-dm-settings">${t("group.settings", "Settings")}</button></div>` : ""}</div>
             <div class="kwc-dm-messages" id="kwc-dm-messages"></div>
             <div class="kwc-emoji-resize-handle kwc-dm-emoji-resize kwc-hidden" id="kwc-dm-emoji-resize" title="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}" aria-label="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}"></div>
             <div class="kwc-reply-compose kwc-private-reply-compose kwc-hidden" id="kwc-dm-reply-compose"><button type="button" class="kwc-reply-compose-main" id="kwc-dm-reply-compose-main" title="${t("reply.jump", "Jump to replied message")}"><span class="kwc-reply-compose-label" id="kwc-dm-reply-compose-label"></span><span class="kwc-reply-compose-preview" id="kwc-dm-reply-compose-preview"></span></button><button type="button" class="kwc-mini-action kwc-reply-cancel" id="kwc-dm-reply-cancel" title="${t("button.cancel", "Cancel")}">×</button></div>
-            <div class="kwc-dm-compose kwc-row">
+            <div class="kwc-dm-compose kwc-row kwc-typing-anchor">
+              <div class="kwc-typing-indicator kwc-hidden" id="kwc-dm-typing" aria-live="polite"></div>
               <textarea class="kwc-input kwc-chat-composer" id="kwc-dm-input" rows="1" autocomplete="off" enterkeyhint="send" placeholder="${t("placeholder.message", "message")}" ${state.directMessageMaxMessageLength > 0 ? `maxlength="${state.directMessageMaxMessageLength}"` : ""}></textarea>
               <button class="kwc-button kwc-dm-emoji-button kwc-hidden" id="kwc-dm-emoji" title="${t("button.emoji", "Emoji")}">☺</button>
               <button class="kwc-button kwc-dm-upload kwc-hidden" id="kwc-dm-upload" title="${t("button.upload", "Attach")}">&#128206;</button>
@@ -17389,7 +19635,7 @@
       </div>`;
     document.body.appendChild(wrap);
     installDirectMessageIdentityToggleGuard(wrap);
-    const close = () => { hideEmojiAutocomplete(); closeDirectMessageEmojiPanel(); closeDirectMessagePlayerSearch(); hideDirectMessageEdgeToast(true); discardPrivateMessageDom(wrap.querySelector("#kwc-dm-messages")); wrap.remove(); state.dmModalOpen = false; state.dmAuditMode = false; state.dmAuditThread = null; state.dmReplyTarget = null; if (state.activeComposeInputId === "kwc-dm-input") state.activeComposeInputId = "kwc-message"; };
+    const close = () => { hideEmojiAutocomplete(); closeDirectMessageEmojiPanel(); closeDirectMessagePlayerSearch(); hideDirectMessageEdgeToast(true); discardPrivateMessageDom(wrap.querySelector("#kwc-dm-messages")); wrap.remove(); state.dmModalOpen = false; state.dmAuditMode = false; state.dmAuditThread = null; state.dmReplyTarget = null; state.dmTypingEntry = null; publishNotificationViewState(); renderTypingIndicators(); if (state.activeComposeInputId === "kwc-dm-input") state.activeComposeInputId = "kwc-message"; };
     wrap.querySelector("#kwc-dm-close").onclick = close;
     wrap.addEventListener("click", e => { if (e.target === wrap) close(); });
     wrap.addEventListener("click", e => {
@@ -17415,6 +19661,8 @@
         }
       });
     }
+    const dmSettings = wrap.querySelector("#kwc-dm-settings");
+    if (dmSettings) dmSettings.onclick = event => { event.preventDefault(); event.stopPropagation(); openDirectConversationSettingsMenu(); };
     updateDirectMessageViewMode();
     const newBtn = wrap.querySelector("#kwc-dm-new");
     if (newBtn) newBtn.addEventListener("click", openDirectMessagePlayerSearch);
@@ -17459,7 +19707,7 @@
     if (dmUploadCancel) dmUploadCancel.addEventListener("click", cancelCurrentUpload);
     const dmInput = wrap.querySelector("#kwc-dm-input");
     dmInput.addEventListener("focus", () => setActiveComposeInput(dmInput));
-    dmInput.addEventListener("input", () => normalizeSingleLineComposer(dmInput));
+    dmInput.addEventListener("input", () => { normalizeSingleLineComposer(dmInput); if (String(dmInput.value || "").trim()) notifyDirectTyping(); });
     dmInput.addEventListener("paste", async e => {
       setActiveComposeInput(dmInput);
       await handlePasteUpload(e);
@@ -17523,6 +19771,7 @@
         <p>${t("account.role", "Role")}: ${esc(state.role)}</p>
         <div class="kwc-account-actions">
           ${(!state.config || state.config.uiUserPreferencesControl !== false) ? `<button class="kwc-button" id="kwc-user-prefs">${t("preferences.title", "Chat settings")}</button>` : ""}
+          ${state.conversationArchiveEnabled ? `<button class="kwc-button" id="kwc-archives">${t("archive.accountButton", "Save conversation")}</button>` : ""}
           <button class="kwc-button" id="kwc-set-pw">${t("button.setPassword", "Set password")}</button>
           <button class="kwc-button" id="kwc-logout">${t("button.logout", "Logout")}</button>
           <button class="kwc-button" id="kwc-close">${t("button.close", "Close")}</button>
@@ -17538,6 +19787,8 @@
       state.prefsModalOpen = false;
       openUserPreferencesModal();
     };
+    const archivesBtn = wrap.querySelector("#kwc-archives");
+    if (archivesBtn) archivesBtn.onclick = () => { wrap.remove(); state.loginModalOpen = false; openConversationArchiveLibrary(); };
     wrap.querySelector("#kwc-set-pw").onclick = () => { wrap.remove(); openSetPasswordModal(); };
     wrap.querySelector("#kwc-logout").onclick = async () => {
       try { await api("/auth/logout", {method: "POST", body: JSON.stringify({})}); } catch (_) {}
@@ -17551,6 +19802,7 @@
   function setLogin(res) {
     state.token = res.token;
     state.username = res.username;
+    state.userUuid = String(res.uuid || "");
     state.role = res.role;
     localStorage.setItem("kwc.token", state.token);
     localStorage.setItem("kwc.username", state.username);
@@ -17563,6 +19815,9 @@
     loadDirectMessageThreads(true);
     loadGroupChatRooms(true);
     loadAccountNotificationPreferences().then(() => { if (!state.isPip) ensurePreferredWebPush().catch(() => {}); }).catch(() => {});
+    loadAccountTypingPreferences().catch(() => {});
+    loadAccountEmojiFavorites().catch(() => {});
+    loadReactionCatalog(true).then(refreshVisibleReactionBars).catch(() => {});
     if (!state.isPip) connectStream({refreshAfterOpen: true, reason: "login"});
   }
 
@@ -17575,6 +19830,7 @@
         return false;
       } else {
         state.username = res.username;
+        state.userUuid = String(res.uuid || "");
         state.role = res.role;
         localStorage.setItem("kwc.username", state.username || "");
         localStorage.setItem("kwc.role", state.role || "");
@@ -17590,7 +19846,16 @@
   if (typeof navigator !== "undefined" && navigator.serviceWorker) {
     navigator.serviceWorker.addEventListener("message", event => {
       const data = event && event.data || {};
-      if (!data || (data.source !== "KWC" && data.source !== "KWCParent") || data.type !== "notificationNavigate") return;
+      if (!data || (data.source !== "KWC" && data.source !== "KWCParent")) return;
+      if (data.type === "notificationSuppressionQuery") {
+        const port = event.ports && event.ports[0];
+        if (port) {
+          const suppress = notificationTargetCurrentlyVisible({dmThreadId:data.dmThreadId || "", groupRoomId:data.groupRoomId || ""});
+          try { port.postMessage({suppress}); } catch (_) {}
+        }
+        return;
+      }
+      if (data.type !== "notificationNavigate") return;
       navigateFromNotification(data.url || data);
     });
   }
@@ -17610,6 +19875,7 @@
       try { localStorage.removeItem("kwc.captchaPass"); } catch (_) {}
     }
     installFrameFocusBridge();
+    startWebPushViewHeartbeat();
     installMapPointerRelayBridge();
     installParentResizeBridge();
     installResumeRefreshHandlers();
@@ -17623,12 +19889,17 @@
     updateGuestVisibility();
     await refreshCaptcha();
     const verified = await verifyStoredToken();
-    if (verified) await loadAccountNotificationPreferences();
+    if (verified) {
+      await loadAccountNotificationPreferences();
+      await loadAccountTypingPreferences();
+      await loadAccountEmojiFavorites();
+      await loadReactionCatalog(true);
+    }
     await loadPins();
     await loadCommands();
     await loadDirectMessageThreads(true);
     await loadGroupChatRooms(true);
-    if (!guestChatHidden()) await loadHistory();
+    if (!guestChatHidden()) await loadHistory(false, {forceLatest: true, forceDuringScroll: true});
     await navigateFromNotification(window.location.href);
     if (state.isPip && standalonePipRelayId) {
       // PiP is a live mirror of the original standalone connection. Do not open

@@ -1,10 +1,22 @@
-# KOKOTO WebChat 5.1.0 — 技術リファレンス
+# KOKOTO WebChat 5.2.0 — 技術リファレンス
 
-![KOKOTO WebChat 5.1.0 アーキテクチャ概要](../assets/architecture-5.1.0.svg)
+reaction authority、direct/multi-hop delivery、origin 障害時の outbox、作者通知の図は [REACTIONS.md](REACTIONS.md) を参照してください。
 
-[PNG](../assets/architecture-5.1.0.png) · [SVG](../assets/architecture-5.1.0.svg)
+![KOKOTO WebChat 5.2.0 アーキテクチャ概要](../assets/architecture-5.2.0.svg)
+
+[PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg)
 
 > **注記:** 図は理解を補助する資料です。KWC 固有の動作は実際のソースコードと本文の説明を基準にしてください。
+
+## 構造と data flow の図
+
+![KWC 5.2.0 architecture](../assets/architecture-5.2.0.svg)
+
+![Admin / HTTP security boundary](../assets/admin-security-boundary.svg)
+
+![History search / navigation flow](../assets/history-search-navigation.svg)
+
+これらは component boundary の概要です。詳細は以下の各節と `REACTIONS.md`, `SERVER_RELAY.md`, `UPLOAD_SECURITY.md` を参照してください。
 
 ## アーキテクチャ
 `kwc-core` はローダー非依存のチャット、HTTP/SSE transport、履歴/非公開チャットストレージ、プロファイル/セキュリティ補助、Web Push、Relay v2 を担当します。Bukkit、Fabric、Forge、NeoForge はホスト/アダプター境界を通して、ローダー固有のプレイヤー、権限、スレッド、コンソール、native-message 連携だけを提供します。各マップアダプターと standalone frontend は同じ core の動作を利用します。
@@ -24,8 +36,8 @@
 ## プラットフォーム抽象化と完全一致ターゲット
 `PlatformAdapter` と関連ホスト interface がローダー API を core から分離します。配布構成は Bukkit 1 + Fabric 16 + NeoForge 12 + Forge 16 = **45 個の配布成果物**です。ビルド補助は Minecraft 世代に応じて Java 17/21/25 を選択します。Windows の release helper は Gradle/Maven 実行前にパス長 preflight を行い、完全一致ターゲットの作業ディレクトリが検証済みの Windows パス条件を超える問題を早期検出します。
 
-## Relay Protocol v2 の信頼モデル
-Relay v2 は明示的な `groups -> peers` 構造を使用します。1 つのグループは対称的な信頼ドメインであり、共有シークレットはグループごとに 1 個だけです。peer 個別のシークレットはありません。空の group secret は provisioning request として扱われ、startup/reload で暗号学的に安全な 32-byte URL-safe secret を生成して `config.yml` に保存します。既存の空でない値は自動再生成しません。32 文字未満の手動 group secret は拒否され、同じ peer ID を複数のローカルグループで使用することもできません。双方が同じグループ内で互いを peer として登録する必要があります。
+## Relay Protocol 2.1 compatibility と Relay v2 trust model
+Relay Protocol 2.1 は Relay v2 の明示的な `groups -> peers` 構造を使用します。1 つのグループは対称的な信頼ドメインであり、共有シークレットはグループごとに 1 個だけです。peer 個別のシークレットはありません。空の group secret は provisioning request として扱われ、startup/reload で暗号学的に安全な 32-byte URL-safe secret を生成して `config.yml` に保存します。既存の空でない値は自動再生成しません。32 文字未満の手動 group secret は拒否され、同じ peer ID を複数のローカルグループで使用することもできません。双方が同じグループ内で互いを peer として登録する必要があります。
 
 `/relay/v2/handshake` は protocol version、product version、group、sender ID、target ID、timestamp、nonce、sender outbound transport を HMAC で認証します。受信側は group membership、target identity、clock skew、nonce replay を検証します。この endpoint は状態を保持しない診断用 identity/health probe で、route 状態を作りません。direct `/relay/v2/message` は request ごとに独立して認証されます。受信側は送信側を同じ group・同じ shared secret で相互登録する必要があります。旧 v1 endpoint は HTTP 426 を返します。
 
@@ -59,3 +71,11 @@ DM/グループ Reply は表示文字列から推測せず、メタデータと�
 - [WHATWG — Server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html)
 - [SQLite — Write-Ahead Logging](https://sqlite.org/wal.html)
 - [Oracle Java SE 17 — HttpServer](https://docs.oracle.com/en/java/javase/17/docs/api/jdk.httpserver/com/sun/net/httpserver/HttpServer.html)
+## 保存済み会話 persistence と管理者削除の優先
+`chat.conversation-archive.enabled` が true の場合、`ConversationArchiveStore` はアカウント単位の snapshot を `conversation-archives.db` に保存します。false の場合 archive store を開く/作成せず、archive API も登録しません。client が snapshot 本文を信頼入力として送るのではなく range identity だけを送り、`WebChatServer` が public/DM/group store から範囲を再取得して account access を検証してから保存します。管理者による後続の強制削除を適用できるよう DB 内部には original message identity を保持しますが、browser projection には sender UUID を出しません。attachment bytes は archive に複製しません。保存上限は設定可能で、既定は 100 archives/account、1,000 messages/archive、10,000 saved messages/account です。loader はそれぞれ 1-1000、1-10000、1-100000 に補正し、archive API は実際の適用値を返します。上限を下げても既存 snapshot は削除/非表示にせず、新しい保存に適用します。
+
+通常 history/private retention は保存済み snapshot を削除しません。管理者 source-message delete、public history clear、管理者 DM thread/group room delete、private-room lock policy が personal archive より常に優先されます。
+
+## Typing state
+public/DM/group typing は ephemeral state です。browser input event 1 回で 5 秒 window を作り、その間の追加 key input は client 側で抑制します。SQLite/JSONL へ保存せず、polling や常駐 typing worker もありません。local group state は既存 SSE で current room member のみに配布し、remote DM typing は Relay Protocol 2.1 を使用します。
+

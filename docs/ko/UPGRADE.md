@@ -1,6 +1,6 @@
 # KOKOTO WebChat 업그레이드 가이드
 
-이 문서는 4.5.5부터 5.1.0까지의 업그레이드 안내를 하나로 통합합니다. 여러 버전을 건너뛰는 경우 버전 순서대로 각 절을 확인하세요.
+이 문서는 4.5.5부터 5.2.0까지의 업그레이드 안내를 하나로 통합합니다. 여러 버전을 건너뛰는 경우 버전 순서대로 각 절을 확인하세요.
 
 ## 4.5.5에서 4.6.0으로 업그레이드
 
@@ -297,7 +297,7 @@ Bukkit에서 기존 `plugins/BlueMapWebChat`이 있으면 첫 KWC 시작 시 1�
 
 ### BMWC → KWC 웹 경로 마이그레이션
 
-기존 BMWC 표준 `/bmwc/api`, `/bmwc/chat` reverse-proxy 구조는 KWC 기본값으로 유지하지 않습니다. 새 공개 기본 prefix는 `/chat`이고 standalone `/chat`, API `/chat/api`가 됩니다. KWC는 마이그레이션 시 표준 BMWC URL 설정을 정규화할 수 있지만 외부 Caddy/nginx 파일은 수정할 수 없으므로 직접 변경해야 합니다. `CADDY_HTTPS_KO.md`, `NGINX_HTTPS_KO.md`를 참고하세요.
+기존 BMWC 표준 `/bmwc/api`, `/bmwc/chat` reverse-proxy 구조는 KWC 기본값으로 유지하지 않습니다. 새 공개 기본 prefix는 `/chat`이고 standalone `/chat`, API `/chat/api`가 됩니다. KWC는 마이그레이션 시 표준 BMWC URL 설정을 정규화할 수 있지만 외부 Caddy/nginx 파일은 수정할 수 없으므로 직접 변경해야 합니다. `CADDY_HTTPS.md`, `NGINX_HTTPS.md`를 참고하세요.
 
 ### 설정 변경
 
@@ -320,7 +320,7 @@ config-version: "5.0.0_auto_migration"
 ### 최종 릴리스 판정
 
 
-> `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source archive에 포함되어 있습니다. 별도의 `KWC-5.1.0-validation-tools.zip`에는 개발용 브라우저 회귀검증 도구만 들어 있으며 릴리스 빌드 실행에는 필요하지 않습니다.
+> `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source archive에 포함되어 있습니다. 별도의 `KWC-5.2.0-validation-tools.zip`에는 개발용 브라우저 회귀검증 도구만 들어 있으며 릴리스 빌드 실행에는 필요하지 않습니다.
 
 최종 후보는 `validate-release-windows.bat`가 `FINAL RELEASE BUILD PASS`로 끝나고 배포 JAR이 정확히 45개 수집되며, static/config/i18n/document 검증과 로그인·공개채팅·업로드/클립보드·DM/그룹·relay·사용 중인 지도/Discord 연동 smoke test가 통과해야 배포 확정합니다.
 
@@ -389,7 +389,7 @@ Emoji catalog reload도 복구성이 강화되었습니다. `/emojis` 일시 실
 - `/kchat reload`는 외부 노출 HTTP listener와 direct HTTP Relay peer를 다시 검사하고, 해당 다국어 경고를 서버 로그뿐 아니라 명령 실행자에게도 출력합니다.
 - `commands.broadcast-result-to-web-chat: true`이면 Web 명령 실행 안내가 온라인 Minecraft 플레이어에게도 전달됩니다.
 - 공개/DM/그룹 메시지 입력창만 일반 text `<input>` 대신 1줄 `<textarea>`를 사용하고 `autocomplete=off`, Enter 전송, 커서 위치/이모지 삽입 동작은 그대로 유지합니다. Android Chrome이 일반 입력창에도 비밀번호·주소·결제수단 Autofill accessory를 띄우는 경로를 피하기 위한 조치이며 로그인/비밀번호 입력창은 변경하지 않습니다.
-- 프로젝트 주소 전환 중에는 updater가 canonical Modrinth `kokoto-webchat`을 먼저 확인하고 `bluemapwebchat`으로 fallback합니다. BMWC는 전환 완료 전까지 실제 업데이트 소스로 유지하며 두 소스가 모두 실패한 경우에만 경고합니다.
+- 5.2.0부터 updater는 canonical Modrinth `kokoto-webchat`만 확인하며 기존 BMWC 프로젝트 주소는 업데이트 소스로 조회하지 않습니다.
 - 외부에 노출된 plain HTTP listener와 direct HTTP relay peer는 다국어 보안 경고를 출력합니다.
 
 ### 업그레이드 후 확인
@@ -400,3 +400,14 @@ Emoji catalog reload도 복구성이 강화되었습니다. `/emojis` 일시 실
 4. proxy 뒤에서는 resolved client IP와 SSE 동작을 확인하고, 문제 분석 중에만 `http.log-client-ip-resolution`을 임시 활성화합니다.
 5. 실제 사용하는 배포 방식에서 공개 채팅, DM/그룹 Reply, custom emoji, 업로드, Web Push/알림, map/standalone frontend를 테스트합니다.
 6. 정상 운영과 retention cleanup을 충분히 확인할 때까지 업그레이드 전 백업을 보관합니다.
+
+## KOKOTO WebChat 5.1.0에서 5.2.0으로 업그레이드
+
+업그레이드 전에 KWC 데이터 디렉터리를 백업하세요. 일반 5.1.0 → 5.2.0 migration은 지원되는 운영자 값과 기존 Relay v2 group/secret/peer를 보존합니다. relay trust reset은 과거 pre-5.1.0 → 5.1.0 migration에만 해당합니다. 현재 reference는 `config-reference-5.2.0.yml`이며 자동 검토 상태는 관리자가 정확한 `config-version: "5.2.0"`을 선택하기 전까지 `5.2.0_auto_migration`을 사용합니다.
+
+5.2.0은 Relay Protocol 2.1을 기존 2.x와 호환되는 capability revision으로 도입합니다. Protocol major `2`가 호환성 경계이고 KWC 제품 버전은 진단용입니다. 공개 reaction, 참가자 서버로만 전달되는 타 서버 DM reaction, 타 서버 DM typing은 2.1 확장을 사용하며 공통 v2 public/DM/read 동작은 2.x 호환 범위에 남습니다.
+
+새 사용자 데이터로 `chat.conversation-archive.enabled`가 true일 때 개인 대화 snapshot용 `conversation-archives.db`, 반응 상태용 `public-reactions.jsonl`(기존 파일명 유지, 공개/DM/그룹 반응 저장), 관리자 reaction picker 설정용 `reaction-catalog.json`이 추가됩니다. 다른 KWC 데이터와 함께 백업하세요. snapshot은 첨부 바이트를 복제하지 않으며 관리자 원본/방 강제삭제와 비공개 방 잠금 정책이 개인 보관함보다 우선합니다. `reaction-catalog.json`에는 관리자 반응 전체 ON/OFF 상태와 커스텀 이모지 허용 여부도 저장되며, 기능을 꺼도 기존 `public-reactions.jsonl` 데이터는 삭제하지 않습니다.
+
+업그레이드 후 공개/DM/그룹 reaction, DM/그룹 `입력 중...`, 대화 저장과 PDF/인쇄, 비공개 방 Settings/Invite/Leave 권한, 공개/DM/그룹 32px bottom-follow를 확인하세요. 여러 relay 서버가 있으면 reaction/typing 확장을 일관되게 사용하려면 모두 5.2.0/Relay 2.1로 올리는 것을 권장합니다.
+

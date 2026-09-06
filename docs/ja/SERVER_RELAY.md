@@ -1,12 +1,18 @@
-# Server Relay — Protocol v2
+# Server Relay — Protocol 2.1
+
+reaction authority、direct/multi-hop delivery、origin 障害時の outbox、作者通知の図は [REACTIONS.md](REACTIONS.md) を参照してください。
 
 ![Relay Protocol v2 のリクエスト認証と暗号化メッセージフロー](../assets/relay-v2-flow.svg)
+
+![Reaction authority routing](../assets/reaction-authority-routing.svg)
+
+[PNG](../assets/reaction-authority-routing.png) · [SVG](../assets/reaction-authority-routing.svg)
 
 [Animated GIF](../assets/relay-v2-flow.gif) · [PNG](../assets/relay-v2-flow.png) · [SVG](../assets/relay-v2-flow.svg)
 
 > **セキュリティ境界:** Relay v2 はエンドツーエンド暗号化ではなく、**hop-by-hop authenticated encryption** です。転送に参加する KWC サーバーは信頼境界内の参加者です。
 
-KOKOTO WebChat 5.1.0 では、5.0.0 のフラットな relay 信頼モデルを **Relay Protocol v2** に置き換えました。公開チャットとサーバー間 1:1 DM/read receipt は、同じ group 単位の認証済み transport を使用します。Group chat room はローカルのままで、サーバー間 relay されません。
+KOKOTO WebChat 5.2.0 は、5.1.0 で導入した Relay v2 trust/暗号化モデル上の backward-compatible な **Relay Protocol 2.1** capability revision を使用します。Protocol major `2` が wire compatibility 境界で、2.1 は `public`, `dm`, `read`, `reaction`, `reaction-authority`, `typing` capability を通知します。KWC product version は診断情報であり互換性 key ではありません。公開 chat と cross-server 1:1 DM/read receipt は同じ group-scoped authenticated transport を使用し、公開 reaction、participant server のみに送る cross-server DM reaction、remote DM typing は 2.1 extension、group-chat room は local のままです。
 
 ## セキュリティ上、優先してアップグレードすべき構成
 
@@ -108,7 +114,7 @@ Endpoint:
 /relay/v2/message
 ```
 
-旧 v1 endpoint (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, `/relay/dm/read`) は **HTTP 426** を返し、protocol `2` / version `5.1.0` を通知します。
+旧 v1 endpoint (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, `/relay/dm/read`) は **HTTP 426** を返し、protocol major `2` / revision `2.1` を通知します。
 
 ## メッセージの暗号化と認証
 

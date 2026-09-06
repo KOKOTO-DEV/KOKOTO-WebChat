@@ -1,12 +1,18 @@
-# Server Relay — Protocol v2
+# Server Relay — Protocol 2.1
+
+反应 authority、直连/多跳传递、origin 断开时的 outbox 与作者通知图请参阅 [REACTIONS.md](REACTIONS.md)。
 
 ![Relay Protocol v2 认证与加密消息流程](../assets/relay-v2-flow.svg)
+
+![Reaction authority routing](../assets/reaction-authority-routing.svg)
+
+[PNG](../assets/reaction-authority-routing.png) · [SVG](../assets/reaction-authority-routing.svg)
 
 [Animated GIF](../assets/relay-v2-flow.gif) · [PNG](../assets/relay-v2-flow.png) · [SVG](../assets/relay-v2-flow.svg)
 
 > **安全边界：** Relay v2 不是端到端加密，而是**逐跳认证加密（hop-by-hop authenticated encryption）**。参与转发的 KWC 服务器属于信任边界内的参与者。
 
-KOKOTO WebChat 5.1.0 使用 **Relay Protocol v2** 取代 5.0.0 的扁平 Relay 信任模型。公共聊天与跨服务器 1:1 DM/已读回执使用同一套以组为边界的认证传输。群聊房间仍是本地功能，不会进行服务器间 Relay。
+KOKOTO WebChat 5.2.0 使用 **Relay Protocol 2.1**，它是在 5.1.0 引入的 Relay v2 信任/加密模型之上的向后兼容 2.x capability revision。Protocol major `2` 仍是 wire compatibility 边界；2.1 公告 `public`、`dm`、`read`、`reaction`、`reaction-authority`、`typing` capability，KWC 产品版本仅用于诊断而不是兼容性判断。公共聊天与跨服务器 1:1 DM/已读回执继续使用同一 group-scoped 认证传输，公共 reaction、仅发送到参与者服务器的跨服务器 DM reaction 与远程 DM typing 使用 2.1 扩展，群聊房间仍保持本地。
 
 
 ## 安全升级优先范围
@@ -108,7 +114,12 @@ Endpoint：
 /relay/v2/message
 ```
 
-旧 v1 endpoint（`/relay/handshake`、`/relay/receive`、`/relay/dm/receive`、`/relay/dm/read`）会返回 **HTTP 426**，并声明 protocol `2` / version `5.1.0`。
+旧 v1 endpoint（`/relay/handshake`、`/relay/receive`、`/relay/dm/receive`、`/relay/dm/read`）会返回 **HTTP 426**，并声明 protocol major `2` / revision `2.1`。
+
+
+## Protocol revision 与 capability
+
+Relay 兼容性不再绑定 KWC 产品版本。`X-KWC-Relay-Version: 2` 表示兼容的 major wire family，`X-KWC-Relay-Protocol: 2.1` 与 `X-KWC-Relay-Capabilities` 描述当前 revision 和可选扩展。2.0 peer 与 2.1 peer 仍可交换共同的 v2 public/DM/read 流量。reaction 与 typing 属于 2.1 扩展；不支持某个扩展不应使整个 peer 被判定为不兼容。handshake 中的 `serverVersion` 仅用于诊断。
 
 ## 消息加密与认证
 

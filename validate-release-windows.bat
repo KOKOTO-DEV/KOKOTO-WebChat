@@ -129,9 +129,9 @@ if "%FAST_MODE%"=="1" (
 
 set "LOGDIR=%ROOT%validation-logs"
 if "%FINAL_RELEASE_MODE%"=="1" (
-  set "OUTDIR=%ROOT%release-5.1.0"
+  set "OUTDIR=%ROOT%release-5.2.0"
 ) else (
-  set "OUTDIR=%ROOT%build-5.1.0\%SCOPE_LABEL%"
+  set "OUTDIR=%ROOT%build-5.2.0\%SCOPE_LABEL%"
 )
 
 if exist "%LOGDIR%" rmdir /s /q "%LOGDIR%"
@@ -146,10 +146,10 @@ set "KWC_VALIDATION_PARALLEL=%PARALLEL_MODE%"
 
 echo ============================================================
 if "%FINAL_RELEASE_MODE%"=="1" (
-  echo KOKOTO WebChat 5.1.0 exact-target release validation
+  echo KOKOTO WebChat 5.2.0 exact-target release validation
   echo Bukkit 1 + Fabric 16 + NeoForge 12 + Forge 16 = 45 JARs
 ) else (
-  echo KOKOTO WebChat 5.1.0 Windows build
+  echo KOKOTO WebChat 5.2.0 Windows build
   echo Platforms: %PLATFORMS%
 )
 echo ============================================================
@@ -183,6 +183,11 @@ echo.
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%build-progress-windows.ps1" -Root "%ROOT_PATH%" -LogDir "%LOGDIR%" -Platforms "%PLATFORMS%" -Parallel %PARALLEL_MODE%
 set "RC=%ERRORLEVEL%"
 if not "%RC%"=="0" exit /b %RC%
+
+echo.
+echo Running loader-neutral security / relay regression harnesses...
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-core-regression-harness.ps1" -ProjectRoot "%ROOT_PATH%"
+if errorlevel 1 exit /b 1
 
 echo.
 echo Running loader-neutral adapter behavior harness...
@@ -233,16 +238,18 @@ set "TMP=%KWC_VALIDATION_TEMP%"
 exit /b 0
 
 :collectBukkit
-set "J=%ROOT%kwc-platform-bukkit\target\KOKOTO-WebChat-5.1.0-Bukkit-1.18-26.2.jar"
+set "J=%ROOT%kwc-platform-bukkit\target\KOKOTO-WebChat-5.2.0-Bukkit-1.18-26.2.jar"
 if not exist "%J%" (echo ERROR: Bukkit JAR missing: %J% 1>&2& exit /b 1)
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-adapter-packaging.ps1" -JarPath "%J%" -Platform "Bukkit"
+if errorlevel 1 exit /b 1
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-archive-runtime-harness.ps1" -ProjectRoot "%ROOT_PATH%" -JarPath "%J%"
 if errorlevel 1 exit /b 1
 copy /y "%J%" "%OUTDIR%\" >nul
 exit /b 0
 
 :collectFabric
 for %%M in (1.18.2 1.19.2 1.19.4 1.20.1 1.20.2 1.20.4 1.20.6 1.21.1 1.21.3 1.21.4 1.21.5 1.21.8 1.21.10 1.21.11 26.1.2 26.2) do (
-  set "J=%ROOT%kwc-platform-fabric\targets\%%M\build\libs\KOKOTO-WebChat-5.1.0-Fabric-%%M.jar"
+  set "J=%ROOT%kwc-platform-fabric\targets\%%M\build\libs\KOKOTO-WebChat-5.2.0-Fabric-%%M.jar"
   if not exist "!J!" (echo ERROR: Fabric %%M JAR missing: !J! 1>&2& exit /b 1)
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-release-mod-jar.ps1" -JarPath "!J!" -Platform "Fabric" -MinecraftVersion "%%M"
   if errorlevel 1 exit /b 1
@@ -256,7 +263,7 @@ exit /b 0
 
 :collectNeoForge
 for %%M in (1.20.2 1.20.4 1.20.6 1.21.1 1.21.3 1.21.4 1.21.5 1.21.8 1.21.10 1.21.11 26.1.2 26.2) do (
-  set "J=%ROOT%kwc-platform-neoforge\targets\%%M\build\libs\KOKOTO-WebChat-5.1.0-NeoForge-%%M.jar"
+  set "J=%ROOT%kwc-platform-neoforge\targets\%%M\build\libs\KOKOTO-WebChat-5.2.0-NeoForge-%%M.jar"
   if not exist "!J!" (echo ERROR: NeoForge %%M JAR missing: !J! 1>&2& exit /b 1)
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-release-mod-jar.ps1" -JarPath "!J!" -Platform "NeoForge" -MinecraftVersion "%%M"
   if errorlevel 1 exit /b 1
@@ -272,7 +279,7 @@ exit /b 0
 
 :collectForge
 for %%M in (1.18.2 1.19.2 1.19.4 1.20.1 1.20.2 1.20.4 1.20.6 1.21.1 1.21.3 1.21.4 1.21.5 1.21.8 1.21.10 1.21.11 26.1.2 26.2) do (
-  set "J=%ROOT%kwc-platform-forge\targets\%%M\build\libs\KOKOTO-WebChat-5.1.0-Forge-%%M.jar"
+  set "J=%ROOT%kwc-platform-forge\targets\%%M\build\libs\KOKOTO-WebChat-5.2.0-Forge-%%M.jar"
   if not exist "!J!" (echo ERROR: Forge %%M JAR missing: !J! 1>&2& exit /b 1)
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-release-mod-jar.ps1" -JarPath "!J!" -Platform "Forge" -MinecraftVersion "%%M"
   if errorlevel 1 exit /b 1
@@ -404,7 +411,7 @@ exit /b 0
 set "SELECTED_JAVA_HOME="
 set "KWC_JAVA_RESULT=%TEMP%\kwc-final-java-%~1-%RANDOM%-%RANDOM%.txt"
 if exist "%KWC_JAVA_RESULT%" del /q "%KWC_JAVA_RESULT%" >nul 2>&1
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%kwc-platform-forge\select-java.ps1" -Major %~1 -OutputFile "%KWC_JAVA_RESULT%"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%kwc-platform-forge\select-java.ps1" -Major %~1 -OutputFile "%KWC_JAVA_RESULT%" -Label "[KWC Bukkit]"
 if errorlevel 1 goto :javaFail
 if not exist "%KWC_JAVA_RESULT%" goto :javaFail
 set /p "SELECTED_JAVA_HOME="<"%KWC_JAVA_RESULT%"

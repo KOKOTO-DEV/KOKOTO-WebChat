@@ -49,7 +49,7 @@ Per-word replacements:
 `mappings`의 왼쪽 값도 자동으로 `words`에 합쳐집니다. 따라서 같은 단어를 양쪽에 중복해서 적을 필요가 없습니다. 동일 범위를 TXT 목록과 커스텀 규칙이 동시에 잡으면 커스텀 규칙이 먼저 평가되지만, 메시지의 다른 위치에서 별도의 `block` 매치가 있으면 메시지 전체가 차단됩니다.
 
 
-Web Admin에는 **Filter**와 **Settings** 탭이 추가됩니다. Filter에서는 적용 범위, 우회 탐지 옵션, 목록별 차단/필터링을 선택할 수 있는 필터 단어 목록, 커스텀 규칙 추가/수정/삭제, 실제 전송 없는 테스트를 관리합니다. Settings에는 실시간 변경해도 안전한 게스트/CAPTCHA, 인증·세션, 사용자 프로필, upload, Discord 관리자 알림 설정만 노출합니다. `moderation.*`와 relay/network/adapter 구조는 `config.yml` 전용으로 유지합니다. 게임에서는 `/kchat filter ...`, `/kchat settings ...`를 사용합니다.
+Web Admin에는 **Filter**와 **Settings** 탭이 추가됩니다. Filter에서는 적용 범위, 우회 탐지 옵션, 목록별 차단/필터링을 선택할 수 있는 필터 단어 목록, 커스텀 규칙 추가/수정/삭제, 실제 전송 없는 테스트를 관리합니다. Settings에는 실시간 변경해도 안전한 게스트/CAPTCHA, 인증·세션, 사용자 프로필, **오픈채팅/DM/그룹채팅 입력 중 표시 정책과 사용자별 표시 설정 허용 여부**, upload, Discord 관리자 알림 설정만 노출합니다. `moderation.*`와 relay/network/adapter 구조는 `config.yml` 전용으로 유지합니다. 게임에서는 `/kchat filter ...`, `/kchat settings ...`를 사용합니다.
 
 `auth.remember-session-days`를 바꾸면 기존 USER/MODERATOR 세션을 각 세션의 최초 `createdAt` 기준으로 재계산하고, `admin.admin-session-expire-hours`는 ADMIN 세션만 독립적으로 재계산합니다. `0`은 일반 USER/MODERATOR 세션과 ADMIN 세션 모두 무제한을 뜻합니다. 이미 만료된 세션은 기간을 늘리거나 무제한으로 바꿔도 부활하지 않으며, 새 기간보다 오래된 세션은 즉시 만료됩니다. `config.yml` 수정 후 시작/reload할 때도 같은 정책을 적용합니다.
 
@@ -65,7 +65,7 @@ Web Admin에는 **Filter**와 **Settings** 탭이 추가됩니다. Filter에서�
 `config-version`이 없거나 다른 버전이면 기존 설정값을 읽은 뒤 새 번들 기본 `config.yml`을 만들고 그 위에 기존 사용자 값을 덮어씁니다. 이전 표식에 `*_auto_migration`이 없었다면 사용자가 한 번 고정한 설정으로 보고 재구성 전에 기존 `config.yml` 전체를 백업합니다. 기존 주석·순서·공백·들여쓰기는 가져오지 않고 최신 번들 주석/레이아웃을 사용하며, 사용자 설정값은 보존합니다. 제거된 설정은 다시 복사하지 않습니다. 결과는 `<plugin-version>_auto_migration`으로 표시합니다. 이 표식이 남아 있으면 startup/reload마다 같은 방식으로 최신 번들 기본 config를 다시 뼈대로 만들고 현재 값을 덮어써서 새 설정과 최신 주석/레이아웃을 자동 반영합니다. 정확한 `<plugin-version>`은 같은 버전의 자동 **설정** 재구성을 끕니다. 단, 고정 상태에서도 `ui.language` 표시 언어가 바뀌면 실제 설정값을 모두 overlay해 보존한 채 선택된 내장 템플릿으로 주석/레이아웃만 다시 구성할 수 있습니다.
 
 `config-migration-<plugin-version>.yml`은 검토/diff 보고서입니다. 이전 버전의 `config-reference-*`, `config-migration-*`, `config-upgrade-*` 생성 파일은 자동 삭제합니다. 실제 버전 업그레이드의 기본값 변경 판정에 필요한 JAR 내부 `config-baselines/*`만 유지합니다.
-5.1.0에서는 `ui.language`가 Web UI뿐 아니라 KWC가 `config.yml`을 재구성할 때 사용할 주석/표현 언어, `config-reference-5.1.0.yml`, migration/difference 보고서 언어도 선택합니다. 번들 template은 `en-US`, `ko-KR`, `ja-JP`, `zh-CN`이며 언어를 바꿔도 주석/레이아웃만 바뀌고 Relay group/secret/peer를 포함한 기존의 파싱된 운영 설정값은 그대로 overlay해 보존합니다. Difference 판정은 주석, 공백, 들여쓰기, 따옴표 방식, 줄번호, 키 순서가 아니라 파싱된 YAML setting path와 value만 비교합니다.
+5.2.0에서는 `ui.language`가 Web UI뿐 아니라 KWC가 `config.yml`을 재구성할 때 사용할 주석/표현 언어, `config-reference-5.2.0.yml`, migration/difference 보고서 언어도 선택합니다. 번들 template은 `en-US`, `ko-KR`, `ja-JP`, `zh-CN`이며 언어를 바꿔도 주석/레이아웃만 바뀌고 Relay group/secret/peer를 포함한 기존의 파싱된 운영 설정값은 그대로 overlay해 보존합니다. Difference 판정은 주석, 공백, 들여쓰기, 따옴표 방식, 줄번호, 키 순서가 아니라 파싱된 YAML setting path와 value만 비교합니다.
 
 ## 전체 활성화 스위치
 
@@ -78,7 +78,7 @@ update-check:
   enabled: true
 ```
 
-활성화하면 KOKOTO WebChat이 Bukkit, Fabric, NeoForge, Forge 모두에서 백그라운드로 Modrinth의 최신 정식 버전을 확인합니다. 현재 프로젝트 주소 전환 기간에는 canonical KWC `kokoto-webchat`을 먼저 조회하고 사용할 수 없으면 기존 `bluemapwebchat`으로 fallback합니다. BMWC도 전환 완료 전까지 실제 업데이트 소스로 사용하므로 더 최신 버전이 있으면 정상 알림을 표시하며, 두 소스가 모두 실패한 경우에만 경고합니다. OP 또는 `kwc.update.notify` 권한 보유자가 로그인하면 제한된 주기로 다시 확인하므로 새 릴리스 감지가 정기 확인 결과에만 의존하지 않습니다.
+활성화하면 KOKOTO WebChat이 Bukkit, Fabric, NeoForge, Forge 모두에서 canonical Modrinth `kokoto-webchat` 프로젝트의 최신 정식 버전을 백그라운드로 확인합니다. 5.2.0부터 기존 BMWC 프로젝트 주소는 업데이트 소스로 조회하지 않습니다. OP 또는 `kwc.update.notify` 권한 보유자가 로그인하면 제한된 주기로 다시 확인하므로 새 릴리스 감지가 정기 확인 결과에만 의존하지 않습니다.
 ## 배포 모드
 
 ### BlueMap 애드온
@@ -232,11 +232,15 @@ direct-message:
 
 ## 중요한 0 값 의미
 
-`0`은 모든 설정에서 같은 뜻이 아닙니다. 아래 내용은 현재 5.1.0 loader/runtime 동작 기준이며, 실제 설명이 다른 설정을 임의로 “무제한”이라고 해석하면 안 됩니다.
+`0`은 모든 설정에서 같은 뜻이 아닙니다. 아래 내용은 현재 5.2.0 loader/runtime 동작 기준이며, 실제 설명이 다른 설정을 임의로 “무제한”이라고 해석하면 안 됩니다.
 
 - `chat.history-size`: 개수 기준으로 보존할 공개 채팅 기록 최대 행 수이며 기간 보존 정책과 함께 적용됩니다. 0은 개수 제한을 없앱니다.
 - `chat.history-retention-days`: 공개 채팅 기록의 기간 보존 일수입니다. 0은 기간 기반 만료를 끕니다.
 - `chat.history-page-size`: 기록 페이지 한 번에 요청할 기본 메시지 수입니다. 0이면 memory/JSONL 기록에는 명시적 페이지 제한을 두지 않지만 SQLite는 내장 쿼리 안전 상한 500개를 적용합니다.
+- `chat.conversation-archive.enabled`: 계정별 **대화 저장** 기능을 켭니다. `false`이면 archive API 경로를 등록하지 않고 `conversation-archives.db`를 열거나 새로 만들지 않으며, Web UI에도 대화 저장 관련 DOM을 생성하지 않습니다. 기존 archive 데이터는 그대로 둡니다.
+- `chat.conversation-archive.max-archives-per-user`: 계정당 저장 대화 최대 개수입니다. 기본값 `100`, 허용 범위 `1-1000`입니다.
+- `chat.conversation-archive.max-messages-per-archive`: 저장 대화 하나의 최대 메시지 수입니다. 기본값 `1000`, 허용 범위 `1-10000`입니다. 큰 값은 범위 조회, 메모리, 응답, SQLite 쓰기 부하를 늘립니다.
+- `chat.conversation-archive.max-messages-per-user`: 계정이 모든 저장 대화에 보관할 수 있는 총 메시지 최대 수입니다. 기본값 `10000`, 허용 범위 `1-100000`입니다. `max-messages-per-archive`보다 작으면 더 작은 계정 총량 제한이 우선합니다. 저장 snapshot은 일반 채팅 retention으로 자동 만료되지 않습니다. 한도를 낮춰도 기존 snapshot을 삭제하거나 숨기지 않고, 새 저장이 현재 한도를 넘는 경우만 차단합니다.
 - `chat.max-message-length`: KWC가 허용하는 일반 공개 채팅 메시지 최대 길이입니다. 0은 이 길이 제한을 없앱니다.
 - `chat.max-url-message-length`: URL이 포함된 공개 채팅 메시지 최대 길이입니다. 양수이면 양수인 일반 메시지 제한보다 작지 않도록 보정됩니다. 0은 이 길이 제한을 없앱니다.
 - `message-tokens.max-replacements-per-message`: 한 메시지에서 수행할 token 치환 최대 횟수로 치환 작업량을 제한합니다. 0은 개수 제한을 없앱니다.
@@ -345,7 +349,7 @@ DM/그룹 메시지도 같은 게임 클릭 모델을 사용합니다. 대화 �
 
 ## 서버 릴레이 설정
 
-KOKOTO WebChat 5.1.0은 **Relay Protocol v2**를 사용합니다. relay group 자체가 보안 경계이며, 해당 group의 모든 peer 관계가 하나의 group `shared-secret`을 공통으로 사용합니다. peer 항목에는 `id`, `url`, `enabled`만 있으며 `peers[].secret`은 없습니다.
+KOKOTO WebChat 5.2.0은 Relay v2 신뢰/암호화 모델을 유지하는 **Relay Protocol 2.1**을 사용합니다. relay group 자체가 보안 경계이며, 해당 group의 모든 peer 관계가 하나의 group `shared-secret`을 공통으로 사용합니다. peer 항목에는 `id`, `url`, `enabled`만 있으며 `peers[].secret`은 없습니다.
 
 ```yaml
 server-relay:
@@ -431,7 +435,7 @@ admin-alerts:
 
 ## 고정/삭제 표시 토글
 
-메시지별 고정/삭제 버튼은 실수 클릭을 막기 위해 기본적으로 숨겨져 있습니다. ADMIN/MOD 사용자는 관리자 패널의 웹 히스토리 비우기 버튼 옆에 있는 고정/삭제 활성화 토글을 켜서 버튼을 표시할 수 있습니다. 이 토글은 저장되지 않으며 새로고침하면 다시 꺼집니다.
+메시지별 고정/삭제 버튼은 실수 클릭을 막기 위해 기본적으로 숨겨져 있습니다. ADMIN/MOD 사용자는 관리자 패널의 전체 공개 채팅 기록 삭제 버튼 옆에 있는 고정/삭제 활성화 토글을 켜서 버튼을 표시할 수 있습니다. 이 토글은 저장되지 않으며 새로고침하면 다시 꺼집니다.
 
 ## UI
 
@@ -572,6 +576,8 @@ TikTok은 공식 `player/v1` iframe을 사용하고 `description=0`, `music_info
 `youtube-click-to-load` 또는 `media-click-to-load`를 `false`로 두면 해당 미리보기를 즉시 렌더링합니다. 자동 재생 여부는 브라우저 정책의 영향을 받습니다.
 
 
+`emoji.favorites.enabled`는 custom emoji 즐겨찾기 UI 생성 여부를 제어합니다. `emoji.favorites.storage`는 `account`(기본값, 채팅 history 저장방식과 무관한 로그인 계정 `user-preferences`) 또는 `browser`(localStorage)를 선택합니다. `emoji.favorites.max-per-account` 기본값은 100이며 `0`은 무제한, 양수는 최대 보관 개수입니다.
+
 ## 사용자 프로필과 계정 설정
 
 ```yaml
@@ -586,7 +592,7 @@ ui:
 
 ## 브라우저 알림과 Web Push
 
-`notifications`는 브라우저 웹알림과 모바일/백그라운드 Web Push가 공통으로 사용하는 알림 기본값과 서버 측 허용 상한선을 제어합니다. `notifications.enabled`가 양쪽 전달 경로의 단일 기본 ON/OFF 값이며, 기존 `browser-notifications.*`와 `web-push.notify-*` 키는 마이그레이션/호환용 입력값으로만 읽습니다. `notify-*` 값을 `true`로 두면 사용자가 채팅 설정에서 켜고 끌 수 있고, `false`로 두면 사용자가 켜도 해당 알림 종류는 차단됩니다. `notify-system`이 허용된 경우 사용자는 서버 알림을 전체, 입장/퇴장만, 끄기 중에서 고를 수 있습니다. 5.0.0부터 로그인 사용자의 알림 종류와 키워드 목록은 계정 데이터에 한 번 저장되어 여러 브라우저/기기에서 재사용되며, 최초 초기화 때 기존 브라우저 값을 계정 설정으로 승격합니다. 게스트는 브라우저 로컬 설정을 계속 사용합니다. 각 기기의 Web Push 구독에는 백그라운드 전달에 필요한 endpoint/filter 데이터만 유지합니다.
+`notifications`는 브라우저 웹알림과 모바일/백그라운드 Web Push가 공통으로 사용하는 알림 기본값과 서버 측 허용 상한선을 제어합니다. `notifications.enabled`가 양쪽 전달 경로의 단일 기본 ON/OFF 값이며, 기존 `browser-notifications.*`와 `web-push.notify-*` 키는 마이그레이션/호환용 입력값으로만 읽습니다. `notify-*` 값을 `true`로 두면 사용자가 채팅 설정에서 켜고 끌 수 있고, `false`로 두면 사용자가 켜도 해당 알림 종류는 차단됩니다. `notifications.notify-reactions`는 실시간 브라우저 알림과 백그라운드/모바일 Web Push가 함께 사용하는 **이모지 반응** 체크박스 하나를 제어하며 브라우저/푸시로 따로 나누지 않습니다. `notify-system`이 허용된 경우 사용자는 서버 알림을 전체, 입장/퇴장만, 끄기 중에서 고를 수 있습니다. 5.0.0부터 로그인 사용자의 알림 종류와 키워드 목록은 계정 데이터에 한 번 저장되어 여러 브라우저/기기에서 재사용되며, 최초 초기화 때 기존 브라우저 값을 계정 설정으로 승격합니다. 게스트는 브라우저 로컬 설정을 계속 사용합니다. 각 기기의 Web Push 구독에는 백그라운드 전달에 필요한 endpoint/filter 데이터만 유지합니다.
 
 `web-push`는 VAPID 키, subject, 구독 파일, TTL, 기본 푸시 제목 같은 Web Push 전송 설정만 보관합니다. HTTPS 또는 localhost, 브라우저 알림 권한, Service Worker/Push API 지원이 맞으면 백그라운드/모바일 푸시를 보낼 수 있습니다. Android/데스크톱 브라우저는 현재 origin이 Service Worker + Push API를 지원하면 BlueMap addon 또는 standalone 페이지 어디서든 푸시를 켤 수 있습니다. iOS/iPadOS의 일반 브라우저 탭은 Web Push를 지원하지 않으므로 홈 화면에 추가한 웹앱으로 연 페이지에서만 시도하고, 지원되지 않는 동작은 플랫폼 제한으로 봅니다. `notifications.enabled: true` 상태에서 VAPID 키를 비워두면 플러그인이 `web-push-vapid.properties`에 지속 키를 생성합니다. `web-push.subject`는 `mailto:admin@example.com` 또는 `https://map.example.com`처럼 실제 연락처/운영자 식별용 VAPID URI로 두는 것을 권장합니다. 임의 문자열은 권장하지 않으며 일부 push 서비스에서 거부되거나 신뢰도가 낮게 처리될 수 있습니다. 모바일의 “스팸일 수 있음” 같은 경고는 브라우저/OS가 표시하는 것이므로 플러그인에서 끌 수 없습니다. 안정적인 HTTPS 도메인, 의미 있는 알림 제목/본문, 보수적인 알림 필터, 반복 테스트 알림 최소화로 가능성을 줄이는 쪽으로 관리합니다. 테스트는 모바일 브라우저에서 현재 HTTPS 채팅 페이지를 열고 로그인한 뒤 설정 > 알림에서 알림을 켜고 테스트를 누릅니다. iOS/iPadOS에서는 먼저 이 페이지를 홈 화면에 추가한 뒤 웹앱으로 열어야 합니다.
 
@@ -638,7 +644,7 @@ KWC는 HTTP 상태 코드마다 별도 로그 예외를 추가하는 대신 반�
 
 ## 메시지 검색
 
-저장된 기록을 사용할 때 채팅 패널 우측 상단 플로팅 영역의 돋보기 버튼과 `/history/search` API로 메시지 내용과 작성자를 검색할 수 있습니다. 검색 옵션에서 날짜/시간 범위, 작성자, 출처, 시스템/이벤트 포함 여부를 지정할 수 있습니다. 검색 결과는 스크롤 가능한 목록으로 표시되며, 채팅 테마와 폰트 설정을 따릅니다. 검색 결과를 클릭하면 기존 주변 기록 로드 방식으로 해당 메시지로 이동합니다. i18n 키가 있는 시스템/이벤트 메시지는 가능한 경우 요청된 웹 UI 언어 기준으로 검색되고 표시됩니다. 검색은 `search.enabled`로 끄거나 켤 수 있고, `search.result-limit` 하나가 웹 UI 결과 수와 `/history/search` API 제한을 모두 제어합니다. 별도 내부 최대치는 없어서 2000으로 설정하면 최대 2000개, 10으로 설정하면 최대 10개가 반환됩니다. 10000이나 100000처럼 매우 큰 값도 허용되지만, 검색 속도 저하, 응답 크기 증가, CPU/메모리/DB 부하 증가를 일으킬 수 있습니다. 기본값은 50이며 일반 사용은 50~200을 권장합니다. `config-version: "5.1.0_auto_migration"` 상태에서는 누락된 검색 설정이 startup/reload 때 자동 삽입됩니다. 정확한 `config-version: "5.1.0"`으로 같은 버전 자동 migration을 끈 경우에만 누락 키를 직접 추가하거나 `_auto_migration`을 다시 활성화해야 합니다.
+저장된 기록을 사용할 때 채팅 패널 우측 상단 플로팅 영역의 돋보기 버튼과 `/history/search` API로 메시지 내용과 작성자를 검색할 수 있습니다. 검색 옵션에서 날짜/시간 범위, 작성자, 출처, 시스템/이벤트 포함 여부를 지정할 수 있습니다. 검색 결과는 스크롤 가능한 목록으로 표시되며, 채팅 테마와 폰트 설정을 따릅니다. 검색 결과를 클릭하면 기존 주변 기록 로드 방식으로 해당 메시지로 이동합니다. i18n 키가 있는 시스템/이벤트 메시지는 가능한 경우 요청된 웹 UI 언어 기준으로 검색되고 표시됩니다. 검색은 `search.enabled`로 끄거나 켤 수 있고, `search.result-limit` 하나가 웹 UI 결과 수와 `/history/search` API 제한을 모두 제어합니다. 별도 내부 최대치는 없어서 2000으로 설정하면 최대 2000개, 10으로 설정하면 최대 10개가 반환됩니다. 10000이나 100000처럼 매우 큰 값도 허용되지만, 검색 속도 저하, 응답 크기 증가, CPU/메모리/DB 부하 증가를 일으킬 수 있습니다. 기본값은 50이며 일반 사용은 50~200을 권장합니다. `config-version: "5.2.0_auto_migration"` 상태에서는 누락된 검색 설정이 startup/reload 때 자동 삽입됩니다. 정확한 `config-version: "5.2.0"`으로 같은 버전 자동 migration을 끈 경우에만 누락 키를 직접 추가하거나 `_auto_migration`을 다시 활성화해야 합니다.
 
 ## 그룹 채팅
 

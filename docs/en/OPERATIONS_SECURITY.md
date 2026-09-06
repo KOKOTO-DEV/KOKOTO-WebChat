@@ -1,5 +1,7 @@
 # Operations / Security checklist
 
+![Administration and HTTP security boundary](../assets/admin-security-boundary.svg)
+
 This document summarizes settings to review for public deployments or HTTPS reverse-proxy setups.
 
 ## Recommended public deployment
@@ -19,6 +21,8 @@ http:
 ```
 
 For direct HTTP use, keep `trusted-proxies: []`. In that mode, client-supplied `X-Forwarded-For` is ignored and the direct socket IP is used.
+
+KWC resolves forwarded client addresses from **right to left** through the configured trusted-proxy chain and stops at the first untrusted hop. This prevents a client-supplied leftmost `X-Forwarded-For` value from overriding the actual client address. The bundled single-edge Nginx example additionally overwrites `X-Forwarded-For` with `$remote_addr` rather than appending an incoming value.
 
 ## Checking client IP resolution logs
 

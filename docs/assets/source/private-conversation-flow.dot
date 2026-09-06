@@ -1,0 +1,25 @@
+digraph G {
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans", labelloc="t"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=LR;
+  sender [label="Web or Minecraft sender", fillcolor="#E0F2FE"];
+  service [label="DM / group service\nauthorize participant + validate reply", fillcolor="#DBEAFE", penwidth=2];
+  store [label="Private message store\nSQLite / JSONL", fillcolor="#F1F5F9"];
+  local [label="Local recipient\nSSE / game notice", fillcolor="#DCFCE7"];
+  relay [label="Remote DM\nRelay Protocol 2.1", fillcolor="#FCE7F3"];
+  read [label="Read receipt\nidempotent acknowledgement", fillcolor="#FEF3C7"];
+  typing [label="Typing state\n5-second ephemeral window\nnot persisted", fillcolor="#ECFEFF"];
+  archive [label="Saved conversation\nserver-validated snapshot", fillcolor="#F3E8FF"];
+
+  sender -> service;
+  service -> store [label="message/reply"];
+  store -> local;
+  store -> relay;
+  local -> read -> service [label="read update"];
+  sender -> typing [label="input event"];
+  typing -> local [style=dashed,label="participant only"];
+  typing -> relay [style=dashed,label="remote DM only"];
+  store -> archive [label="selected range"];
+}

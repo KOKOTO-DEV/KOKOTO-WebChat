@@ -1,0 +1,19 @@
+digraph G {
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans", labelloc="t"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=LR;
+  live [label="Live public / DM / group conversation", fillcolor="#E0F2FE"];
+  select [label="User selects first + last message", fillcolor="#FEF3C7"];
+  validate [label="Server re-reads range\nparticipant/visibility/lock checks", fillcolor="#DBEAFE", penwidth=2];
+  snapshot [label="Private immutable snapshot\ntext + metadata\nattachments referenced, not copied", fillcolor="#DCFCE7"];
+  view [label="Saved conversation viewer", fillcolor="#E0F2FE"];
+  pdf [label="Browser print / PDF\ncurrent KWC appearance", fillcolor="#F3E8FF"];
+  admin [label="Admin source deletion / room deletion\nremains authoritative", fillcolor="#FEE2E2"];
+
+  live -> select -> validate -> snapshot;
+  snapshot -> view -> pdf;
+  live -> admin;
+  admin -> snapshot [label="prune/remove affected content", color="#B91C1C", fontcolor="#991B1B"];
+}

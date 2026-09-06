@@ -26,7 +26,7 @@ web:
     skip: スキップ
     logout: ログアウト
     setPassword: パスワード設定
-    clearHistory: Web履歴を消去
+    clearHistory: 公開チャット履歴をすべて削除
     mute: ミュート
     unmute: 解除
     revoke: 解除
@@ -34,6 +34,7 @@ web:
     accept: 承諾
     decline: 拒否
     cancel: キャンセル
+    react: 反応
     reply: 返信
     pin: 固定
     moderationActionsEnable: ピン留め / 削除を有効化
@@ -59,6 +60,7 @@ web:
     change: 変更
     rename: 変更
     renamePack: フォルダー名変更
+    open: '開く'
     hide: '非表示'
   placeholder:
     guestName: ゲスト名
@@ -80,6 +82,16 @@ web:
   emoji:
     empty: 設定された絵文字がありません。
     emptyPack: 絵文字なし
+    recent: 最近
+    searchPlaceholder: 絵文字を検索
+    searchEmpty: 一致する絵文字はありません。
+    emptyRecent: 最近使用した絵文字はありません。
+    favorites: お気に入り
+    emptyFavorites: お気に入りの絵文字はありません。
+    favoriteAdd: お気に入りに追加
+    favoriteRemove: お気に入りから削除
+    favoriteLimitReached: お気に入り絵文字は最大 {count} 個まで保存できます。
+    favoriteSaveFailed: 絵文字のお気に入りを保存できませんでした。
   alert:
     emojiTooMany: 絵文字は1メッセージにつき{max}個まで使用できます。
     rateLimited: 送信が速すぎます。しばらく待ってください。
@@ -93,7 +105,7 @@ web:
     uploadFailed: 'アップロード失敗: {error}'
     confirmDelete: このメッセージを非表示にしますか？
     deleteFailed: '削除失敗: {error}'
-    confirmClearHistory: Webチャット履歴を消去しますか？
+    confirmClearHistory: "警告: サーバー上の公開チャット履歴、関連するリアクション、保存済みの公開チャットアーカイブがすべて完全に削除されます。この操作は取り消しも復元もできません。本当に削除しますか？"
     adminActionFailed: '管理操作に失敗しました: {error}'
     failed: '失敗: {error}'
     loginFailed: 'ログイン失敗: {error}'
@@ -133,6 +145,64 @@ web:
     groupActionFailed: 'グループ操作に失敗しました: {error}'
     groupSettingsFailed: 'グループ設定を保存できませんでした: {error}'
     renameFailed: '名前変更に失敗しました: {error}'
+  typing:
+    generic: '入力中...'
+    user: '{user}さんが入力中...'
+    users: '{users}さんが入力中...'
+    two: '{user1}さん、{user2}さんが入力中...'
+    count: '{count}人が入力中...'
+    multiple: '複数人が入力中...'
+  reaction:
+    remove: '反応を取り消す'
+    add: '反応を追加'
+    noActors: '反応したユーザー情報はありません'
+    categoryRecent: '最近使用'
+    categorySmileys: '表情'
+    categoryPeople: '人物'
+    categoryAnimals: '動物・自然'
+    categoryFood: '食べ物'
+    categoryActivities: 'アクティビティ'
+    categoryObjects: '物'
+    categorySymbols: '記号'
+    categoryCustom: 'KWC 絵文字'
+    searchPlaceholder: '絵文字を検索'
+    searchEmpty: '一致する反応はありません。'
+    notificationTitle: '反応'
+    notificationBody: '{user}さんが {reaction} の反応をしました。'
+    gameNotice: '{user}さんが {reaction} の反応をしました。'
+    pending: '元メッセージのサーバーが再接続すると反応を適用します。'
+    failed: '反応を適用できませんでした: {error}'
+    expired: '元メッセージのサーバーが再接続する前に反応要求が期限切れになりました。'
+    manage: '反応設定'
+    addSame: '同じ反応を追加'
+  archive:
+    library: '保存した会話'
+    saveConversation: '会話を保存'
+    savePublic: '公開チャットを保存'
+    selectFirst: '保存する最初のメッセージを選択してください。'
+    selectLast: '保存する最後のメッセージを選択してください。'
+    rangeReady: '保存する会話範囲を選択しました。'
+    title: 'タイトル'
+    defaultTitle: '保存した会話'
+    rangeSummary: '{count}件のメッセージ · {time}'
+    saved: '会話を保存しました。'
+    saveFailed: '会話を保存できませんでした: {error}'
+    loadFailed: '保存した会話を読み込めませんでした: {error}'
+    renameFailed: '保存した会話の名前を変更できませんでした: {error}'
+    deleteFailed: '保存した会話を削除できませんでした: {error}'
+    empty: '保存した会話はありません。'
+    renamePrompt: '新しい保存会話タイトル'
+    confirmDelete: 'この保存した会話を削除しますか？'
+    typePublic: '公開チャット'
+    typeDm: 'DM'
+    typeGroup: 'グループチャット'
+    exportPdf: 'PDFを書き出す'
+    originalLost: '元データなし'
+    adminLocked: '管理者のロックポリシーにより、この会話は保存できません。'
+    adminLockedOpen: '管理者ポリシーにより、この保存会話は現在開けません。'
+    popupBlocked: 'ブラウザーによってPDF書き出しウィンドウがブロックされました。'
+    savedAt: '保存日時'
+    accountButton: '会話を保存'
   admin:
     title: KOKOTO WebChat 管理
     summary: 概要
@@ -174,6 +244,18 @@ web:
     currentMutes: 現在のミュート
     expires: 期限
     never: なし
+    reactions: '反応'
+    reactionCatalog: '反応アイコン'
+    reactionCatalogManage: '反応アイコン管理'
+    reactionCatalogHint: '反応選択画面に表示する Unicode 絵文字を管理します。削除しても既存の反応は消えず、新規追加だけができなくなります。'
+    reactionEnabled: '反応アイコン機能を有効化'
+    reactionEnabledHint: 'オフにすると既存の反応記録を保持したまま、新しい反応操作を禁止し、追加・選択画面の操作を非表示にします。'
+    reactionCustomEmoji: 'KWC カスタム絵文字を反応で許可'
+    reactionCategoryHint: '絵文字は空白で区切ります。入力順が選択画面の表示順になります。'
+    reactionSearchAliases: '検索エイリアス'
+    reactionSearchAliasesHint: '1 行に 1 件、`絵文字 = 検索語` の形式で入力します。新しい Unicode 反応アイコンを追加するときは、ここに検索語も追加してください。Unicode 名も自動的に検索対象になります。'
+    reactionSaved: '反応アイコンを保存しました。'
+    reactionResetConfirm: '反応アイコン一覧を初期値に戻しますか？'
     emojis: 絵文字
     emojiTitle: カスタム絵文字
     emojiMoveTarget: 移動先フォルダー
@@ -244,6 +326,10 @@ web:
       ui-user-profiles-enabled: 'ユーザーチャット設定プロファイル'
       ui-user-profiles-max-profiles: 'ユーザーごとの最大プロファイル数'
       ui-user-profiles-allow-import-export: 'プロファイルのインポート/エクスポートを許可'
+      chat-typing-indicator-user-display-control: 'ユーザー別の入力中表示設定を許可'
+      chat-typing-indicator-open-chat-enabled: 'オープンチャットの入力中表示'
+      chat-typing-indicator-dm-enabled: 'DM の入力中表示'
+      chat-typing-indicator-group-chat-enabled: 'グループチャットの入力中表示'
       admin-alerts-discord-enabled: 'Discord 管理者キーワード通知'
       admin-alerts-discord-channel: 'Discord 通知チャンネル'
       admin-alerts-discord-sources-public-chat: '公開チャットを検知'
@@ -269,6 +355,7 @@ web:
     settingsGroupGuestCaptcha: 'ゲスト / CAPTCHA'
     settingsGroupAuthSessions: '認証 / セッション'
     settingsGroupProfiles: 'ユーザープロファイル'
+    settingsGroupTyping: '入力中表示'
     settingsGroupUploads: 'アップロード'
     settingsGroupDiscordAlerts: 'Discord 管理者通知'
     filterGroupGeneral: '基本 / 適用範囲'
@@ -354,6 +441,8 @@ web:
     filterTestRuleCount: '読み込み済みルール: {count}件'
     filterTestListWordCount: 'リスト単語: {count}'
     filterTestInput: 'テスト入力'
+    reactionShowActors: '反応したユーザー一覧を表示'
+    reactionShowActorsHint: 'オフにすると反応数と自分の反応状態は維持しますが、反応したユーザーの名前情報をサーバー応答とツールチップから非表示にします。オンの場合は通常のチャットと同じ表示名 ↔ 元の名前の切り替えを使用します。'
   prompt:
     createEmojiPack: 新しいフォルダー名
     renameEmoji: 新しい絵文字名
@@ -442,6 +531,9 @@ web:
     textShadowCustomPreview: 影のプレビュー
     textShadowCustomPlaceholder: 0 1px 2px rgba(0, 0, 0, 0.85)
     inputBackgroundColor: 入力欄の背景色
+    chatBehavior: 'チャット動作'
+    showTypingIndicator: '入力中表示'
+    showTypingIndicatorHelp: '他のユーザーの入力中状態を自分の画面に表示します。この設定は KWC アカウントに保存され、無効にしても自分の入力中状態の送信は停止しません。'
     notifications: '通知'
     notificationsPage: 'ブラウザーシステム通知'
     notificationsPageHelp: 'ブラウザー通知は対応しているブラウザーでのみ利用できます。'
@@ -468,7 +560,8 @@ web:
     notifyDm: 'DM'
     notifyGroupChat: 'グループチャット'
     notifyReplies: '返信'
-    notifyMentions: 'メンション'
+    notifyReactions: '絵文字リアクション'
+    notifyMentions: '@メンション'
     notifySystem: 'サーバー'
     notifySystemAll: 'すべて'
     notifySystemJoinLeave: '参加/退出のみ'
@@ -481,7 +574,6 @@ web:
     notifyKeywordsNeedsApply: 'キーワード一覧が変更されました。プッシュフィルターを更新するにはキーワードを適用してください。'
     notifyDisabledByServer: 'サーバー設定で無効化されています。'
     keywordNotificationTitle: 'キーワード: {keyword}'
-    notifyPreview: 'メッセージプレビュー'
     notificationsServerDisabled: 'サーバー設定で通知が無効です。'
     notificationsEnabledStatus: 'ブラウザー通知が有効です。'
     notificationsAllowedDisabledStatus: 'ブラウザー権限は許可されていますが、チャット設定では無効です。'
@@ -648,6 +740,7 @@ web:
     unread: '未読'
     unreadCount: '未読受信者: {count}人'
   group:
+    roomSettings: 'ルーム設定'
     title: 'グループチャット'
     noRooms: 'グループチャットはありません。'
     backToList: 'グループチャット一覧に戻る'

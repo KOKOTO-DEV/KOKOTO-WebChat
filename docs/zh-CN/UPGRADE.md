@@ -1,6 +1,6 @@
 # KOKOTO WebChat 升级指南
 
-本文档整合了从 4.5.5 到 5.1.0 的升级说明。跨多个版本升级时，请按版本顺序依次检查各节。
+本文档整合了从 4.5.5 到 5.2.0 的升级说明。跨多个版本升级时，请按版本顺序依次检查各节。
 
 ## 从 4.5.5 升级到 4.6.0
 
@@ -293,7 +293,7 @@ Bukkit 上已有的 `plugins/BlueMapWebChat` 可在首次 KWC 启动时作为迁
 ### 最终发布判定
 
 
-> `validate-release-windows.bat` 及其所需的 PowerShell helper 已包含在 source archive 中。单独的 `KWC-5.1.0-validation-tools.zip` 只包含开发专用的浏览器回归测试工具，运行发布构建时不需要它。
+> `validate-release-windows.bat` 及其所需的 PowerShell helper 已包含在 source archive 中。单独的 `KWC-5.2.0-validation-tools.zip` 只包含开发专用的浏览器回归测试工具，运行发布构建时不需要它。
 
 只有 `validate-release-windows.bat` 输出 `FINAL RELEASE BUILD PASS`、收集到准确 45 个可发布 JAR，并通过 static/config/i18n/document validation 与主要功能 smoke test 的候选版本才作为正式发布版。
 
@@ -361,7 +361,7 @@ SSE 默认上限调整为**每个解析后的客户端 IP 10 个连接**、**服
 - `/kchat reload` 会重新检查对外暴露的 HTTP listener 与 direct HTTP Relay peer，并把相应本地化警告同时写入服务器日志并发送给命令执行者。
 - 当 `commands.broadcast-result-to-web-chat: true` 时，Web 命令执行提示也会发送给在线 Minecraft 玩家。
 - 公共聊天、DM 和群组消息输入框改用单行 `<textarea>`，而不是普通 text `<input>`，同时保留 `autocomplete="off"`、Enter 发送、光标定位和表情插入行为。这样可以避开 Android 版 Chrome 在无关的普通输入框上也显示密码、地址和付款方式 Autofill accessory 的路径；登录/密码输入框保持不变。
-- 项目地址迁移期间，更新检查器先查询 canonical Modrinth `kokoto-webchat`，并回退到 `bluemapwebchat`。BMWC 在迁移完成前仍作为实际更新来源，只有两个来源都失败时才发出警告。
+- 从 5.2.0 开始，更新检查器只查询 canonical Modrinth `kokoto-webchat`，不再把旧 BMWC 项目地址作为更新来源。
 - 对外暴露的明文 HTTP listener 与直接 HTTP Relay peer 会显示本地化安全警告。
 
 ### 升级后检查
@@ -372,3 +372,14 @@ SSE 默认上限调整为**每个解析后的客户端 IP 10 个连接**、**服
 4. 位于代理后方时检查解析后的客户端 IP 与 SSE 行为；仅在故障排查期间临时启用 `http.log-client-ip-resolution`。
 5. 在实际部署环境中测试公共聊天、DM/群组 Reply、自定义表情、上传、Web Push/通知以及正在使用的地图/standalone frontend。
 6. 在正常运行和保留策略清理都确认无误前，保留升级前备份。
+
+## 从 KOKOTO WebChat 5.1.0 升级到 5.2.0
+
+升级前请备份 KWC 数据目录。普通 5.1.0 → 5.2.0 migration 会保留受支持的管理员值和现有 Relay v2 group/secret/peer；relay trust reset 只属于历史上的 pre-5.1.0 → 5.1.0 migration。当前 reference 为 `config-reference-5.2.0.yml`，自动审核状态在管理员选择精确 `config-version: "5.2.0"` 前使用 `5.2.0_auto_migration`。
+
+5.2.0 将 Relay Protocol 2.1 作为向后兼容的 2.x capability revision。Protocol major `2` 是兼容边界，KWC 产品版本仅用于诊断。公共 reaction、仅发送到参与者服务器的跨服务器 DM reaction 与远程 DM typing 使用 2.1 扩展，共同的 v2 public/DM/read 行为仍属于 2.x compatibility baseline。
+
+新增用户数据包括在 `chat.conversation-archive.enabled` 为 true 时使用的私有对话 snapshot `conversation-archives.db`、反应状态的 `public-reactions.jsonl`（保留历史文件名，存储公共/DM/群聊反应），以及管理员 reaction picker 配置 `reaction-catalog.json`。请与其他 KWC 数据一同备份。snapshot 不复制附件字节，管理员强制删除源消息/房间以及私聊房间锁定策略优先于个人存档。 `reaction-catalog.json` 还会保存管理员的 reaction 总开关与自定义表情允许状态；关闭该功能不会删除已有 `public-reactions.jsonl` 数据。
+
+升级后请验证公共 reaction、DM/群聊“正在输入…”，对话存档与 PDF/打印、私聊房间 Settings/Invite/Leave 权限，以及公共/DM/群聊统一 32px bottom-follow。若使用多个 relay server，为一致使用 reaction/typing 扩展，建议所有 peer 升级到 5.2.0/Relay 2.1。
+

@@ -68,6 +68,13 @@ public class WebPushManager {
         public String i18nKey = "";
         public String i18nArgs = "";
         public String targetDeviceId = "";
+        // Private-chat delivery metadata used only for server-side suppression.
+        // These values are never serialized into the browser push payload.
+        public String dmThreadId = "";
+        public String groupRoomId = "";
+        // Server-resolved @mention recipients. This is delivery metadata only and
+        // is never serialized into the browser push payload.
+        public Set<String> mentionTargetUuids = Set.of();
     }
 
     private static class Subscription {
@@ -82,14 +89,39 @@ public class WebPushManager {
         boolean notifyGroupChat;
         boolean notifyMentions;
         boolean notifyReplies;
+        boolean notifyReactions;
         boolean notifySystem;
         String notifySystemMode = "all";
         boolean notifyKeywords;
         List<String> keywords = new ArrayList<>();
         String language = "";
         String openUrl = "";
-        boolean showMessagePreview;
         long updatedAt;
+    }
+
+
+
+    private static class ActiveView {
+        String userUuid = "";
+        String deviceId = "";
+        String clientId = "";
+        String dmThreadId = "";
+        String groupRoomId = "";
+        long updatedAt;
+    }
+
+    /** Snapshot of account-wide active private-conversation views.
+     *  Expiry is tracked per target so clients never keep a crashed/stale tab
+     *  suppressing browser/in-chat notifications longer than the server TTL.
+     */
+    public static class ActivePrivateViewSnapshot {
+        public final Map<String, Long> dmThreadExpiresAt;
+        public final Map<String, Long> groupRoomExpiresAt;
+
+        ActivePrivateViewSnapshot(Map<String, Long> dmThreadExpiresAt, Map<String, Long> groupRoomExpiresAt) {
+            this.dmThreadExpiresAt = Collections.unmodifiableMap(new LinkedHashMap<>(dmThreadExpiresAt));
+            this.groupRoomExpiresAt = Collections.unmodifiableMap(new LinkedHashMap<>(groupRoomExpiresAt));
+        }
     }
 
     private final WebPushHost host;
@@ -98,7 +130,13 @@ public class WebPushManager {
     private final Base64.Decoder b64u = Base64.getUrlDecoder();
     private final SecureRandom random = new SecureRandom();
     private final Map<String, Long> keywordCooldownUntil = new ConcurrentHashMap<>();
+    private final Map<String, ActiveView> activeViews = new ConcurrentHashMap<>();
     private static final long KEYWORD_PUSH_COOLDOWN_MILLIS = 60_000L;
+    // Any signed-in KWC browser refreshes an active private-conversation view every
+    // 4 seconds, independently of whether that browser itself subscribes to Push.
+    // blur/hidden/close clears it; the TTL prevents a crashed/closed tab from
+    // suppressing the account's legitimate Push for more than a few seconds.
+    private static final long ACTIVE_VIEW_TTL_MILLIS = 12_000L;
     private static final int MAX_SUBSCRIPTIONS_PER_USER = 16;
     private volatile KeyPair vapidKeyPair;
     private volatile String vapidPublicKeyBase64 = "";
@@ -148,13 +186,13 @@ public class WebPushManager {
         s.notifyGroupChat = (c == null || c.webPushNotifyGroupChat) && readBool(body, "notifyGroupChat", c == null || c.webPushNotifyGroupChat);
         s.notifyMentions = (c == null || c.webPushNotifyMentions) && readBool(body, "notifyMentions", c == null || c.webPushNotifyMentions);
         s.notifyReplies = (c == null || c.webPushNotifyReplies) && readBool(body, "notifyReplies", c == null || c.webPushNotifyReplies);
+        s.notifyReactions = (c == null || c.webPushNotifyReactions) && readBool(body, "notifyReactions", s.notifyReplies);
         s.notifySystemMode = readSystemMode(body, "notifySystemMode", readBool(body, "notifySystem", c == null || c.webPushNotifySystem) ? "all" : "off");
         s.notifySystem = (c == null || c.webPushNotifySystem) && !"off".equals(s.notifySystemMode);
         s.notifyKeywords = (c == null || c.webPushNotifyKeywords) && readBool(body, "notifyKeywords", c == null || c.webPushNotifyKeywords);
         s.keywords = normalizeKeywords(body == null ? "" : body.get("keywords"));
         s.language = clean(body == null ? "" : body.get("language"), 40);
         s.openUrl = clean(body == null ? "" : body.get("openUrl"), 2048);
-        s.showMessagePreview = (c == null || c.webPushShowMessagePreview) && readBool(body, "showMessagePreview", c == null || c.webPushShowMessagePreview);
         s.updatedAt = System.currentTimeMillis();
         syncNotificationPreferencesForAccount(s);
         removeSupersededDeviceSubscriptions(s);
@@ -185,6 +223,7 @@ public class WebPushManager {
             target.notifyGroupChat = allowed(c == null || c.webPushNotifyGroupChat, boolPref(prefs, "groupChat", target.notifyGroupChat));
             target.notifyMentions = allowed(c == null || c.webPushNotifyMentions, boolPref(prefs, "mentions", target.notifyMentions));
             target.notifyReplies = allowed(c == null || c.webPushNotifyReplies, boolPref(prefs, "replies", target.notifyReplies));
+            target.notifyReactions = allowed(c == null || c.webPushNotifyReactions, boolPref(prefs, "reactions", target.notifyReplies));
             String mode = String.valueOf(prefs.getOrDefault("systemMode", target.notifySystemMode)).trim().toLowerCase(Locale.ROOT);
             if (!Set.of("all", "join-leave", "off").contains(mode)) mode = "all";
             if (c != null && !c.webPushNotifySystem) mode = "off";
@@ -192,7 +231,6 @@ public class WebPushManager {
             target.notifySystem = !"off".equals(mode);
             target.notifyKeywords = allowed(c == null || c.webPushNotifyKeywords, boolPref(prefs, "keywords", target.notifyKeywords));
             target.keywords = normalizeKeywords(String.valueOf(prefs.getOrDefault("keywordText", "")));
-            target.showMessagePreview = allowed(c == null || c.webPushShowMessagePreview, boolPref(prefs, "preview", target.showMessagePreview));
             target.updatedAt = System.currentTimeMillis();
         }
         saveSubscriptions();
@@ -213,11 +251,11 @@ public class WebPushManager {
         target.notifyGroupChat = source.notifyGroupChat;
         target.notifyMentions = source.notifyMentions;
         target.notifyReplies = source.notifyReplies;
+        target.notifyReactions = source.notifyReactions;
         target.notifySystem = source.notifySystem;
         target.notifySystemMode = source.notifySystemMode;
         target.notifyKeywords = source.notifyKeywords;
         target.keywords = source.keywords == null ? new ArrayList<>() : new ArrayList<>(source.keywords);
-        target.showMessagePreview = source.showMessagePreview;
     }
 
     private void removeSupersededDeviceSubscriptions(Subscription incoming) {
@@ -301,6 +339,152 @@ public class WebPushManager {
         return true;
     }
 
+
+    public void updateActiveView(Account account, String deviceId, String clientId, boolean active,
+                                 String dmThreadId, String groupRoomId) {
+        if (account == null || account.uuid == null || account.uuid.isBlank()) return;
+        String user = clean(account.uuid, 80).toLowerCase(Locale.ROOT);
+        String device = cleanDeviceId(deviceId);
+        String client = cleanViewClientId(clientId);
+        if (user.isBlank() || device.isBlank() || client.isBlank()) return;
+        // Viewing state is account/session state, not Web Push subscription state.
+        // A desktop browser that does not subscribe to Push must still be able to
+        // suppress duplicate mobile Push while that same account is actively
+        // reading the exact DM/group conversation.
+        String key = activeViewKey(user, device, client);
+        pruneExpiredActiveViews();
+        if (!active) {
+            activeViews.remove(key);
+            return;
+        }
+        String dm = clean(dmThreadId, 160);
+        String group = clean(groupRoomId, 160);
+        if (dm.isBlank() && group.isBlank()) {
+            activeViews.remove(key);
+            return;
+        }
+        ActiveView view = new ActiveView();
+        view.userUuid = user;
+        view.deviceId = device;
+        view.clientId = client;
+        view.dmThreadId = dm;
+        view.groupRoomId = group;
+        view.updatedAt = System.currentTimeMillis();
+        activeViews.put(key, view);
+        trimActiveViewsForDevice(user, device);
+    }
+
+    public ActivePrivateViewSnapshot activePrivateViewSnapshot(String userUuid) {
+        String user = clean(userUuid, 80).toLowerCase(Locale.ROOT);
+        Map<String, Long> dm = new LinkedHashMap<>();
+        Map<String, Long> group = new LinkedHashMap<>();
+        if (user.isBlank()) return new ActivePrivateViewSnapshot(dm, group);
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, ActiveView> e : new ArrayList<>(activeViews.entrySet())) {
+            ActiveView view = e.getValue();
+            if (view == null) continue;
+            long expiresAt = view.updatedAt + ACTIVE_VIEW_TTL_MILLIS;
+            if (expiresAt <= now) {
+                activeViews.remove(e.getKey(), view);
+                continue;
+            }
+            if (!user.equals(view.userUuid)) continue;
+            if (view.dmThreadId != null && !view.dmThreadId.isBlank()) {
+                dm.merge(view.dmThreadId, expiresAt, Math::max);
+            }
+            if (view.groupRoomId != null && !view.groupRoomId.isBlank()) {
+                group.merge(view.groupRoomId, expiresAt, Math::max);
+            }
+        }
+        return new ActivePrivateViewSnapshot(dm, group);
+    }
+
+    public void clearActiveViews(Account account, String deviceId) {
+        if (account == null || account.uuid == null || account.uuid.isBlank()) return;
+        clearActiveViews(account.uuid, deviceId);
+    }
+
+    private void clearActiveViews(String userUuid, String deviceId) {
+        String user = clean(userUuid, 80).toLowerCase(Locale.ROOT);
+        String device = cleanDeviceId(deviceId);
+        if (user.isBlank() || device.isBlank()) return;
+        for (Map.Entry<String, ActiveView> e : new ArrayList<>(activeViews.entrySet())) {
+            ActiveView view = e.getValue();
+            if (view != null && user.equals(view.userUuid) && device.equals(view.deviceId)) {
+                activeViews.remove(e.getKey(), view);
+            }
+        }
+    }
+
+    private boolean suppressedByActivePrivateView(Subscription subscription, Payload payload) {
+        if (subscription == null || payload == null) return false;
+        String type = clean(payload.type, 40).toLowerCase(Locale.ROOT);
+        if (!"dm".equals(type) && !"group".equals(type) && !"group-chat".equals(type)) return false;
+        String user = clean(subscription.userUuid, 80).toLowerCase(Locale.ROOT);
+        if (user.isBlank()) return false;
+        String dm = clean(payload.dmThreadId, 160);
+        String group = clean(payload.groupRoomId, 160);
+        if (dm.isBlank() && group.isBlank()) return false;
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, ActiveView> e : new ArrayList<>(activeViews.entrySet())) {
+            ActiveView view = e.getValue();
+            if (view == null) continue;
+            if (now - view.updatedAt > ACTIVE_VIEW_TTL_MILLIS) {
+                activeViews.remove(e.getKey(), view);
+                continue;
+            }
+            // Account-wide attention suppression: if any foreground KWC client
+            // for this account is actively viewing the exact private conversation,
+            // suppress every Push subscription for the account (desktop/mobile).
+            if (!user.equals(view.userUuid)) continue;
+            if (!dm.isBlank() && dm.equals(view.dmThreadId)) return true;
+            if (!group.isBlank() && group.equals(view.groupRoomId)) return true;
+        }
+        return false;
+    }
+
+    private void pruneExpiredActiveViews() {
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, ActiveView> e : new ArrayList<>(activeViews.entrySet())) {
+            ActiveView view = e.getValue();
+            if (view == null || now - view.updatedAt > ACTIVE_VIEW_TTL_MILLIS) {
+                activeViews.remove(e.getKey(), view);
+            }
+        }
+    }
+
+    private void trimActiveViewsForDevice(String user, String device) {
+        List<Map.Entry<String, ActiveView>> matches = new ArrayList<>();
+        for (Map.Entry<String, ActiveView> e : activeViews.entrySet()) {
+            ActiveView view = e.getValue();
+            if (view != null && user.equals(view.userUuid) && device.equals(view.deviceId)) matches.add(e);
+        }
+        if (matches.size() <= 8) return;
+        matches.sort(java.util.Comparator.comparingLong(e -> e.getValue().updatedAt));
+        for (int i = 0; i < matches.size() - 8; i++) {
+            Map.Entry<String, ActiveView> e = matches.get(i);
+            activeViews.remove(e.getKey(), e.getValue());
+        }
+    }
+
+    private boolean hasSubscriptionForDevice(String user, String device) {
+        for (Subscription subscription : byEndpoint.values()) {
+            if (subscription == null) continue;
+            if (user.equals(clean(subscription.userUuid, 80).toLowerCase(Locale.ROOT))
+                    && device.equals(cleanDeviceId(subscription.deviceId))) return true;
+        }
+        return false;
+    }
+
+    private String activeViewKey(String user, String device, String client) {
+        return user + "|" + device + "|" + client;
+    }
+
+    private String cleanViewClientId(String value) {
+        String id = clean(value, 96);
+        return id.matches("[A-Za-z0-9_-]{12,96}") ? id : "";
+    }
+
     public synchronized boolean unsubscribe(Account account, String endpoint) {
         return unsubscribe(account, endpoint, "", false);
     }
@@ -319,7 +503,11 @@ public class WebPushManager {
             boolean legacy = clearLegacy && (candidate.deviceId == null || candidate.deviceId.isBlank());
             if (exactEndpoint || sameDevice || legacy) removed |= byEndpoint.remove(entry.getKey(), candidate);
         }
-        if (removed) saveSubscriptions();
+        if (removed) {
+            // Active-view state is independent of whether this browser/device
+            // subscribes to Web Push. The page heartbeat/TTL owns its lifecycle.
+            saveSubscriptions();
+        }
         return removed;
     }
 
@@ -351,6 +539,7 @@ public class WebPushManager {
         for (Subscription s : byEndpoint.values()) {
             if (s == null || !normalized.contains(s.userUuid)) continue;
             if (!targetDeviceId.isBlank() && !targetDeviceId.equals(s.deviceId)) continue;
+            if (suppressedByActivePrivateView(s, payload)) continue;
             if (!allowsSubscription(s, payload, c)) continue;
             targets.add(s);
         }
@@ -359,7 +548,7 @@ public class WebPushManager {
             try {
                 String matchedKeyword = matchedKeyword(s, payload);
                 if (!matchedKeyword.isBlank() && keywordCooldownActive(s, payload, matchedKeyword)) continue;
-                String json = payloadJson(s, payload, c.webPushShowMessagePreview && s.showMessagePreview, matchedKeyword);
+                String json = payloadJson(s, payload, matchedKeyword);
                 sendOne(s, json, Math.max(30, c.webPushTtlSeconds));
                 if (!matchedKeyword.isBlank()) markKeywordCooldown(s, payload, matchedKeyword);
             } catch (Exception ex) {
@@ -376,11 +565,15 @@ public class WebPushManager {
         String sender = payload.senderUuid == null ? "" : payload.senderUuid.trim().toLowerCase(Locale.ROOT);
         boolean ownMessage = !sender.isBlank() && sender.equalsIgnoreCase(s.userUuid);
         if (ownMessage) return false;
+        // Reaction notifications have an explicit category toggle. Do not let a
+        // keyword match bypass that OFF state.
+        if ("reaction".equals(type)) return c.webPushNotifyReactions && s.notifyReactions;
         if (isSystemType(type) && !allowsSystemMode(s, payload, c)) return false;
         if (c.webPushNotifyKeywords && s.notifyKeywords && !matchedKeyword(s, payload).isBlank()) return true;
         String replyTarget = payload.replyTargetUuid == null ? "" : payload.replyTargetUuid.trim().toLowerCase(Locale.ROOT);
         boolean isReplyTarget = !replyTarget.isBlank() && replyTarget.equalsIgnoreCase(s.userUuid);
-        boolean isMentionTarget = "chat".equals(type) && mentionsSubscription(s, payload);
+        boolean isMentionTarget = "chat".equals(type) && payload.mentionTargetUuids != null
+                && payload.mentionTargetUuids.stream().anyMatch(v -> v != null && v.equalsIgnoreCase(s.userUuid));
         if ("reply".equals(type)) {
             return c.webPushNotifyReplies && s.notifyReplies;
         }
@@ -402,44 +595,6 @@ public class WebPushManager {
         return true;
     }
 
-
-    private boolean mentionsSubscription(Subscription s, Payload payload) {
-        if (s == null || payload == null || s.userUuid == null || s.userUuid.isBlank()) return false;
-        String text = mobileNotificationText(payload.body, 0).toLowerCase(Locale.ROOT);
-        if (text.isBlank()) return false;
-        for (String candidate : mentionCandidatesFor(s.userUuid)) {
-            String name = mobileNotificationText(candidate, 0).toLowerCase(Locale.ROOT).trim();
-            if (name.isBlank()) continue;
-            if (text.contains("@" + name) || text.contains(name)) return true;
-        }
-        return false;
-    }
-
-    private List<String> mentionCandidatesFor(String userUuid) {
-        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
-        String uuid = String.valueOf(userUuid == null ? "" : userUuid).trim().toLowerCase(Locale.ROOT);
-        if (uuid.isBlank()) return new ArrayList<>();
-        try {
-            Account account = host.findAccountByUuid(uuid);
-            if (account != null) {
-                if (account.username != null) out.add(account.username);
-                if (account.lastDisplayName != null) out.add(account.lastDisplayName);
-                String safe = account.safeUsername();
-                if (safe != null) out.add(safe);
-            }
-        } catch (Exception ignored) {
-        }
-        try {
-            PlayerIdentity player = host.findKnownPlayerByUuid(uuid);
-            if (player != null) {
-                if (player.username != null) out.add(player.username);
-                if (player.displayName != null) out.add(player.displayName);
-            }
-        } catch (Exception ignored) {
-        }
-        out.removeIf(v -> v == null || mobileNotificationText(v, 0).isBlank());
-        return new ArrayList<>(out);
-    }
 
     private boolean isSystemType(String type) {
         String t = type == null ? "" : type.trim().toLowerCase(Locale.ROOT);
@@ -565,7 +720,7 @@ public class WebPushManager {
         return value;
     }
 
-    private String payloadJson(Subscription sub, Payload p, boolean preview, String matchedKeyword) {
+    private String payloadJson(Subscription sub, Payload p, String matchedKeyword) {
         Map<String, Object> m = new LinkedHashMap<>();
         String keyword = clean(matchedKeyword, 80);
         boolean keywordHit = !keyword.isBlank();
@@ -576,11 +731,11 @@ public class WebPushManager {
         if (title.isBlank()) title = baseTitle;
         String rawBody = localizedPayloadBody(sub, p);
         if ("test".equals(type) && rawBody.isBlank()) rawBody = subscriptionText(sub, "notification.testBody", "Test push sent.");
-        String body = preview ? mobileNotificationText(rawBody, 240) : "";
+        String body = mobileNotificationText(rawBody, 240);
         if (keywordHit) {
             String keywordLabel = subscriptionText(sub, "notification.keyword", "Keyword");
             m.put("title", baseTitle);
-            m.put("body", preview ? mobileNotificationText(keywordLabel + ": " + keyword + " · " + title + (body.isBlank() ? "" : " · " + body), 240) : mobileNotificationText(keywordLabel + ": " + keyword + " · " + title, 120));
+            m.put("body", mobileNotificationText(keywordLabel + ": " + keyword + " · " + title + (body.isBlank() ? "" : " · " + body), 240));
             m.put("type", "keyword");
             m.put("tag", clean("kwc-keyword-" + keyword.replaceAll("[^A-Za-z0-9가-힣ぁ-んァ-ン一-龥_-]", ""), 120));
         } else {
@@ -593,7 +748,7 @@ public class WebPushManager {
             if ("dm".equals(type) && !detailPrefix.isBlank()) {
                 detailPrefix = subscriptionText(sub, "notification.dm", "DM") + ": " + detailPrefix;
             }
-            m.put("body", preview ? mobileNotificationText(detailPrefix + (detailPrefix.isBlank() || body.isBlank() ? "" : " · ") + body, 240) : "");
+            m.put("body", mobileNotificationText(detailPrefix + (detailPrefix.isBlank() || body.isBlank() ? "" : " · ") + body, 240));
             m.put("type", clean(p.type, 40));
             m.put("tag", clean(p.tag, 120));
         }
@@ -989,13 +1144,14 @@ public class WebPushManager {
                 s.notifyGroupChat = (c == null || c.webPushNotifyGroupChat) && readBool(m, "notifyGroupChat", c == null || c.webPushNotifyGroupChat);
                 s.notifyMentions = (c == null || c.webPushNotifyMentions) && readBool(m, "notifyMentions", c == null || c.webPushNotifyMentions);
                 s.notifyReplies = (c == null || c.webPushNotifyReplies) && readBool(m, "notifyReplies", c == null || c.webPushNotifyReplies);
+                // Existing 5.2.0 subscriptions predate this field; inherit their Reply choice once.
+                s.notifyReactions = (c == null || c.webPushNotifyReactions) && readBool(m, "notifyReactions", s.notifyReplies);
                 s.notifySystemMode = readSystemMode(m, "notifySystemMode", readBool(m, "notifySystem", c == null || c.webPushNotifySystem) ? "all" : "off");
                 s.notifySystem = (c == null || c.webPushNotifySystem) && !"off".equals(s.notifySystemMode);
                 s.notifyKeywords = (c == null || c.webPushNotifyKeywords) && readBool(m, "notifyKeywords", c == null || c.webPushNotifyKeywords);
                 s.keywords = normalizeKeywords(m.get("keywords"));
                 s.language = clean(m.get("language"), 40);
                 s.openUrl = clean(m.get("openUrl"), 2048);
-                s.showMessagePreview = (c == null || c.webPushShowMessagePreview) && readBool(m, "showMessagePreview", c == null || c.webPushShowMessagePreview);
                 try { s.updatedAt = Long.parseLong(String.valueOf(m.getOrDefault("updatedAt", "0"))); } catch (Exception ignored) {}
                 if (!s.userUuid.isBlank() && !s.p256dh.isBlank() && !s.auth.isBlank()) byEndpoint.put(endpoint, s);
             }
@@ -1022,13 +1178,13 @@ public class WebPushManager {
                 m.put("notifyGroupChat", s.notifyGroupChat);
                 m.put("notifyMentions", s.notifyMentions);
                 m.put("notifyReplies", s.notifyReplies);
+                m.put("notifyReactions", s.notifyReactions);
                 m.put("notifySystem", s.notifySystem);
                 m.put("notifySystemMode", s.notifySystemMode);
                 m.put("notifyKeywords", s.notifyKeywords);
                 m.put("keywords", String.join("\n", s.keywords == null ? Collections.emptyList() : s.keywords));
                 m.put("language", s.language);
                 m.put("openUrl", s.openUrl);
-                m.put("showMessagePreview", s.showMessagePreview);
                 m.put("updatedAt", s.updatedAt);
                 lines.add(JsonUtil.obj(m));
             }

@@ -2,14 +2,14 @@
 # 핵심 설정
 # =============================================================================
 
-# KOKOTO WebChat 5.1.0
+# KOKOTO WebChat 5.2.0
 # KWC config-comment-language: ko-KR
 
 
 # 설정 버전입니다. 이전 버전은 가능한 한 기존 설정값을 보존해 마이그레이션합니다.
 # <version>_auto_migration 상태에서는 같은 버전의 템플릿 보완을 계속 적용합니다.
 # ui.language 변경 시 설정값은 유지하고 주석/레이아웃 언어만 다시 구성할 수 있습니다.
-config-version: "5.1.0"
+config-version: "5.2.0"
 
 # 전체 기능 스위치입니다. false여도 /kchat reload는 사용할 수 있습니다.
 # 새 설정 파일은 검토 후 활성화할 수 있도록 false로 생성됩니다.
@@ -266,6 +266,34 @@ chat:
   # 0이면 memory/JSONL 기록에는 명시적 페이지 제한을 두지 않지만 SQLite는 내장 쿼리 안전
   # 상한 500개를 적용합니다.
   history-page-size: 80
+
+  # 계정별 대화 저장(snapshot) 기능입니다.
+  # false이면 archive API를 등록하지 않고 conversation-archives.db를 열거나 새로 만들지 않으며,
+  # Web UI에도 대화 저장 관련 DOM을 생성하지 않습니다. 기존 archive 데이터는 삭제하지 않습니다.
+  # 저장 snapshot은 일반 채팅 retention으로 자동 만료되지 않으며 사용자 삭제/관리자 정책으로 제거됩니다.
+  conversation-archive:
+    enabled: true
+    # 한도를 낮춰도 기존 저장 대화는 삭제하지 않으며, 새 저장이 한도를 넘는 경우만 차단합니다.
+    # 계정 하나가 보유할 수 있는 저장 대화 최대 개수입니다. 허용 범위: 1-1000.
+    max-archives-per-user: 100
+    # 저장 대화 하나에 포함할 수 있는 최대 메시지 수입니다. 허용 범위: 1-10000.
+    max-messages-per-archive: 1000
+    # 계정 하나가 모든 저장 대화에 보관할 수 있는 총 메시지 최대 수입니다. 허용 범위: 1-100000.
+    # 이 값이 max-messages-per-archive보다 작으면 더 작은 계정 총량 제한이 우선합니다.
+    max-messages-per-user: 10000
+
+  # 입력 중 표시 사용 여부는 모든 클라이언트에 공통으로 적용되는 서버 정책입니다.
+  # 각 범위 항목은 입력 중 상태를 전송하고 표시할 수 있는지 제어합니다.
+  # user-display-control이 true이면 로그인 사용자가 자기 화면의 입력 중 표시만 끌 수 있습니다.
+  # 개인 표시를 꺼도 본인의 입력 중 상태 전송은 중지되지 않습니다.
+  typing-indicator:
+    user-display-control: false
+    open-chat:
+      enabled: false
+    dm:
+      enabled: true
+    group-chat:
+      enabled: true
   # KWC가 허용하는 일반 공개 채팅 메시지 최대 길이입니다.
   # 0은 이 길이 제한을 없앱니다.
   max-message-length: 120
@@ -1005,7 +1033,7 @@ ui:
   # 자동 최신 메시지 따라가기에서 아직 bottom을 따라가는 상태로 판단할 하단
   # 거리(px)입니다.
   # runtime 범위는 2-300이며 범위를 벗어나면 경계값으로 보정합니다.
-  auto-follow-bottom-threshold-px: 80
+  auto-follow-bottom-threshold-px: 32
   # 사용자가 직접 스크롤한 뒤 자동 scroll/follow 처리를 다시 허용하기까지의 idle
   # 시간(ms)입니다.
   # runtime 범위는 50-1000이며 범위를 벗어나면 경계값으로 보정합니다.
@@ -1034,18 +1062,18 @@ notifications:
   notify-dm: true
   # 새 그룹 방 메시지의 browser notification을 허용합니다.
   notify-group-chat: true
-  # KWC mention 판정으로 현재 사용자가 언급됐을 때 browser notification을 허용합니다.
+  # 명시적인 @멘션 알림을 허용합니다. @ 뒤에서 등록된 실제이름/표시이름 중 가장 긴 이름을
+  # 우선 매칭하며, 같은 표시이름을 공유하는 계정은 모두 호출됩니다.
   notify-mentions: true
   # 현재 사용자의 관련 메시지/대화에 Reply가 달렸을 때 browser notification을 허용합니다.
   notify-replies: true
+  # 메시지에 새 이모지 반응이 달렸을 때 browser notification과 Web Push를 허용합니다.
+  notify-reactions: true
   # 서버/system announcement 알림을 허용합니다.
   # 지원되는 경우 사용자 설정에서 all, join/leave only, off로 더 좁힐 수 있습니다.
   notify-system: true
   # 사용자/관리자 keyword 알림 규칙에 의해 발생하는 browser notification을 허용합니다.
   notify-keywords: true
-  # 허용되는 browser notification에 제목/종류만이 아니라 안전한 메시지 text preview를
-  # 포함합니다.
-  show-message-preview: true
 web-push:
   # Web Push subscription 생성에 사용할 VAPID public key입니다.
   # 빈 값이면 Web Push가 필요할 때 KWC가 key pair를 생성/관리합니다.
@@ -1358,6 +1386,14 @@ emoji:
   enabled: true
   # emoji 기능을 사용할 수 있을 때 웹 채팅 composer에 custom emoji picker 버튼을 표시합니다.
   show-button: true
+  favorites:
+    # custom emoji picker의 즐겨찾기 pseudo-folder와 별표 컨트롤을 켭니다.
+    enabled: true
+    # account = 채팅 history 저장방식과 무관하게 로그인한 KWC 계정의 user-preferences에 저장합니다(기본값).
+    # browser = 이 브라우저 localStorage에만 즐겨찾기 emoji ID를 저장합니다.
+    storage: "account"
+    # 즐겨찾기 emoji ID 최대 보관 개수입니다. 0 = 무제한. browser 모드에도 같은 값을 적용합니다.
+    max-per-account: 100
   # KWC custom emoji 파일과 pack 하위 디렉터리를 scan/store할 data directory 기준 상대 폴더입니다.
   directory: "emojis"
   # custom emoji 파일의 공개 URL base입니다.

@@ -244,4 +244,4 @@ HTTPS 공개 API의 기준은 `http.public-prefix + http.path-prefix`이며 기�
 - [Caddy reverse-proxy quick start](https://caddyserver.com/docs/quick-starts/reverse-proxy)
 - [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
 
-KWC 고유의 path-prefix, trusted-proxy, SSE, 업로드, 인증 동작은 외부 문서가 아니라 KWC 5.1.0 소스와 설정을 기준으로 합니다.
+KWC 고유의 path-prefix, trusted-proxy, SSE, 업로드, 인증 동작은 외부 문서가 아니라 KWC 5.2.0 소스와 설정을 기준으로 합니다.

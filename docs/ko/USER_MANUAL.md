@@ -1,11 +1,11 @@
-# KOKOTO WebChat 5.1.0 통합 사용·운영 매뉴얼
+# KOKOTO WebChat 5.2.0 통합 사용·운영 매뉴얼
 
 
 ## 시각 자료
 
 | 영역 | 도식 |
 | --- | --- |
-| 아키텍처 | [PNG](../assets/architecture-5.1.0.png) · [SVG](../assets/architecture-5.1.0.svg) |
+| 아키텍처 | [PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg) |
 | Relay Protocol v2 | [Animated GIF](../assets/relay-v2-flow.gif) · [PNG](../assets/relay-v2-flow.png) · [SVG](../assets/relay-v2-flow.svg) |
 | DM/그룹 Reply | [PNG](../assets/private-reply-flow.png) · [SVG](../assets/private-reply-flow.svg) |
 | 설정 migration | [Animated GIF](../assets/config-language-migration.gif) · [PNG](../assets/config-language-migration.png) · [SVG](../assets/config-language-migration.svg) |
@@ -15,14 +15,24 @@
 
 이 문서에서 사용하는 1차 표준과 공식 서드파티 문서는 [REFERENCES.md](REFERENCES.md)에 정리되어 있습니다.
 
-> **5.1.0 운영 기능:** Web Admin **Filter**에서 공개/그룹/선택형 DM의 차단·마스킹·치환 규칙과 전송 없는 테스트를 관리하고, **Settings**에서는 지원되는 실시간 안전 설정인 게스트/CAPTCHA, 세션, 사용자 프로필, 관리자 알림, 업로드, 콘텐츠 필터 값만 관리합니다. moderation 정책 5종은 `config.yml` 전용이며 Web Admin에 노출하지 않습니다. 게임에서는 `/kchat filter`, `/kchat settings`를 사용합니다. 세션 기간 변경은 이미 만료된 세션을 부활시키지 않고 기존 대상 세션을 생성 시각 기준으로 재계산합니다. `upload.filename-mode: original`은 새 업로드의 안전한 Unicode 원본명을 보존하고 중복 접미사를 붙입니다.
+> **5.2.0 운영 기능:** Web Admin **Filter**에서 공개/그룹/선택형 DM의 차단·마스킹·치환 규칙과 전송 없는 테스트를 관리하고, **Settings**에서는 지원되는 실시간 안전 설정인 게스트/CAPTCHA, 세션, 사용자 프로필, 오픈채팅/DM/그룹채팅 입력 중 표시 정책, 관리자 알림, 업로드, 콘텐츠 필터 값만 관리합니다. moderation 정책 5종은 `config.yml` 전용이며 Web Admin에 노출하지 않습니다. 게임에서는 `/kchat filter`, `/kchat settings`를 사용합니다. 세션 기간 변경은 이미 만료된 세션을 부활시키지 않고 기존 대상 세션을 생성 시각 기준으로 재계산합니다. `upload.filename-mode: original`은 새 업로드의 안전한 Unicode 원본명을 보존하고 중복 접미사를 붙입니다.
 
 
-이 문서는 KOKOTO WebChat 5.1.0의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY.md`, HTTPS 구성은 `CADDY_HTTPS.md`와 `NGINX_HTTPS.md`를 함께 참고하세요.
+이 문서는 KOKOTO WebChat 5.2.0의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY.md`, HTTPS 구성은 `CADDY_HTTPS.md`와 `NGINX_HTTPS.md`를 함께 참고하세요.
+
+
+## 5.2.0 추가 기능
+
+- **메시지 반응:** 로그인 사용자는 공개채팅, DM, 일반 그룹채팅 메시지에 Unicode 또는 KWC 커스텀 이모지 반응을 추가/해제할 수 있습니다. 그룹 입장/퇴장 이벤트는 제외됩니다. 실제 반응이 없을 때 32 × 16px `+` 버튼은 본문 아래와 다음 메시지 앞에 각각 1px의 시각적 여유를 두어 텍스트를 덮지 않으며, 반응 OFF에서는 빈 요소를 만들지 않아 기존 8px 메시지 간격을 그대로 사용합니다. 실제 반응이 생긴 뒤에만 정상 in-flow 반응 행/칩 간격을 사용합니다. picker는 이모지 문자 자체, 서버 생성 Unicode 이름, 관리자 검색 별칭, 커스텀 이모지 ID/이름/팩을 검색합니다. 검색 별칭은 **관리자 > 이모지 > 반응 아이콘**에서 `이모지 = 검색어` 형식으로 편집하고 `reaction-search-aliases.txt`에 저장합니다. 카테고리/검색 재렌더 뒤에도 원래 위치와 바깥 클릭 닫기를 유지하며, chip hover에서는 Minecraft 서식을 제거한 반응자 이름 전체를 최대 4줄 높이의 스크롤 목록으로 보여주며, 일반 채팅 송신자와 같은 표시이름 ↔ 원래이름 전환을 사용합니다. 같은 관리자 화면의 전체 ON/OFF 및 KWC 커스텀 이모지 허용은 다른 Admin 설정과 동일한 둥근 테마 행을 사용합니다. 기능을 끄면 기존 반응 데이터는 보존되고 칩은 읽기 전용으로 표시되며 모든 로컬/Relay 반응 변경은 거부됩니다. Relay 2.1은 Relay 공개 메시지와 타 서버 DM의 반응 및 reactor 표시이름을 동기화하되 actor UUID는 서버/relay 내부에만 유지하며 메시지/미디어 DOM 전체를 다시 만들지 않습니다.
+- **대화 저장:** `chat.conversation-archive.enabled: true`(기본값)일 때 공개/DM/그룹 대화의 첫 메시지와 끝 메시지를 지정해 개인 snapshot으로 저장합니다. 서버가 끄면 저장 관련 DOM을 생성하지 않고 archive API도 등록하지 않으며 archive DB도 열거나 새로 만들지 않습니다. 일반 retention으로 원본이 사라져도 snapshot은 유지하지만 관리자 강제 원본 삭제/방 삭제와 비공개 방 잠금 정책은 항상 우선합니다. 첨부 바이트는 복제하지 않으며, 원본 이미지가 남아 있으면 인쇄/PDF에 표시하고 다른 파일은 링크로 유지하며 원본이 없으면 유실로 표시합니다. PDF는 현재 사용자의 KWC 표시 설정을 사용합니다. 서버의 저장 한도는 `chat.conversation-archive` 아래 `max-archives-per-user`, `max-messages-per-archive`, `max-messages-per-user`로 제한합니다.
+- **`입력 중...`:** 공개/DM/그룹 typing은 이벤트 기반입니다. 서버 관리자가 Web Admin **Settings** 또는 `chat.typing-indicator.*`에서 오픈채팅/DM/그룹채팅을 각각 켜거나 끄며 기본값은 OFF/ON/ON입니다. `chat.typing-indicator.user-display-control`은 기본 OFF이며, 관리자가 켜면 로그인 사용자의 채팅 설정에 계정 저장형 **입력 중 표시** 하나가 나타납니다. 개인 OFF는 본인 화면의 수신 표시만 숨기고 본인의 typing 전송에는 영향을 주지 않습니다. 첫 입력 이벤트로 5초 표시하고 그 기간에는 추가 전송하지 않으며 polling, 메시지 DB 기록, 상시 typing worker가 없습니다. 표시는 입력창 한 줄 위에 둥근 고선명 pill로 떠 있고 일반 채팅과 같은 표시이름 ↔ 원래이름 전환을 사용하며 이름의 formatting tag는 제거합니다. 글꼴은 사용자 채팅 글꼴의 약 80%를 따르되 서버 기본 UI 글꼴보다 작아지지 않습니다. 그룹의 여러 긴 이름이 한 줄에 들어가지 않으면 인원수 표시로 자동 축약합니다.
+- **비공개 방 제목창:** 긴 제목만 `...` 처리하고 접속인원·설정·나가기는 폭을 유지합니다. 초대, 대화 저장, 숨기기, 방 관리 기능은 권한에 따라 설정 메뉴에 모읍니다.
+- **자동 최하단 추종:** 공개/DM/그룹 모두 32px 기준을 사용합니다. 이모지/아이콘/첨부 패널 때문에 생긴 레이아웃 이동은 viewport를 보존하며 그 변화만으로 즉시 최하단 강제 스크롤하지 않습니다.
+- **Relay 2.1:** KWC 제품 버전과 relay protocol revision을 분리했습니다. Protocol major 2가 wire compatibility 경계이며 2.1은 `public`, `dm`, `read`, `reaction`, `reaction-authority`, `typing` capability를 알립니다.
 
 ## 1. 플러그인 개요
 
-KOKOTO WebChat은 Minecraft 서버의 게임 채팅을 웹 브라우저에 연결하는 서버측 웹 채팅입니다. 5.1.0은 Bukkit/Paper/Spigot과 Fabric 1.18.2~26.2, NeoForge 1.20.2~26.2, Forge 1.18.2~26.2 exact-target 빌드를 제공합니다.
+KOKOTO WebChat은 Minecraft 서버의 게임 채팅을 웹 브라우저에 연결하는 서버측 웹 채팅입니다. 5.2.0은 Bukkit/Paper/Spigot과 Fabric 1.18.2~26.2, NeoForge 1.20.2~26.2, Forge 1.18.2~26.2 exact-target 빌드를 제공합니다.
 
 지원 형태:
 
@@ -66,7 +76,7 @@ KOKOTO WebChat은 Minecraft 서버의 게임 채팅을 웹 브라우저에 연�
 기본 안전 설정:
 
 ```yaml
-config-version: "5.1.0"
+config-version: "5.2.0"
 enabled: false
 ```
 
@@ -79,7 +89,7 @@ enabled: false
 현재 버전의 전체 기준 파일은 항상 다음 위치에 생성됩니다.
 
 ```text
-<KWC data dir>/config-reference-5.1.0.yml
+<KWC data dir>/config-reference-5.2.0.yml
 ```
 
 이 파일은 `ui.language`가 선택한 내장 언어(`en-US`, `ko-KR`, `ja-JP`, `zh-CN`)와 같은 언어로 렌더링한 현재 기본 설정의 관리자 확인용 사본입니다. 지원하지 않는 사용자 정의 UI 언어는 영어 설정 표현을 사용합니다. reference 파일은 migration 입력으로 사용하지 않습니다. `/kchat reload`는 실제 서비스를 중지하기 전에 YAML을 검증하므로 잘못된 YAML이면 기존 실행 설정을 유지합니다.
@@ -91,12 +101,12 @@ enabled: false
 - 구버전 주석·순서·공백·들여쓰기는 가져오지 않습니다.
 - 이전 `config-version`에 `_auto_migration`이 없었다면 실제 버전 업그레이드 전에 기존 `config.yml`을 통째로 백업합니다.
 - 이미 존재하는 설정의 기본값이 새 버전에서 바뀐 경우에는 자동 덮어쓰지 않고 검토 대상으로 남깁니다.
-- 실제 파일의 표식을 `config-version: "5.1.0_auto_migration"`로 바꿉니다.
+- 실제 파일의 표식을 `config-version: "5.2.0_auto_migration"`로 바꿉니다.
 
 그 다음 다음 파일을 생성합니다.
 
 ```text
-<KWC data dir>/config-migration-5.1.0.yml
+<KWC data dir>/config-migration-5.2.0.yml
 ```
 
 이 파일은 더 이상 누락 설정을 복사해 넣는 fragment가 아니라 **검토 보고서**입니다. 이전 버전의 생성된 `config-reference-*`, `config-migration-*`, `config-upgrade-*` 파일은 자동 정리하고 현재 버전 파일만 유지합니다. 자동 삽입된 설정 수, 사용자가 판단해야 하는 기본값 변경, 최종 확인용 정확한 버전 표식, current-vs-reference **설정값 의미 diff**를 기록합니다. Difference는 파싱된 YAML path/value만 비교하며 주석, 빈 줄, 들여쓰기, 따옴표 스타일, 줄 위치, 키 순서는 무시합니다. 각 Difference 블록은 설명 주석을 반복 복사하지 않고 해당 설정의 실제 YAML 값 블록만 표시하며, list/map은 여러 줄 구조를 유지합니다. 누락 설정과 주석은 이미 실제 config의 적절한 위치에 들어가므로 diff 최상단에 거대한 reference-only 블록으로 몰리지 않습니다.
@@ -105,18 +115,18 @@ enabled: false
 
 | 실제 `config.yml` 상태 | 동작 |
 |---|---|
-| `config-version` 없음 또는 이전/다른 버전 | migration을 수행하고 `5.1.0_auto_migration`으로 표시한 뒤 migration/검토 보고서 생성 |
-| `config-version: "5.1.0_auto_migration"` | 자동 migration 사용. startup/reload마다 최신 같은 버전 번들 `config.yml`을 새 뼈대로 만들고 현재 값을 덮어쓴 뒤 migration report/diff 갱신 |
-| `config-version: "5.1.0"` | 현재 버전의 자동 migration 중지. 같은 버전 migration/backfill을 건너뛰고 오래된 migration 안내 제거 |
+| `config-version` 없음 또는 이전/다른 버전 | migration을 수행하고 `5.2.0_auto_migration`으로 표시한 뒤 migration/검토 보고서 생성 |
+| `config-version: "5.2.0_auto_migration"` | 자동 migration 사용. startup/reload마다 최신 같은 버전 번들 `config.yml`을 새 뼈대로 만들고 현재 값을 덮어쓴 뒤 migration report/diff 갱신 |
+| `config-version: "5.2.0"` | 현재 버전의 자동 migration 중지. 같은 버전 migration/backfill을 건너뛰고 오래된 migration 안내 제거 |
 
 이 표식은 **검토 여부가 아니라 자동 migration 사용 여부**를 뜻합니다.
 
 ```yaml
 # 설정을 이미 확인했더라도 자동 migration을 계속 사용
-config-version: "5.1.0_auto_migration"
+config-version: "5.2.0_auto_migration"
 
 # 같은 버전 자동 migration 중지
-config-version: "5.1.0"
+config-version: "5.2.0"
 ```
 
 이후 실제 플러그인 버전 업그레이드가 발생하면 새 버전의 `_auto_migration` 상태로 다시 들어갑니다.
@@ -416,7 +426,7 @@ chat:
 
 ### 8.5 메시지 토큰
 
-KOKOTO WebChat 5.1.0은 메시지를 저장하거나 릴레이하기 전에 관리자가 설정한 `:alias:` 토큰을 치환할 수 있습니다. 기본 alias는 영어만 제공하며 관리자가 원하는 언어의 alias로 바꾸거나 추가할 수 있습니다.
+KOKOTO WebChat 5.2.0은 메시지를 저장하거나 릴레이하기 전에 관리자가 설정한 `:alias:` 토큰을 치환할 수 있습니다. 기본 alias는 영어만 제공하며 관리자가 원하는 언어의 alias로 바꾸거나 추가할 수 있습니다.
 
 - `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 다음 줄
 - `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 빈 줄 1개
@@ -1068,7 +1078,7 @@ imageemojis.use
 
 ## 23. 브라우저 알림과 Web Push
 
-로그인 사용자의 키워드/알림 종류 설정은 5.0.0부터 계정 데이터에 저장되어 다른 브라우저와 기기에서도 공유됩니다. Windows/모바일처럼 시각 설정이 다른 경우에는 사용자별 UI 프로필을 여러 개 저장할 수 있으며, 창 위치·크기·최소화 상태와 Web Push endpoint는 기기 로컬 상태로 유지됩니다. 프로필 최대 개수와 JSON import/export 허용 여부는 Web Admin에서 관리합니다. 동일 기기에 Web Push 구독이 활성화되어 있으면 라이브 페이지의 OS Notification을 한 번 더 띄우지 않아 중복 알림을 막습니다.
+로그인 사용자의 키워드/알림 종류 설정은 5.0.0부터 계정 데이터에 저장되어 다른 브라우저와 기기에서도 공유됩니다. Windows/모바일처럼 시각 설정이 다른 경우에는 사용자별 UI 프로필을 여러 개 저장할 수 있으며, 창 위치·크기·최소화 상태와 Web Push endpoint는 기기 로컬 상태로 유지됩니다. 프로필 최대 개수와 JSON import/export 허용 여부는 Web Admin에서 관리합니다. 같은 계정으로 로그인된 KWC 화면 중 하나라도 실제로 보이고 포커스된 상태이며 채팅창이 최소화되지 않았고, DM/그룹창이 열려 있으며 현재 스레드/방 ID가 새 메시지 대상과 정확히 일치할 때만 이미 확인 중인 대화로 판정합니다. 이 상태는 짧은 브라우저/탭 heartbeat로 서버에 전달되며, 보고 있는 PC 자체에 Web Push 구독이 없어도 유효합니다. 해당 대화를 보고 있는 활성 화면이 하나라도 있는 동안에는 같은 계정의 모든 연결된 KWC 탭에서 그 DM/그룹의 브라우저 알림과 브라우저 로컬 알림함 추가를 막고, 모든 Web Push subscription에서도 발송 전에 제외합니다. 다른 방을 보고 있거나 창을 닫았거나 페이지가 숨김/비활성 상태이거나 채팅이 최소화되어 있으면 보고 있지 않은 것으로 처리되어 브라우저 알림/알림함/Web Push가 정상적으로 다시 동작합니다.
 
 
 서버측 시각 프로필은 다음 설정으로 제어합니다.
@@ -1094,12 +1104,12 @@ notifications:
   notify-group-chat: true
   notify-mentions: true
   notify-replies: true
+  notify-reactions: true
   notify-system: true
   notify-keywords: true
-  show-message-preview: true
 ```
 
-사용자는 브라우저별 설정에서 허용된 종류를 다시 켜고 끌 수 있습니다. 서버 설정이 `false`인 종류는 사용자가 활성화할 수 없습니다. 브라우저 로컬 알림함은 최근 알림 대상 이벤트를 보관하고, 알림 클릭은 가능한 경우 공개 메시지·댓글·DM 스레드·그룹방으로 이동합니다.
+사용자는 채팅 설정에서 허용된 알림 종류를 다시 켜고 끌 수 있습니다. **이모지 반응**은 체크박스 하나가 브라우저 알림과 백그라운드/모바일 Web Push 양쪽에 공통 적용되고, 각 브라우저/기기에서는 지원하는 전달 방식만 동작합니다. **@멘션**은 반드시 `@` 뒤에 등록된 실제이름 또는 표시이름이 이어져야 동작합니다. 각 `@` 위치에서는 일치하는 등록 이름 중 가장 긴 이름 하나를 우선하고, 그 표시이름을 완전히 동일하게 공유하는 계정이 여러 개면 모두 호출되므로 공통 표시이름을 팀 호출처럼 사용할 수도 있습니다. 로그인 사용자의 알림 종류 선택은 계정 단위로 동기화되며 게스트는 현재 브라우저에만 저장됩니다. 서버 설정이 `false`인 종류는 사용자가 활성화할 수 없습니다. **메시지 미리보기는 기본 사양**으로 항상 사용되며 사용자/관리자용 별도 체크 항목이 없습니다. 브라우저 로컬 알림함은 최근 알림 대상 이벤트를 보관하고, 알림 클릭은 가능한 경우 공개 메시지·댓글·DM 스레드·그룹방으로 이동합니다.
 
 Web Push:
 
@@ -1211,7 +1221,7 @@ discordsrv:
 
 ## 26. 여러 서버 릴레이
 
-KOKOTO WebChat 5.1.0은 public chat과 cross-server 1:1 DM/read receipt에 **Relay Protocol v2**를 사용합니다. group chat room은 서버 로컬 기능입니다.
+KOKOTO WebChat 5.2.0은 public chat과 cross-server 1:1 DM/read receipt에 Relay v2 신뢰/암호화 모델을 유지하는 **Relay Protocol 2.1**를 사용합니다. group chat room은 서버 로컬 기능입니다.
 
 Relay v2 설정은 `groups -> peers` 구조입니다. 각 group은 shared secret 하나를 가지며 peer에는 server ID, API URL, enabled 상태만 둡니다. 최초 설정은 한 서버에서 `shared-secret: ""`로 시작/리로드한 뒤 그 서버의 `config.yml`에 생성된 값을 같은 group의 다른 서버에 복사합니다. 기존 비어 있지 않은 secret은 자동 재생성하지 않고, 수동 secret이 32자 미만이면 invalid 상태로 남습니다. 양쪽 서버는 같은 group에서 서로를 peer로 등록해야 하며 같은 peer ID를 여러 local group에 중복 등록할 수 없습니다.
 

@@ -26,7 +26,7 @@ web:
     skip: 건너뛰기
     logout: 로그아웃
     setPassword: 비밀번호 설정
-    clearHistory: 웹 히스토리 비우기
+    clearHistory: 전체 공개 채팅 기록 삭제
     mute: 차단
     unmute: 차단 해제
     revoke: 세션 해제
@@ -34,6 +34,7 @@ web:
     accept: 수락
     decline: 거절
     cancel: 취소
+    react: 반응
     reply: 답글
     pin: 고정
     moderationActionsEnable: 고정 / 삭제 활성화
@@ -59,6 +60,7 @@ web:
     change: 변경
     rename: 변경
     renamePack: 폴더 이름 변경
+    open: '열기'
     hide: '숨김'
   placeholder:
     guestName: 게스트 이름
@@ -80,6 +82,16 @@ web:
   emoji:
     empty: 설정된 이모티콘이 없습니다.
     emptyPack: 이모지 없음
+    recent: 최근
+    searchPlaceholder: 이모지 검색
+    searchEmpty: 일치하는 이모지가 없습니다.
+    emptyRecent: 최근 사용한 이모지가 없습니다.
+    favorites: 즐겨찾기
+    emptyFavorites: 즐겨찾기한 이모지가 없습니다.
+    favoriteAdd: 즐겨찾기에 추가
+    favoriteRemove: 즐겨찾기에서 제거
+    favoriteLimitReached: 즐겨찾기 이모지는 최대 {count}개까지 저장할 수 있습니다.
+    favoriteSaveFailed: 이모지 즐겨찾기를 저장하지 못했습니다.
   alert:
     emojiTooMany: 이모티콘은 한 메시지에 {max}개까지만 사용할 수 있습니다.
     rateLimited: 전송이 너무 빠릅니다. 잠시 후 다시 보내주세요.
@@ -93,7 +105,7 @@ web:
     uploadFailed: '업로드 실패: {error}'
     confirmDelete: 이 메시지를 숨길까요?
     deleteFailed: '삭제 실패: {error}'
-    confirmClearHistory: 웹 채팅창 히스토리를 비울까요?
+    confirmClearHistory: "주의: 서버의 전체 공개 채팅 기록과 관련 반응 및 저장된 공개 채팅 보관본이 영구 삭제됩니다. 삭제 후 취소하거나 복구할 수 없습니다. 정말 삭제하시겠습니까?"
     adminActionFailed: '관리 작업 실패: {error}'
     failed: '실패: {error}'
     loginFailed: '로그인 실패: {error}'
@@ -133,6 +145,64 @@ web:
     groupActionFailed: '그룹 작업에 실패했습니다: {error}'
     groupSettingsFailed: '그룹 설정을 저장하지 못했습니다: {error}'
     renameFailed: '이름 변경 실패: {error}'
+  typing:
+    generic: '입력 중...'
+    user: '{user}님이 입력 중...'
+    users: '{users}님이 입력 중...'
+    two: '{user1}님, {user2}님이 입력 중...'
+    count: '{count}명이 입력 중...'
+    multiple: '여러 명이 입력 중...'
+  reaction:
+    remove: '반응 취소'
+    add: '반응 추가'
+    noActors: '반응 사용자 정보 없음'
+    categoryRecent: '최근 사용'
+    categorySmileys: '표정'
+    categoryPeople: '사람'
+    categoryAnimals: '동물/자연'
+    categoryFood: '음식'
+    categoryActivities: '활동'
+    categoryObjects: '물건'
+    categorySymbols: '기호'
+    categoryCustom: 'KWC 이모지'
+    searchPlaceholder: '이모지 검색'
+    searchEmpty: '일치하는 반응이 없습니다.'
+    notificationTitle: '반응'
+    notificationBody: '{user}님이 {reaction} 반응을 남겼습니다.'
+    gameNotice: '{user}님이 {reaction} 반응을 남겼습니다.'
+    pending: '원문 서버가 다시 연결되면 반응을 적용합니다.'
+    failed: '반응을 적용하지 못했습니다: {error}'
+    expired: '원문 서버가 다시 연결되기 전에 반응 요청이 만료되었습니다.'
+    manage: '반응 설정'
+    addSame: '같은 반응 남기기'
+  archive:
+    library: '저장한 대화'
+    saveConversation: '대화 저장'
+    savePublic: '공개채팅 저장'
+    selectFirst: '저장할 첫 메시지를 선택하세요.'
+    selectLast: '저장할 마지막 메시지를 선택하세요.'
+    rangeReady: '저장할 대화 범위를 선택했습니다.'
+    title: '제목'
+    defaultTitle: '저장한 대화'
+    rangeSummary: '{count}개 메시지 · {time}'
+    saved: '대화를 저장했습니다.'
+    saveFailed: '대화를 저장하지 못했습니다: {error}'
+    loadFailed: '저장한 대화를 불러오지 못했습니다: {error}'
+    renameFailed: '저장한 대화의 이름을 바꾸지 못했습니다: {error}'
+    deleteFailed: '저장한 대화를 삭제하지 못했습니다: {error}'
+    empty: '저장한 대화가 없습니다.'
+    renamePrompt: '새 대화 저장 제목'
+    confirmDelete: '이 저장한 대화를 삭제할까요?'
+    typePublic: '공개채팅'
+    typeDm: 'DM'
+    typeGroup: '그룹채팅'
+    exportPdf: 'PDF 내보내기'
+    originalLost: '원본 유실'
+    adminLocked: '관리자 잠금 정책에 따라 이 대화는 저장할 수 없습니다.'
+    adminLockedOpen: '관리자 정책에 따라 현재 이 저장 대화를 열 수 없습니다.'
+    popupBlocked: '브라우저가 PDF 내보내기 창을 차단했습니다.'
+    savedAt: '저장 시각'
+    accountButton: '대화 저장'
   admin:
     title: KOKOTO WebChat 관리
     summary: 요약
@@ -174,6 +244,18 @@ web:
     currentMutes: 현재 차단 목록
     expires: 만료
     never: 없음
+    reactions: '반응'
+    reactionCatalog: '반응 아이콘'
+    reactionCatalogManage: '반응 아이콘 관리'
+    reactionCatalogHint: '반응 선택창에 표시할 Unicode 이모지를 관리합니다. 아이콘을 제거해도 기존 반응 기록은 삭제되지 않고 새 추가만 막힙니다.'
+    reactionEnabled: '반응 아이콘 기능 사용'
+    reactionEnabledHint: '끄면 기존 반응 기록은 보존한 채 새 반응 동작을 막고 추가/선택창 버튼을 숨깁니다.'
+    reactionCustomEmoji: 'KWC 커스텀 이모지를 반응에 허용'
+    reactionCategoryHint: '이모지는 공백으로 구분합니다. 입력한 순서가 선택창 표시 순서입니다.'
+    reactionSearchAliases: '검색 별칭'
+    reactionSearchAliasesHint: '한 줄에 하나씩 `이모지 = 검색어` 형식으로 입력합니다. 새 Unicode 반응 아이콘을 추가할 때 이곳에 검색어도 함께 추가하세요. Unicode 이름은 자동으로도 검색됩니다.'
+    reactionSaved: '반응 아이콘을 저장했습니다.'
+    reactionResetConfirm: '반응 아이콘 목록을 기본값으로 초기화할까요?'
     emojis: 이모지
     emojiTitle: 커스텀 이모지
     emojiMoveTarget: 이동될 폴더
@@ -244,6 +326,10 @@ web:
       ui-user-profiles-enabled: '사용자 채팅 설정 프로필'
       ui-user-profiles-max-profiles: '사용자당 최대 프로필 수'
       ui-user-profiles-allow-import-export: '프로필 가져오기/내보내기 허용'
+      chat-typing-indicator-user-display-control: '사용자별 입력 중 표시 설정 허용'
+      chat-typing-indicator-open-chat-enabled: '오픈채팅 입력 중 표시'
+      chat-typing-indicator-dm-enabled: 'DM 입력 중 표시'
+      chat-typing-indicator-group-chat-enabled: '그룹채팅 입력 중 표시'
       admin-alerts-discord-enabled: 'Discord 관리자 키워드 알림'
       admin-alerts-discord-channel: 'Discord 알림 채널'
       admin-alerts-discord-sources-public-chat: '공개 채팅 감지'
@@ -269,6 +355,7 @@ web:
     settingsGroupGuestCaptcha: '게스트 / CAPTCHA'
     settingsGroupAuthSessions: '인증 / 세션'
     settingsGroupProfiles: '사용자 프로필'
+    settingsGroupTyping: '입력 중 표시'
     settingsGroupUploads: '업로드'
     settingsGroupDiscordAlerts: 'Discord 관리자 알림'
     filterGroupGeneral: '기본 / 적용 범위'
@@ -354,6 +441,8 @@ web:
     filterTestRuleCount: '불러온 규칙: {count}개'
     filterTestListWordCount: '목록 단어: {count}개'
     filterTestInput: '테스트 입력'
+    reactionShowActors: '반응 남긴 사람 목록 표시'
+    reactionShowActorsHint: '끄면 반응 개수와 내 반응 여부는 유지하지만 반응한 사람의 이름 정보는 서버 응답과 툴팁에서 숨깁니다. 켜면 일반 채팅과 같은 표시이름 ↔ 원래이름 전환을 사용합니다.'
   prompt:
     createEmojiPack: 새 폴더 이름
     renameEmoji: 새 이모지 이름
@@ -442,6 +531,9 @@ web:
     textShadowCustomPreview: 그림자 미리보기
     textShadowCustomPlaceholder: 0 1px 2px rgba(0, 0, 0, 0.85)
     inputBackgroundColor: 입력창 배경색
+    chatBehavior: '채팅 동작'
+    showTypingIndicator: '입력 중 표시'
+    showTypingIndicatorHelp: '다른 사용자의 입력 중 상태를 내 화면에 표시합니다. 이 설정은 KWC 계정에 저장되며, 꺼도 내 입력 중 상태 전송은 중지되지 않습니다.'
     notifications: '알림'
     notificationsPage: '브라우저 시스템 알림'
     notificationsPageHelp: '브라우저 알림은 지원하는 브라우저에서만 사용할 수 있습니다.'
@@ -468,7 +560,8 @@ web:
     notifyDm: 'DM'
     notifyGroupChat: '그룹채팅'
     notifyReplies: '답글'
-    notifyMentions: '멘션'
+    notifyReactions: '이모지 반응'
+    notifyMentions: '@멘션'
     notifySystem: '서버'
     notifySystemAll: '전체'
     notifySystemJoinLeave: '입장/퇴장만'
@@ -481,7 +574,6 @@ web:
     notifyKeywordsNeedsApply: '키워드 목록이 변경되었습니다. 푸시 필터를 갱신하려면 키워드 적용을 누르세요.'
     notifyDisabledByServer: '서버 설정에서 비활성화됨.'
     keywordNotificationTitle: '키워드: {keyword}'
-    notifyPreview: '메시지 미리보기'
     notificationsServerDisabled: '서버 설정에서 알림이 꺼져 있습니다.'
     notificationsEnabledStatus: '브라우저 알림이 켜져 있습니다.'
     notificationsAllowedDisabledStatus: '브라우저 권한은 허용됨. 채팅 설정에서는 꺼져 있습니다.'
@@ -648,6 +740,7 @@ web:
     unread: '미확인'
     unreadCount: '미확인 수신자: {count}명'
   group:
+    roomSettings: '방 설정'
     title: '그룹 채팅'
     noRooms: '그룹 채팅방이 없습니다.'
     backToList: '그룹 채팅 목록으로 돌아가기'

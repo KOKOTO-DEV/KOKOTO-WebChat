@@ -8,12 +8,17 @@ package dev.kokoto.webchat;
 public interface RelayHost {
     RelaySettings relaySettings();
     String defaultServerName();
+    /** Product/plugin version for diagnostics only. Never used for Relay compatibility. */
+    default String productVersion() { return ""; }
     WebChatLanguage language();
     void info(String message);
     void warn(String message);
 
     boolean hasPublicMessage(String relayId);
     boolean acceptPublicMessage(ChatMessage message);
+    boolean acceptPublicReaction(RelayPublicReaction reaction);
+    boolean acceptPublicTyping(RelayPublicTyping typing);
+    boolean acceptDirectTyping(RelayDirectTyping typing);
 
     boolean hasDirectRelayId(String relayId);
     boolean acceptDirectMessage(RelayDirectMessage message);

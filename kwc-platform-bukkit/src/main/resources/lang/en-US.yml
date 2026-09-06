@@ -29,11 +29,12 @@ web:
     skip: Skip
     logout: Logout
     setPassword: Set password
-    clearHistory: Clear web history
+    clearHistory: Delete all public chat history
     mute: Mute
     unmute: Unmute
     revoke: Revoke
     delete: delete
+    react: React
     reply: reply
     pin: pin
     moderationActionsEnable: Enable pin/delete
@@ -59,6 +60,7 @@ web:
     change: Change
     rename: Change
     renamePack: Rename folder
+    open: 'Open'
     hide: 'Hide'
   placeholder:
     guestName: Guest name
@@ -80,6 +82,16 @@ web:
   emoji:
     empty: No emojis configured.
     emptyPack: No emojis here.
+    recent: Recent
+    searchPlaceholder: Search emojis
+    searchEmpty: No matching emojis.
+    emptyRecent: No recently used emojis.
+    favorites: Favorites
+    emptyFavorites: No favorite emojis.
+    favoriteAdd: Add to favorites
+    favoriteRemove: Remove from favorites
+    favoriteLimitReached: You can save up to {count} favorite emojis.
+    favoriteSaveFailed: Could not save emoji favorites.
   alert:
     emojiTooMany: Only {max} emoji(s) can be used in one message.
     rateLimited: You are sending messages too quickly. Please wait.
@@ -93,7 +105,7 @@ web:
     uploadFailed: 'Upload failed: {error}'
     confirmDelete: Hide this message?
     deleteFailed: 'Delete failed: {error}'
-    confirmClearHistory: Clear web chat history?
+    confirmClearHistory: "WARNING: All public chat history, related reactions, and saved public-chat archives will be permanently deleted from the server. This cannot be undone or recovered. Are you sure you want to delete them?"
     adminActionFailed: 'Admin action failed: {error}'
     failed: 'Failed: {error}'
     loginFailed: 'Login failed: {error}'
@@ -133,6 +145,64 @@ web:
     groupActionFailed: 'Group action failed: {error}'
     groupSettingsFailed: 'Failed to save group settings: {error}'
     renameFailed: 'Rename failed: {error}'
+  typing:
+    generic: 'Typing...'
+    user: '{user} is typing...'
+    users: '{users} are typing...'
+    two: '{user1}, {user2} are typing...'
+    count: '{count} people are typing...'
+    multiple: 'Several people are typing...'
+  reaction:
+    remove: 'Remove reaction'
+    add: 'Add reaction'
+    noActors: 'No reactor information'
+    categoryRecent: 'Recent'
+    categorySmileys: 'Smileys'
+    categoryPeople: 'People'
+    categoryAnimals: 'Animals & nature'
+    categoryFood: 'Food'
+    categoryActivities: 'Activities'
+    categoryObjects: 'Objects'
+    categorySymbols: 'Symbols'
+    categoryCustom: 'KWC emoji'
+    searchPlaceholder: 'Search emoji'
+    searchEmpty: 'No matching reactions.'
+    notificationTitle: 'Reaction'
+    notificationBody: '{user} reacted with {reaction}.'
+    gameNotice: '{user} reacted with {reaction}.'
+    pending: 'The reaction will be applied when the origin server reconnects.'
+    failed: 'Could not apply reaction: {error}'
+    expired: 'The reaction request expired before the origin server reconnected.'
+    manage: 'Reaction settings'
+    addSame: 'Add the same reaction'
+  archive:
+    library: 'Saved conversations'
+    saveConversation: 'Save conversation'
+    savePublic: 'Save public chat'
+    selectFirst: 'Select the first message to save.'
+    selectLast: 'Select the last message to save.'
+    rangeReady: 'Conversation range selected.'
+    title: 'Title'
+    defaultTitle: 'Saved conversation'
+    rangeSummary: '{count} messages · {time}'
+    saved: 'Conversation saved.'
+    saveFailed: 'Could not save conversation: {error}'
+    loadFailed: 'Could not load saved conversation: {error}'
+    renameFailed: 'Could not rename saved conversation: {error}'
+    deleteFailed: 'Could not delete saved conversation: {error}'
+    empty: 'No saved conversations.'
+    renamePrompt: 'New saved-conversation title'
+    confirmDelete: 'Delete this saved conversation?'
+    typePublic: 'Public chat'
+    typeDm: 'DM'
+    typeGroup: 'Group'
+    exportPdf: 'Export PDF'
+    originalLost: 'Original unavailable'
+    adminLocked: 'This conversation cannot be saved because it is locked by an administrator.'
+    adminLockedOpen: 'This saved conversation is currently locked by an administrator policy.'
+    popupBlocked: 'The PDF export window was blocked by the browser.'
+    savedAt: 'Saved'
+    accountButton: 'Save conversation'
   admin:
     title: KOKOTO WebChat Admin
     summary: Summary
@@ -174,6 +244,18 @@ web:
     currentMutes: Current mutes
     expires: expires
     never: never
+    reactions: 'Reactions'
+    reactionCatalog: 'Reaction icons'
+    reactionCatalogManage: 'Manage reaction icons'
+    reactionCatalogHint: 'Choose which Unicode icons appear in the reaction picker. Removing an icon prevents new use but does not delete existing reactions.'
+    reactionEnabled: 'Enable reaction icons'
+    reactionEnabledHint: 'Turning this off blocks new reaction activity and hides the add/picker controls without deleting stored reactions.'
+    reactionCustomEmoji: 'Allow KWC custom emoji in reactions'
+    reactionCategoryHint: 'Separate emoji with spaces. Order here is the picker order.'
+    reactionSearchAliases: 'Search aliases'
+    reactionSearchAliasesHint: 'One emoji per line: emoji = search words. Add aliases here when you add a new Unicode reaction icon. Unicode names are also searchable automatically.'
+    reactionSaved: 'Reaction icons saved.'
+    reactionResetConfirm: 'Reset the reaction icon catalog to defaults?'
     emojis: Emojis
     emojiTitle: Custom emojis
     emojiMoveTarget: Destination folder
@@ -244,6 +326,10 @@ web:
       ui-user-profiles-enabled: 'User chat setting profiles'
       ui-user-profiles-max-profiles: 'Max profiles per user'
       ui-user-profiles-allow-import-export: 'Allow profile import/export'
+      chat-typing-indicator-user-display-control: 'Allow per-user typing display control'
+      chat-typing-indicator-open-chat-enabled: 'Open chat typing indicator'
+      chat-typing-indicator-dm-enabled: 'DM typing indicator'
+      chat-typing-indicator-group-chat-enabled: 'Group chat typing indicator'
       admin-alerts-discord-enabled: 'Discord admin keyword alerts'
       admin-alerts-discord-channel: 'Discord alert channel'
       admin-alerts-discord-sources-public-chat: 'Alert on public chat'
@@ -269,6 +355,7 @@ web:
     settingsGroupGuestCaptcha: 'Guest & CAPTCHA'
     settingsGroupAuthSessions: 'Authentication & sessions'
     settingsGroupProfiles: 'User profiles'
+    settingsGroupTyping: 'Typing indicators'
     settingsGroupUploads: 'Uploads'
     settingsGroupDiscordAlerts: 'Discord admin alerts'
     filterGroupGeneral: 'General & scopes'
@@ -354,6 +441,8 @@ web:
     filterTestRuleCount: 'Loaded rules: {count}'
     filterTestListWordCount: 'List words: {count}'
     filterTestInput: 'Tested input'
+    reactionShowActors: 'Show who reacted'
+    reactionShowActorsHint: 'When disabled, reactor names are omitted from reaction responses and tooltips. When enabled, reactor names use the same display-name/original-name switch as chat senders.'
   prompt:
     createEmojiPack: New folder name
     renameEmoji: New emoji name
@@ -442,6 +531,9 @@ web:
     textShadowCustomPreview: Shadow preview
     textShadowCustomPlaceholder: 0 1px 2px rgba(0, 0, 0, 0.85)
     inputBackgroundColor: Input background color
+    chatBehavior: 'Chat behavior'
+    showTypingIndicator: 'Typing indicators'
+    showTypingIndicatorHelp: 'Show other users'' typing activity on this screen. This setting is saved to your KWC account and does not stop your own typing activity from being sent.'
     notifications: 'Notifications'
     notificationsPage: 'Browser system notifications'
     notificationsPageHelp: 'Browser notifications are available only in supported browsers.'
@@ -468,7 +560,8 @@ web:
     notifyDm: 'DM'
     notifyGroupChat: 'Group chat'
     notifyReplies: 'Replies'
-    notifyMentions: 'Mentions'
+    notifyReactions: 'Reactions'
+    notifyMentions: '@Mention'
     notifySystem: 'Server'
     notifySystemAll: 'All'
     notifySystemJoinLeave: 'Join/leave only'
@@ -481,7 +574,6 @@ web:
     notifyKeywordsNeedsApply: 'Keyword list changed. Tap Apply keywords to update push filtering.'
     notifyDisabledByServer: 'Disabled by server configuration.'
     keywordNotificationTitle: 'Keyword: {keyword}'
-    notifyPreview: 'Message preview'
     notificationsServerDisabled: 'Notifications are disabled by server configuration.'
     notificationsEnabledStatus: 'Browser notifications are enabled.'
     notificationsAllowedDisabledStatus: 'Allowed by browser, disabled in chat settings.'
@@ -648,6 +740,7 @@ web:
     unread: 'Unread'
     unreadCount: 'Unread recipients: {count}'
   group:
+    roomSettings: 'Room settings'
     title: 'Group chats'
     noRooms: 'No group chats.'
     backToList: 'Back to group chat list'

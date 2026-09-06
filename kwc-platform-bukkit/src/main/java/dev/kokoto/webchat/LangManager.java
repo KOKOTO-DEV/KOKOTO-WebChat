@@ -238,7 +238,7 @@ public class LangManager implements WebChatLanguage {
         m.put("button.skip", "Skip");
         m.put("button.logout", "Logout");
         m.put("button.setPassword", "Set password");
-        m.put("button.clearHistory", "Clear web history");
+        m.put("button.clearHistory", "Delete all public chat history");
         m.put("button.mute", "Mute");
         m.put("button.unmute", "Unmute");
         m.put("button.revoke", "Revoke");

@@ -1,11 +1,11 @@
-# KOKOTO WebChat 5.1.0 総合ユーザー・運用マニュアル
+# KOKOTO WebChat 5.2.0 総合ユーザー・運用マニュアル
 
 
 ## ビジュアルマップ
 
 | 項目 | 図 |
 | --- | --- |
-| アーキテクチャ | [PNG](../assets/architecture-5.1.0.png) · [SVG](../assets/architecture-5.1.0.svg) |
+| アーキテクチャ | [PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg) |
 | Relay Protocol v2 | [Animated GIF](../assets/relay-v2-flow.gif) · [PNG](../assets/relay-v2-flow.png) · [SVG](../assets/relay-v2-flow.svg) |
 | DM/グループ Reply | [PNG](../assets/private-reply-flow.png) · [SVG](../assets/private-reply-flow.svg) |
 | 設定移行 | [Animated GIF](../assets/config-language-migration.gif) · [PNG](../assets/config-language-migration.png) · [SVG](../assets/config-language-migration.svg) |
@@ -15,14 +15,24 @@
 
 この文書で参照する一次規格と公式の外部プロジェクト文書は [REFERENCES.md](REFERENCES.md) にまとめています。
 
-> **5.1.0 運用:** Web Admin **Filter** で公開/グループ/任意 DM の block/mask/replace ルールと送信しないテストを管理し、**Settings** では対応しているライブ設定（guest/CAPTCHA、セッション、ユーザープロファイル、管理者アラート、upload、content-filter）のみを管理します。moderation の 5 つのポリシー設定は `config.yml` 専用で Web Admin には公開しません。ゲーム側は `/kchat filter` / `/kchat settings`。セッション期間変更は期限切れセッションを復活させず作成時刻基準で既存対象を再計算します。`upload.filename-mode: original` は新規アップロードの安全な Unicode 元名を保持し重複時に番号を付けます。
+> **5.2.0 運用:** Web Admin **Filter** で公開/グループ/任意 DM の block/mask/replace ルールと送信しないテストを管理し、**Settings** では対応しているライブ設定（guest/CAPTCHA、セッション、ユーザープロファイル、Open chat/DM/group の typing-indicator policy、管理者アラート、upload、content-filter）のみを管理します。moderation の 5 つのポリシー設定は `config.yml` 専用で Web Admin には公開しません。ゲーム側は `/kchat filter` / `/kchat settings`。セッション期間変更は期限切れセッションを復活させず作成時刻基準で既存対象を再計算します。`upload.filename-mode: original` は新規アップロードの安全な Unicode 元名を保持し重複時に番号を付けます。
 
 
-この文書は KOKOTO WebChat 5.1.0 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION.md`、サーバー間リレーは `SERVER_RELAY.md`、HTTPS は `CADDY_HTTPS.md` と `NGINX_HTTPS.md` を参照してください。
+この文書は KOKOTO WebChat 5.2.0 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION.md`、サーバー間リレーは `SERVER_RELAY.md`、HTTPS は `CADDY_HTTPS.md` と `NGINX_HTTPS.md` を参照してください。
+
+
+## 5.2.0 の追加機能
+
+- **メッセージ reaction:** ログインユーザーは公開 chat、DM、通常の group-chat message に Unicode または KWC custom emoji reaction を追加/解除できます。group の join/leave event は対象外です。実 reaction がない場合、32 × 16px の `+` button は本文の下と次の message の前にそれぞれ 1px の視覚的余白を取り、文字を覆いません。reaction OFF では元の 8px message spacing を維持し、実 reaction が付いた時だけ通常の in-flow row/chip spacing を使います。picker は emoji 文字、server-generated Unicode name、admin-managed search alias、custom emoji ID/name/pack を検索します。alias は **Admin > Emojis > Reaction icons** で `emoji = search words` として編集し `reaction-search-aliases.txt` に保存します。category/search 再描画後も位置と outside-click close を維持し、hover chip では反応者名を scroll list で表示し、通常のチャット送信者と同じ表示名 ↔ 元の名前の切り替えを使用します。master ON/OFF と custom emoji 許可は他の Admin settings と同じ rounded themed row を使います。機能 OFF では既存 data を保持して read-only 表示し、すべての local/Relay mutation を拒否します。
+- **保存済み会話:** `chat.conversation-archive.enabled: true`（既定）の場合、公開/DM/group の先頭・末尾メッセージを指定して private snapshot として保存します。server が無効化すると保存関連 DOM を生成せず archive API も登録せず、archive DB も開く/新規作成しません。通常 retention で原本が消えても snapshot は残りますが、管理者による原本/room 強制削除と private room lock policy が常に優先されます。attachment bytes は複製せず、原本 image が残っていれば印刷/PDF に表示し、その他の file は link、原本がなければ unavailable と表示します。PDF は現在の KWC appearance を使用します。server 側の保存上限は `chat.conversation-archive` 配下の `max-archives-per-user`、`max-messages-per-archive`、`max-messages-per-user` で制限します。
+- **typing indicator:** public/DM/group typing は event-driven です。サーバー管理者が Web Admin **Settings** または `chat.typing-indicator.*` で Open chat / DM / Group chat を個別に切り替え、既定値は OFF / ON / ON です。`chat.typing-indicator.user-display-control` は既定 OFF で、管理者が有効にするとログインユーザーの Chat settings にアカウント保存の **入力中表示** が 1 個現れます。個人 OFF は自分の画面で受信した表示だけを隠し、自分の typing 送信には影響しません。最初の input event で 5 秒表示し、その window 中は追加送信せず、polling・message DB write・常駐 typing worker はありません。表示は composer の 1 行上に rounded high-opacity pill として浮き、通常 chat と同じ表示名 ↔ 元の名前切替を使い、名前の formatting tag は除去します。font は user chat font の約 80% に追従しつつ base UI font より小さくなりません。複数の長い名前が 1 行に収まらない場合は人数表示へ自動短縮します。
+- **private room header:** 長い title のみ ellipsis し、member count・Settings・Leave の幅を保持します。Invite、保存済み会話、hide、room management は権限に応じて Settings 内へ集約します。
+- **auto-follow:** 公開/DM/group 共通で 32px bottom threshold を使います。emoji/icon/attachment panel による layout 移動は viewport を保持し、その変化だけでは即時に最下部へ強制 scroll しません。
+- **Relay 2.1:** KWC product version と relay protocol revision を分離しました。Protocol major 2 が wire compatibility 境界で、2.1 は `public`, `dm`, `read`, `reaction`, `reaction-authority`, `typing` capability を通知します。
 
 ## 1. 概要
 
-KOKOTO WebChat は Minecraft サーバーのチャットをブラウザーに接続するサーバー側 Web チャットです。5.1.0 は Bukkit/Paper/Spigot に加え、Fabric 1.18.2〜26.2、NeoForge 1.20.2〜26.2、Forge 1.18.2〜26.2 の exact-target build を提供します。
+KOKOTO WebChat は Minecraft サーバーのチャットをブラウザーに接続するサーバー側 Web チャットです。5.2.0 は Bukkit/Paper/Spigot に加え、Fabric 1.18.2〜26.2、NeoForge 1.20.2〜26.2、Forge 1.18.2〜26.2 の exact-target build を提供します。
 
 主な利用形態:
 
@@ -64,7 +74,7 @@ KOKOTO WebChat は Minecraft サーバーのチャットをブラウザーに接
 7. 再起動または `/kchat reload` を実行します。
 
 ```yaml
-config-version: "5.1.0"
+config-version: "5.2.0"
 enabled: false
 ```
 
@@ -77,7 +87,7 @@ enabled: false
 現在 version の完全な reference は常に次へ生成されます。
 
 ```text
-<KWC data dir>/config-reference-5.1.0.yml
+<KWC data dir>/config-reference-5.2.0.yml
 ```
 
 これは `ui.language` で選択した内蔵言語（`en-US`、`ko-KR`、`ja-JP`、`zh-CN`）と同じ言語で表示した現在のデフォルト設定の管理者向けコピーです。未対応/カスタム UI 言語では英語の設定表示を使用します。reference は migration 入力には使用しません。`/kchat reload` は live service を停止する前に YAML を検証し、不正な YAML なら現在の実行設定を維持します。
@@ -89,12 +99,12 @@ enabled: false
 - 旧 comment・順序・空白・indent は引き継ぎません。
 - 旧 marker が `*_auto_migration` でない場合、実 version upgrade 前に元の `config.yml` を backup します。
 - 既存設定の bundled default が新 version で変わった場合は自動上書きせず review 対象に残します。
-- 実ファイルを `config-version: "5.1.0_auto_migration"` とします。
+- 実ファイルを `config-version: "5.2.0_auto_migration"` とします。
 
 その後、次を生成します。
 
 ```text
-<KWC data dir>/config-migration-5.1.0.yml
+<KWC data dir>/config-migration-5.2.0.yml
 ```
 
 これは不足設定を copy/paste する fragment ではなく **review report** です。自動挿入数、operator 判断が必要な default 変更、最終確認用の正確な version marker、current-vs-reference の**設定値セマンティック差分**を記録します。Difference は解析済み YAML の path/value だけを比較し、comment、空行、indent、引用符形式、行位置、key 順は無視します。各 Difference block は説明 comment を重複コピーせず、その設定の実際の YAML 値 block だけを表示し、list/map は複数行構造を維持します。不足設定と comment はすでに実 config の適切な位置へ挿入されるため、diff の先頭に巨大な reference-only block として並びません。
@@ -103,18 +113,18 @@ enabled: false
 
 | 実 `config.yml` | 動作 |
 |---|---|
-| `config-version` がない/以前/異なる | migration を実行し `5.1.0_auto_migration` にして migration/review report を生成 |
-| `config-version: "5.1.0_auto_migration"` | 自動 migration 有効。startup/reload ごとに最新 bundled `config.yml` から再構築し、現在値を overlay して report/diff を更新 |
-| `config-version: "5.1.0"` | 現在 version の自動 migration を停止。同一 version の migration/backfill を skip し、古い migration 案内を削除 |
+| `config-version` がない/以前/異なる | migration を実行し `5.2.0_auto_migration` にして migration/review report を生成 |
+| `config-version: "5.2.0_auto_migration"` | 自動 migration 有効。startup/reload ごとに最新 bundled `config.yml` から再構築し、現在値を overlay して report/diff を更新 |
+| `config-version: "5.2.0"` | 現在 version の自動 migration を停止。同一 version の migration/backfill を skip し、古い migration 案内を削除 |
 
 この marker は **review 状態ではなく自動 migration の有効/無効**を表します。
 
 ```yaml
 # 確認済みでも自動 migration を継続
-config-version: "5.1.0_auto_migration"
+config-version: "5.2.0_auto_migration"
 
 # 同一 version の自動 migration を停止
-config-version: "5.1.0"
+config-version: "5.2.0"
 ```
 
 後で実際の plugin version upgrade が発生した場合は、新しい version の `_auto_migration` 状態に入ります。
@@ -398,7 +408,7 @@ chat:
 
 ### 8.5 メッセージトークン
 
-KOKOTO WebChat 5.1.0 は、保存または relay の前に管理者設定の `:alias:` token を置換できます。標準 alias は英語のみで、管理者が任意の言語の alias に変更・追加できます。
+KOKOTO WebChat 5.2.0 は、保存または relay の前に管理者設定の `:alias:` token を置換できます。標準 alias は英語のみで、管理者が任意の言語の alias に変更・追加できます。
 
 - `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 改行 1 行
 - `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 空行 1 行
@@ -976,7 +986,7 @@ imageemojis.use
 
 ## 23. ブラウザー通知と Web Push
 
-5.0.0 ではログインユーザーのキーワード/通知種別設定をアカウントデータに保存し、ブラウザーや端末間で共有します。Windows/モバイルなど表示条件が異なる場合はアカウントごとに複数の UI プロファイルを保存でき、ウィンドウ位置・サイズ・最小化状態・Web Push endpoint は端末ローカルのままです。プロファイル上限と JSON import/export の可否は Web Admin で管理します。同じ端末に有効な KWC Web Push subscription がある場合、開いているページ側の OS 通知は重複表示しません。
+5.0.0 ではログインユーザーのキーワード/通知種別設定をアカウントデータに保存し、ブラウザーや端末間で共有します。Windows/モバイルなど表示条件が異なる場合はアカウントごとに複数の UI プロファイルを保存でき、ウィンドウ位置・サイズ・最小化状態・Web Push endpoint は端末ローカルのままです。プロファイル上限と JSON import/export の可否は Web Admin で管理します。同じアカウントでログインした KWC 画面のどれか 1 つでも実際に表示・フォーカスされ、チャットが最小化されておらず、DM/グループ画面が開き、現在の thread/room ID が新着対象と完全一致する場合だけ閲覧中と判定します。この短時間のブラウザー/タブ heartbeat は、閲覧端末自体に Web Push subscription がなくてもサーバーへ送られます。いずれかの active client がその会話を閲覧している間は、同じアカウントの接続中 KWC タブすべてでその DM/グループのブラウザー通知とブラウザーローカル通知 inbox 追加を抑止し、すべての Web Push subscription からも送信前に除外します。別ルーム、画面を閉じた状態、非表示/非フォーカス、最小化中なら閲覧していないものとして通常の通知配信に戻ります。
 
 
 server-side 表示 profile は次で制御します。
@@ -1002,10 +1012,12 @@ notifications:
   notify-group-chat: true
   notify-mentions: true
   notify-replies: true
+  notify-reactions: true
   notify-system: true
   notify-keywords: true
-  show-message-preview: true
 ```
+
+ユーザーは Chat settings で許可された通知カテゴリをさらに ON/OFF できます。**絵文字リアクション**は 1 つの checkbox が live browser notification と background/mobile Web Push の両方に共通適用され、各 browser/device では対応する配信方式だけが動作します。**@メンション**は `@` の直後に登録済みの実名または表示名が続く場合だけ成立します。各 `@` では一致する登録名の最長一致を優先し、その表示名を完全に共有する複数アカウントはすべて通知対象になるため、共通表示名をチーム呼び出しとしても使えます。ログインユーザーの選択は account 単位、guest は browser-local です。server 側の `false` はユーザー側で上書きできません。**Message preview は標準仕様**として対象 browser notification / Web Push に常時使用され、user/admin 用の個別 checkbox はありません。
 
 ```yaml
 web-push:
@@ -1107,7 +1119,7 @@ discordsrv:
 
 ## 26. サーバー間 Relay
 
-KOKOTO WebChat 5.1.0 は public chat と cross-server 1:1 DM/read receipt に **Relay Protocol v2** を使用します。group chat room は local のままです。
+KOKOTO WebChat 5.2.0 は public chat と cross-server 1:1 DM/read receipt に Relay v2 trust/暗号化モデルを維持する **Relay Protocol 2.1** を使用します。group chat room は local のままです。
 
 Relay v2 は `groups -> peers` 構造です。各 group は 1 つの shared secret を持ち、peer は server ID、API URL、enabled state のみを持ちます。初回設定では 1 台のサーバーで `shared-secret: ""` のまま起動/リロードし、その `config.yml` に生成された値を同じ group の他サーバーへコピーします。既存の空でない secret は自動再生成されず、32 文字未満の手動 secret は invalid のままです。両側は同じ group で相互に peer 登録する必要があり、同一 peer ID を複数 local group に登録できません。
 

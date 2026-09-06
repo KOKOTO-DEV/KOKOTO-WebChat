@@ -37,7 +37,7 @@ word2 => 指定表达
 保存后请使用 Filter 页面中的 **Test**。它不会发送消息，可同时测试 TXT 列表和自定义规则，即使实时过滤器关闭也能测试。Rule / Word / Match 会显示命中规则、目标词以及 `literal`、`compact`、`interleave` 匹配方式。
 
 
-Web Admin 提供 **Filter** 和 **Settings** 页签。Filter 可管理适用范围、规避检测、可逐列表选择拦截/过滤的过滤词列表、自定义规则的新增/编辑/删除以及不实际发送的测试。Settings 只暴露适合实时修改的 guest/CAPTCHA、认证/会话、用户配置文件、upload 和 Discord 管理员提醒值。`moderation.*` 以及 relay/network/adapter 拓扑仍仅通过 `config.yml` 管理。游戏内可使用 `/kchat filter ...` 和 `/kchat settings ...`。
+Web Admin 提供 **Filter** 和 **Settings** 页签。Filter 可管理适用范围、规避检测、可逐列表选择拦截/过滤的过滤词列表、自定义规则的新增/编辑/删除以及不实际发送的测试。Settings 只暴露适合实时修改的 guest/CAPTCHA、认证/会话、用户配置文件、公开聊天/DM/群聊 typing-indicator 策略以及是否允许用户级显示设置、upload 和 Discord 管理员提醒值。`moderation.*` 以及 relay/network/adapter 拓扑仍仅通过 `config.yml` 管理。游戏内可使用 `/kchat filter ...` 和 `/kchat settings ...`。
 
 修改 `auth.remember-session-days` 会从各会话原始 `createdAt` 重算现有 USER/MODERATOR 会话；`admin.admin-session-expire-hours` 独立重算 ADMIN 会话。`0` 在 USER/MODERATOR 与 ADMIN 两种会话期限设置中都表示无限期。已经过期的会话不会因延长期限或改为无限期而复活；超过新缩短期限的会话会立即失效。编辑 `config.yml` 后启动/reload 时也应用同一策略。
 
@@ -53,7 +53,7 @@ Web Admin 提供 **Filter** 和 **Settings** 页签。Filter 可管理适用范�
 如果 `config-version` 缺失或属于其他版本，KWC 会读取现有配置值，以最新内置 `config.yml` 创建新文件，再把现有用户值覆盖到新默认配置上。若旧 marker 不带 `*_auto_migration`，则视为管理员曾固定过该配置，并在重建前完整备份原 `config.yml`。旧注释、顺序、空白和缩进不会继承；以最新内置注释/布局为准，同时保留管理员设置值。已废弃设置不会重新写回。结果标记为 `<plugin-version>_auto_migration`。只要该 marker 保留，startup/reload 都会重复同样的“最新默认配置 + 当前值覆盖”过程，从而自动获得新增设置和最新注释/布局。精确的 `<plugin-version>` 表示当前版本配置已固定，同版本 startup/reload 不会重写 `config.yml`。
 
 `config-migration-<plugin-version>.yml` 是 review/diff 报告。旧版本生成的 `config-reference-*`、`config-migration-*`、`config-upgrade-*` 会自动清理；只有用于真实版本升级默认值比较的 JAR 内部 `config-baselines/*` 会保留。
-5.1.0 中，`ui.language` 不仅选择 Web UI 语言，也选择 KWC 重建 `config.yml` 时的注释/呈现语言、`config-reference-5.1.0.yml` 以及 migration/difference 报告语言。内置 template 为 `en-US`、`ko-KR`、`ja-JP`、`zh-CN`；切换语言只改变注释/布局，Relay group/secret/peer 等现有已解析管理员值会 overlay 回新模板并保持不变。Difference 判断比较的是已解析 YAML setting path + value，而不是注释、空白、缩进、引号样式、行号或 key 顺序。
+5.2.0 中，`ui.language` 不仅选择 Web UI 语言，也选择 KWC 重建 `config.yml` 时的注释/呈现语言、`config-reference-5.2.0.yml` 以及 migration/difference 报告语言。内置 template 为 `en-US`、`ko-KR`、`ja-JP`、`zh-CN`；切换语言只改变注释/布局，Relay group/secret/peer 等现有已解析管理员值会 overlay 回新模板并保持不变。Difference 判断比较的是已解析 YAML setting path + value，而不是注释、空白、缩进、引号样式、行号或 key 顺序。
 
 ## 总开关
 
@@ -66,7 +66,7 @@ update-check:
   enabled: true
 ```
 
-启用后，KOKOTO WebChat 会在 Bukkit、Fabric、NeoForge 和 Forge 上统一在后台检查 Modrinth 的最新正式版本。当前项目地址迁移期间，KWC 5.1.0 会先查询 canonical `kokoto-webchat`；不可用时回退到现有 `bluemapwebchat`。BMWC 在迁移完成前仍是实际更新来源，有更高版本时会正常通知，只有两个来源都失败时才输出警告。OP 或拥有 `kwc.update.notify` 权限的玩家登录时会按限频规则重新查询，因此新版本检测不再只依赖定时查询结果。
+启用后，KOKOTO WebChat 会在 Bukkit、Fabric、NeoForge 和 Forge 上统一在后台检查 canonical Modrinth `kokoto-webchat` 项目的最新正式版本。从 5.2.0 开始，旧 BMWC 项目地址不再作为更新来源查询。OP 或拥有 `kwc.update.notify` 权限的玩家登录时会按限频规则重新查询，因此新版本检测不再只依赖定时查询结果。
 ## 部署模式
 
 ### BlueMap 插件模式
@@ -207,11 +207,15 @@ direct-message:
 
 ## 重要的 0 值语义
 
-`0` 在不同设置中并不具有统一含义。以下说明以当前 5.1.0 loader/runtime 的实际行为为准；实际说明不同的设置不得自行推断为“无限制”。
+`0` 在不同设置中并不具有统一含义。以下说明以当前 5.2.0 loader/runtime 的实际行为为准；实际说明不同的设置不得自行推断为“无限制”。
 
 - `chat.history-size`: 按数量保留的公开聊天历史最大行数，与按时间保留策略同时生效。 0 表示不限制数量。
 - `chat.history-retention-days`: 公开聊天历史的按时间保留天数。 0 表示不按时间过期。
 - `chat.history-page-size`: 每页默认请求的历史消息数量。设为 0 时，memory/JSONL 历史不设置显式分页上限，但 SQLite 仍应用内置的 500 行查询安全上限。
+- `chat.conversation-archive.enabled`: 启用账号级**保存对话**功能。设为 `false` 时不会注册 archive API 路由，不会打开或新建 `conversation-archives.db`，Web UI 也不会生成保存对话相关 DOM。已有 archive 数据保持不变。
+- `chat.conversation-archive.max-archives-per-user`: 单个账号可拥有的保存 snapshot 最大数量。默认 `100`，允许范围 `1-1000`。
+- `chat.conversation-archive.max-messages-per-archive`: 单个 snapshot 的最大消息数。默认 `1000`，允许范围 `1-10000`。较大的值会增加范围读取、内存、响应和 SQLite 写入开销。
+- `chat.conversation-archive.max-messages-per-user`: 单个账号在全部保存 snapshot 中可保存的消息总数上限。默认 `10000`，允许范围 `1-100000`。若小于 per-archive 上限，则较小的账号总量限制优先。保存 snapshot 不会因普通聊天 retention 自动过期。降低上限不会删除或隐藏已有 snapshot，只会拒绝会超过当前上限的新保存。
 - `chat.max-message-length`: KWC 接受的普通公开聊天消息最大长度。 0 表示不限制此长度。
 - `chat.max-url-message-length`: 包含 URL 的公开聊天消息最大长度。若为正数，会保证不小于正数的普通消息长度限制。 0 表示不限制此长度。
 - `message-tokens.max-replacements-per-message`: 单条消息最多执行的 token 替换次数，用于限制替换工作量。 0 表示不限制数量。
@@ -315,7 +319,7 @@ DM/group 消息也使用相同的游戏点击模型：会话标签准备现有 `
 
 ## 服务器中继配置
 
-KOKOTO WebChat 5.1.0 使用 **Relay Protocol v2**。relay group 本身就是信任边界；同一 group 内所有 peer 关系共享一个 group `shared-secret`。peer 项只包含 `id`、`url` 和 `enabled`，不存在 `peers[].secret`。
+KOKOTO WebChat 5.2.0 使用保留 Relay v2 信任/加密模型的 **Relay Protocol 2.1**。relay group 本身就是信任边界；同一 group 内所有 peer 关系共享一个 group `shared-secret`。peer 项只包含 `id`、`url` 和 `enabled`，不存在 `peers[].secret`。
 
 ```yaml
 server-relay:
@@ -399,7 +403,7 @@ admin-alerts:
 
 ## 置顶/删除显示开关
 
-为避免误点，单条消息上的置顶/删除按钮默认隐藏。ADMIN/MOD 用户可以在管理面板中，使用“清空 Web 历史”按钮旁边的置顶/删除开关来显示这些按钮。该开关不会持久保存，刷新后会恢复为关闭。
+为避免误点，单条消息上的置顶/删除按钮默认隐藏。ADMIN/MOD 用户可以在管理面板中，使用“删除全部公开聊天记录”按钮旁边的置顶/删除开关来显示这些按钮。该开关不会持久保存，刷新后会恢复为关闭。
 
 ## UI
 
@@ -520,6 +524,8 @@ TikTok 使用官方 `player/v1` iframe，并应用 `description=0`、`music_info
 将 `youtube-click-to-load` 或 `media-click-to-load` 设为 `false` 会立即渲染对应预览。自动播放仍受浏览器策略控制。
 
 
+`emoji.favorites.enabled` 控制是否创建 custom emoji Favorites UI。`emoji.favorites.storage` 可选 `account`（默认，与 chat history 存储方式无关的已登录账号 `user-preferences`）或 `browser`（localStorage）。`emoji.favorites.max-per-account` 默认 100；`0` 表示无限制，正数表示最大保留数量。
+
 ## 用户配置与账号设置
 
 ```yaml
@@ -534,7 +540,7 @@ ui:
 
 ## 浏览器通知和 Web Push
 
-`notifications` 控制浏览器通知与移动/后台 Web Push 共用的默认值和服务器端允许上限。`notifications.enabled` 是两个投递路径的单一默认开关；旧的 `browser-notifications.*` 和 `web-push.notify-*` 键只作为迁移/兼容输入读取。`notify-*` 为 `true` 时用户可在聊天设置中自行开关；设为 `false` 时，即使用户启用，该通知类型也会被阻止。从 5.0.0 开始，登录用户的通知类型和关键词列表只需保存在账号数据中一次，并在不同浏览器/设备间复用；首次初始化时会把现有浏览器值提升为账号设置。访客继续使用浏览器本地设置。每台设备的 Web Push 订阅只保留后台投递所需的 endpoint/filter 数据。
+`notifications` 控制浏览器通知与移动/后台 Web Push 共用的默认值和服务器端允许上限。`notifications.enabled` 是两个投递路径的单一默认开关；旧的 `browser-notifications.*` 和 `web-push.notify-*` 键只作为迁移/兼容输入读取。`notify-*` 为 `true` 时用户可在聊天设置中自行开关；设为 `false` 时，即使用户启用，该通知类型也会被阻止。`notifications.notify-reactions` 控制实时浏览器通知与后台/移动 Web Push 共用的单个**表情反应**复选框，不拆分为浏览器和 Push 两个选项。从 5.0.0 开始，登录用户的通知类型和关键词列表只需保存在账号数据中一次，并在不同浏览器/设备间复用；首次初始化时会把现有浏览器值提升为账号设置。访客继续使用浏览器本地设置。每台设备的 Web Push 订阅只保留后台投递所需的 endpoint/filter 数据。
 
 `web-push` 仅保存 Web Push 投递设置，例如 VAPID key、subject、订阅文件、TTL 和默认推送标题。当 HTTPS 或 localhost、浏览器通知权限以及 Service Worker / Push API 支持都满足时，可发送后台/移动推送通知。Android/desktop 浏览器在当前 origin 支持 Service Worker + Push API 时，可从 BlueMap addon 或 standalone 页面启用推送。普通 iOS/iPadOS 浏览器标签页不支持 Web Push；只能在把页面添加到主屏幕后作为 Web App 打开时尝试使用，未支持的行为应视为平台限制。若 `notifications.enabled: true` 且 VAPID key 留空，插件会在 `web-push-vapid.properties` 中生成持久 key。`web-push.subject` 建议使用真实的 VAPID 联系/运营者识别 URI，例如 `mailto:admin@example.com` 或 `https://map.example.com`。不建议使用任意文本；某些 push 服务可能拒绝或降低信任度。移动端“可能是垃圾信息”等警告由浏览器/操作系统控制，插件无法关闭。使用稳定的 HTTPS 域名、有意义的通知标题/正文、保守的通知过滤设置，并避免频繁测试通知，可降低出现概率。
 
@@ -621,7 +627,7 @@ ui:
 
 ## 消息搜索
 
-启用存储历史记录时，可以通过聊天面板右上角的浮动区域的放大镜按钮和 `/history/search` API 搜索消息内容和发送者。搜索选项可按日期/时间范围、发送者、来源以及是否包含系统/事件消息进行筛选。搜索结果会显示在可滚动列表中，并遵循聊天主题和字体设置。点击搜索结果会使用现有的周边历史加载跳转到对应消息。带有 i18n 键的系统/事件消息会尽可能按请求的 Web UI 语言搜索和显示。 可通过 `search.enabled` 启用/禁用搜索，且仅用 `search.result-limit` 同时控制 Web UI 结果数量和 `/history/search` API 限制。没有单独的内部最大值：设置为 2000 时最多返回 2000 条，设置为 10 时最多返回 10 条。10000 或 100000 这类非常大的值也会被接受，但可能导致搜索变慢、响应体变大，并显著增加 CPU、内存和数据库负载。默认值为 50，普通使用建议 50-200。当 `config-version: "5.1.0_auto_migration"` 时，缺少的搜索设置会在 startup/reload 时自动插入。只有使用精确的 `config-version: "5.1.0"` 停止同版本自动 migration 后，才需要手动添加缺少的键或重新启用 `_auto_migration`。
+启用存储历史记录时，可以通过聊天面板右上角的浮动区域的放大镜按钮和 `/history/search` API 搜索消息内容和发送者。搜索选项可按日期/时间范围、发送者、来源以及是否包含系统/事件消息进行筛选。搜索结果会显示在可滚动列表中，并遵循聊天主题和字体设置。点击搜索结果会使用现有的周边历史加载跳转到对应消息。带有 i18n 键的系统/事件消息会尽可能按请求的 Web UI 语言搜索和显示。 可通过 `search.enabled` 启用/禁用搜索，且仅用 `search.result-limit` 同时控制 Web UI 结果数量和 `/history/search` API 限制。没有单独的内部最大值：设置为 2000 时最多返回 2000 条，设置为 10 时最多返回 10 条。10000 或 100000 这类非常大的值也会被接受，但可能导致搜索变慢、响应体变大，并显著增加 CPU、内存和数据库负载。默认值为 50，普通使用建议 50-200。当 `config-version: "5.2.0_auto_migration"` 时，缺少的搜索设置会在 startup/reload 时自动插入。只有使用精确的 `config-version: "5.2.0"` 停止同版本自动 migration 后，才需要手动添加缺少的键或重新启用 `_auto_migration`。
 
 ## 群组聊天
 

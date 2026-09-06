@@ -36,6 +36,7 @@ public final class BukkitRelayHost implements RelayHost {
     }
 
     @Override public String defaultServerName() { return plugin.getServer().getName(); }
+    @Override public String productVersion() { return plugin.getDescription().getVersion(); }
     @Override public WebChatLanguage language() { return plugin.langManager(); }
     @Override public void info(String message) { plugin.getLogger().info(message); }
     @Override public void warn(String message) { plugin.getLogger().warning(message); }
@@ -52,6 +53,24 @@ public final class BukkitRelayHost implements RelayHost {
         if (web == null || web.hasMessageId(message == null ? "" : message.id)) return false;
         web.acceptRelayedMessage(message);
         return true;
+    }
+
+    @Override
+    public boolean acceptPublicReaction(RelayPublicReaction reaction) {
+        WebChatServer web = plugin.webServer();
+        return reaction != null && web != null && web.acceptRelayedReaction(reaction);
+    }
+
+    @Override
+    public boolean acceptPublicTyping(RelayPublicTyping typing) {
+        WebChatServer web = plugin.webServer();
+        return typing != null && web != null && web.acceptRelayedPublicTyping(typing);
+    }
+
+    @Override
+    public boolean acceptDirectTyping(RelayDirectTyping typing) {
+        WebChatServer web = plugin.webServer();
+        return typing != null && web != null && web.acceptRelayedDirectTyping(typing);
     }
 
     @Override

@@ -571,6 +571,28 @@ public class GroupChatStore {
         return out;
     }
 
+    /** Returns a member's inclusive visible group range without changing read state. */
+    public synchronized List<GroupMessage> archiveRange(String userUuid, String roomId, long firstId, long lastId, int limit) {
+        String user = normalizeUuid(userUuid);
+        String id = cleanId(roomId);
+        int max = Math.max(1, Math.min(limit <= 0 ? 1000 : limit, ConversationArchiveStore.MAX_CONFIGURED_MESSAGES_PER_ARCHIVE));
+        if (connection == null || user.isBlank() || id.isBlank() || firstId <= 0 || lastId <= 0 || !isMember(user, id)) return new ArrayList<>();
+        long lo = Math.min(firstId, lastId), hi = Math.max(firstId, lastId);
+        List<GroupMessage> out = new ArrayList<>();
+        String sql = "SELECT id,room_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,event_type FROM group_messages WHERE room_id=? AND hidden=0 AND id>=? AND id<=? " +
+                "AND id NOT IN (SELECT message_id FROM group_message_state WHERE user_uuid=? AND hidden=1) ORDER BY id ASC LIMIT ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, id); ps.setLong(2, lo); ps.setLong(3, hi); ps.setString(4, user); ps.setInt(5, max + 1);
+            try (ResultSet rs = ps.executeQuery()) { while (rs.next()) out.add(messageFromResult(rs)); }
+            if (out.size() > max) return new ArrayList<>();
+            for (GroupMessage message : out) message.unreadMemberCount = unreadMemberCountForMessage(message);
+            return out;
+        } catch (SQLException ex) {
+            host.warn("Failed to read group archive range: " + ex.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
     public synchronized List<GroupMessage> adminListMessages(String roomId, long before, int limit) {
         String id = cleanId(roomId);
         List<GroupMessage> out = new ArrayList<>();
@@ -1032,6 +1054,17 @@ public class GroupChatStore {
         return count;
     }
 
+    /** Visible room metadata for a current member. */
+    public synchronized GroupRoom roomForMember(String userUuid, String roomId) {
+        GroupRoom room = roomForUser(userUuid, roomId);
+        return room != null && room.member ? room : null;
+    }
+
+    /** Current room-management/invite permission. */
+    public synchronized boolean canManageRoom(String userUuid, String roomId) {
+        return canManage(normalizeUuid(userUuid), cleanId(roomId));
+    }
+
     private GroupRoom roomForUser(String userUuid, String roomId) {
         String user = normalizeUuid(userUuid);
         String id = cleanId(roomId);
@@ -1184,6 +1217,10 @@ public class GroupChatStore {
     private PlayerIdentity identity(String uuid) {
         PlayerIdentity identity = host.resolveIdentity(normalizeUuid(uuid));
         return identity == null ? new PlayerIdentity(normalizeUuid(uuid), normalizeUuid(uuid), normalizeUuid(uuid)) : identity;
+    }
+
+    public synchronized boolean isMemberOfRoom(String userUuid, String roomId) {
+        return isMember(normalizeUuid(userUuid), cleanId(roomId));
     }
 
     private boolean isMember(String userUuid, String roomId) {

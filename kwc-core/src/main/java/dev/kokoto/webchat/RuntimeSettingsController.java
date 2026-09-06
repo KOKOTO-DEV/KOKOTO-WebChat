@@ -23,6 +23,8 @@ public final class RuntimeSettingsController {
             "captcha.mode", "captcha.require-on-each-message", "captcha.pass-valid-minutes",
             "auth.password-login", "auth.remember-session-days",
             "admin.admin-session-expire-hours",
+            "chat.typing-indicator.user-display-control", "chat.typing-indicator.open-chat.enabled",
+            "chat.typing-indicator.dm.enabled", "chat.typing-indicator.group-chat.enabled",
             "ui.user-profiles.enabled", "ui.user-profiles.max-profiles", "ui.user-profiles.allow-import-export",
             "admin-alerts.discord.enabled", "admin-alerts.discord.channel",
             "admin-alerts.discord.sources.public-chat", "admin-alerts.discord.sources.relay-chat",
@@ -389,6 +391,10 @@ public final class RuntimeSettingsController {
             case "auth.password-login" -> c.passwordLogin;
             case "auth.remember-session-days" -> c.rememberSessionDays;
             case "admin.admin-session-expire-hours" -> c.adminSessionExpireHours;
+            case "chat.typing-indicator.user-display-control" -> c.typingUserDisplayControl;
+            case "chat.typing-indicator.open-chat.enabled" -> c.typingOpenChatEnabled;
+            case "chat.typing-indicator.dm.enabled" -> c.typingDmEnabled;
+            case "chat.typing-indicator.group-chat.enabled" -> c.typingGroupChatEnabled;
             case "ui.user-profiles.enabled" -> c.uiUserProfilesEnabled;
             case "ui.user-profiles.max-profiles" -> c.uiUserProfilesMaxProfiles;
             case "ui.user-profiles.allow-import-export" -> c.uiUserProfilesAllowImportExport;
@@ -434,6 +440,8 @@ public final class RuntimeSettingsController {
         String v = String.valueOf(raw == null ? "" : raw).trim();
         return switch (path) {
             case "guest.enabled", "guest.allow-custom-name", "captcha.require-on-each-message", "auth.password-login",
+                 "chat.typing-indicator.user-display-control", "chat.typing-indicator.open-chat.enabled",
+                 "chat.typing-indicator.dm.enabled", "chat.typing-indicator.group-chat.enabled",
                  "ui.user-profiles.enabled", "ui.user-profiles.allow-import-export",
                  "admin-alerts.discord.enabled", "admin-alerts.discord.sources.public-chat",
                  "admin-alerts.discord.sources.relay-chat", "admin-alerts.discord.sources.dm",
@@ -494,6 +502,10 @@ public final class RuntimeSettingsController {
             case "auth.password-login" -> c.passwordLogin = (Boolean)value;
             case "auth.remember-session-days" -> c.rememberSessionDays = (Integer)value;
             case "admin.admin-session-expire-hours" -> c.adminSessionExpireHours = (Integer)value;
+            case "chat.typing-indicator.user-display-control" -> c.typingUserDisplayControl = (Boolean)value;
+            case "chat.typing-indicator.open-chat.enabled" -> c.typingOpenChatEnabled = (Boolean)value;
+            case "chat.typing-indicator.dm.enabled" -> c.typingDmEnabled = (Boolean)value;
+            case "chat.typing-indicator.group-chat.enabled" -> c.typingGroupChatEnabled = (Boolean)value;
             case "ui.user-profiles.enabled" -> c.uiUserProfilesEnabled = (Boolean)value;
             case "ui.user-profiles.max-profiles" -> c.uiUserProfilesMaxProfiles = (Integer)value;
             case "ui.user-profiles.allow-import-export" -> c.uiUserProfilesAllowImportExport = (Boolean)value;

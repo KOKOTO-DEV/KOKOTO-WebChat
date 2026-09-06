@@ -20,9 +20,8 @@ import java.util.function.Consumer;
 
 /**
  * Loader-neutral Modrinth update checker used by Fabric, NeoForge and Forge.
- * Bukkit keeps its native clickable-component notifier. During the project-slug
- * transition, both paths try the canonical KOKOTO WebChat source first and then
- * the legacy BlueMapWebChat publication source as a real update fallback.
+ * Bukkit keeps its native clickable-component notifier. Starting with KWC 5.2.0,
+ * update checks use only the canonical KOKOTO WebChat publication addresses.
  */
 public final class PortableUpdateChecker implements AutoCloseable {
     private static final UpdateSource PRIMARY_SOURCE = new UpdateSource(
@@ -30,11 +29,6 @@ public final class PortableUpdateChecker implements AutoCloseable {
             "https://modrinth.com/plugin/kokoto-webchat",
             "https://www.curseforge.com/minecraft/bukkit-plugins/kokoto-webchat",
             "kokoto-webchat");
-    private static final UpdateSource LEGACY_SOURCE = new UpdateSource(
-            URI.create("https://api.modrinth.com/v2/project/bluemapwebchat/version"),
-            "https://modrinth.com/plugin/bluemapwebchat",
-            "https://www.curseforge.com/minecraft/bukkit-plugins/bluemapwebchat",
-            "bluemapwebchat");
     private static final long INITIAL_DELAY_SECONDS = 3L;
     private static final long CHECK_INTERVAL_SECONDS = 12L * 60L * 60L;
     private static final long JOIN_REFRESH_MIN_INTERVAL_MILLIS = 60_000L;
@@ -101,17 +95,12 @@ public final class PortableUpdateChecker implements AutoCloseable {
         try {
             SourceResult result = querySource(PRIMARY_SOURCE);
             if (!result.usable()) {
-                SourceResult legacy = querySource(LEGACY_SOURCE);
-                if (legacy.usable()) {
-                    result = legacy;
-                } else {
-                    String detail = "Modrinth sources unavailable: " + result.detail + "; fallback " + legacy.detail;
-                    issues.failed("update-check", detail,
-                            "KOKOTO WebChat update check failed: " + detail
-                                    + ". Current version=" + currentVersion
-                                    + ", sources=" + PRIMARY_SOURCE.api + " -> " + LEGACY_SOURCE.api);
-                    return;
-                }
+                String detail = "Modrinth source unavailable: " + result.detail;
+                issues.failed("update-check", detail,
+                        "KOKOTO WebChat update check failed: " + detail
+                                + ". Current version=" + currentVersion
+                                + ", source=" + PRIMARY_SOURCE.api);
+                return;
             }
 
             activeSource = result.source;

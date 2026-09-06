@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.1.0 — 導入・運用
+# KOKOTO WebChat 5.2.0 — 導入・運用
 
 ![KWC 配備モード](../assets/deployment-modes.svg)
 
@@ -13,7 +13,7 @@
 一度起動して KWC のデータと設定を生成します。standalone frontend、対応マップアダプター、またはその両方を利用できます。インターネットへ公開する場合は、可能な限り内蔵 HTTP サービスを loopback にバインドし、Caddy/Nginx で HTTPS を終端してください。loopback 以外のアドレスで平文 HTTP を公開すると、KWC は明示的に警告します。
 
 ## 設定のライフサイクル
-現在の `config.yml` を編集した後、`/kchat reload` を実行します。Reload は稼働中サービスを置き換える前に YAML を検証するため、不正な YAML の場合は以前の実行設定をそのまま維持します。`config-reference-5.1.0.yml` は現在の既定値を管理者向けに表示する参照ファイルで、対応する組み込み `ui.language` と同じ言語で生成されます。カスタムまたは未対応の UI 言語では英語表示を使用します。
+現在の `config.yml` を編集した後、`/kchat reload` を実行します。Reload は稼働中 service を置き換える前に YAML を検証するため、不正な YAML の場合は以前の実行設定を維持します。`config-reference-5.2.0.yml` は組み込み `ui.language` と同じ言語で表示する現在の管理者向け default です。5.2.0 upgrade は対応する parsed operator value を保持します。歴史的な最初の 5.0.0 → 5.1.0 relay migration のみ Relay v1 trust 設定を意図的に reset し、通常の 5.1.0 → 5.2.0 upgrade は既存 Relay v2 group/secret/peer を保持します。`ui.language` は `config.yml` comment template、generated reference、migration/difference prose にも適用され、Difference は YAML path/value を比較します。
 
 5.0.0 → 5.1.0 移行では 5.1.0 のテンプレートから設定を再構築し、対応している運用設定値を保持しますが、Relay v1 の信頼設定は意図的にリセットします。5.1.0 では `ui.language` が `config.yml` のコメントテンプレート、生成される reference、migration/Difference 文面の言語も選択します。解析済みの運用設定値は変更せずに上書き保持され、Difference は書式ではなく YAML の path/value を比較します。
 
@@ -21,7 +21,7 @@
 `server-relay.groups` を明示的に設定します。各グループは shared secret を 1 個だけ持ち、peer 個別の secret はありません。新しい group は 1 台のサーバーで `shared-secret: ""` のまま起動/リロードし、その `config.yml` に生成された値を同じ group の他サーバーへコピーします。既存の空でない値は保持され、32 文字未満の手動 secret は invalid のままです。同一グループ内で双方が互いを peer として登録する必要があります。直接 HTTP でも Relay payload 自体は暗号化・認証されますが警告対象です。forwarding は同一グループの HTTPS→HTTPS の場合だけ許可されます。Relay v1 endpoint は HTTP 426 を返します。詳細は `SERVER_RELAY.md` を参照してください。
 
 ## 更新と配布
-プロジェクト URL 移行中は、5.1.0 の updater が canonical Modrinth `kokoto-webchat` を先に確認し、既存 `bluemapwebchat` へ fallback します。BMWC は移行完了までは実際の更新元として維持します。公開前には 45 個の配布ターゲット、SHA-256、現在の release text を検証してください。Windows では完全ビルドの前に build-path preflight を実行し、検証済み範囲を超える長いソースパスを早期に拒否します。
+5.2.0 以降、updater は canonical Modrinth `kokoto-webchat` のみを確認し、旧 BMWC project URL は実際の update source として使用しません。公開前には 45 個の配布ターゲット、SHA-256、現在の release text を検証してください。Windows では完全ビルドの前に build-path preflight を実行し、検証済み範囲を超える長いソースパスを早期に拒否します。
 
 ## バックアップ
 KWC データディレクトリ全体をバックアップし、SQLite の sidecar (`-wal` / `-shm`) を一貫した状態で保存してください。確実なオフラインバックアップが必要な場合はサーバーを停止してから取得します。設定、アカウント/プロファイル、Push subscription、アップロード/絵文字、Relay 設定をまとめて保存してください。

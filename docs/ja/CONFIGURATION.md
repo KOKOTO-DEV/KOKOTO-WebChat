@@ -37,7 +37,7 @@ word2 => 個別の表現
 保存後は Filter 画面の **Test** を使ってください。実際のメッセージを送らず TXT リストとカスタムルールを同時に評価でき、ライブフィルターが無効でも実行できます。Rule / Word / Match で `literal`、`compact`、`interleave` のどれで一致したか確認できます。
 
 
-Web Admin には **Filter** と **Settings** タブがあります。Filter では適用範囲、回避検出、リストごとのブロック/フィルタリングを選べるフィルター単語リスト、カスタムルールの追加/編集/削除、送信しないテストを管理します。Settings はライブ変更しても安全な guest/CAPTCHA、認証・セッション、ユーザープロファイル、upload、Discord 管理者通知の値だけを公開します。`moderation.*` と relay/network/adapter 構成は `config.yml` 専用です。ゲーム側では `/kchat filter ...` と `/kchat settings ...` を使用します。
+Web Admin には **Filter** と **Settings** タブがあります。Filter では適用範囲、回避検出、リストごとのブロック/フィルタリングを選べるフィルター単語リスト、カスタムルールの追加/編集/削除、送信しないテストを管理します。Settings はライブ変更しても安全な guest/CAPTCHA、認証・セッション、ユーザープロファイル、Open chat/DM/group の typing-indicator policy とユーザー別表示設定の許可、upload、Discord 管理者通知の値だけを公開します。`moderation.*` と relay/network/adapter 構成は `config.yml` 専用です。ゲーム側では `/kchat filter ...` と `/kchat settings ...` を使用します。
 
 `auth.remember-session-days` は既存 USER/MODERATOR セッションを元の `createdAt` 基準で再計算し、`admin.admin-session-expire-hours` は ADMIN セッションだけを独立して再計算します。`0` は USER/MODERATOR と ADMIN のどちらのセッション期間設定でも無期限を意味します。既に期限切れのセッションは復活せず、新しい短い期間を超えたセッションは即時失効します。`config.yml` 編集後の起動/reload でも同じポリシーを適用します。
 
@@ -53,7 +53,7 @@ Web Admin には **Filter** と **Settings** タブがあります。Filter で�
 `config-version` がない、または別 version の場合、KWC は既存の設定値を読み取り、最新 bundled `config.yml` から新しい file を作成して既存値を overlay します。以前の marker が `*_auto_migration` でなければ、operator が一度固定した設定とみなし、再構築前に元の `config.yml` 全体を backup します。古い comment・順序・空白・indent は引き継がず、最新 bundled comment/layout を使用し、operator の値だけを保持します。削除済み設定は再追加しません。結果は `<plugin-version>_auto_migration` になります。この marker が残る間は startup/reload ごとに同じ bundled-default rebuild を行い、新しい設定と最新 comment/layout を自動反映します。正確な `<plugin-version>` は同一 version の自動 **設定** 再構築を無効にします。ただし固定状態でも `ui.language` の表示言語が変わった場合は、全 parsed operator values を overlay して保持したまま、選択した内蔵 template からコメント/レイアウトだけを再構築できます。
 
 `config-migration-<plugin-version>.yml` は review/diff report です。旧 version の生成済み `config-reference-*`、`config-migration-*`、`config-upgrade-*` は自動削除され、実 version upgrade の default 差分判定に必要な JAR 内部 `config-baselines/*` のみ保持されます。
-5.1.0 では `ui.language` は Web UI だけでなく、KWC が `config.yml` を再構築するときのコメント/表示言語、`config-reference-5.1.0.yml`、migration/difference report の言語も選択します。Bundled template は `en-US`, `ko-KR`, `ja-JP`, `zh-CN` で、言語を切り替えても comments/layout のみが変わり、Relay group/secret/peer を含む既存の parsed operator values は overlay して保持されます。Difference 判定は comments、空白、indent、quote style、line number、key order ではなく parsed YAML setting path + value を比較します。
+5.2.0 では `ui.language` は Web UI だけでなく、KWC が `config.yml` を再構築するときのコメント/表示言語、`config-reference-5.2.0.yml`、migration/difference report の言語も選択します。Bundled template は `en-US`, `ko-KR`, `ja-JP`, `zh-CN` で、言語を切り替えても comments/layout のみが変わり、Relay group/secret/peer を含む既存の parsed operator values は overlay して保持されます。Difference 判定は comments、空白、indent、quote style、line number、key order ではなく parsed YAML setting path + value を比較します。
 
 ## 全体有効化スイッチ
 
@@ -66,7 +66,7 @@ update-check:
   enabled: true
 ```
 
-有効にすると、KOKOTO WebChat は Bukkit、Fabric、NeoForge、Forge のすべてでバックグラウンドから Modrinth の最新 stable release を確認します。現在のプロジェクト URL 移行期間では canonical KWC `kokoto-webchat` を先に照会し、利用できない場合は既存 `bluemapwebchat` へ fallback します。BMWC も移行完了までは実際の update source として使用するため、新しい版があれば通常の通知を表示し、両方の取得に失敗した場合だけ警告します。OP または `kwc.update.notify` 権限を持つ player がログインすると、レート制限付きで再確認するため、新しい release の検出が定期確認結果だけに依存しません。
+有効にすると、KOKOTO WebChat は Bukkit、Fabric、NeoForge、Forge のすべてで canonical Modrinth `kokoto-webchat` project の最新 stable release をバックグラウンドから確認します。5.2.0 以降、旧 BMWC project URL は update source として照会しません。OP または `kwc.update.notify` 権限を持つ player がログインすると、レート制限付きで再確認するため、新しい release の検出が定期確認結果だけに依存しません。
 ## 配置モード
 
 ### BlueMap アドオン
@@ -207,11 +207,15 @@ direct-message:
 
 ## 重要な 0 値の意味
 
-`0` の意味はすべての設定で共通ではありません。以下は現在の 5.1.0 loader/runtime の実動作に基づき、実際の説明が異なる設定を推測で「無制限」と解釈してはいけません。
+`0` の意味はすべての設定で共通ではありません。以下は現在の 5.2.0 loader/runtime の実動作に基づき、実際の説明が異なる設定を推測で「無制限」と解釈してはいけません。
 
 - `chat.history-size`: 件数基準で保持する公開チャット履歴の最大行数で、期間保持ポリシーと併用されます。 0 は件数制限をなくします。
 - `chat.history-retention-days`: 公開チャット履歴の期間保持日数です。 0 は期間による期限切れを無効にします。
 - `chat.history-page-size`: 履歴ページ 1 回で要求する既定メッセージ数です。0 の場合 memory/JSONL 履歴には明示的なページ制限を設けませんが、SQLite は内蔵のクエリ安全上限 500 件を適用します。
+- `chat.conversation-archive.enabled`: アカウント単位の**保存済み会話**機能を有効にします。`false` の場合 archive API route を登録せず、`conversation-archives.db` を開く/新規作成せず、Web UI にも保存関連 DOM を生成しません。既存 archive data はそのまま残します。
+- `chat.conversation-archive.max-archives-per-user`: 1 アカウントが保持できる保存 snapshot の最大数です。既定 `100`、許容範囲 `1-1000`。
+- `chat.conversation-archive.max-messages-per-archive`: 1 snapshot の最大メッセージ数です。既定 `1000`、許容範囲 `1-10000`。大きな値は範囲読込、メモリ、応答、SQLite 書込負荷を増やします。
+- `chat.conversation-archive.max-messages-per-user`: 1 アカウントの全保存 snapshot に含められる合計メッセージ最大数です。既定 `10000`、許容範囲 `1-100000`。per-archive 上限より小さい場合はこちらのアカウント合計上限が優先されます。保存 snapshot は通常の chat retention では自動期限切れになりません。上限を下げても既存 snapshot は削除/非表示にせず、新しい保存が現在の上限を超える場合のみ拒否します。
 - `chat.max-message-length`: KWC が受け付ける通常公開チャットメッセージの最大長です。 0 はこの長さ制限をなくします。
 - `chat.max-url-message-length`: URL を含む公開チャットメッセージの最大長です。正数の場合、正数の通常メッセージ上限以上になるよう補正されます。 0 はこの長さ制限をなくします。
 - `message-tokens.max-replacements-per-message`: 1 メッセージで実行する token 置換の最大回数で、置換処理量を抑えます。 0 は件数制限をなくします。
@@ -315,7 +319,7 @@ DM/group message も同じ game click model を使います。conversation label
 
 ## サーバーリレー設定
 
-KOKOTO WebChat 5.1.0 は **Relay Protocol v2** を使用します。relay group 自体が trust boundary であり、その group のすべての peer relation は 1 つの group `shared-secret` を共有します。peer entry は `id`, `url`, `enabled` のみで、`peers[].secret` はありません。
+KOKOTO WebChat 5.2.0 は Relay v2 の trust/暗号化モデルを維持する **Relay Protocol 2.1** を使用します。relay group 自体が trust boundary であり、その group のすべての peer relation は 1 つの group `shared-secret` を共有します。peer entry は `id`, `url`, `enabled` のみで、`peers[].secret` はありません。
 
 ```yaml
 server-relay:
@@ -520,6 +524,8 @@ TikTok は公式 `player/v1` iframe を使用し、`description=0` と `music_in
 `youtube-click-to-load` または `media-click-to-load` を `false` にすると、対象のプレビューを即時表示します。自動再生はブラウザーのポリシーに従います。
 
 
+`emoji.favorites.enabled` は custom emoji Favorites UI の生成を制御します。`emoji.favorites.storage` は `account`（既定、chat history 保存方式に依存しないログイン account の `user-preferences`）または `browser`（localStorage）を選択します。`emoji.favorites.max-per-account` の既定値は 100 で、`0` は無制限、正の値は最大保持数です。
+
 ## ユーザープロファイルとアカウント設定
 
 ```yaml
@@ -534,7 +540,7 @@ ui:
 
 ## ブラウザー通知と Web Push
 
-`notifications` はブラウザー通知とモバイル/バックグラウンド Web Push の共通既定値およびサーバー側の許可上限を制御します。`notifications.enabled` が両方の配信経路に対する単一の既定 ON/OFF 値です。旧 `browser-notifications.*` と `web-push.notify-*` キーは移行/互換入力としてのみ読み取られます。`notify-*` を `true` にするとユーザーがチャット設定で切り替えられ、`false` にすると有効化してもその通知種別はブロックされます。5.0.0 からログインユーザーの通知種別と keyword 一覧は account data に一度保存され、browser/device 間で再利用されます。初回初期化時は既存 browser 値を account 設定へ昇格します。guest は browser-local 設定を継続します。各 device の Web Push 購読にはバックグラウンド配信に必要な endpoint/filter data のみ保持します。
+`notifications` はブラウザー通知とモバイル/バックグラウンド Web Push の共通既定値およびサーバー側の許可上限を制御します。`notifications.enabled` が両方の配信経路に対する単一の既定 ON/OFF 値です。旧 `browser-notifications.*` と `web-push.notify-*` キーは移行/互換入力としてのみ読み取られます。`notify-*` を `true` にするとユーザーがチャット設定で切り替えられ、`false` にすると有効化してもその通知種別はブロックされます。`notifications.notify-reactions` はライブ browser notification と background/mobile Web Push で共用する **絵文字リアクション** checkbox 1 個を制御し、browser/push 別には分けません。5.0.0 からログインユーザーの通知種別と keyword 一覧は account data に一度保存され、browser/device 間で再利用されます。初回初期化時は既存 browser 値を account 設定へ昇格します。guest は browser-local 設定を継続します。各 device の Web Push 購読にはバックグラウンド配信に必要な endpoint/filter data のみ保持します。
 
 `web-push` は VAPID キー、subject、購読ファイル、TTL、既定の Push タイトルなどの Web Push 配信設定を保存します。HTTPS または localhost、通知権限、Service Worker / Push API 対応がそろうと、バックグラウンド/モバイルプッシュ通知を送信できます。Android/desktop ブラウザーでは、現在の origin が Service Worker + Push API に対応していれば BlueMap addon と standalone ページのどちらからでも Push を有効化できます。iOS/iPadOS の通常のブラウザータブは Web Push に対応していないため、ホーム画面に追加して Web アプリとして開いたページでのみ試してください。未対応の挙動はプラットフォーム制限として扱います。`notifications.enabled: true` で VAPID キーが空の場合、プラグインは `web-push-vapid.properties` に永続キーを生成します。`web-push.subject` は `mailto:admin@example.com` または `https://map.example.com` のような実在する連絡先/運用者識別用の VAPID URI にしてください。任意の文字列は推奨されず、一部の push サービスで拒否または低信頼として扱われる可能性があります。モバイルの「スパムの可能性」などの警告はブラウザー/OS が表示するため、プラグインから無効化できません。安定した HTTPS ドメイン、意味のある通知タイトル/本文、控えめな通知フィルター、連続したテスト通知を避けることで発生しにくくできます。
 
@@ -616,7 +622,7 @@ ui:
 
 ## メッセージ検索
 
-保存履歴が有効な場合、チャットパネル右上のフローティング領域の虫眼鏡ボタンと `/history/search` API でメッセージ本文と送信者を検索できます。検索オプションでは日付/時刻範囲、送信者、ソース、システム/イベントの含有を指定できます。検索結果はスクロール可能な一覧で表示され、チャットのテーマとフォント設定に従います。検索結果をクリックすると、既存の周辺履歴読み込みで該当メッセージへ移動します。i18n キー付きのシステム／イベントメッセージは、可能な場合は要求された Web UI 言語で検索・表示されます。 検索は `search.enabled` で有効/無効を切り替えられ、`search.result-limit` だけで Web UI の結果数と `/history/search` API の上限を制御します。別の内部最大値はなく、2000 に設定すれば最大 2000 件、10 に設定すれば最大 10 件を返します。10000 や 100000 のような非常に大きい値も受け付けますが、検索速度の低下、応答サイズの増加、CPU・メモリ・DB 負荷の増加につながる可能性があります。既定値は 50 で、通常利用では 50〜200 を推奨します。`config-version: "5.1.0_auto_migration"` の場合、不足している検索設定は startup/reload 時に自動挿入されます。正確な `config-version: "5.1.0"` で同一 version の自動 migration を停止した場合のみ、不足 key を手動で追加するか `_auto_migration` を再度有効にしてください。
+保存履歴が有効な場合、チャットパネル右上のフローティング領域の虫眼鏡ボタンと `/history/search` API でメッセージ本文と送信者を検索できます。検索オプションでは日付/時刻範囲、送信者、ソース、システム/イベントの含有を指定できます。検索結果はスクロール可能な一覧で表示され、チャットのテーマとフォント設定に従います。検索結果をクリックすると、既存の周辺履歴読み込みで該当メッセージへ移動します。i18n キー付きのシステム／イベントメッセージは、可能な場合は要求された Web UI 言語で検索・表示されます。 検索は `search.enabled` で有効/無効を切り替えられ、`search.result-limit` だけで Web UI の結果数と `/history/search` API の上限を制御します。別の内部最大値はなく、2000 に設定すれば最大 2000 件、10 に設定すれば最大 10 件を返します。10000 や 100000 のような非常に大きい値も受け付けますが、検索速度の低下、応答サイズの増加、CPU・メモリ・DB 負荷の増加につながる可能性があります。既定値は 50 で、通常利用では 50〜200 を推奨します。`config-version: "5.2.0_auto_migration"` の場合、不足している検索設定は startup/reload 時に自動挿入されます。正確な `config-version: "5.2.0"` で同一 version の自動 migration を停止した場合のみ、不足 key を手動で追加するか `_auto_migration` を再度有効にしてください。
 
 ## グループチャット
 

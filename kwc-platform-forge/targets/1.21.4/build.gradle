@@ -1,7 +1,7 @@
 plugins { id 'java'; id 'net.minecraftforge.gradle' version '[7.0.17,8)'; id 'net.minecraftforge.jarjar' version '0.2.3' }
 
 group='dev.kokoto'
-version='5.1.0'
+version='5.2.0'
 java.toolchain.languageVersion=JavaLanguageVersion.of(21)
 jarJar.register()
 repositories { minecraft.mavenizer(it); maven fg.forgeMaven; maven fg.minecraftLibsMaven; mavenCentral();  }
@@ -19,10 +19,10 @@ def metadata=tasks.register('generateModMetadata',Copy) { from('../../src/common
 processResources.dependsOn(metadata)
 tasks.withType(JavaCompile).configureEach { options.release=21; options.encoding='UTF-8' }
 tasks.named('jar', Jar).configure {
-    archiveFileName = "KOKOTO-WebChat-5.1.0-Forge-1.21.4-slim.jar"
+    archiveFileName = "KOKOTO-WebChat-5.2.0-Forge-1.21.4-slim.jar"
     from('../../../LICENSE') { rename { 'LICENSE_KOKOTO-WebChat' } }
 }
 tasks.named('jarJar').configure {
-    archiveFileName = "KOKOTO-WebChat-5.1.0-Forge-1.21.4.jar"
+    archiveFileName = "KOKOTO-WebChat-5.2.0-Forge-1.21.4.jar"
 }
 tasks.named('build').configure { dependsOn tasks.named('jarJar') }

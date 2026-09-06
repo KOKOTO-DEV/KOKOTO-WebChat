@@ -1301,6 +1301,37 @@ public class DirectMessageStore {
         }
     }
 
+    /** Resolve a relayed DM only when the supplied participant identity belongs to its thread.
+     * Used by the authenticated point-to-point reaction relay path. */
+    public synchronized DirectMessageMessage messageForRelayParticipant(String participantUuid, String relayId) {
+        String participant = normalizeUuid(participantUuid);
+        String rid = cleanDeliveryId(relayId, 180);
+        if (participant.isBlank() || rid.isBlank()) return null;
+        if (jsonlMode()) {
+            for (JsonlMessage msg : jsonlMessages.values()) {
+                if (msg == null || msg.hidden || !rid.equals(msg.relayId) || !jsonlIsParticipant(msg.threadId, participant)) continue;
+                return jsonlToMessage(msg);
+            }
+            return null;
+        }
+        if (connection == null) return null;
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT m.id,m.thread_id FROM dm_messages m JOIN dm_delivery_state d ON d.message_id=m.id " +
+                        "WHERE d.relay_id=? AND m.hidden=0 LIMIT 1")) {
+            ps.setString(1, rid);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                long id = rs.getLong(1);
+                String threadId = rs.getString(2);
+                if (!isParticipant(threadId, participant)) return null;
+                return readMessage(id);
+            }
+        } catch (SQLException ex) {
+            host.warn("Failed to resolve relayed direct message participant: " + ex.getMessage());
+            return null;
+        }
+    }
+
 
     public synchronized List<String> adminThreadSummaries(int limit) {
         if (jsonlMode()) return jsonlAdminThreadSummaries(limit);
@@ -1730,6 +1761,50 @@ public class DirectMessageStore {
         return out;
     }
 
+
+    /** Returns a user's inclusive visible DM range without changing read state. */
+    public synchronized List<DirectMessageMessage> archiveRange(String userUuid, String threadId, long firstId, long lastId, int limit) {
+        String user = normalizeUuid(userUuid);
+        String tid = String.valueOf(threadId == null ? "" : threadId).trim();
+        int max = Math.max(1, Math.min(limit <= 0 ? 1000 : limit, ConversationArchiveStore.MAX_CONFIGURED_MESSAGES_PER_ARCHIVE));
+        if (user.isBlank() || tid.isBlank() || firstId <= 0 || lastId <= 0 || !isParticipantForArchive(tid, user)) return new ArrayList<>();
+        long lo = Math.min(firstId, lastId), hi = Math.max(firstId, lastId);
+        if (jsonlMode()) {
+            List<DirectMessageMessage> out = new ArrayList<>();
+            for (JsonlMessage msg : jsonlMessages.values()) {
+                if (msg == null || msg.id < lo || msg.id > hi || !tid.equals(msg.threadId) || !jsonlVisibleFor(msg, user)) continue;
+                out.add(jsonlToMessage(msg));
+                if (out.size() > max) return new ArrayList<>();
+            }
+            out.sort(Comparator.comparingLong(m -> m.id));
+            return out;
+        }
+        List<DirectMessageMessage> out = new ArrayList<>();
+        if (connection == null) return out;
+        String sql = "SELECT id,thread_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,reply_to_relay_id FROM dm_messages WHERE thread_id=? AND hidden=0 AND id>=? AND id<=? " +
+                "AND id NOT IN (SELECT message_id FROM dm_message_state WHERE user_uuid=? AND hidden=1) ORDER BY id ASC LIMIT ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, tid); ps.setLong(2, lo); ps.setLong(3, hi); ps.setString(4, user); ps.setInt(5, max + 1);
+            try (ResultSet rs = ps.executeQuery()) { while (rs.next()) out.add(messageFromResult(rs)); }
+            if (out.size() > max) return new ArrayList<>();
+            for (DirectMessageMessage message : out) applyReadReceiptState(message);
+            return out;
+        } catch (SQLException ex) {
+            host.warn("Failed to read direct message archive range: " + ex.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    private boolean isParticipantForArchive(String threadId, String userUuid) {
+        if (jsonlMode()) {
+            for (JsonlMessage msg : jsonlMessages.values()) {
+                if (msg != null && threadId.equals(msg.threadId) && jsonlVisibleFor(msg, userUuid)) return true;
+            }
+            return false;
+        }
+        if (connection == null) return false;
+        try { return isParticipant(threadId, userUuid); } catch (SQLException ex) { return false; }
+    }
 
     public synchronized List<DirectMessageMessage> adminListMessages(String threadId, long beforeId, int limit) {
         String tid = String.valueOf(threadId == null ? "" : threadId).trim();

@@ -1,0 +1,20 @@
+digraph G {
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans", labelloc="t"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=LR;
+  event [label="Minecraft / KWC event\njoin · quit · death · advancement · server", fillcolor="#DCFCE7"];
+  policy [label="Announcement policy\nenabled event types", fillcolor="#FEF3C7"];
+  text [label="i18n event key\nor configured fallback text", fillcolor="#DBEAFE"];
+  msg [label="System public message\nno player author UUID", fillcolor="#F1F5F9", penwidth=2];
+  web [label="Web SSE / history", fillcolor="#E0F2FE"];
+  relay [label="Relay when system source enabled", fillcolor="#FCE7F3"];
+  reaction [label="Reaction state may exist", fillcolor="#ECFEFF"];
+  noalert [label="No author reaction notification\n(no player author)", fillcolor="#FEE2E2"];
+
+  event -> policy -> text -> msg;
+  msg -> web;
+  msg -> relay;
+  msg -> reaction -> noalert;
+}

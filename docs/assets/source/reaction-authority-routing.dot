@@ -1,0 +1,20 @@
+digraph G {
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans", labelloc="t"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=LR;
+  s1 [label="Server 1\nmessage mirror", fillcolor="#E0F2FE"];
+  s2 [label="Server 2\nforwarder", fillcolor="#FEF3C7"];
+  s3 [label="Server 3\nmessage origin\nREACTION AUTHORITY", fillcolor="#DCFCE7", penwidth=2];
+  store [label="Reaction state\npublic-reactions.jsonl", fillcolor="#F1F5F9"];
+  author [label="Original author\nprivate game + web notice", fillcolor="#F3E8FF"];
+
+  s1 -> s3 [label="direct reaction-request\nwhen direct peer is usable", color="#0F766E", fontcolor="#0F766E"];
+  s1 -> s2 [label="multi-hop reaction-request", color="#B45309", fontcolor="#92400E"];
+  s2 -> s3 [label="forward same eventId", color="#B45309", fontcolor="#92400E"];
+  s3 -> store [label="validate + commit", penwidth=2];
+  s3 -> author [label="changed addition only\nnot self/system"];
+  s3 -> s2 [label="authoritative commit", color="#7C3AED", fontcolor="#6D28D9"];
+  s2 -> s1 [label="forward commit", color="#7C3AED", fontcolor="#6D28D9"];
+}

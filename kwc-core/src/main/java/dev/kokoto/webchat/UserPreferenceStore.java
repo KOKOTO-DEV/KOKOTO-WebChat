@@ -25,8 +25,8 @@ import java.util.regex.Pattern;
  *
  * Device-local state (window geometry, minimized state, Push endpoint, etc.) is
  * intentionally never stored here. Visual profiles are portable across KWC
- * servers through a strict flat JSON export/import format, while notification
- * choices and keyword alerts are account-global on each server.
+ * servers through a strict flat JSON export/import format, while notification choices, typing-indicator visibility, emoji Favorites,
+ * and keyword alerts are account-global on each server.
  */
 public final class UserPreferenceStore {
     public static final int PROFILE_FORMAT_VERSION = 1;
@@ -170,6 +170,63 @@ public final class UserPreferenceStore {
         return saveProfile(account, "", String.valueOf(parsed.get("name")), raw, maxProfiles);
     }
 
+    public synchronized List<String> emojiFavorites(Account account, int maxFavorites) {
+        int limit = Math.max(0, maxFavorites);
+        String raw = load(account).getProperty("emoji.favorite.ids", "");
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        ArrayList<String> out = new ArrayList<>();
+        for (String item : raw.split("\n")) {
+            String id = normalizeEmojiFavoriteId(item);
+            if (id.isBlank() || !seen.add(id)) continue;
+            out.add(id);
+            if (limit > 0 && out.size() >= limit) break;
+        }
+        return List.copyOf(out);
+    }
+
+    public synchronized SaveResult saveEmojiFavorite(Account account, String emojiId, boolean active, int maxFavorites) {
+        int limit = Math.max(0, maxFavorites);
+        String id = normalizeEmojiFavoriteId(emojiId);
+        if (id.isBlank()) return SaveResult.error("invalid_emoji");
+        Properties p = load(account);
+        ArrayList<String> ids = new ArrayList<>(emojiFavorites(account, 0));
+        boolean existed = ids.removeIf(v -> id.equals(v));
+        if (active) {
+            if (limit > 0 && !existed && ids.size() >= limit) return SaveResult.error("favorite_limit_reached");
+            ids.add(0, id);
+        }
+        p.setProperty("emoji.favorite.ids", String.join("\n", ids));
+        if (!save(account, p)) return SaveResult.error("favorite_save_failed");
+        LinkedHashMap<String,Object> value = new LinkedHashMap<>();
+        value.put("favorites", List.copyOf(ids));
+        value.put("maxPerAccount", limit);
+        return new SaveResult(true, "", value);
+    }
+
+    private String normalizeEmojiFavoriteId(String raw) {
+        String id = clean(raw, 240);
+        if (id.isBlank() || id.contains("..") || id.indexOf('\n') >= 0 || id.indexOf('\r') >= 0) return "";
+        return id;
+    }
+
+    public synchronized Map<String,Object> typingPreferences(Account account) {
+        Properties p = load(account);
+        return Map.of("displayEnabled", bool(p, "typing.displayEnabled", true));
+    }
+
+    public synchronized SaveResult saveTypingPreferences(Account account, Map<String,String> raw) {
+        Properties p = load(account);
+        try {
+            if (raw.containsKey("displayEnabled")) {
+                p.setProperty("typing.displayEnabled", Boolean.toString(parseBoolean(raw.get("displayEnabled"))));
+            }
+        } catch (IllegalArgumentException ex) {
+            return SaveResult.error(ex.getMessage());
+        }
+        if (!save(account, p)) return SaveResult.error("typing_preferences_save_failed");
+        return new SaveResult(true, "", typingPreferences(account));
+    }
+
     public synchronized Map<String,Object> notificationPreferences(Account account, ConfigValues c) {
         Properties p = load(account);
         LinkedHashMap<String,Object> out = new LinkedHashMap<>();
@@ -178,13 +235,14 @@ public final class UserPreferenceStore {
         out.put("dm", bool(p, "notify.dm", c == null || c.browserNotificationsNotifyDm));
         out.put("groupChat", bool(p, "notify.groupChat", c == null || c.browserNotificationsNotifyGroupChat));
         out.put("mentions", bool(p, "notify.mentions", c == null || c.browserNotificationsNotifyMentions));
-        out.put("replies", bool(p, "notify.replies", c == null || c.browserNotificationsNotifyReplies));
+        boolean replies = bool(p, "notify.replies", c == null || c.browserNotificationsNotifyReplies);
+        out.put("replies", replies);
+        out.put("reactions", bool(p, "notify.reactions", replies && (c == null || c.browserNotificationsNotifyReactions)));
         String systemMode = p.getProperty("notify.systemMode", c == null || c.browserNotificationsNotifySystem ? "all" : "off");
         if (!Set.of("all", "join-leave", "off").contains(systemMode)) systemMode = "all";
         out.put("systemMode", systemMode);
         out.put("system", !"off".equals(systemMode));
         out.put("keywords", bool(p, "notify.keywords", c == null || c.browserNotificationsNotifyKeywords));
-        out.put("preview", bool(p, "notify.preview", c == null || c.browserNotificationsShowMessagePreview));
         out.put("keywordText", normalizeKeywordText(p.getProperty("notify.keywordText", "")));
         return out;
     }
@@ -194,18 +252,22 @@ public final class UserPreferenceStore {
         // Removed in 5.0.0 final notification UI: keep old profile files readable but
         // drop the obsolete per-account own-message preference on the next save.
         p.remove("notify.ownMessages");
+        // Message preview is built-in in 5.2.0, not a per-account preference.
+        // Remove the obsolete stored value when preferences are next saved.
+        p.remove("notify.preview");
         try {
             setBool(p, "notify.normalChat", raw, "normalChat", c == null || c.browserNotificationsNotifyNormalChat);
             setBool(p, "notify.dm", raw, "dm", c == null || c.browserNotificationsNotifyDm);
             setBool(p, "notify.groupChat", raw, "groupChat", c == null || c.browserNotificationsNotifyGroupChat);
             setBool(p, "notify.mentions", raw, "mentions", c == null || c.browserNotificationsNotifyMentions);
             setBool(p, "notify.replies", raw, "replies", c == null || c.browserNotificationsNotifyReplies);
+            boolean reactionFallback = bool(p, "notify.replies", c == null || c.browserNotificationsNotifyReplies);
+            setBool(p, "notify.reactions", raw, "reactions", reactionFallback && (c == null || c.browserNotificationsNotifyReactions));
             String mode = raw.getOrDefault("systemMode", p.getProperty("notify.systemMode", "all")).trim().toLowerCase(Locale.ROOT);
             if (!Set.of("all", "join-leave", "off").contains(mode)) throw new IllegalArgumentException("invalid_notification_system_mode");
             if (c != null && !c.browserNotificationsNotifySystem) mode = "off";
             p.setProperty("notify.systemMode", mode);
             setBool(p, "notify.keywords", raw, "keywords", c == null || c.browserNotificationsNotifyKeywords);
-            setBool(p, "notify.preview", raw, "preview", c == null || c.browserNotificationsShowMessagePreview);
             if (raw.containsKey("keywordText")) p.setProperty("notify.keywordText", normalizeKeywordText(raw.get("keywordText")));
             p.setProperty("notify.configured", "true");
         } catch (IllegalArgumentException ex) {

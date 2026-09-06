@@ -4,7 +4,10 @@ param(
     [int]$Major,
 
     [Parameter(Mandatory = $false)]
-    [string]$OutputFile
+    [string]$OutputFile,
+
+    [Parameter(Mandatory = $false)]
+    [string]$Label = '[KWC NeoForge]'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +15,12 @@ $ProgressPreference = 'SilentlyContinue'
 $ScriptRoot = Split-Path -Parent $PSCommandPath
 $LocalJdkRoot = Join-Path $ScriptRoot '.jdks'
 $LocalJdkHome = Join-Path $LocalJdkRoot ("jdk-{0}" -f $Major)
+
+# Windows PowerShell 5.1 can otherwise negotiate an obsolete TLS protocol on
+# some systems. Keep TLS 1.2 available before contacting Adoptium/GitHub CDNs.
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch {}
 
 function Get-JavaMajor([string]$JavaHome) {
     if ([string]::IsNullOrWhiteSpace($JavaHome)) { return $null }
@@ -76,10 +85,74 @@ function Return-JavaHome([string]$JavaHome) {
     exit 0
 }
 
+function Invoke-KwcJsonRequest([string]$Uri) {
+    $headers = @{ 'User-Agent' = 'KOKOTO-WebChat-Build/5.2.0' }
+    $lastError = $null
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            return Invoke-RestMethod -Uri $Uri -Headers $headers -TimeoutSec 30
+        } catch {
+            $lastError = $_.Exception.Message
+            if ($attempt -lt 3) {
+                Write-Host "$Label network request failed (attempt $attempt/3); retrying..."
+                Start-Sleep -Seconds (2 * $attempt)
+            }
+        }
+    }
+
+    # curl.exe uses a different Windows HTTP/TLS stack and is a useful fallback
+    # when Invoke-RestMethod is blocked by a proxy or WinHTTP/TLS quirk.
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
+        Write-Host "$Label PowerShell web request failed; trying curl.exe fallback..."
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("kwc-adoptium-{0}-{1}.json" -f $PID, [Guid]::NewGuid().ToString('N'))
+        try {
+            & $curl.Source '--fail' '--silent' '--show-error' '--location' '--retry' '3' '--retry-delay' '2' '--connect-timeout' '20' '--max-time' '90' '--user-agent' 'KOKOTO-WebChat-Build/5.2.0' '--output' $tmp $Uri
+            if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $tmp)) {
+                $json = [IO.File]::ReadAllText($tmp)
+                if (![string]::IsNullOrWhiteSpace($json)) {
+                    return ($json | ConvertFrom-Json)
+                }
+            }
+        } finally {
+            if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+        }
+    }
+    throw "Network request failed for $Uri. Last PowerShell error: $lastError"
+}
+
+function Invoke-KwcDownload([string]$Uri, [string]$OutFile) {
+    $headers = @{ 'User-Agent' = 'KOKOTO-WebChat-Build/5.2.0' }
+    $lastError = $null
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            if (Test-Path -LiteralPath $OutFile) { Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue }
+            Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -Headers $headers -TimeoutSec 120
+            if ((Test-Path -LiteralPath $OutFile) -and ((Get-Item -LiteralPath $OutFile).Length -gt 0)) { return }
+            throw 'Downloaded file is empty.'
+        } catch {
+            $lastError = $_.Exception.Message
+            if ($attempt -lt 3) {
+                Write-Host "$Label download failed (attempt $attempt/3); retrying..."
+                Start-Sleep -Seconds (2 * $attempt)
+            }
+        }
+    }
+
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
+        Write-Host "$Label PowerShell download failed; trying curl.exe fallback..."
+        if (Test-Path -LiteralPath $OutFile) { Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue }
+        & $curl.Source '--fail' '--silent' '--show-error' '--location' '--retry' '3' '--retry-delay' '2' '--connect-timeout' '20' '--user-agent' 'KOKOTO-WebChat-Build/5.2.0' '--output' $OutFile $Uri
+        if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $OutFile) -and ((Get-Item -LiteralPath $OutFile).Length -gt 0)) { return }
+    }
+    throw "Download failed for $Uri. Last PowerShell error: $lastError"
+}
+
 function Get-AdoptiumBinary([int]$Version) {
     $api = "https://api.adoptium.net/v3/assets/feature_releases/$Version/ga?architecture=x64&heap_size=normal&image_type=jdk&jvm_impl=hotspot&os=windows&page=0&page_size=1&project=jdk&sort_method=DEFAULT&sort_order=DESC&vendor=eclipse"
-    Write-Host "[KWC NeoForge] JDK $Version not found locally; resolving Eclipse Temurin..."
-    $releases = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent' = 'KOKOTO-WebChat-Forge-Build/5.1.0' }
+    Write-Host "$Label JDK $Version not found locally; resolving Eclipse Temurin..."
+    $releases = Invoke-KwcJsonRequest $api
     if (!$releases -or $releases.Count -lt 1) {
         throw "Adoptium returned no GA JDK $Version release for Windows x64."
     }
@@ -109,8 +182,8 @@ function Install-LocalTemurin([int]$Version) {
     $extract = Join-Path $downloadDir ("extract-{0}" -f $Version)
 
     try {
-        Write-Host "[KWC NeoForge] Downloading Eclipse Temurin JDK $Version..."
-        Invoke-WebRequest -Uri $package.link -OutFile $zip -UseBasicParsing -Headers @{ 'User-Agent' = 'KOKOTO-WebChat-Forge-Build/5.1.0' }
+        Write-Host "$Label Downloading Eclipse Temurin JDK $Version..."
+        Invoke-KwcDownload $package.link $zip
 
         if ([string]::IsNullOrWhiteSpace($package.checksum)) {
             throw "Adoptium response did not include a SHA-256 checksum for JDK $Version."
@@ -120,13 +193,13 @@ function Install-LocalTemurin([int]$Version) {
         if ($actual -ne $expected) {
             throw "JDK $Version SHA-256 mismatch. Expected $expected, got $actual."
         }
-        Write-Host "[KWC NeoForge] JDK $Version SHA-256 verified."
+        Write-Host "$Label JDK $Version SHA-256 verified."
 
         if (Test-Path -LiteralPath $extract) { Remove-Item -LiteralPath $extract -Recurse -Force }
         New-Item -ItemType Directory -Path $extract -Force | Out-Null
-        Write-Host "[KWC NeoForge] Extracting JDK $Version..."
+        Write-Host "$Label Extracting JDK $Version..."
         $extractor = Join-Path (Split-Path -Parent $ScriptRoot) 'extract-zip-progress-windows.ps1'
-        & $extractor -ZipPath $zip -DestinationPath $extract -Label "[KWC NeoForge] JDK $Version"
+        & $extractor -ZipPath $zip -DestinationPath $extract -Label "$Label JDK $Version"
 
         $jdk = Get-ChildItem -LiteralPath $extract -Directory -ErrorAction Stop |
             Where-Object { (Test-Path -LiteralPath (Join-Path $_.FullName 'bin\java.exe')) -and (Test-Path -LiteralPath (Join-Path $_.FullName 'bin\javac.exe')) } |
@@ -140,7 +213,7 @@ function Install-LocalTemurin([int]$Version) {
 
         if (Test-Path -LiteralPath $LocalJdkHome) { Remove-Item -LiteralPath $LocalJdkHome -Recurse -Force }
         Move-Item -LiteralPath $jdk.FullName -Destination $LocalJdkHome
-        Write-Host "[KWC NeoForge] Local JDK $Version ready: $LocalJdkHome"
+        Write-Host "$Label Local JDK $Version ready: $LocalJdkHome"
     }
     finally {
         if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue }
@@ -200,6 +273,19 @@ foreach ($root in ($roots | Select-Object -Unique)) {
         }
     } catch {}
 }
+
+try {
+    $pathJavacs = @(Get-Command javac.exe -All -ErrorAction SilentlyContinue)
+    foreach ($cmd in $pathJavacs) {
+        $exe = $cmd.Source
+        if ([string]::IsNullOrWhiteSpace($exe)) { $exe = $cmd.Definition }
+        if (![string]::IsNullOrWhiteSpace($exe)) {
+            $bin = Split-Path -Parent $exe
+            $home = Split-Path -Parent $bin
+            if (![string]::IsNullOrWhiteSpace($home)) { $candidates.Insert(0, $home) }
+        }
+    }
+} catch {}
 
 if ($env:JAVA_HOME) { $candidates.Insert(0, $env:JAVA_HOME.Trim('"')) }
 

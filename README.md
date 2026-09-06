@@ -2,27 +2,29 @@
 
 
 
-![Architecture overview](docs/assets/architecture-5.1.0.svg)
+![Architecture overview](docs/assets/architecture-5.2.0.svg)
 
-[PNG](docs/assets/architecture-5.1.0.png) · [SVG](docs/assets/architecture-5.1.0.svg)
+[PNG](docs/assets/architecture-5.2.0.png) · [SVG](docs/assets/architecture-5.2.0.svg)
 
 > Visual manuals, animated flows, editable diagram sources, and standards references are included under `docs/assets/`, `docs/en/VISUAL_DOCUMENTATION.md`, and `docs/en/REFERENCES.md`.
 
-## 5.1.0 release
+- **5.2.0 controls:** `notifications.notify-reactions` provides one Reactions choice shared by browser notifications and Web Push; `chat.conversation-archive.enabled: false` hard-disables Saved-conversation DOM/API/DB startup while preserving existing archive data; the three archive `max-*` keys control saved-conversation quotas; `chat.typing-indicator.open-chat.enabled`, `.dm.enabled`, and `.group-chat.enabled` are server-wide typing-indicator policy switches (defaults OFF/ON/ON) exposed in Web Admin Settings; `chat.typing-indicator.user-display-control` (default OFF) lets the administrator optionally expose one account-level **Typing indicators** viewer setting; `emoji.favorites.enabled`, `storage`, and `max-per-account` control whether custom-emoji Favorites exist and whether they are browser-local or account-stored.
 
-5.1.0 upgrades server-to-server communication to group-scoped Relay Protocol v2 with reciprocal peer configuration and per-request authenticated encryption, adds persistent Web/game DM and group-chat replies including stable cross-server reply references, localizes config/reference/migration presentation from `ui.language`, hardens emoji catalog synchronization and SSE recovery, raises the default SSE limits to 10 per resolved client IP / 500 total, canonicalizes custom-emoji pack/file/token names, improves public reply rendering, and adds Android chat-composer Autofill suppression. Release notes and migration guidance describe the final 5.0.0 → 5.1.0 differences. Repeated operational HTTP/network failures use a shared state-aware console policy so identical retry errors do not accumulate indefinitely, while the first failure, state changes, and recovery remain visible.
+## 5.2.0 release
 
-## Project rename and download transition
+5.2.0 focuses on security hardening, private-chat usability, and multi-server continuity. It adds reactions for public, DM, and group messages, Relay Protocol **2.1** as a backward-compatible 2.x capability revision, event-driven public/DM/group typing indicators, and per-account **Saved conversations** snapshots with browser PDF export. Guest/public-history access checks, trusted-proxy handling, exact API leaf routing, and public config projection are hardened. The latest-message auto-follow threshold is unified at **32 px** for public/DM/group chat, while emoji/icon/attachment panel layout changes preserve the current viewport instead of forcing an immediate jump to the bottom. Current update/download addresses use only KOKOTO WebChat projects; historical BMWC addresses remain migration references only.
 
-**BlueMapWebChat (BMWC) was renamed to KOKOTO WebChat starting with 5.0.0.** The 5.0.0 transition release may initially be published through the existing BlueMapWebChat project listings so 4.7.0 installations that only know the legacy project can discover the upgrade. Existing BMWC 4.x data is migration input only; the 5.0.0 runtime identity is KOKOTO WebChat.
+## Project rename and download addresses
+
+**BlueMapWebChat (BMWC) was renamed to KOKOTO WebChat starting with 5.0.0.** Existing BMWC 4.x data remains migration input only. Starting with 5.2.0, runtime update checks and current download links use only KOKOTO WebChat addresses.
 
 Current KOKOTO WebChat distribution addresses:
 
-- Modrinth: `https://modrinth.com/plugin/bluemapwebchat`
+- Modrinth: `https://modrinth.com/plugin/kokoto-webchat`
 - CurseForge: `https://www.curseforge.com/minecraft/bukkit-plugins/kokoto-webchat`
 - GitHub: `https://github.com/KOKOTO-DEV/KOKOTO-WebChat`
 
-During the current project-address transition, the 5.1.0 updater checks Modrinth `kokoto-webchat` first and falls back to the existing `bluemapwebchat` project when the canonical project is unavailable. The BMWC fallback remains a real update source until the address transition is complete; only when both sources fail is an update-check warning emitted.
+Starting with 5.2.0, the updater checks only the canonical Modrinth `kokoto-webchat` project. Legacy BMWC project addresses are no longer queried or presented as active download sources.
 
 A multi-platform server-side web chat for Minecraft. The Bukkit/Paper/Spigot platform can run as a BlueMap, squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD, or Minecraft Overviewer embedded web chat, as a standalone page, or in multiple modes together. Fabric 1.18.2–26.2 exact-target, NeoForge 1.20.2–26.2 exact-target, and Forge 1.18.2–26.2 exact-target builds reuse the shared core/standalone frontend and support squaremap, Dynmap, LiveAtlas, uNmINeD, and Overviewer through filesystem adapters; Fabric also supports Pl3xMap through the same filesystem-adapter model, while Fabric/NeoForge and Forge 26.1.2/26.2 integrate with BlueMap 5.21+ through BlueMapAPI 2.8.0 when the BlueMap mod is present.
 
@@ -31,7 +33,7 @@ A multi-platform server-side web chat for Minecraft. The Bukkit/Paper/Spigot pla
 ## Features
 
 - Per-account visual UI profiles for signed-in users (default 5, admin configurable), with strict JSON profile import/export for moving settings between KWC servers
-- Account-level keyword/notification preferences for signed-in users, while device-local window state and Web Push endpoints stay local; duplicate live-page OS notifications are suppressed when Web Push is active on that device
+- Account-level keyword/notification preferences for signed-in users, while device-local window state and Web Push endpoints stay local; when any signed-in KWC client is actively viewing the exact DM/group conversation, browser notifications, the browser-local notification inbox, and Web Push for that conversation are suppressed account-wide
 - Administrator-only Discord keyword alerts with KWC-owned matching/deduplication and DiscordSRV logical-channel selection in Web Admin
 - Shared Unicode-aware content filter for public/group chat and optional DM, with block/mask/replace, N:1/1:N/N:N replacement rules, and DeathWord-style compact/interleave anti-evasion matching
 - UTF-8 `filter-lists/*.txt` bulk filter-word lists with per-list Block/Filter mode plus custom block/mask/replace rules; Web Admin can import and manage list files
@@ -41,7 +43,10 @@ A multi-platform server-side web chat for Minecraft. The Bukkit/Paper/Spigot pla
 - Optional `upload.filename-mode: original` preserves safe Unicode source filenames for new uploads and resolves collisions without overwriting
 - BlueMap/squaremap/Dynmap/Pl3xMap/LiveAtlas/uNmINeD/Overviewer embedded chat panel and standalone web chat page
 - Two-way game ↔ web chat relay
-- Relay Protocol v2 for group-scoped public chat and cross-server DM/read receipts, with request-by-request peer authentication, HKDF-SHA256/AES-256-GCM hop-by-hop authenticated encryption, replay protection, and HTTPS-only forwarding
+- Relay Protocol 2.1 over the Relay v2 trust/encryption model for public chat and cross-server DM/read receipts, with optional reaction/typing capabilities, request-by-request peer authentication, HKDF-SHA256/AES-256-GCM hop-by-hop authenticated encryption, replay protection, and HTTPS-only forwarding
+- Saved-conversation snapshots for public/DM/group ranges, with administrator deletion/lock policy precedence and browser PDF export
+- Event-driven public/DM/group typing indicators with a five-second window and no polling/persistence
+- Public/DM/group message reactions for logged-in users, including Unicode and KWC custom emoji, a compact message-bottom hover `+` slot that expands to the normal row only when reactions exist, category/search picker with stable positioning/outside-click close, reactor-name hover lists, and **Admin > Emojis > Reaction icons** management with master enable/disable; public reactions synchronize through origin authority, cross-server DM reactions are sent only to the participant server, and group reactions remain local
 - Clickable Minecraft replies (`/kchat reply`) and linked web-sender DM shortcuts (`/kchat dm`)
 - Optional mirroring of game `/w`/`/msg`/`/tell`-style whispers into both users' KWC web DM thread
 - Guest chat with math captcha, cooldowns, and a 50 messages/minute default guest rate limit
@@ -59,7 +64,7 @@ A multi-platform server-side web chat for Minecraft. The Bukkit/Paper/Spigot pla
 
 ## Companion plugin integrations
 
-KWC 5.1.0 documents two optional Bukkit/Paper-family companion-plugin paths:
+KWC 5.2.0 documents two optional Bukkit/Paper-family companion-plugin paths:
 
 - [**ImageEmojis-Bero**](https://github.com/KOKOTO-DEV/ImageEmojis-Bero) — share `plugins/KOKOTO-WebChat/emojis`, keep canonical `:pack/name:` tokens across web/history/relay, and let ImageEmojis render the game glyph. Its resource-pack server (`serverIp` + `webServerPort`, commonly TCP 5000) must be reachable by Minecraft clients. See [`docs/en/IMAGEEMOJIS_BERO_1_9_0.md`](docs/en/IMAGEEMOJIS_BERO_1_9_0.md). General plugin operation remains documented by [upstream ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis).
 - [**SimpleNicks-Bero**](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) — set `player-display.mode: "display-name"` so KWC shows the Bukkit display name produced by the nickname plugin while retaining the linked username/UUID as the real identity. See [`docs/en/SIMPLENICKS_BERO.md`](docs/en/SIMPLENICKS_BERO.md). General plugin operation remains documented by [upstream SimpleNicks](https://github.com/Simplexity-Development/SimpleNicks).
@@ -75,7 +80,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.1.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.0-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target builds
@@ -90,7 +95,7 @@ kwc-platform-fabric\build-all.bat
 ./kwc-platform-fabric/build-all.sh
 ```
 
-Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.1.0-Fabric-<Minecraft>.jar`.
+Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.0-Fabric-<Minecraft>.jar`.
 
 ### NeoForge exact-target builds
 
@@ -104,7 +109,7 @@ kwc-platform-neoforge\build-all.bat
 ./kwc-platform-neoforge/build-all.sh
 ```
 
-Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.1.0-NeoForge-<Minecraft>.jar`.
+Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.0-NeoForge-<Minecraft>.jar`.
 
 ### Forge exact-target builds
 
@@ -120,13 +125,13 @@ On Linux/macOS:
 ./kwc-platform-forge/build-all.sh
 ```
 
-The Forge build helpers select JDK 17/21/25 per target and produce `KOKOTO-WebChat-5.1.0-Forge-<Minecraft>.jar` under each target's `build/libs/` directory.
+The Forge build helpers select JDK 17/21/25 per target and produce `KOKOTO-WebChat-5.2.0-Forge-<Minecraft>.jar` under each target's `build/libs/` directory.
 
 ### Final Windows release acceptance
 
-> **The release build/validation workflow is included in the source package.** `validate-release-windows.bat` and the PowerShell helpers it requires are shipped with the source. The separate `KWC-5.1.0-validation-tools.zip` contains development-only browser regression tooling and is not required for normal or release builds.
+> **The release build/validation workflow is included in the source package.** `validate-release-windows.bat` and the PowerShell helpers it requires are shipped with the source. The separate `KWC-5.2.0-validation-tools.zip` contains development-only browser regression tooling and is not required for normal or release builds.
 
-Run `validate-release-windows.bat` from the source root to build Bukkit, all 16 Fabric targets, all 12 NeoForge targets, and all 16 Forge targets in one pass. A fully build-validated release must end with `FINAL RELEASE BUILD PASS`, collect exactly 45 deployable JARs under `release-5.1.0/`, and generate `SHA256SUMS.txt`.
+Run `validate-release-windows.bat` from the source root to build Bukkit, all 16 Fabric targets, all 12 NeoForge targets, and all 16 Forge targets in one pass. A fully build-validated release must end with `FINAL RELEASE BUILD PASS`, collect exactly 45 deployable JARs under `release-5.2.0/`, and generate `SHA256SUMS.txt`. The same release gate also runs the loader-neutral security and Relay/reaction/typing regression harnesses, adapter/config migration harnesses, and a finished-Bukkit-JAR conversation-archive runtime smoke that opens the shaded SQLite driver and exercises save/read/rename/quota/admin-delete cascade behavior.
 
 For normal development builds on Windows, the same script supports platform selection, incremental cache reuse, parallel platform scheduling, and live progress:
 
@@ -137,7 +142,7 @@ validate-release-windows.bat --fabric --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-Platform flags may be combined. `--bukkit` builds only the Bukkit/Paper artifact and its required Maven reactor dependencies. `--fast` skips `clean`, reuses existing Maven/Gradle outputs and dependency caches, and enables the Gradle build cache. `--parallel` keeps the selected build mode, builds Bukkit first when it is selected, and after Bukkit passes opens separate live build windows for Fabric, NeoForge, and Forge and runs them concurrently; therefore `validate-release-windows.bat --parallel` is still a clean 45-target release validation and may print `FINAL RELEASE BUILD PASS`. The main console continuously shows elapsed time, overall completed targets, each platform count, and the current Minecraft target while each worker window shows its actual build log and full logs remain in `validation-logs/`. Partial or `--fast` builds are written under `build-5.1.0/` and never count as final release validation. Root `mvn clean package` remains a valid Bukkit-only Maven build and does not build Fabric/NeoForge/Forge.
+Platform flags may be combined. `--bukkit` builds only the Bukkit/Paper artifact and its required Maven reactor dependencies. `--fast` skips `clean`, reuses existing Maven/Gradle outputs and dependency caches, and enables the Gradle build cache. `--parallel` keeps the selected build mode, builds Bukkit first when it is selected, and after Bukkit passes opens separate live build windows for Fabric, NeoForge, and Forge and runs them concurrently; therefore `validate-release-windows.bat --parallel` is still a clean 45-target release validation and may print `FINAL RELEASE BUILD PASS`. The main console continuously shows elapsed time, overall completed targets, each platform count, and the current Minecraft target while each worker window shows its actual build log and full logs remain in `validation-logs/`. Partial or `--fast` builds are written under `build-5.2.0/` and never count as final release validation. Root `mvn clean package` remains a valid Bukkit-only Maven build and does not build Fabric/NeoForge/Forge.
 If a loader worker fails with a recognized Gradle cache/workspace corruption or cache-lock signature (for example an unreadable `caches/<Gradle>/transforms/.../metadata.bin`), the validation runner does not delete the possibly locked primary cache. It retries that platform once with a fresh isolated cache under `.build-cache/gradle-recovery/`. Source compilation and ordinary dependency/build failures are never retried. A successful recovery leaves the original cache untouched so it can be cleaned manually after Explorer, antivirus, or another locking process releases it.
 
 
@@ -166,7 +171,7 @@ See `kwc-platform-fabric/README.md` for Fabric-specific build and installation n
 13. Restart the server or run `/kchat reload`. `/kchat reload` requests `bluemap reload light` after refreshing BlueMap. squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD, and Overviewer web files are re-checked directly by KWC. Re-run `/kchat reload` after a map/site generator replaces its web files.
 
 
-Existing parsed operator values are preserved, while active migration rebuilds comments and layout from the bundled presentation template selected by `ui.language`: `en-US` uses `config.yml`, and `ko-KR`, `ja-JP`, and `zh-CN` use their localized bundled templates. Unsupported/custom UI languages use the English config presentation. `<KWC data dir>/config-reference-5.1.0.yml` is an administrator-readable rendering of the current default in that same built-in language and is never used as migration input. A fixed older-version config is backed up before a real version migration. The migrated config is marked `config-version: "5.1.0_auto_migration"`; while that marker remains, startup/reload rebuilds from the selected current template and overlays the existing parsed values so new settings and current comments/layout stay synchronized. Exact `config-version: "5.1.0"` disables normal same-version automatic setting reconstruction, but changing `ui.language` can still rebuild only the comment/layout presentation while preserving every parsed value. `config-migration-5.1.0.yml` compares parsed YAML path/value semantics rather than comments, whitespace, quoting, line positions, or key order. Older generated reference/migration/upgrade files are removed automatically; internal version baselines remain for changed-default detection. Bundled UTF-8 starter filter lists `filter-lists/ko-KR.txt`, `en-US.txt`, `ja-JP.txt`, and `zh-CN.txt` are initialized once when the starter-list marker is absent, including on an existing data directory that predates this feature. Existing or disabled list files are never overwritten; after initialization, deleting a starter list is respected and it is not recreated on restart.
+Existing parsed operator values are preserved, while active migration rebuilds comments and layout from the bundled presentation template selected by `ui.language`: `en-US` uses `config.yml`, and `ko-KR`, `ja-JP`, and `zh-CN` use their localized bundled templates. Unsupported/custom UI languages use the English config presentation. `<KWC data dir>/config-reference-5.2.0.yml` is an administrator-readable rendering of the current default in that same built-in language and is never used as migration input. A fixed older-version config is backed up before a real version migration. The migrated config is marked `config-version: "5.2.0_auto_migration"`; while that marker remains, startup/reload rebuilds from the selected current template and overlays the existing parsed values so new settings and current comments/layout stay synchronized. Exact `config-version: "5.2.0"` disables normal same-version automatic setting reconstruction, but changing `ui.language` can still rebuild only the comment/layout presentation while preserving every parsed value. `config-migration-5.2.0.yml` compares parsed YAML path/value semantics rather than comments, whitespace, quoting, line positions, or key order. Older generated reference/migration/upgrade files are removed automatically; internal version baselines remain for changed-default detection. Bundled UTF-8 starter filter lists `filter-lists/ko-KR.txt`, `en-US.txt`, `ja-JP.txt`, and `zh-CN.txt` are initialized once when the starter-list marker is absent, including on an existing data directory that predates this feature. Existing or disabled list files are never overwritten; after initialization, deleting a starter list is respected and it is not recreated on restart.
 
 ## 5.0.0 KOKOTO WebChat architecture and rename
 
@@ -179,7 +184,7 @@ The previous BlueMapWebChat 4.x installation is migration input only: KOKOTO Web
 
 Platform-neutral chat/session/security models, public/DM/group persistence, signed relay, HTTP/SSE, Web Push and endpoint orchestration live in `kwc-core`. Shared BlueMap assets/config generation and Bukkit `webapp.conf` integration live in `kwc-adapter-bluemap`; the Java 25 `kwc-adapter-bluemap-api` bridge supplies Fabric/NeoForge and Forge 26.1.2/26.2 BlueMapAPI registration; squaremap web-directory/index integration lives in `kwc-adapter-squaremap`; Dynmap `webpath`/index integration lives in `kwc-adapter-dynmap`; Pl3xMap `settings.web-directory.path`/index integration lives in `kwc-adapter-pl3xmap`; LiveAtlas static-web-root/index integration lives in `kwc-adapter-liveatlas`; uNmINeD static-export/index integration lives in `kwc-adapter-unmined`; standalone assets live independently in `kwc-standalone-frontend`; loader lifecycle and Minecraft integration live in `kwc-platform-bukkit`, `kwc-platform-fabric`, `kwc-platform-neoforge`, and the exact-target `kwc-platform-forge` tree.
 
-KOKOTO WebChat 5.1.0 uses Relay Protocol v2 with explicit `groups -> peers`, one shared secret per group, independent request-by-request peer authentication, a stateless diagnostic handshake endpoint, HKDF-SHA256 directional keys, and AES-256-GCM hop-by-hop payload protection. Relay v1/BMWC endpoints are no longer interoperable and return HTTP 426; see `docs/en/SERVER_RELAY.md`.
+KOKOTO WebChat 5.2.0 uses Relay Protocol v2 with explicit `groups -> peers`, one shared secret per group, independent request-by-request peer authentication, a stateless diagnostic handshake endpoint, HKDF-SHA256 directional keys, and AES-256-GCM hop-by-hop payload protection. Relay v1/BMWC endpoints are no longer interoperable and return HTTP 426; see `docs/en/SERVER_RELAY.md`.
 
 ## 4.7.0 multi-upload and compatibility
 
@@ -191,7 +196,7 @@ The Bukkit/Spigot API baseline is lowered from 1.21 to 1.18 while the plugin rem
 
 ## 4.6.3 administrator DM and group-chat audit
 
-4.6.3 added optional read-only administrator access to group-chat message bodies. In 5.1.0, DM and group content auditing remain independent: `direct-message.admin-audit.enabled` controls DM-body audit and `group-chat.admin-audit.enabled` controls group-body audit. Both also require an exact account in `private-chat-super-admins`. Audit views are read-only and do not send, reply, hide, join, or change read state. DM audit reads are logged as `admin.dm-audit-read`; group-chat audit reads are logged as `admin.group-audit-read`. Message bodies are not copied into the audit log.
+4.6.3 added optional read-only administrator access to group-chat message bodies. In 5.2.0, DM and group content auditing remain independent: `direct-message.admin-audit.enabled` controls DM-body audit and `group-chat.admin-audit.enabled` controls group-body audit. Both also require an exact account in `private-chat-super-admins`. Audit views are read-only and do not send, reply, hide, join, or change read state. DM audit reads are logged as `admin.dm-audit-read`; group-chat audit reads are logged as `admin.group-audit-read`. Message bodies are not copied into the audit log.
 
 ```yaml
 private-chat-super-admins:
@@ -228,7 +233,7 @@ Every server participating in cross-server DM must run KOKOTO WebChat 4.6.1 or l
 
 When a relayed message contains a player UUID, that remote player is added to the existing New Message recipient search. No separate DM button is added. Guest and Discord senders without a UUID remain excluded.
 
-4.6.1 introduced optional administrator DM-body auditing. KOKOTO WebChat 5.1.0 keeps that behavior: only exact accounts listed in `private-chat-super-admins` can open DM bodies, and only when `direct-message.admin-audit.enabled: true`. The audit view is read-only and each page read is audit-logged. `group-chat.admin-audit.enabled` remains a separate group-content audit control.
+4.6.1 introduced optional administrator DM-body auditing. KOKOTO WebChat 5.2.0 keeps that behavior: only exact accounts listed in `private-chat-super-admins` can open DM bodies, and only when `direct-message.admin-audit.enabled: true`. The audit view is read-only and each page read is audit-logged. `group-chat.admin-audit.enabled` remains a separate group-content audit control.
 
 ## Deployment modes
 
@@ -338,7 +343,7 @@ Chat history uses SQLite by default in new configs (`chat.history-storage: "sqli
 
 Legacy modes remain available: use `chat.history-storage: "jsonl"` for the old `history.jsonl` file, or `"memory"` for session-only history. `chat.history-size` and `chat.history-retention-days` apply to memory, JSONL, and SQLite. Newly generated configs start with top-level `enabled: false`, so cleanup cannot run until you review retention values and set `enabled: true`. If `chat.history-sqlite-migrate-jsonl` is true, an empty SQLite DB imports the existing JSONL history once.
 
-A `/history/search` API and in-chat search modal are available for message text and sender searches, with optional date/time range, sender, source, and system/event filters. The search button is placed in the floating chat-panel area so the message input row stays compact, and the search modal follows the configured chat theme/font settings with a scrollable result list. i18n-backed system/event messages are searched and displayed in the selected web UI language when possible. Search can be disabled with `search.enabled`, and the single `search.result-limit` setting controls both the web UI result count and the `/history/search` API limit. There is no separate internal maximum: setting it to 2000 returns up to 2000 results, while setting it to 10 returns up to 10. Very large values such as 10000 or 100000 are accepted, but they can slow searches, increase response size, and add significant CPU, memory, and database load. The default is 50, and 50-200 is recommended for normal use. With `config-version: "5.1.0_auto_migration"`, missing search settings are inserted automatically on startup/reload. If same-version automatic migration has been disabled with exact `config-version: "5.1.0"`, add the missing keys manually or re-enable `_auto_migration`.
+A `/history/search` API and in-chat search modal are available for message text and sender searches, with optional date/time range, sender, source, and system/event filters. The search button is placed in the floating chat-panel area so the message input row stays compact, and the search modal follows the configured chat theme/font settings with a scrollable result list. i18n-backed system/event messages are searched and displayed in the selected web UI language when possible. Search can be disabled with `search.enabled`, and the single `search.result-limit` setting controls both the web UI result count and the `/history/search` API limit. There is no separate internal maximum: setting it to 2000 returns up to 2000 results, while setting it to 10 returns up to 10. Very large values such as 10000 or 100000 are accepted, but they can slow searches, increase response size, and add significant CPU, memory, and database load. The default is 50, and 50-200 is recommended for normal use. With `config-version: "5.2.0_auto_migration"`, missing search settings are inserted automatically on startup/reload. If same-version automatic migration has been disabled with exact `config-version: "5.2.0"`, add the missing keys manually or re-enable `_auto_migration`.
 
 
 ## Group chat rooms
@@ -361,6 +366,8 @@ Game `/w`, `/msg`, `/tell`, and compatible aliases can be mirrored into the same
 ## Custom emoji and game-side emoji plugins
 
 KOKOTO WebChat stores custom emoji files under `<KWC data dir>/emojis`. Subfolders are treated as emoji packs. In 5.1.0, pack directory names and emoji filename stems use the same token-safe canonical naming rule: whitespace/unsupported characters are removed, existing invalid names are migrated at startup, and collisions receive numeric suffixes. The resulting on-disk path directly matches `:pack/name:`.
+
+The custom-emoji picker always puts a browser-local **Recent** pseudo-folder first and keeps the 24 most recently inserted custom emojis. When `emoji.favorites.enabled: true`, **Favorites** follows it; hover a custom-emoji tile and click the small `☆`/`★` control to add or remove that emoji without inserting it. `emoji.favorites.storage: account` is the default and stores IDs in the signed-in account `user-preferences` independently of chat-history DB/JSONL selection; `browser` keeps IDs only in that browser. `emoji.favorites.max-per-account` defaults to 100; `0` means unlimited and positive values bound the retained list in either storage mode. Recent and Favorites are shared by public, DM, group, and search views. The magnifier immediately to the left of Recent opens a floating emoji-search field directly over the active public/DM/group message composer; it searches ID, name, display label, pack, and every public alias. Clicking outside the floating search field or pressing `Esc` closes search and returns to the selected folder view. Messages always insert the original `:pack/name:` token; no `:recent/...:` alias is used.
 
 By default, web-to-game chat preserves custom emoji tokens such as `:default/wave:` and `:emoji:default/wave:`. Use this default when ImageEmojis or another game-side emoji plugin renders the same token text in Minecraft chat.
 
@@ -439,7 +446,7 @@ kwc.update.notify
 - `docs/en/USER_MANUAL.md` - complete user and operator manual for all features
 - `docs/en/CONFIGURATION.md` - configuration reference
 - `docs/en/SERVER_RELAY.md` - Relay Protocol v2 public chat, cross-server DM/read receipts, trust and forwarding rules
-- `docs/en/UPGRADE.md` - consolidated upgrade and migration guide through 5.1.0
+- `docs/en/UPGRADE.md` - consolidated upgrade and migration guide through 5.2.0
 - `wiki/` - GitHub Wiki source pages using safe page names without `and` / `&`
 - `docs/en/CADDY_HTTPS.md` - HTTPS reverse proxy setup
 - `docs/en/I18N.md` - language files and fallback behavior

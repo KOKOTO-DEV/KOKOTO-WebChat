@@ -32,6 +32,7 @@ public final class FabricRelayHost implements RelayHost {
     }
 
     @Override public String defaultServerName() { return runtime.serverName(); }
+    @Override public String productVersion() { return runtime.version(); }
     @Override public WebChatLanguage language() { return runtime.langManager(); }
     @Override public void info(String message) { runtime.info(message); }
     @Override public void warn(String message) { runtime.warn(message); }
@@ -39,6 +40,15 @@ public final class FabricRelayHost implements RelayHost {
     @Override public boolean acceptPublicMessage(ChatMessage message) {
         if (runtime.webServer() == null || runtime.webServer().hasMessageId(message == null ? "" : message.id)) return false;
         runtime.webServer().acceptRelayedMessage(message); return true;
+    }
+    @Override public boolean acceptPublicReaction(RelayPublicReaction reaction) {
+        return reaction != null && runtime.webServer() != null && runtime.webServer().acceptRelayedReaction(reaction);
+    }
+    @Override public boolean acceptPublicTyping(RelayPublicTyping typing) {
+        return typing != null && runtime.webServer() != null && runtime.webServer().acceptRelayedPublicTyping(typing);
+    }
+    @Override public boolean acceptDirectTyping(RelayDirectTyping typing) {
+        return typing != null && runtime.webServer() != null && runtime.webServer().acceptRelayedDirectTyping(typing);
     }
     @Override public boolean hasDirectRelayId(String relayId) { return runtime.directMessages() != null && runtime.directMessages().hasRelayId(relayId); }
     @Override public boolean acceptDirectMessage(RelayDirectMessage message) {

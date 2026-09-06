@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * KOKOTO WebChat relay protocol v2.
+ * KOKOTO WebChat relay protocol 2.x (current revision 2.1).
  *
  * Trust is group-scoped: every group owns one shared secret and a peer list. Peer
  * entries never carry a second secret, which prevents group/peer secret drift.
@@ -40,9 +40,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * endpoints, not end-to-end opaque forwarders.
  */
 public final class ServerRelay implements AutoCloseable {
-    private static final String PROTOCOL_VERSION = "2";
-    private static final String PRODUCT_VERSION = "5.1.0";
+    /** Major wire compatibility. Keep this at 2 for all backward-compatible 2.x revisions. */
+    private static final String PROTOCOL_MAJOR = "2";
+    /** Human/diagnostic protocol revision. 2.1 adds optional reaction/typing capabilities, including origin-authoritative reaction requests/commits. */
+    private static final String PROTOCOL_REVISION = "2.1";
+    /** Existing 2.0 probe canonical embedded the then-current product version. Accept it only as a compatibility fallback. */
+    private static final String LEGACY_V20_HANDSHAKE_PRODUCT_VERSION = "5.2.0";
+    private static final String CAPABILITIES_CSV = "public,dm,read,reaction,reaction-authority,typing";
     private static final String HEADER_VERSION = "X-KWC-Relay-Version";
+    private static final String HEADER_PROTOCOL = "X-KWC-Relay-Protocol";
+    private static final String HEADER_CAPABILITIES = "X-KWC-Relay-Capabilities";
     private static final String HEADER_GROUP = "X-KWC-Relay-Group";
     private static final String HEADER_FROM = "X-KWC-Relay-From";
     private static final String HEADER_TO = "X-KWC-Relay-To";
@@ -147,16 +154,16 @@ public final class ServerRelay implements AutoCloseable {
 
     public void start(boolean emitSecurityWarnings) {
         if (config == null || !config.enabled) return;
-        for (String diagnostic : diagnostics) host.warn("Server relay v2 config: " + diagnostic + ".");
+        for (String diagnostic : diagnostics) host.warn("Server relay v" + PROTOCOL_REVISION + " config: " + diagnostic + ".");
         // Security warnings are based on the operator's configured enabled peers, not
         // on the post-validation active peer map. This guarantees that an http:// peer
         // is reported even when another validation problem makes Relay inactive.
         if (emitSecurityWarnings) logHttpPeerWarnings();
         if (!active) {
-            host.warn("Server relay v2 is enabled, but no usable relay groups/peers remain after validation.");
+            host.warn("Server relay v" + PROTOCOL_REVISION + " is enabled, but no usable relay groups/peers remain after validation.");
             return;
         }
-        host.info("Server relay protocol v2 enabled. serverId=" + serverId + ", groups=" + groupsById.size() + ", peers=" + peersById.size());
+        host.info("Server relay protocol v" + PROTOCOL_REVISION + " enabled (2.x compatible). serverId=" + serverId + ", groups=" + groupsById.size() + ", peers=" + peersById.size());
     }
 
     /**
@@ -236,6 +243,17 @@ public final class ServerRelay implements AutoCloseable {
         return sendDirectReadWithRetry(envelope, 0);
     }
 
+    public CompletableFuture<Boolean> publishDirectTyping(String targetServerId, String senderUuid, String senderUsername,
+                                                           String senderDisplayName, String targetUuid, long expiresAt) {
+        String target = normalizeId(targetServerId);
+        if (!canRouteDirectMessage(target)) return CompletableFuture.completedFuture(false);
+        DirectTypingEnvelope envelope = DirectTypingEnvelope.create(serverId, serverName, target, senderUuid, senderUsername,
+                senderDisplayName, targetUuid, expiresAt);
+        if (!envelope.valid()) return CompletableFuture.completedFuture(false);
+        markSeen("typing:" + envelope.eventId);
+        return sendDirectTypingToPeers(envelope, "", null);
+    }
+
     private CompletableFuture<Boolean> sendDirectReadWithRetry(DirectMessageReadEnvelope envelope, int attempt) {
         return sendDirectReadToPeers(envelope, "", null).thenCompose(ok -> {
             if (ok || attempt >= 2 || closed.get()) return CompletableFuture.completedFuture(ok);
@@ -273,9 +291,71 @@ public final class ServerRelay implements AutoCloseable {
         for (GroupRef group : groupsById.values()) sendPublicToGroup(envelope, group, "", false);
     }
 
+    public void publishPublicTyping(String source, String senderUuid, String senderUsername, String senderDisplayName,
+                                    String clientId, long expiresAt) {
+        if (!isEnabled()) return;
+        String normalizedSource = safe(source).trim().toLowerCase(Locale.ROOT);
+        if ((normalizedSource.equals("web") && !config.webChat) || (normalizedSource.equals("guest") && !config.guestChat)) return;
+        if (!normalizedSource.equals("web") && !normalizedSource.equals("guest")) return;
+        PublicTypingEnvelope envelope = PublicTypingEnvelope.create(serverId, serverName, normalizedSource, senderUuid,
+                senderUsername, senderDisplayName, clientId, expiresAt);
+        if (!envelope.valid()) return;
+        markSeen("typing-public:" + envelope.eventId);
+        for (GroupRef group : groupsById.values()) sendPublicTypingToGroup(envelope, group, "", false);
+    }
+
+    public String createPublicReactionEventId() {
+        return "react-" + SecurityUtil.randomToken(16);
+    }
+
+    /**
+     * Compatibility fan-out entry point. New code should commit only on the
+     * message-origin server and use {@link #publishCommittedPublicReaction}.
+     */
+    public void publishPublicReaction(String messageRelayId, String actorUuid, String reaction, boolean active) {
+        publishPublicReaction(messageRelayId, actorUuid, "", reaction, active);
+    }
+
+    public void publishPublicReaction(String messageRelayId, String actorUuid, String actorLabel, String reaction, boolean active) {
+        publishCommittedPublicReaction(createPublicReactionEventId(), messageRelayId, actorUuid, actorLabel, reaction, active);
+    }
+
+    /** Fan out a reaction state that has already been validated and stored by this message-origin server. */
+    public void publishCommittedPublicReaction(String eventId, String messageRelayId, String actorUuid,
+                                               String actorLabel, String reaction, boolean active) {
+        if (!isEnabled()) return;
+        ReactionEnvelope envelope = ReactionEnvelope.create(serverId, eventId, messageRelayId, actorUuid, actorLabel, reaction, active);
+        if (!envelope.valid()) return;
+        markSeen("reaction:" + envelope.eventId);
+        for (GroupRef group : groupsById.values()) sendReactionToGroup(envelope, group, "", false);
+    }
+
+    /**
+     * Route a reaction mutation to the authoritative message-origin server.
+     * Direct peers are used immediately; multi-hop forwarding uses the same
+     * deterministic single-next-hop rule as remote DM delivery.
+     */
+    public CompletableFuture<ReactionRequestResult> requestPublicReaction(String eventId, String targetServerId,
+                                                                           String messageRelayId, String actorUuid,
+                                                                           String actorLabel, String reaction, boolean active) {
+        return requestReaction("public", eventId, targetServerId, messageRelayId, actorUuid, actorLabel, reaction, active);
+    }
+
+    /** Route a scoped reaction mutation to one specific relay server. DM reactions use this
+     * targeted path and are never broadcast to unrelated peers. */
+    public CompletableFuture<ReactionRequestResult> requestReaction(String scope, String eventId, String targetServerId,
+                                                                     String messageRelayId, String actorUuid,
+                                                                     String actorLabel, String reaction, boolean active) {
+        if (!isEnabled()) return CompletableFuture.completedFuture(ReactionRequestResult.retryable("relay_disabled", 503));
+        ReactionRequestEnvelope envelope = ReactionRequestEnvelope.create(scope, eventId, serverId, targetServerId,
+                messageRelayId, actorUuid, actorLabel, reaction, active);
+        if (!envelope.valid()) return CompletableFuture.completedFuture(ReactionRequestResult.rejected("invalid_reaction_request", 400));
+        return sendReactionRequestToPeers(envelope, "", null);
+    }
+
     /** Legacy v1 endpoints are intentionally retired in 5.1.0. */
     public void handleLegacyV1(HttpExchange exchange) throws IOException {
-        sendJson(exchange, 426, "{\"ok\":false,\"error\":\"relay_protocol_upgrade_required\",\"protocol\":2,\"version\":\"5.1.0\"}");
+        sendJson(exchange, 426, protocolErrorJson("relay_protocol_upgrade_required"));
     }
 
     public void handleHandshake(HttpExchange exchange) throws IOException {
@@ -291,13 +371,22 @@ public final class ServerRelay implements AutoCloseable {
         String transport = normalizeTransport(header(exchange, HEADER_TRANSPORT));
         if (transport.isBlank()) { signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_transport\"}", peer, meta.nonce); return; }
         String signature = header(exchange, HEADER_SIGNATURE).toLowerCase(Locale.ROOT);
-        String canonical = handshakeCanonical(meta, transport);
-        if (signature.isBlank() || !constantTimeEquals(signature, hmacHex(peer.group.secret, canonical))) {
+        String peerRevision = normalizeProtocolRevision(header(exchange, HEADER_PROTOCOL));
+        String canonical = handshakeCanonical(meta, transport, peerRevision);
+        boolean signatureOk = !signature.isBlank() && constantTimeEquals(signature, hmacHex(peer.group.secret, canonical));
+        // Relay 2.0 probes signed a product-version-bearing canonical. Keep that exact probe compatible
+        // while product/plugin versions are no longer part of protocol compatibility from 2.1 onward.
+        if (!signatureOk && peerRevision.isBlank()) {
+            signatureOk = constantTimeEquals(signature, hmacHex(peer.group.secret, legacyV20HandshakeCanonical(meta, transport)));
+        }
+        if (!signatureOk) {
             signedResponse(exchange, 401, "{\"ok\":false,\"error\":\"bad_signature\"}", peer, meta.nonce); return;
         }
         // Stateless probe only. Relay traffic itself uses 5.0.0-style request-by-request
         // authentication/encryption; this diagnostic endpoint never creates routing state.
-        String body = "{\"ok\":true,\"protocol\":2,\"version\":\"" + PRODUCT_VERSION + "\",\"serverId\":" + JsonUtil.quote(serverId)
+        String body = "{\"ok\":true,\"protocolMajor\":2,\"protocol\":" + JsonUtil.quote(PROTOCOL_REVISION)
+                + ",\"capabilities\":[\"public\",\"dm\",\"read\",\"reaction\",\"reaction-authority\",\"typing\"]"
+                + ",\"serverVersion\":" + JsonUtil.quote(safe(host.productVersion())) + ",\"serverId\":" + JsonUtil.quote(serverId)
                 + ",\"groupId\":" + JsonUtil.quote(peer.group.id) + ",\"nonce\":" + JsonUtil.quote(meta.nonce) + "}";
         signedResponse(exchange, 200, body, peer, meta.nonce);
     }
@@ -326,8 +415,11 @@ public final class ServerRelay implements AutoCloseable {
         String payload = plaintext.substring(split + 1);
         switch (kind) {
             case "public" -> handlePublicPayload(exchange, peer, meta, payload);
+            case "reaction-request" -> handleReactionRequestPayload(exchange, peer, meta, payload);
+            case "reaction" -> handleReactionPayload(exchange, peer, meta, payload);
             case "dm" -> handleDirectPayload(exchange, peer, meta, payload);
             case "read" -> handleReadPayload(exchange, peer, meta, payload);
+            case "typing" -> handleTypingPayload(exchange, peer, meta, payload);
             default -> signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"unknown_message_kind\"}", peer, meta.nonce);
         }
     }
@@ -350,6 +442,71 @@ public final class ServerRelay implements AutoCloseable {
         if (peer.group.forwardingEnabled && isHttpsPeer(peer) && envelope.hop + 1 < config.maxHops) {
             envelope.hop++; envelope.fromServerId = serverId;
             sendPublicToGroup(envelope, peer.group, peer.id(), true);
+        }
+    }
+
+    private void handleReactionRequestPayload(HttpExchange exchange, PeerRef peer, RequestMeta meta, String payload) throws IOException {
+        ReactionRequestEnvelope envelope = ReactionRequestEnvelope.fromMap(JsonUtil.parseFlatObject(payload));
+        if (!envelope.valid() || !peer.id().equals(envelope.fromServerId) || envelope.hop < 0 || envelope.hop >= config.maxHops) {
+            signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_reaction_request\"}", peer, meta.nonce); return;
+        }
+        if (envelope.targetServerId.equals(serverId)) {
+            // Requests are deliberately idempotent at the authority. Reprocessing the
+            // same event after a lost HTTP response does not notify twice because the
+            // store only reports a change on the first application, while republishing
+            // the commit helps a recovered route converge on the authoritative state.
+            boolean accepted = host.acceptPublicReaction(envelope.toReactionRequest());
+            if (!accepted) {
+                signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"reaction_rejected\"}", peer, meta.nonce); return;
+            }
+            // Public reactions retain origin-authoritative fan-out. DM reactions are
+            // point-to-point: the requesting server applies the same committed state
+            // locally after this authenticated 200 response, so no private metadata is
+            // broadcast to unrelated relay peers.
+            if ("public".equals(envelope.scope)) {
+                publishCommittedPublicReaction(envelope.eventId, envelope.messageRelayId, envelope.actorUuid,
+                        envelope.actorLabel, envelope.reaction, envelope.active);
+            }
+            signedResponse(exchange, 200, "{\"ok\":true,\"committed\":true}", peer, meta.nonce);
+            return;
+        }
+        if (envelope.hop + 1 >= config.maxHops) {
+            signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"max_hops\"}", peer, meta.nonce); return;
+        }
+        envelope.hop++;
+        envelope.fromServerId = serverId;
+        ReactionRequestResult forwarded;
+        try {
+            forwarded = sendReactionRequestToPeers(envelope, peer.id(), peer.group)
+                    .get(Math.max(2, config.requestTimeoutSeconds + 2L), TimeUnit.SECONDS);
+        } catch (Exception ex) {
+            signedResponse(exchange, 504, "{\"ok\":false,\"error\":\"reaction_forward_timeout\"}", peer, meta.nonce); return;
+        }
+        if (forwarded != null && forwarded.committed) {
+            signedResponse(exchange, 200, "{\"ok\":true,\"committed\":true,\"forwarded\":true}", peer, meta.nonce); return;
+        }
+        int status = forwarded == null ? 502 : Math.max(400, forwarded.status);
+        String error = forwarded == null || safe(forwarded.error).isBlank() ? "reaction_route_unavailable" : forwarded.error;
+        signedResponse(exchange, status, "{\"ok\":false,\"error\":" + JsonUtil.quote(error) + "}", peer, meta.nonce);
+    }
+
+    private void handleReactionPayload(HttpExchange exchange, PeerRef peer, RequestMeta meta, String payload) throws IOException {
+        ReactionEnvelope envelope = ReactionEnvelope.fromMap(JsonUtil.parseFlatObject(payload));
+        String seenKey = "reaction:" + envelope.eventId;
+        if (!envelope.valid() || !peer.id().equals(envelope.fromServerId) || envelope.hop < 0 || envelope.hop >= config.maxHops) {
+            signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_envelope\"}", peer, meta.nonce); return;
+        }
+        if (envelope.originServerId.equals(serverId) || !markSeen(seenKey)) {
+            signedResponse(exchange, 200, "{\"ok\":true,\"duplicate\":true}", peer, meta.nonce); return;
+        }
+        if (!host.acceptPublicReaction(envelope.toReaction())) {
+            seenRelayIds.remove(seenKey);
+            signedResponse(exchange, 404, "{\"ok\":false,\"error\":\"reaction_target_unavailable\"}", peer, meta.nonce); return;
+        }
+        signedResponse(exchange, 200, "{\"ok\":true}", peer, meta.nonce);
+        if (peer.group.forwardingEnabled && isHttpsPeer(peer) && envelope.hop + 1 < config.maxHops) {
+            envelope.hop++; envelope.fromServerId = serverId;
+            sendReactionToGroup(envelope, peer.group, peer.id(), true);
         }
     }
 
@@ -416,6 +573,62 @@ public final class ServerRelay implements AutoCloseable {
         signedResponse(exchange, 200, "{\"ok\":true,\"read\":true,\"forwarded\":true}", peer, meta.nonce);
     }
 
+    private void handleTypingPayload(HttpExchange exchange, PeerRef peer, RequestMeta meta, String payload) throws IOException {
+        Map<String, String> map = JsonUtil.parseFlatObject(payload);
+        if ("public".equalsIgnoreCase(safe(map.get("scope")))) {
+            PublicTypingEnvelope envelope = PublicTypingEnvelope.fromMap(map);
+            String seenKey = "typing-public:" + envelope.eventId;
+            if (!envelope.valid() || !peer.id().equals(envelope.fromServerId) || envelope.hop < 0 || envelope.hop >= config.maxHops) {
+                signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_envelope\"}", peer, meta.nonce); return;
+            }
+            if (envelope.expiresAt <= System.currentTimeMillis() - 1000L) {
+                signedResponse(exchange, 200, "{\"ok\":true,\"expired\":true}", peer, meta.nonce); return;
+            }
+            if (envelope.originServerId.equals(serverId) || !markSeen(seenKey)) {
+                signedResponse(exchange, 200, "{\"ok\":true,\"duplicate\":true}", peer, meta.nonce); return;
+            }
+            if (!host.acceptPublicTyping(envelope.toTyping())) {
+                seenRelayIds.remove(seenKey);
+                signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"public_typing_rejected\"}", peer, meta.nonce); return;
+            }
+            signedResponse(exchange, 200, "{\"ok\":true}", peer, meta.nonce);
+            if (peer.group.forwardingEnabled && isHttpsPeer(peer) && envelope.hop + 1 < config.maxHops) {
+                envelope.hop++; envelope.fromServerId = serverId;
+                sendPublicTypingToGroup(envelope, peer.group, peer.id(), true);
+            }
+            return;
+        }
+
+        DirectTypingEnvelope envelope = DirectTypingEnvelope.fromMap(map);
+        String seenKey = "typing:" + envelope.eventId;
+        if (!envelope.valid() || !peer.id().equals(envelope.fromServerId) || envelope.hop < 0 || envelope.hop >= config.maxHops) {
+            signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_envelope\"}", peer, meta.nonce); return;
+        }
+        if (envelope.expiresAt <= System.currentTimeMillis() - 1000L) {
+            signedResponse(exchange, 200, "{\"ok\":true,\"expired\":true}", peer, meta.nonce); return;
+        }
+        if (envelope.originServerId.equals(serverId)) {
+            signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"relay_loop\"}", peer, meta.nonce); return;
+        }
+        if (envelope.targetServerId.equals(serverId)) {
+            if (!markSeen(seenKey)) { signedResponse(exchange, 200, "{\"ok\":true,\"duplicate\":true}", peer, meta.nonce); return; }
+            boolean accepted = host.acceptDirectTyping(envelope.toTyping());
+            if (!accepted) { seenRelayIds.remove(seenKey); signedResponse(exchange, 404, "{\"ok\":false,\"error\":\"dm_target_unavailable\"}", peer, meta.nonce); return; }
+            signedResponse(exchange, 200, "{\"ok\":true}", peer, meta.nonce); return;
+        }
+        if (!peer.group.forwardingEnabled || !isHttpsPeer(peer)) {
+            signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"forwarding_disabled_or_http_hop\"}", peer, meta.nonce); return;
+        }
+        if (!markSeen(seenKey)) { signedResponse(exchange, 200, "{\"ok\":true,\"duplicate\":true}", peer, meta.nonce); return; }
+        if (envelope.hop + 1 >= config.maxHops) { seenRelayIds.remove(seenKey); signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"max_hops\"}", peer, meta.nonce); return; }
+        envelope.hop++; envelope.fromServerId = serverId;
+        boolean forwarded;
+        try { forwarded = sendDirectTypingToPeers(envelope, peer.id(), peer.group).get(Math.max(2, config.requestTimeoutSeconds + 2L), TimeUnit.SECONDS); }
+        catch (Exception ex) { seenRelayIds.remove(seenKey); signedResponse(exchange, 504, "{\"ok\":false,\"error\":\"dm_typing_forward_timeout\"}", peer, meta.nonce); return; }
+        if (!forwarded) { seenRelayIds.remove(seenKey); signedResponse(exchange, 502, "{\"ok\":false,\"error\":\"dm_typing_route_unavailable\"}", peer, meta.nonce); return; }
+        signedResponse(exchange, 200, "{\"ok\":true,\"forwarded\":true}", peer, meta.nonce);
+    }
+
     // Compatibility method names retained for loader code compiled against the prior core surface.
     public void handleIncoming(HttpExchange exchange) throws IOException { handleLegacyV1(exchange); }
     public void handleIncomingDirectMessage(HttpExchange exchange) throws IOException { handleLegacyV1(exchange); }
@@ -430,6 +643,31 @@ public final class ServerRelay implements AutoCloseable {
             if (!isPeerUsable(peer, forwarding)) continue;
             sendMessage(peer, "public", payload).thenAccept(x -> {});
         }
+    }
+
+    private void sendReactionToGroup(ReactionEnvelope envelope, GroupRef group, String excludePeerId, boolean forwarding) {
+        if (!isEnabled() || envelope == null || group == null) return;
+        if (forwarding && !group.forwardingEnabled) return;
+        String payload = envelope.toJson();
+        for (PeerRef peer : group.peers.values()) {
+            if (peer.id().equals(excludePeerId) || peer.id().equals(envelope.originServerId)) continue;
+            if (!isPeerUsable(peer, forwarding)) continue;
+            sendMessage(peer, "reaction", payload).thenAccept(x -> {});
+        }
+    }
+
+    private CompletableFuture<ReactionRequestResult> sendReactionRequestToPeers(ReactionRequestEnvelope envelope,
+                                                                                 String excludePeerId,
+                                                                                 GroupRef groupConstraint) {
+        if (!isEnabled() || envelope == null) return CompletableFuture.completedFuture(ReactionRequestResult.retryable("relay_disabled", 503));
+        PeerRef direct = peersById.get(envelope.targetServerId);
+        if (direct != null && (groupConstraint == null || direct.group == groupConstraint) && !direct.id().equals(excludePeerId)) {
+            boolean forwarding = !safe(excludePeerId).isBlank() || envelope.hop > 0;
+            if (isPeerUsable(direct, forwarding)) return sendReactionRequest(direct, envelope.toJson());
+        }
+        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId);
+        if (next == null) return CompletableFuture.completedFuture(ReactionRequestResult.retryable("reaction_route_unavailable", 502));
+        return sendReactionRequest(next, envelope.toJson());
     }
 
     private CompletableFuture<DirectMessageDelivery> sendDirectToPeers(DirectMessageEnvelope envelope, String excludePeerId, GroupRef groupConstraint) {
@@ -455,6 +693,28 @@ public final class ServerRelay implements AutoCloseable {
         return next == null ? CompletableFuture.completedFuture(false) : sendRead(next, envelope.toJson());
     }
 
+    private void sendPublicTypingToGroup(PublicTypingEnvelope envelope, GroupRef group, String excludePeerId, boolean forwarding) {
+        if (!isEnabled() || envelope == null || group == null) return;
+        if (forwarding && !group.forwardingEnabled) return;
+        String payload = envelope.toJson();
+        for (PeerRef peer : group.peers.values()) {
+            if (peer.id().equals(excludePeerId) || peer.id().equals(envelope.originServerId)) continue;
+            if (!isPeerUsable(peer, forwarding)) continue;
+            sendTyping(peer, payload).thenAccept(x -> {});
+        }
+    }
+
+    private CompletableFuture<Boolean> sendDirectTypingToPeers(DirectTypingEnvelope envelope, String excludePeerId, GroupRef groupConstraint) {
+        if (!isEnabled() || envelope == null) return CompletableFuture.completedFuture(false);
+        PeerRef direct = peersById.get(envelope.targetServerId);
+        if (direct != null && (groupConstraint == null || direct.group == groupConstraint) && !direct.id().equals(excludePeerId)) {
+            boolean forwarding = !safe(excludePeerId).isBlank() || envelope.hop > 0;
+            if (isPeerUsable(direct, forwarding)) return sendTyping(direct, envelope.toJson());
+        }
+        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId);
+        return next == null ? CompletableFuture.completedFuture(false) : sendTyping(next, envelope.toJson());
+    }
+
     private PeerRef uniqueForwardingNextHop(GroupRef groupConstraint, String excludePeerId, String targetServerId) {
         PeerRef found = null;
         for (GroupRef group : groupsById.values()) {
@@ -468,6 +728,21 @@ public final class ServerRelay implements AutoCloseable {
             }
         }
         return found;
+    }
+
+    private CompletableFuture<ReactionRequestResult> sendReactionRequest(PeerRef peer, String json) {
+        return sendMessage(peer, "reaction-request", json).thenApply(result -> {
+            if (result == null) return ReactionRequestResult.retryable("reaction_transport_error", 502);
+            Map<String,String> parsed = JsonUtil.parseFlatObject(result.body);
+            boolean committed = Boolean.parseBoolean(safe(parsed.get("committed")));
+            if (result.status >= 200 && result.status < 300 && committed) return ReactionRequestResult.committed(result.status);
+            String error = safe(parsed.get("error"));
+            if (error.isBlank()) error = result.status >= 200 && result.status < 300 ? "reaction_commit_not_confirmed" : "remote_http_" + result.status;
+            boolean retryable = result.status >= 500 || result.status == 429
+                    || error.contains("route_unavailable") || error.contains("timeout")
+                    || error.contains("transport") || error.contains("relay_disabled");
+            return retryable ? ReactionRequestResult.retryable(error, result.status) : ReactionRequestResult.rejected(error, result.status);
+        });
     }
 
     private CompletableFuture<DirectMessageDelivery> sendDirect(PeerRef peer, String json) {
@@ -500,7 +775,9 @@ public final class ServerRelay implements AutoCloseable {
             HttpRequest request = HttpRequest.newBuilder(relayMessageUri(peer.peer.url))
                     .timeout(Duration.ofSeconds(config.requestTimeoutSeconds))
                     .header("Content-Type", "text/plain; charset=us-ascii")
-                    .header(HEADER_VERSION, PROTOCOL_VERSION)
+                    .header(HEADER_VERSION, PROTOCOL_MAJOR)
+                    .header(HEADER_PROTOCOL, PROTOCOL_REVISION)
+                    .header(HEADER_CAPABILITIES, CAPABILITIES_CSV)
                     .header(HEADER_GROUP, peer.group.id)
                     .header(HEADER_FROM, serverId)
                     .header(HEADER_TO, peer.id())
@@ -518,6 +795,10 @@ public final class ServerRelay implements AutoCloseable {
             recordTransportFailure(peer.id(), safe(ex.getMessage()));
             return CompletableFuture.completedFuture(null);
         }
+    }
+
+    private CompletableFuture<Boolean> sendTyping(PeerRef peer, String json) {
+        return sendMessage(peer, "typing", json).thenApply(result -> result != null && result.status >= 200 && result.status < 300);
     }
 
     private byte[] encrypt(PeerRef peer, RequestMeta meta, byte[] plaintext) throws Exception {
@@ -573,9 +854,25 @@ public final class ServerRelay implements AutoCloseable {
         return meta.groupId + "\n" + meta.fromId + "\n" + meta.toId + "\n" + meta.timestamp + "\n" + meta.nonce + "\n" + meta.iv;
     }
 
-    private String handshakeCanonical(RequestMeta meta, String transport) {
-        return "handshake\n" + PROTOCOL_VERSION + "\n" + PRODUCT_VERSION + "\n" + meta.groupId + "\n" + meta.fromId + "\n" + meta.toId
+    private String handshakeCanonical(RequestMeta meta, String transport, String peerRevision) {
+        String revision = peerRevision.isBlank() ? PROTOCOL_REVISION : peerRevision;
+        return "handshake\n" + PROTOCOL_MAJOR + "\n" + revision + "\n" + meta.groupId + "\n" + meta.fromId + "\n" + meta.toId
                 + "\n" + meta.timestamp + "\n" + meta.nonce + "\n" + transport;
+    }
+
+    private String legacyV20HandshakeCanonical(RequestMeta meta, String transport) {
+        return "handshake\n" + PROTOCOL_MAJOR + "\n" + LEGACY_V20_HANDSHAKE_PRODUCT_VERSION + "\n" + meta.groupId + "\n" + meta.fromId + "\n" + meta.toId
+                + "\n" + meta.timestamp + "\n" + meta.nonce + "\n" + transport;
+    }
+
+    private static String normalizeProtocolRevision(String value) {
+        String v = safe(value).trim();
+        return v.matches("2(?:\\.[0-9]{1,3})?") ? v : "";
+    }
+
+    private static String protocolErrorJson(String error) {
+        return "{\"ok\":false,\"error\":" + JsonUtil.quote(error) + ",\"protocolMajor\":2,\"protocol\":"
+                + JsonUtil.quote(PROTOCOL_REVISION) + "}";
     }
 
     private boolean verifyResponse(PeerRef peer, String requestNonce, HttpResponse<String> response) {
@@ -596,7 +893,7 @@ public final class ServerRelay implements AutoCloseable {
     }
 
     private RequestMeta readMeta(HttpExchange exchange, boolean requireIv) {
-        if (!PROTOCOL_VERSION.equals(header(exchange, HEADER_VERSION))) return new RequestMeta("", "", "", 0, "", "", 426, "{\"ok\":false,\"error\":\"unsupported_protocol\",\"protocol\":2,\"version\":\"5.1.0\"}");
+        if (!PROTOCOL_MAJOR.equals(header(exchange, HEADER_VERSION))) return new RequestMeta("", "", "", 0, "", "", 426, protocolErrorJson("unsupported_protocol"));
         String group = normalizeId(header(exchange, HEADER_GROUP));
         String from = normalizeId(header(exchange, HEADER_FROM));
         String to = normalizeId(header(exchange, HEADER_TO));
@@ -813,6 +1110,200 @@ public final class ServerRelay implements AutoCloseable {
         }
     }
 
+    private static final class PublicTypingEnvelope {
+        String eventId;
+        String originServerId;
+        String originServerName;
+        String fromServerId;
+        String scope;
+        String source;
+        int hop;
+        long time;
+        long expiresAt;
+        String senderUuid;
+        String senderUsername;
+        String senderDisplayName;
+        String clientId;
+
+        static PublicTypingEnvelope create(String originServerId, String originServerName, String source, String senderUuid,
+                                           String senderUsername, String senderDisplayName, String clientId, long expiresAt) {
+            PublicTypingEnvelope e = new PublicTypingEnvelope();
+            e.eventId = "typing-" + SecurityUtil.randomToken(16);
+            e.originServerId = normalizeId(originServerId);
+            e.originServerName = limitPublicTyping(safe(originServerName), 96);
+            e.fromServerId = e.originServerId;
+            e.scope = "public";
+            e.source = limitPublicTyping(safe(source).toLowerCase(Locale.ROOT), 16);
+            e.hop = 0;
+            e.time = System.currentTimeMillis();
+            e.expiresAt = Math.max(e.time + 1000L, Math.min(e.time + 10_000L, expiresAt));
+            e.senderUuid = limitPublicTyping(safe(senderUuid).trim().toLowerCase(Locale.ROOT), 80);
+            e.senderUsername = limitPublicTyping(safe(senderUsername), 64);
+            e.senderDisplayName = limitPublicTyping(safe(senderDisplayName), 128);
+            e.clientId = limitPublicTyping(safe(clientId), 96);
+            return e;
+        }
+
+        static PublicTypingEnvelope fromMap(Map<String, String> map) {
+            PublicTypingEnvelope e = new PublicTypingEnvelope();
+            e.eventId = limitPublicTyping(safe(map.get("eventId")), 180);
+            e.originServerId = normalizeId(map.get("originServerId"));
+            e.originServerName = limitPublicTyping(safe(map.get("originServerName")), 96);
+            e.fromServerId = normalizeId(map.get("fromServerId"));
+            e.scope = limitPublicTyping(safe(map.get("scope")), 16);
+            e.source = limitPublicTyping(safe(map.get("source")).toLowerCase(Locale.ROOT), 16);
+            e.hop = parsePublicTypingInt(map.get("hop"), -1);
+            e.time = parsePublicTypingLong(map.get("time"), 0L);
+            e.expiresAt = parsePublicTypingLong(map.get("expiresAt"), 0L);
+            e.senderUuid = limitPublicTyping(safe(map.get("senderUuid")).trim().toLowerCase(Locale.ROOT), 80);
+            e.senderUsername = limitPublicTyping(safe(map.get("senderUsername")), 64);
+            e.senderDisplayName = limitPublicTyping(safe(map.get("senderDisplayName")), 128);
+            e.clientId = limitPublicTyping(safe(map.get("clientId")), 96);
+            return e;
+        }
+
+        boolean valid() {
+            long now = System.currentTimeMillis();
+            return eventId.matches("[A-Za-z0-9._:-]{8,180}")
+                    && !originServerId.isBlank() && originServerId.length() <= 64
+                    && !fromServerId.isBlank() && fromServerId.length() <= 64
+                    && "public".equals(scope)
+                    && ("web".equals(source) || "guest".equals(source))
+                    && !senderUsername.isBlank() && !senderDisplayName.isBlank()
+                    && clientId.matches("[A-Za-z0-9._:-]{8,96}")
+                    && expiresAt >= time && expiresAt <= now + 15_000L
+                    && time >= now - 60_000L && time <= now + 60_000L;
+        }
+
+        RelayPublicTyping toTyping() {
+            return new RelayPublicTyping(eventId, originServerId, originServerName, source, senderUuid, senderUsername,
+                    senderDisplayName, clientId, expiresAt);
+        }
+
+        String toJson() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("eventId", eventId);
+            m.put("originServerId", originServerId);
+            m.put("originServerName", originServerName);
+            m.put("fromServerId", fromServerId);
+            m.put("scope", scope);
+            m.put("source", source);
+            m.put("hop", hop);
+            m.put("time", time);
+            m.put("expiresAt", expiresAt);
+            m.put("senderUuid", senderUuid);
+            m.put("senderUsername", senderUsername);
+            m.put("senderDisplayName", senderDisplayName);
+            m.put("clientId", clientId);
+            return JsonUtil.obj(m);
+        }
+
+        private static String limitPublicTyping(String value, int max) {
+            String text = safe(value);
+            return text.length() <= max ? text : text.substring(0, max);
+        }
+        private static int parsePublicTypingInt(String raw, int fallback) {
+            try { return Integer.parseInt(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
+        }
+        private static long parsePublicTypingLong(String raw, long fallback) {
+            try { return Long.parseLong(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
+        }
+    }
+
+    private static final class DirectTypingEnvelope {
+        String eventId;
+        String originServerId;
+        String originServerName;
+        String fromServerId;
+        String targetServerId;
+        int hop;
+        long time;
+        long expiresAt;
+        String senderUuid;
+        String senderUsername;
+        String senderDisplayName;
+        String targetUuid;
+
+        static DirectTypingEnvelope create(String originServerId, String originServerName, String targetServerId,
+                                           String senderUuid, String senderUsername, String senderDisplayName,
+                                           String targetUuid, long expiresAt) {
+            DirectTypingEnvelope e = new DirectTypingEnvelope();
+            e.eventId = "typing-" + SecurityUtil.randomToken(16);
+            e.originServerId = normalizeId(originServerId);
+            e.originServerName = limitTyping(safe(originServerName), 96);
+            e.fromServerId = e.originServerId;
+            e.targetServerId = normalizeId(targetServerId);
+            e.hop = 0;
+            e.time = System.currentTimeMillis();
+            e.expiresAt = Math.max(e.time + 1000L, Math.min(e.time + 10_000L, expiresAt));
+            e.senderUuid = limitTyping(safe(senderUuid).trim().toLowerCase(Locale.ROOT), 80);
+            e.senderUsername = limitTyping(safe(senderUsername), 64);
+            e.senderDisplayName = limitTyping(safe(senderDisplayName), 128);
+            e.targetUuid = limitTyping(safe(targetUuid).trim().toLowerCase(Locale.ROOT), 80);
+            return e;
+        }
+
+        static DirectTypingEnvelope fromMap(Map<String, String> map) {
+            DirectTypingEnvelope e = new DirectTypingEnvelope();
+            e.eventId = limitTyping(safe(map.get("eventId")), 180);
+            e.originServerId = normalizeId(map.get("originServerId"));
+            e.originServerName = limitTyping(safe(map.get("originServerName")), 96);
+            e.fromServerId = normalizeId(map.get("fromServerId"));
+            e.targetServerId = normalizeId(map.get("targetServerId"));
+            e.hop = parseTypingInt(map.get("hop"), -1);
+            e.time = parseTypingLong(map.get("time"), 0L);
+            e.expiresAt = parseTypingLong(map.get("expiresAt"), 0L);
+            e.senderUuid = limitTyping(safe(map.get("senderUuid")).trim().toLowerCase(Locale.ROOT), 80);
+            e.senderUsername = limitTyping(safe(map.get("senderUsername")), 64);
+            e.senderDisplayName = limitTyping(safe(map.get("senderDisplayName")), 128);
+            e.targetUuid = limitTyping(safe(map.get("targetUuid")).trim().toLowerCase(Locale.ROOT), 80);
+            return e;
+        }
+
+        boolean valid() {
+            long now = System.currentTimeMillis();
+            return eventId.matches("[A-Za-z0-9._:-]{8,180}")
+                    && !originServerId.isBlank() && originServerId.length() <= 64
+                    && !fromServerId.isBlank() && fromServerId.length() <= 64
+                    && !targetServerId.isBlank() && targetServerId.length() <= 64
+                    && !senderUuid.isBlank() && !targetUuid.isBlank()
+                    && expiresAt >= time && expiresAt <= now + 15_000L
+                    && time >= now - 60_000L && time <= now + 60_000L;
+        }
+
+        RelayDirectTyping toTyping() {
+            return new RelayDirectTyping(eventId, originServerId, originServerName, senderUuid, senderUsername, senderDisplayName, targetUuid, expiresAt);
+        }
+
+        String toJson() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("eventId", eventId);
+            m.put("originServerId", originServerId);
+            m.put("originServerName", originServerName);
+            m.put("fromServerId", fromServerId);
+            m.put("targetServerId", targetServerId);
+            m.put("hop", hop);
+            m.put("time", time);
+            m.put("expiresAt", expiresAt);
+            m.put("senderUuid", senderUuid);
+            m.put("senderUsername", senderUsername);
+            m.put("senderDisplayName", senderDisplayName);
+            m.put("targetUuid", targetUuid);
+            return JsonUtil.obj(m);
+        }
+
+        private static String limitTyping(String value, int max) {
+            String text = safe(value);
+            return text.length() <= max ? text : text.substring(0, max);
+        }
+        private static int parseTypingInt(String raw, int fallback) {
+            try { return Integer.parseInt(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
+        }
+        private static long parseTypingLong(String raw, long fallback) {
+            try { return Long.parseLong(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
+        }
+    }
+
     private static final class DirectMessageEnvelope {
         String relayId;
         String originServerId;
@@ -937,6 +1428,206 @@ public final class ServerRelay implements AutoCloseable {
             try { return Integer.parseInt(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
         }
 
+        private static long parseLong(String raw, long fallback) {
+            try { return Long.parseLong(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
+        }
+    }
+
+    public static final class ReactionRequestResult {
+        public final boolean committed;
+        public final boolean retryable;
+        public final String error;
+        public final int status;
+
+        private ReactionRequestResult(boolean committed, boolean retryable, String error, int status) {
+            this.committed = committed;
+            this.retryable = retryable;
+            this.error = safe(error);
+            this.status = status;
+        }
+
+        static ReactionRequestResult committed(int status) { return new ReactionRequestResult(true, false, "", status); }
+        static ReactionRequestResult retryable(String error, int status) { return new ReactionRequestResult(false, true, error, status); }
+        static ReactionRequestResult rejected(String error, int status) { return new ReactionRequestResult(false, false, error, status); }
+    }
+
+    private static final class ReactionRequestEnvelope {
+        String scope;
+        String eventId;
+        String originServerId;
+        String fromServerId;
+        String targetServerId;
+        String messageRelayId;
+        String actorUuid;
+        String actorLabel;
+        String reaction;
+        boolean active;
+        int hop;
+        long time;
+
+        static ReactionRequestEnvelope create(String scope, String eventId, String originServerId, String targetServerId,
+                                              String messageRelayId, String actorUuid, String actorLabel,
+                                              String reaction, boolean active) {
+            ReactionRequestEnvelope e = new ReactionRequestEnvelope();
+            e.scope = normalizeReactionScope(scope);
+            e.eventId = safe(eventId).isBlank() ? "react-" + SecurityUtil.randomToken(16) : safe(eventId);
+            e.originServerId = normalizeId(originServerId);
+            e.fromServerId = e.originServerId;
+            e.targetServerId = normalizeId(targetServerId);
+            e.messageRelayId = safe(messageRelayId);
+            e.actorUuid = safe(actorUuid).toLowerCase(Locale.ROOT);
+            e.actorLabel = limitReactionLabel(actorLabel);
+            e.reaction = safe(reaction);
+            e.active = active;
+            e.hop = 0;
+            e.time = System.currentTimeMillis();
+            return e;
+        }
+
+        static ReactionRequestEnvelope fromMap(Map<String,String> map) {
+            ReactionRequestEnvelope e = new ReactionRequestEnvelope();
+            e.scope = normalizeReactionScope(map.get("scope"));
+            e.eventId = safe(map.get("eventId"));
+            e.originServerId = normalizeId(map.get("originServerId"));
+            e.fromServerId = normalizeId(map.get("fromServerId"));
+            e.targetServerId = normalizeId(map.get("targetServerId"));
+            e.messageRelayId = safe(map.get("messageRelayId"));
+            e.actorUuid = safe(map.get("actorUuid")).toLowerCase(Locale.ROOT);
+            e.actorLabel = limitReactionLabel(map.get("actorLabel"));
+            e.reaction = safe(map.get("reaction"));
+            e.active = Boolean.parseBoolean(safe(map.get("active")));
+            e.hop = parseReactionInt(map.get("hop"), -1);
+            e.time = parseReactionLong(map.get("time"), System.currentTimeMillis());
+            return e;
+        }
+
+        boolean valid() {
+            return ("public".equals(scope) || "dm".equals(scope))
+                    && eventId.matches("[A-Za-z0-9._:-]{8,160}")
+                    && !originServerId.isBlank() && originServerId.length() <= 64
+                    && !fromServerId.isBlank() && fromServerId.length() <= 64
+                    && !targetServerId.isBlank() && targetServerId.length() <= 64
+                    && messageRelayId.matches("[A-Za-z0-9._:-]{8,160}")
+                    && actorUuid.matches("[A-Za-z0-9._:-]{8,96}")
+                    && !reaction.isBlank() && reaction.length() <= 240;
+        }
+
+        RelayPublicReaction toReactionRequest() {
+            return new RelayPublicReaction(eventId, messageRelayId, originServerId, targetServerId, scope,
+                    actorUuid, actorLabel, reaction, active, true);
+        }
+
+        String toJson() {
+            Map<String,Object> m = new LinkedHashMap<>();
+            if (!"public".equals(scope)) m.put("scope", scope);
+            m.put("eventId", eventId);
+            m.put("originServerId", originServerId);
+            m.put("fromServerId", fromServerId);
+            m.put("targetServerId", targetServerId);
+            m.put("messageRelayId", messageRelayId);
+            m.put("actorUuid", actorUuid);
+            if (!actorLabel.isBlank()) m.put("actorLabel", actorLabel);
+            m.put("reaction", reaction);
+            m.put("active", active);
+            m.put("hop", hop);
+            m.put("time", time);
+            return JsonUtil.obj(m);
+        }
+
+        private static String normalizeReactionScope(String raw) {
+            String value = safe(raw).trim().toLowerCase(Locale.ROOT);
+            return "dm".equals(value) ? "dm" : "public";
+        }
+        private static String limitReactionLabel(String raw) {
+            String value = safe(raw);
+            return value.length() <= 96 ? value : value.substring(0, 96);
+        }
+        private static int parseReactionInt(String raw, int fallback) {
+            try { return Integer.parseInt(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
+        }
+        private static long parseReactionLong(String raw, long fallback) {
+            try { return Long.parseLong(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
+        }
+    }
+
+    private static final class ReactionEnvelope {
+        String eventId;
+        String messageRelayId;
+        String originServerId;
+        String fromServerId;
+        String actorUuid;
+        String actorLabel;
+        String reaction;
+        boolean active;
+        int hop;
+        long time;
+
+        static ReactionEnvelope create(String serverId, String eventId, String messageRelayId, String actorUuid, String actorLabel, String reaction, boolean active) {
+            ReactionEnvelope e = new ReactionEnvelope();
+            e.eventId = safe(eventId).isBlank() ? "react-" + SecurityUtil.randomToken(16) : safe(eventId);
+            e.messageRelayId = safe(messageRelayId);
+            e.originServerId = normalizeId(serverId);
+            e.fromServerId = normalizeId(serverId);
+            e.actorUuid = safe(actorUuid).toLowerCase(Locale.ROOT);
+            e.actorLabel = limit(safe(actorLabel), 96);
+            e.reaction = safe(reaction);
+            e.active = active;
+            e.hop = 0;
+            e.time = System.currentTimeMillis();
+            return e;
+        }
+
+        static ReactionEnvelope fromMap(Map<String,String> map) {
+            ReactionEnvelope e = new ReactionEnvelope();
+            e.eventId = safe(map.get("eventId"));
+            e.messageRelayId = safe(map.get("messageRelayId"));
+            e.originServerId = normalizeId(map.get("originServerId"));
+            e.fromServerId = normalizeId(map.get("fromServerId"));
+            e.actorUuid = safe(map.get("actorUuid")).toLowerCase(Locale.ROOT);
+            e.actorLabel = limit(safe(map.get("actorLabel")), 96);
+            e.reaction = safe(map.get("reaction"));
+            e.active = Boolean.parseBoolean(safe(map.get("active")));
+            e.hop = parseInt(map.get("hop"), -1);
+            e.time = parseLong(map.get("time"), System.currentTimeMillis());
+            return e;
+        }
+
+        boolean valid() {
+            return eventId.matches("[A-Za-z0-9._:-]{8,160}")
+                    && messageRelayId.matches("[A-Za-z0-9._:-]{8,160}")
+                    && !originServerId.isBlank() && originServerId.length() <= 64
+                    && !fromServerId.isBlank() && fromServerId.length() <= 64
+                    && actorUuid.matches("[A-Za-z0-9._:-]{8,96}")
+                    && !reaction.isBlank() && reaction.length() <= 240;
+        }
+
+        RelayPublicReaction toReaction() {
+            return new RelayPublicReaction(eventId, messageRelayId, originServerId, actorUuid, actorLabel, reaction, active);
+        }
+
+        String toJson() {
+            Map<String,Object> m = new LinkedHashMap<>();
+            m.put("eventId", eventId);
+            m.put("messageRelayId", messageRelayId);
+            m.put("originServerId", originServerId);
+            m.put("fromServerId", fromServerId);
+            m.put("actorUuid", actorUuid);
+            if (!actorLabel.isBlank()) m.put("actorLabel", actorLabel);
+            m.put("reaction", reaction);
+            m.put("active", active);
+            m.put("hop", hop);
+            m.put("time", time);
+            return JsonUtil.obj(m);
+        }
+
+        private static String limit(String raw, int max) {
+            String value = safe(raw);
+            return value.length() <= max ? value : value.substring(0, max);
+        }
+
+        private static int parseInt(String raw, int fallback) {
+            try { return Integer.parseInt(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
+        }
         private static long parseLong(String raw, long fallback) {
             try { return Long.parseLong(safe(raw).trim()); } catch (NumberFormatException ex) { return fallback; }
         }

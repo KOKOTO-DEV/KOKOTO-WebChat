@@ -1,6 +1,6 @@
 # KOKOTO WebChat Upgrade Guide
 
-This document consolidates the supported upgrade notes from 4.5.5 through 5.1.0. Follow the sections in version order when skipping multiple releases.
+This document consolidates the supported upgrade notes from 4.5.5 through 5.2.0. Follow the sections in version order when skipping multiple releases.
 
 ## Upgrade from 4.5.5 to 4.6.0
 
@@ -297,7 +297,7 @@ Legacy configuration names such as `web-addon.*` and `standalone-web.*` are conv
 
 ### BMWC → KWC web-path migration
 
-Standard BMWC `/bmwc/api` and `/bmwc/chat` reverse-proxy layouts are not retained as KWC defaults. The default public prefix is now `/chat`, giving standalone `/chat` and API `/chat/api`. KWC can normalize standard BMWC URL values in migrated config, but it cannot rewrite external Caddy/nginx configuration; update those rules manually. See `CADDY_HTTPS_EN.md` and `NGINX_HTTPS_EN.md`.
+Standard BMWC `/bmwc/api` and `/bmwc/chat` reverse-proxy layouts are not retained as KWC defaults. The default public prefix is now `/chat`, giving standalone `/chat` and API `/chat/api`. KWC can normalize standard BMWC URL values in migrated config, but it cannot rewrite external Caddy/nginx configuration; update those rules manually. See `CADDY_HTTPS.md` and `NGINX_HTTPS.md`.
 
 ### Configuration changes
 
@@ -320,7 +320,7 @@ Public deployments should use HTTPS. Direct-IP operation remains supported for n
 ### Release acceptance
 
 
-> `validate-release-windows.bat` and its required PowerShell helpers are included in the source archive. The separate `KWC-5.1.0-validation-tools.zip` contains development-only browser regression tooling and is not required to run release builds.
+> `validate-release-windows.bat` and its required PowerShell helpers are included in the source archive. The separate `KWC-5.2.0-validation-tools.zip` contains development-only browser regression tooling and is not required to run release builds.
 
 A final release candidate is accepted only after `validate-release-windows.bat` finishes with `FINAL RELEASE BUILD PASS`, exactly 45 deployable JARs are collected, static/config/i18n/document checks pass, and the final candidate has been smoke-tested for login, public chat, upload/clipboard upload, DM/group, relay and enabled map/Discord integrations.
 
@@ -389,7 +389,7 @@ Custom emoji pack/item names are canonicalized in 5.1.0. Unsupported characters 
 - `/kchat reload` rechecks exposed built-in HTTP listeners and direct HTTP Relay peers and echoes applicable localized warnings to the command sender as well as the server log.
 - When `commands.broadcast-result-to-web-chat: true`, Web-command execution notices are also delivered to online Minecraft players.
 - The public, DM and group message composers use one-line `<textarea>` controls rather than ordinary text `<input>` controls, while retaining `autocomplete=off`, Enter-to-send and cursor/emoji insertion behavior. This bypasses the Android Chrome path that can show password/address/payment Autofill keyboard accessories on unrelated inputs; login/password Autofill is unchanged.
-- During the project-address transition, the updater checks canonical Modrinth `kokoto-webchat` first and falls back to `bluemapwebchat`; BMWC remains a real update source until the transition is complete, and only dual-source failure is warned.
+- Starting with 5.2.0, the updater checks only canonical Modrinth `kokoto-webchat`; legacy BMWC project addresses are no longer queried as update sources.
 - External plain-HTTP listeners and direct HTTP relay peers produce localized security warnings.
 
 ### Post-upgrade checks
@@ -400,3 +400,14 @@ Custom emoji pack/item names are canonicalized in 5.1.0. Unsupported characters 
 4. Behind a proxy, verify resolved client IPs and SSE behavior; temporarily enable `http.log-client-ip-resolution` when troubleshooting.
 5. Test public chat, DM/group Reply, custom emoji, upload access, Web Push/notifications and the map/standalone frontend actually used by the deployment.
 6. Keep the pre-upgrade backup until normal operation and retention cleanup have been observed.
+
+## Upgrade from KOKOTO WebChat 5.1.0 to 5.2.0
+
+Back up the KWC data directory before upgrading. A normal 5.1.0 → 5.2.0 migration preserves supported operator values and the existing Relay v2 groups/secrets/peers; the relay trust reset belongs only to the historical pre-5.1.0 → 5.1.0 migration. The current reference is `config-reference-5.2.0.yml`, and automatic review uses `5.2.0_auto_migration` until the administrator chooses exact `config-version: "5.2.0"`.
+
+5.2.0 introduces Relay Protocol 2.1 as a backward-compatible 2.x capability revision. Protocol major `2` remains the compatibility boundary; product version is diagnostic only. Public reactions, targeted cross-server DM reactions, and remote DM typing use 2.1 extensions, while common v2 public/DM/read behavior remains compatible with the 2.x family.
+
+New user data includes `conversation-archives.db` for private saved-conversation snapshots when `chat.conversation-archive.enabled` is true, `public-reactions.jsonl` for reaction state (historical filename; public/DM/group reactions), and `reaction-catalog.json` for the administrator-managed reaction picker catalog. Back these up with the other KWC data files. Saved snapshots do not copy attachment bytes. Administrator source deletion/room deletion and private-room lock policy take precedence over personal archives. `reaction-catalog.json` also stores the administrator reaction master enable/disable state and custom-emoji allowance; disabling the feature does not delete existing `public-reactions.jsonl` data.
+
+After upgrade, verify public/DM/group reactions, public/DM/group typing, Saved conversations and PDF/print output, private-room Settings/Invite/Leave permissions, and the 32 px public/DM/group bottom-follow behavior. If multiple relay servers are used, upgrade all peers to 5.2.0/Relay 2.1 to use reaction/typing extensions consistently; common Relay 2.x traffic remains the compatibility baseline.
+

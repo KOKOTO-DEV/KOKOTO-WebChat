@@ -1,0 +1,23 @@
+digraph G {
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans", labelloc="t"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=LR;
+  game [label="Minecraft chat", fillcolor="#DCFCE7"];
+  web [label="Signed-in / guest web chat", fillcolor="#E0F2FE"];
+  ingest [label="KWC public-chat ingress\nlength + auth/guest policy\nmessage tokens + content filter", fillcolor="#DBEAFE", penwidth=2];
+  store [label="Authoritative history\nSQLite / JSONL", fillcolor="#F1F5F9"];
+  sse [label="Browser clients\nSSE live update", fillcolor="#E0F2FE"];
+  gameout [label="Minecraft recipients", fillcolor="#DCFCE7"];
+  relay [label="Relay v2/2.1 peers\nwhen configured", fillcolor="#FCE7F3"];
+  discord [label="DiscordSRV integration\nwhen configured", fillcolor="#F3E8FF"];
+
+  game -> ingest;
+  web -> ingest;
+  ingest -> store [label="persist"];
+  store -> sse [label="chat event"];
+  store -> gameout [label="web/relay delivery"];
+  store -> relay [label="stable relay identity"];
+  store -> discord [label="origin-side integration"];
+}

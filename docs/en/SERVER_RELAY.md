@@ -1,13 +1,19 @@
-# Server Relay — Protocol v2
+# Server Relay — Protocol 2.1
+
+For reaction authority, direct/multi-hop delivery, offline outbox behavior and notification diagrams, see [REACTIONS.md](REACTIONS.md).
 
 
 ![Relay Protocol v2 request authentication and encrypted message flow](../assets/relay-v2-flow.svg)
+
+![Reaction authority routing](../assets/reaction-authority-routing.svg)
+
+[PNG](../assets/reaction-authority-routing.png) · [SVG](../assets/reaction-authority-routing.svg)
 
 [Animated GIF](../assets/relay-v2-flow.gif) · [PNG](../assets/relay-v2-flow.png) · [SVG](../assets/relay-v2-flow.svg)
 
 > **Security boundary:** Relay v2 is hop-by-hop authenticated encryption, not end-to-end encryption. A forwarding KWC server is a trusted participant.
 
-KOKOTO WebChat 5.1.0 replaces the 5.0.0 flat relay trust model with **Relay Protocol v2**. Public chat and cross-server 1:1 DM/read receipts use the same group-scoped authenticated transport. Group-chat rooms remain local and are not server-relayed.
+KOKOTO WebChat 5.2.0 uses **Relay Protocol 2.1**, a backward-compatible 2.x capability revision over the Relay v2 trust/encryption model introduced in 5.1.0. Protocol major `2` remains the wire-compatibility boundary. 2.1 advertises `public`, `dm`, `read`, `reaction`, `reaction-authority`, and `typing`; product version is diagnostic only. Public chat and cross-server 1:1 DM/read receipts share the group-scoped authenticated transport, public reactions, targeted cross-server DM reactions, and remote DM typing use 2.1 extensions, and group-chat rooms remain local.
 
 
 ## Security-sensitive upgrade scope
@@ -92,7 +98,7 @@ server-relay:
 
 Direct relay follows the 5.0.0 operating model: every `/relay/v2/message` request authenticates itself independently. The receiving server must still list the sender in the same group with the same shared secret, because that group membership and secret are required to authenticate/decrypt the request. The reverse direction is independent. `/relay/v2/handshake` is a stateless diagnostic identity/health probe only; it does not create, retain, enable, or disable a direct relay route. The optional probe request binds:
 
-- protocol `2` and product version `5.1.0`;
+- protocol major `2` plus protocol revision `2.1`; the KWC product version is not part of the modern compatibility/signature key;
 - `group-id`;
 - sender server ID;
 - target server ID;
@@ -109,7 +115,12 @@ Endpoints:
 /relay/v2/message
 ```
 
-Legacy v1 endpoints (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, `/relay/dm/read`) return **HTTP 426** and advertise protocol `2` / version `5.1.0`.
+Legacy v1 endpoints (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, `/relay/dm/read`) return **HTTP 426** and advertise protocol major `2` / revision `2.1`.
+
+
+## Protocol revision and capabilities
+
+Relay compatibility is no longer tied to the KWC product version. `X-KWC-Relay-Version: 2` identifies the compatible major wire family; `X-KWC-Relay-Protocol: 2.1` and `X-KWC-Relay-Capabilities` describe the current revision and optional extensions. A 2.0 peer can continue exchanging the common v2 public/DM/read traffic with a 2.1 peer. Reaction and typing are 2.1 extensions; lack of an extension must not make the peer itself incompatible. The handshake response reports `serverVersion` only for diagnostics.
 
 ## Message encryption and authentication
 

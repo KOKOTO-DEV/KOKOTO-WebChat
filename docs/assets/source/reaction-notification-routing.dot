@@ -1,0 +1,25 @@
+digraph G {
+  graph [bgcolor="#F7F9FC", pad="0.25", nodesep="0.45", ranksep="0.65", fontname="Noto Sans", labelloc="t"];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans", fontsize=12, color="#334155", fillcolor="#FFFFFF", margin="0.14,0.09"];
+  edge [fontname="Noto Sans", fontsize=10, color="#64748B", fontcolor="#475569", arrowsize=0.8];
+
+  rankdir=LR;
+  commit [label="Origin server commits\nreaction mutation", fillcolor="#DCFCE7", penwidth=2];
+  changed [shape=diamond, label="State changed\nand addition?", fillcolor="#FEF3C7"];
+  author [shape=diamond, label="Player author\nexists?", fillcolor="#FEF3C7"];
+  self [shape=diamond, label="Actor = author?", fillcolor="#FEF3C7"];
+  none [label="No author notification", fillcolor="#F1F5F9"];
+  game [label="Minecraft\nprivate notice", fillcolor="#DCFCE7"];
+  inbox [label="Web notification inbox\nmessage navigation", fillcolor="#E0F2FE"];
+  push [label="Web Push\nwhen configured/applicable", fillcolor="#F3E8FF"];
+
+  commit -> changed;
+  changed -> none [label="no / removal"];
+  changed -> author [label="yes"];
+  author -> none [label="no / system"];
+  author -> self [label="yes"];
+  self -> none [label="yes"];
+  self -> game [label="no"];
+  self -> inbox [label="no"];
+  self -> push [label="no"];
+}

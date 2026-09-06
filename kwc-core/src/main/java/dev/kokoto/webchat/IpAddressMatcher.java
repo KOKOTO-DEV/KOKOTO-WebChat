@@ -56,6 +56,29 @@ public final class IpAddressMatcher {
         }
     }
 
+    /**
+     * Resolves an X-Forwarded-For chain only when the direct socket peer is trusted.
+     * The chain is walked from right to left and stops at the first untrusted hop,
+     * preventing a client-supplied leftmost XFF value from overriding the real client.
+     */
+    public static String resolveForwardedClientIp(String socketIp, String xForwardedFor, List<String> trustedProxies) {
+        String actual = normalizeIpLiteral(socketIp);
+        if (!isValidAddress(actual) || !matchesAny(actual, trustedProxies)) return actual;
+        if (xForwardedFor == null || xForwardedFor.isBlank()) return actual;
+
+        String resolved = actual;
+        String currentPeer = actual;
+        String[] hops = xForwardedFor.split(",");
+        for (int i = hops.length - 1; i >= 0; i--) {
+            if (!matchesAny(currentPeer, trustedProxies)) break;
+            String candidate = normalizeIpLiteral(hops[i]);
+            if (!isValidAddress(candidate)) return actual;
+            currentPeer = candidate;
+            resolved = candidate;
+        }
+        return resolved;
+    }
+
     public static String normalizeIpLiteral(String value) {
         String s = value == null ? "" : value.trim();
         if (s.isEmpty()) return "";

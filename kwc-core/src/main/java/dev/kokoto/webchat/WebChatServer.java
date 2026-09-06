@@ -34,6 +34,9 @@ public class WebChatServer {
     private final CaptchaManager captcha;
     private final WebPushManager webPush;
     private final UserPreferenceStore userPreferences;
+    private final PublicReactionStore publicReactions;
+    private final ReactionCatalogStore reactionCatalog;
+    private final ConversationArchiveStore conversationArchives;
     private final AdminDiscordAlertManager adminDiscordAlerts;
     private final RateLimiter rateLimiter = new RateLimiter();
     private final OperationalIssueTracker operationalIssues;
@@ -50,6 +53,12 @@ public class WebChatServer {
     private final Object uploadQuotaLock = new Object();
     private final Deque<ChatMessage> history = new ArrayDeque<>();
     private final ConcurrentHashMap<String, CachedReplyTarget> transientReplyTargets = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, List<PendingRelayedReaction>> pendingRelayedReactions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, PendingReactionRequest> pendingReactionRequests = new ConcurrentHashMap<>();
+    private final Set<String> pendingReactionRequestsInFlight = ConcurrentHashMap.newKeySet();
+    private static final long PENDING_REACTION_TTL_MILLIS = 5L * 60L * 1000L;
+    private static final long PENDING_REACTION_RETRY_MILLIS = 5_000L;
+    private static final int MAX_PENDING_REACTIONS = 1000;
     private SqliteHistoryStore sqliteHistory;
     private final SseHub sseHub = new SseHub();
     private static final Pattern URL_PATTERN = Pattern.compile("(?i)((?:https?://|www\\.)[^\\s<>\"]+)");
@@ -66,6 +75,7 @@ public class WebChatServer {
 
     private CoreHttpServer httpServer;
     private ExecutorService historyExecutor;
+    private ScheduledExecutorService reactionOutboxExecutor;
     private volatile long lastSqlitePruneAt;
     private int sqliteWritesSincePrune;
     private volatile boolean running;
@@ -80,6 +90,10 @@ public class WebChatServer {
     private volatile Set<String> cachedContentFilterEmojiAliases = Set.of();
 
     private record StreamTicket(String sessionToken, String clientIp, long expiresAt) {}
+    private record PendingRelayedReaction(RelayPublicReaction reaction, long expiresAt) {}
+    private record PendingReactionRequest(String eventId, String targetServerId, String messageRelayId,
+                                          String localMessageId, String actorUuid, String actorLabel,
+                                          String reaction, boolean active, long expiresAt, long nextAttemptAt) {}
 
     public WebChatServer(WebChatHost host) {
         this.host = java.util.Objects.requireNonNull(host, "host");
@@ -89,6 +103,16 @@ public class WebChatServer {
         this.captcha = java.util.Objects.requireNonNull(host.captcha(), "captcha");
         this.webPush = new WebPushManager(java.util.Objects.requireNonNull(host.webPushHost(), "webPushHost"));
         this.userPreferences = new UserPreferenceStore(host.dataDirectory(), host.logger());
+        this.publicReactions = new PublicReactionStore(host.dataDirectory(), host.logger());
+        this.reactionCatalog = new ReactionCatalogStore(host.dataDirectory(), host.logger());
+        ConfigValues initialConfig = host.configValues();
+        this.conversationArchives = new ConversationArchiveStore(host.dataDirectory(), host.logger(),
+                initialConfig == null || initialConfig.conversationArchiveMaxArchivesPerUser <= 0
+                        ? ConversationArchiveStore.MAX_ARCHIVES_PER_USER : initialConfig.conversationArchiveMaxArchivesPerUser,
+                initialConfig == null || initialConfig.conversationArchiveMaxMessagesPerArchive <= 0
+                        ? ConversationArchiveStore.MAX_MESSAGES_PER_ARCHIVE : initialConfig.conversationArchiveMaxMessagesPerArchive,
+                initialConfig == null || initialConfig.conversationArchiveMaxMessagesPerUser <= 0
+                        ? ConversationArchiveStore.MAX_MESSAGES_PER_USER : initialConfig.conversationArchiveMaxMessagesPerUser);
         this.adminDiscordAlerts = new AdminDiscordAlertManager(host);
         this.operationalIssues = new OperationalIssueTracker(host.logger()::info, host.logger()::warn);
     }
@@ -109,7 +133,7 @@ public class WebChatServer {
         });
         if (config.standaloneWebEnabled) {
             for (String standalonePath : standaloneContextPaths(config)) {
-                httpServer.createContext(standalonePath, this::handleStandaloneWeb);
+                httpServer.createPrefixContext(standalonePath, this::handleStandaloneWeb);
             }
         }
         for (String apiPrefix : apiContextPrefixes(config)) {
@@ -120,6 +144,7 @@ public class WebChatServer {
 
         initializeHistoryStorage();
         loadPersistedHistory();
+        if (config.conversationArchiveEnabled) conversationArchives.open();
         rememberRelayedPlayerIdentitiesFromHistory();
         cleanupOldUploads();
         cleanupOldExternalMediaCache();
@@ -132,6 +157,7 @@ public class WebChatServer {
         refreshContentFilterRulesFromDisk();
 
         running = true;
+        startReactionOutbox();
         httpServer.start();
         host.logger().info("HTTP chat server started on " + config.httpHost + ":" + config.httpPort + config.pathPrefix);
         if (emitSecurityWarnings) logHttpSecurityWarning();
@@ -143,104 +169,124 @@ public class WebChatServer {
     }
 
     private void createApiContexts(String p) {
-        httpServer.createContext(p + "/config", this::handleConfig);
-        httpServer.createContext(p + "/lang", this::handleLang);
-        httpServer.createContext(p + "/history", this::handleHistory);
-        httpServer.createContext(p + "/history/around", this::handleHistoryAround);
-        httpServer.createContext(p + "/history/search", this::handleHistorySearch);
-        httpServer.createContext(p + "/pins", this::handlePins);
-        httpServer.createContext(p + "/stream", this::handleStream);
-        httpServer.createContext(p + "/stream-ticket", this::handleStreamTicket);
-        httpServer.createContext(p + "/send", this::handleSend);
+        httpServer.createExactContext(p + "/config", this::handleConfig);
+        httpServer.createExactContext(p + "/lang", this::handleLang);
+        httpServer.createExactContext(p + "/history", this::handleHistory);
+        httpServer.createExactContext(p + "/history/around", this::handleHistoryAround);
+        httpServer.createExactContext(p + "/history/search", this::handleHistorySearch);
+        httpServer.createExactContext(p + "/pins", this::handlePins);
+        httpServer.createExactContext(p + "/stream", this::handleStream);
+        httpServer.createExactContext(p + "/stream-ticket", this::handleStreamTicket);
+        httpServer.createExactContext(p + "/send", this::handleSend);
+        httpServer.createExactContext(p + "/typing", this::handlePublicTyping);
+        httpServer.createExactContext(p + "/reactions", this::handleReaction);
+        httpServer.createExactContext(p + "/reaction-catalog", this::handleReactionCatalog);
         // Relay protocol v2 endpoints. Legacy v1 paths remain registered only to return HTTP 426.
-        httpServer.createContext(p + "/relay/v2/handshake", this::handleRelayHandshake);
-        httpServer.createContext(p + "/relay/v2/message", this::handleRelayMessage);
-        httpServer.createContext(p + "/relay/handshake", this::handleRelayLegacyV1);
-        httpServer.createContext(p + "/relay/receive", this::handleRelayLegacyV1);
-        httpServer.createContext(p + "/relay/dm/receive", this::handleRelayLegacyV1);
-        httpServer.createContext(p + "/relay/dm/read", this::handleRelayLegacyV1);
-        httpServer.createContext(p + "/push/subscribe", this::handlePushSubscribe);
-        httpServer.createContext(p + "/push/unsubscribe", this::handlePushUnsubscribe);
-        httpServer.createContext(p + "/push/test", this::handlePushTest);
-        httpServer.createContext(p + "/push/sw.js", this::handlePushServiceWorker);
-        httpServer.createContext(p + "/preferences/profiles", this::handleUserProfiles);
-        httpServer.createContext(p + "/preferences/profile/save", this::handleUserProfileSave);
-        httpServer.createContext(p + "/preferences/profile/delete", this::handleUserProfileDelete);
-        httpServer.createContext(p + "/preferences/profile/export", this::handleUserProfileExport);
-        httpServer.createContext(p + "/preferences/profile/import", this::handleUserProfileImport);
-        httpServer.createContext(p + "/preferences/notifications", this::handleUserNotificationPreferences);
-        httpServer.createContext(p + "/dm/threads", this::handleDmThreads);
-        httpServer.createContext(p + "/dm/messages", this::handleDmMessages);
-        httpServer.createContext(p + "/dm/players", this::handleDmPlayers);
-        httpServer.createContext(p + "/dm/send", this::handleDmSend);
-        httpServer.createContext(p + "/dm/retry", this::handleDmRetry);
-        httpServer.createContext(p + "/dm/read", this::handleDmRead);
-        httpServer.createContext(p + "/dm/hide-message", this::handleDmHideMessage);
-        httpServer.createContext(p + "/admin/dm/messages", this::handleAdminDmMessages);
-        httpServer.createContext(p + "/group/rooms", this::handleGroupRooms);
-        httpServer.createContext(p + "/group/players", this::handleGroupPlayers);
-        httpServer.createContext(p + "/group/messages", this::handleGroupMessages);
-        httpServer.createContext(p + "/admin/group/messages", this::handleAdminGroupMessages);
-        httpServer.createContext(p + "/group/create", this::handleGroupCreate);
-        httpServer.createContext(p + "/group/join", this::handleGroupJoin);
-        httpServer.createContext(p + "/group/leave", this::handleGroupLeave);
-        httpServer.createContext(p + "/group/invite", this::handleGroupInvite);
-        httpServer.createContext(p + "/group/invites", this::handleGroupInvites);
-        httpServer.createContext(p + "/group/invite/respond", this::handleGroupInviteRespond);
-        httpServer.createContext(p + "/group/send", this::handleGroupSend);
-        httpServer.createContext(p + "/group/read", this::handleGroupRead);
-        httpServer.createContext(p + "/group/hide-message", this::handleGroupHideMessage);
-        httpServer.createContext(p + "/group/settings", this::handleGroupSettings);
-        httpServer.createContext(p + "/group/members", this::handleGroupMembers);
-        httpServer.createContext(p + "/group/kick", this::handleGroupKick);
-        httpServer.createContext(p + "/group/ban", this::handleGroupBan);
-        httpServer.createContext(p + "/group/unban", this::handleGroupUnban);
-        httpServer.createContext(p + "/group/hide-room", this::handleGroupHideRoom);
-        httpServer.createContext(p + "/group/unhide-room", this::handleGroupUnhideRoom);
-        httpServer.createContext(p + "/group/transfer-owner", this::handleGroupTransferOwner);
-        httpServer.createContext(p + "/commands", this::handleCommands);
-        httpServer.createContext(p + "/commands/run", this::handleCommandRun);
-        httpServer.createContext(p + "/upload", this::handleUpload);
-        httpServer.createContext(p + "/emojis", this::handleEmojis);
-        httpServer.createContext(p + "/e", this::handleShortEmoji);
-        httpServer.createContext(p + "/uploads", this::handleUploadedFile);
-        httpServer.createContext(p + "/fonts", this::handleFontFile);
-        httpServer.createContext(p + "/external-media", this::handleExternalMedia);
-        httpServer.createContext(p + "/captcha", this::handleCaptcha);
-        httpServer.createContext(p + "/auth/code", this::handleAuthCode);
-        httpServer.createContext(p + "/auth/status", this::handleAuthStatus);
-        httpServer.createContext(p + "/auth/login", this::handleAuthLogin);
-        httpServer.createContext(p + "/auth/set-password", this::handleSetPassword);
-        httpServer.createContext(p + "/auth/me", this::handleMe);
-        httpServer.createContext(p + "/auth/logout", this::handleLogout);
-        httpServer.createContext(p + "/admin/summary", this::handleAdminSummary);
-        httpServer.createContext(p + "/admin/online", this::handleAdminOnline);
-        httpServer.createContext(p + "/admin/sessions", this::handleAdminSessions);
-        httpServer.createContext(p + "/admin/accounts", this::handleAdminAccounts);
-        httpServer.createContext(p + "/admin/revoke", this::handleAdminRevoke);
-        httpServer.createContext(p + "/admin/mutes", this::handleAdminMutes);
-        httpServer.createContext(p + "/admin/mute", this::handleAdminMute);
-        httpServer.createContext(p + "/admin/unmute", this::handleAdminUnmute);
-        httpServer.createContext(p + "/admin/delete-message", this::handleAdminDeleteMessage);
-        httpServer.createContext(p + "/admin/delete-dm-thread", this::handleAdminDeleteDmThread);
-        httpServer.createContext(p + "/admin/delete-group-room", this::handleAdminDeleteGroupRoom);
-        httpServer.createContext(p + "/admin/session-flags", this::handleAdminSessionFlags);
-        httpServer.createContext(p + "/admin/cleanup-preview", this::handleAdminCleanupPreview);
-        httpServer.createContext(p + "/admin/pin-message", this::handleAdminPinMessage);
-        httpServer.createContext(p + "/admin/unpin-message", this::handleAdminUnpinMessage);
-        httpServer.createContext(p + "/admin/move-pin", this::handleAdminMovePin);
-        httpServer.createContext(p + "/admin/clear-history", this::handleAdminClearHistory);
-        httpServer.createContext(p + "/admin/emojis", this::handleAdminEmojis);
-        httpServer.createContext(p + "/admin/emojis/create-pack", this::handleAdminEmojiCreatePack);
-        httpServer.createContext(p + "/admin/emojis/upload", this::handleAdminEmojiUpload);
-        httpServer.createContext(p + "/admin/emojis/delete", this::handleAdminEmojiDelete);
-        httpServer.createContext(p + "/admin/emojis/rename", this::handleAdminEmojiRename);
-        httpServer.createContext(p + "/admin/emojis/move", this::handleAdminEmojiMove);
-        httpServer.createContext(p + "/admin/settings", this::handleAdminSettings);
-        httpServer.createContext(p + "/admin/filter", this::handleAdminFilter);
-        httpServer.createContext(p + "/admin/filter/rules", this::handleAdminFilterRules);
-        httpServer.createContext(p + "/admin/filter/lists", this::handleAdminFilterLists);
-        httpServer.createContext(p + "/admin/filter/test", this::handleAdminFilterTest);
+        httpServer.createExactContext(p + "/relay/v2/handshake", this::handleRelayHandshake);
+        httpServer.createExactContext(p + "/relay/v2/message", this::handleRelayMessage);
+        httpServer.createExactContext(p + "/relay/handshake", this::handleRelayLegacyV1);
+        httpServer.createExactContext(p + "/relay/receive", this::handleRelayLegacyV1);
+        httpServer.createExactContext(p + "/relay/dm/receive", this::handleRelayLegacyV1);
+        httpServer.createExactContext(p + "/relay/dm/read", this::handleRelayLegacyV1);
+        httpServer.createExactContext(p + "/push/subscribe", this::handlePushSubscribe);
+        httpServer.createExactContext(p + "/push/unsubscribe", this::handlePushUnsubscribe);
+        httpServer.createExactContext(p + "/push/test", this::handlePushTest);
+        httpServer.createExactContext(p + "/push/view-state", this::handlePushViewState);
+        httpServer.createExactContext(p + "/push/sw.js", this::handlePushServiceWorker);
+        httpServer.createExactContext(p + "/preferences/profiles", this::handleUserProfiles);
+        httpServer.createExactContext(p + "/preferences/profile/save", this::handleUserProfileSave);
+        httpServer.createExactContext(p + "/preferences/profile/delete", this::handleUserProfileDelete);
+        httpServer.createExactContext(p + "/preferences/profile/export", this::handleUserProfileExport);
+        httpServer.createExactContext(p + "/preferences/profile/import", this::handleUserProfileImport);
+        httpServer.createExactContext(p + "/preferences/notifications", this::handleUserNotificationPreferences);
+        httpServer.createExactContext(p + "/preferences/typing", this::handleUserTypingPreferences);
+        ConfigValues routeConfig = host.configValues();
+        if (routeConfig.emojiFavoritesEnabled && "account".equalsIgnoreCase(String.valueOf(routeConfig.emojiFavoritesStorage))) {
+            httpServer.createExactContext(p + "/preferences/emoji-favorites", this::handleEmojiFavorites);
+        }
+        if (host.configValues().conversationArchiveEnabled) {
+            httpServer.createExactContext(p + "/archive/list", this::handleConversationArchiveList);
+            httpServer.createExactContext(p + "/archive/get", this::handleConversationArchiveGet);
+            httpServer.createExactContext(p + "/archive/save", this::handleConversationArchiveSave);
+            httpServer.createExactContext(p + "/archive/rename", this::handleConversationArchiveRename);
+            httpServer.createExactContext(p + "/archive/delete", this::handleConversationArchiveDelete);
+        }
+        httpServer.createExactContext(p + "/dm/threads", this::handleDmThreads);
+        httpServer.createExactContext(p + "/dm/messages", this::handleDmMessages);
+        httpServer.createExactContext(p + "/dm/players", this::handleDmPlayers);
+        httpServer.createExactContext(p + "/dm/send", this::handleDmSend);
+        httpServer.createExactContext(p + "/dm/retry", this::handleDmRetry);
+        httpServer.createExactContext(p + "/dm/read", this::handleDmRead);
+        httpServer.createExactContext(p + "/dm/typing", this::handleDmTyping);
+        httpServer.createExactContext(p + "/dm/hide-message", this::handleDmHideMessage);
+        httpServer.createExactContext(p + "/admin/dm/messages", this::handleAdminDmMessages);
+        httpServer.createExactContext(p + "/group/rooms", this::handleGroupRooms);
+        httpServer.createExactContext(p + "/group/players", this::handleGroupPlayers);
+        httpServer.createExactContext(p + "/group/messages", this::handleGroupMessages);
+        httpServer.createExactContext(p + "/admin/group/messages", this::handleAdminGroupMessages);
+        httpServer.createExactContext(p + "/group/create", this::handleGroupCreate);
+        httpServer.createExactContext(p + "/group/join", this::handleGroupJoin);
+        httpServer.createExactContext(p + "/group/leave", this::handleGroupLeave);
+        httpServer.createExactContext(p + "/group/invite", this::handleGroupInvite);
+        httpServer.createExactContext(p + "/group/invites", this::handleGroupInvites);
+        httpServer.createExactContext(p + "/group/invite/respond", this::handleGroupInviteRespond);
+        httpServer.createExactContext(p + "/group/send", this::handleGroupSend);
+        httpServer.createExactContext(p + "/group/read", this::handleGroupRead);
+        httpServer.createExactContext(p + "/group/typing", this::handleGroupTyping);
+        httpServer.createExactContext(p + "/group/hide-message", this::handleGroupHideMessage);
+        httpServer.createExactContext(p + "/group/settings", this::handleGroupSettings);
+        httpServer.createExactContext(p + "/group/members", this::handleGroupMembers);
+        httpServer.createExactContext(p + "/group/kick", this::handleGroupKick);
+        httpServer.createExactContext(p + "/group/ban", this::handleGroupBan);
+        httpServer.createExactContext(p + "/group/unban", this::handleGroupUnban);
+        httpServer.createExactContext(p + "/group/hide-room", this::handleGroupHideRoom);
+        httpServer.createExactContext(p + "/group/unhide-room", this::handleGroupUnhideRoom);
+        httpServer.createExactContext(p + "/group/transfer-owner", this::handleGroupTransferOwner);
+        httpServer.createExactContext(p + "/commands", this::handleCommands);
+        httpServer.createExactContext(p + "/commands/run", this::handleCommandRun);
+        httpServer.createExactContext(p + "/upload", this::handleUpload);
+        httpServer.createExactContext(p + "/emojis", this::handleEmojis);
+        httpServer.createPrefixContext(p + "/emojis/", this::handleEmojis);
+        httpServer.createPrefixContext(p + "/e/", this::handleShortEmoji);
+        httpServer.createPrefixContext(p + "/uploads/", this::handleUploadedFile);
+        httpServer.createPrefixContext(p + "/fonts/", this::handleFontFile);
+        httpServer.createExactContext(p + "/external-media", this::handleExternalMedia);
+        httpServer.createExactContext(p + "/captcha", this::handleCaptcha);
+        httpServer.createExactContext(p + "/auth/code", this::handleAuthCode);
+        httpServer.createExactContext(p + "/auth/status", this::handleAuthStatus);
+        httpServer.createExactContext(p + "/auth/login", this::handleAuthLogin);
+        httpServer.createExactContext(p + "/auth/set-password", this::handleSetPassword);
+        httpServer.createExactContext(p + "/auth/me", this::handleMe);
+        httpServer.createExactContext(p + "/auth/logout", this::handleLogout);
+        httpServer.createExactContext(p + "/admin/summary", this::handleAdminSummary);
+        httpServer.createExactContext(p + "/admin/online", this::handleAdminOnline);
+        httpServer.createExactContext(p + "/admin/sessions", this::handleAdminSessions);
+        httpServer.createExactContext(p + "/admin/accounts", this::handleAdminAccounts);
+        httpServer.createExactContext(p + "/admin/revoke", this::handleAdminRevoke);
+        httpServer.createExactContext(p + "/admin/mutes", this::handleAdminMutes);
+        httpServer.createExactContext(p + "/admin/mute", this::handleAdminMute);
+        httpServer.createExactContext(p + "/admin/unmute", this::handleAdminUnmute);
+        httpServer.createExactContext(p + "/admin/delete-message", this::handleAdminDeleteMessage);
+        httpServer.createExactContext(p + "/admin/delete-dm-thread", this::handleAdminDeleteDmThread);
+        httpServer.createExactContext(p + "/admin/delete-group-room", this::handleAdminDeleteGroupRoom);
+        httpServer.createExactContext(p + "/admin/session-flags", this::handleAdminSessionFlags);
+        httpServer.createExactContext(p + "/admin/cleanup-preview", this::handleAdminCleanupPreview);
+        httpServer.createExactContext(p + "/admin/pin-message", this::handleAdminPinMessage);
+        httpServer.createExactContext(p + "/admin/unpin-message", this::handleAdminUnpinMessage);
+        httpServer.createExactContext(p + "/admin/move-pin", this::handleAdminMovePin);
+        httpServer.createExactContext(p + "/admin/clear-history", this::handleAdminClearHistory);
+        httpServer.createExactContext(p + "/admin/emojis", this::handleAdminEmojis);
+        httpServer.createExactContext(p + "/admin/emojis/create-pack", this::handleAdminEmojiCreatePack);
+        httpServer.createExactContext(p + "/admin/emojis/upload", this::handleAdminEmojiUpload);
+        httpServer.createExactContext(p + "/admin/emojis/delete", this::handleAdminEmojiDelete);
+        httpServer.createExactContext(p + "/admin/emojis/rename", this::handleAdminEmojiRename);
+        httpServer.createExactContext(p + "/admin/emojis/move", this::handleAdminEmojiMove);
+        httpServer.createExactContext(p + "/admin/settings", this::handleAdminSettings);
+        httpServer.createExactContext(p + "/admin/reactions", this::handleAdminReactions);
+        httpServer.createExactContext(p + "/admin/filter", this::handleAdminFilter);
+        httpServer.createExactContext(p + "/admin/filter/rules", this::handleAdminFilterRules);
+        httpServer.createExactContext(p + "/admin/filter/lists", this::handleAdminFilterLists);
+        httpServer.createExactContext(p + "/admin/filter/test", this::handleAdminFilterTest);
     }
 
     private Set<String> apiContextPrefixes(ConfigValues config) {
@@ -301,6 +347,11 @@ public class WebChatServer {
 
     public void stop() {
         savePersistedHistory();
+        if (reactionOutboxExecutor != null) {
+            reactionOutboxExecutor.shutdownNow();
+            reactionOutboxExecutor = null;
+        }
+        pendingReactionRequestsInFlight.clear();
         if (historyExecutor != null) {
             historyExecutor.shutdown();
             try {
@@ -315,6 +366,7 @@ public class WebChatServer {
             sqliteHistory.close();
             sqliteHistory = null;
         }
+        conversationArchives.close();
         running = false;
         sseHub.close();
         if (httpServer != null) {
@@ -475,22 +527,62 @@ public class WebChatServer {
             sendBytes(ex, 405, "text/plain; charset=utf-8", "method_not_allowed".getBytes(StandardCharsets.UTF_8));
             return;
         }
-        String js = "self.addEventListener('push',function(event){"
-                + "var data={};try{data=event.data?event.data.json():{};}catch(e){data={body:event.data?event.data.text():''};}"
-                + "var title=data.title||" + JsonUtil.quote(configuredWebPushTitle()) + ";"
-                + "var opts={body:data.body||'',tag:data.tag||'kwc',renotify:true,data:{url:data.url||'/'},timestamp:data.time||Date.now()};"
-                + "event.waitUntil(self.registration.showNotification(title,opts));"
-                + "});"
-                + "self.addEventListener('notificationclick',function(event){"
-                + "event.notification.close();var url=(event.notification.data&&event.notification.data.url)||'/';"
-                + "event.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(function(list){"
-                + "var target;try{target=new URL(url,self.location.origin);}catch(e){target=new URL('/',self.location.origin);}"
-                + "var samePath=null,sameOrigin=null;"
-                + "for(var i=0;i<list.length;i++){var c=list[i];try{var cu=new URL(c.url);if(cu.origin!==target.origin)continue;if(cu.pathname===target.pathname&&!samePath)samePath=c;if(!sameOrigin)sameOrigin=c;}catch(e){}}"
-                + "var chosen=samePath||sameOrigin;if(chosen){try{chosen.postMessage({source:'KWC',type:'notificationNavigate',url:target.href});}catch(e){}return chosen.focus();}"
-                + "return clients.openWindow(target.href);" 
-                + "}));"
-                + "});";
+        String js = """
+                self.addEventListener('install',function(event){self.skipWaiting();});
+                self.addEventListener('activate',function(event){event.waitUntil(clients.claim());});
+                function kwcPushTarget(data){
+                  var out={dmThreadId:'',groupRoomId:''};
+                  try{
+                    var u=new URL(data&&data.url?data.url:'/',self.location.origin);
+                    out.dmThreadId=u.searchParams.get('kwcDmThread')||'';
+                    out.groupRoomId=u.searchParams.get('kwcGroupRoom')||'';
+                  }catch(e){}
+                  return out;
+                }
+                function kwcQueryClient(client,target){
+                  return new Promise(function(resolve){
+                    var done=false;
+                    var channel=new MessageChannel();
+                    var finish=function(value){if(done)return;done=true;try{channel.port1.close();}catch(e){}resolve(value===true);};
+                    // Cross-document clients (BlueMap parent + KWC iframe) can need
+                    // more than a few hundred milliseconds to answer through a map wrapper/iframe or on throttled/mobile
+                    // browsers. Wait long enough to avoid a false push while the target
+                    // DM/group room is already open, then fail open if no client answers.
+                    var timer=setTimeout(function(){finish(false);},2000);
+                    channel.port1.onmessage=function(event){clearTimeout(timer);finish(!!(event&&event.data&&event.data.suppress));};
+                    try{
+                      client.postMessage({source:'KWC',type:'notificationSuppressionQuery',dmThreadId:target.dmThreadId,groupRoomId:target.groupRoomId},[channel.port2]);
+                    }catch(e){clearTimeout(timer);finish(false);}
+                  });
+                }
+                function kwcShouldSuppress(data){
+                  var target=kwcPushTarget(data);
+                  if(!target.dmThreadId&&!target.groupRoomId)return Promise.resolve(false);
+                  return clients.matchAll({type:'window',includeUncontrolled:true}).then(function(list){
+                    if(!list||!list.length)return false;
+                    return Promise.all(list.map(function(client){return kwcQueryClient(client,target);})).then(function(results){
+                      for(var i=0;i<results.length;i++)if(results[i])return true;
+                      return false;
+                    });
+                  }).catch(function(){return false;});
+                }
+                self.addEventListener('push',function(event){
+                  var data={};try{data=event.data?event.data.json():{};}catch(e){data={body:event.data?event.data.text():''};}
+                  var title=data.title||%s;
+                  var opts={body:data.body||'',tag:data.tag||'kwc',renotify:true,data:{url:data.url||'/'},timestamp:data.time||Date.now()};
+                  event.waitUntil(kwcShouldSuppress(data).then(function(suppress){if(suppress)return;return self.registration.showNotification(title,opts);}));
+                });
+                self.addEventListener('notificationclick',function(event){
+                  event.notification.close();var url=(event.notification.data&&event.notification.data.url)||'/';
+                  event.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(function(list){
+                    var target;try{target=new URL(url,self.location.origin);}catch(e){target=new URL('/',self.location.origin);}
+                    var samePath=null,sameOrigin=null;
+                    for(var i=0;i<list.length;i++){var c=list[i];try{var cu=new URL(c.url);if(cu.origin!==target.origin)continue;if(cu.pathname===target.pathname&&!samePath)samePath=c;if(!sameOrigin)sameOrigin=c;}catch(e){}}
+                    var chosen=samePath||sameOrigin;if(chosen){try{chosen.postMessage({source:'KWC',type:'notificationNavigate',url:target.href});}catch(e){}return chosen.focus();}
+                    return clients.openWindow(target.href);
+                  }));
+                });
+                """.formatted(JsonUtil.quote(configuredWebPushTitle()));
         ex.getResponseHeaders().set("Service-Worker-Allowed", "/");
         ex.getResponseHeaders().set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
         sendBytes(ex, 200, "application/javascript; charset=utf-8", js.getBytes(StandardCharsets.UTF_8));
@@ -517,6 +609,31 @@ public class WebChatServer {
         if (ctx == null || ctx.account == null) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"not_logged_in\"}"); return; }
         boolean ok = webPush.unsubscribe(ctx.account, body.get("endpoint"), body.get("deviceId"), Boolean.parseBoolean(String.valueOf(body.getOrDefault("clearLegacy", "false"))));
         sendJson(ex, 200, "{\"ok\":" + ok + "}");
+    }
+
+
+    private void handlePushViewState(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        Map<String, String> body = JsonUtil.parseFlatObject(JsonUtil.readBody(ex.getRequestBody()));
+        SessionContext ctx = sessionForRequest(ex, body.get("token"));
+        if (ctx == null || ctx.account == null || ctx.account.uuid == null || ctx.account.uuid.isBlank()) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"not_logged_in\"}");
+            return;
+        }
+        boolean active = Boolean.parseBoolean(String.valueOf(body.getOrDefault("active", "false")));
+        webPush.updateActiveView(
+                ctx.account,
+                body.getOrDefault("deviceId", ""),
+                body.getOrDefault("clientId", ""),
+                active,
+                body.getOrDefault("dmThreadId", ""),
+                body.getOrDefault("groupRoomId", ""));
+        broadcastNotificationViewState(ctx.account.uuid);
+        sendJson(ex, 200, "{\"ok\":true}");
     }
 
     private void handlePushTest(HttpExchange ex) throws IOException {
@@ -622,6 +739,69 @@ public class WebChatServer {
         if (!result.ok()) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error()) + "}"); return; }
         webPush.applyAccountPreferences(ctx.account, result.value());
         sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "preferences", result.value())));
+    }
+
+    private void handleUserTypingPreferences(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        ConfigValues c = host.configValues();
+        if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            Map<String,Object> out = new LinkedHashMap<>();
+            out.put("ok", true);
+            out.put("enabled", c != null && c.typingUserDisplayControl);
+            out.putAll(userPreferences.typingPreferences(ctx.account));
+            sendJson(ex, 200, JsonUtil.obj(out));
+            return;
+        }
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        if (c == null || !c.typingUserDisplayControl) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"typing_user_control_disabled\"}"); return; }
+        Map<String,String> body = parsedBody(ex);
+        UserPreferenceStore.SaveResult result = userPreferences.saveTypingPreferences(ctx.account, body);
+        if (!result.ok()) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error()) + "}"); return; }
+        sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "preferences", result.value())));
+    }
+
+    private void handleEmojiFavorites(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        ConfigValues c = host.configValues();
+        if (c == null || !c.emojiEnabled || !c.emojiFavoritesEnabled || !"account".equalsIgnoreCase(String.valueOf(c.emojiFavoritesStorage))) {
+            sendJson(ex, 404, "{\"ok\":false,\"error\":\"not_found\"}");
+            return;
+        }
+        int max = Math.max(0, c.emojiFavoritesMaxPerAccount);
+        if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            Map<String,Object> out = new LinkedHashMap<>();
+            out.put("ok", true);
+            out.put("enabled", true);
+            out.put("storage", "account");
+            out.put("maxPerAccount", max);
+            out.put("favorites", userPreferences.emojiFavorites(ctx.account, max));
+            sendJson(ex, 200, JsonUtil.obj(out));
+            return;
+        }
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        Map<String,String> body = parsedBody(ex);
+        String emojiId = stripControl(body.get("emojiId"), 240).trim();
+        boolean active = Boolean.parseBoolean(String.valueOf(body.getOrDefault("active", "false")));
+        if (emojiId.isBlank() || scanEmojiCatalog(c).items.stream().noneMatch(item -> emojiId.equals(item.id))) {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_emoji\"}");
+            return;
+        }
+        UserPreferenceStore.SaveResult result = userPreferences.saveEmojiFavorite(ctx.account, emojiId, active, max);
+        if (!result.ok()) {
+            int status = "favorite_limit_reached".equals(result.error()) ? 409 : 400;
+            sendJson(ex, status, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error()) + "}");
+            return;
+        }
+        Map<String,Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("enabled", true);
+        out.put("storage", "account");
+        out.putAll(result.value());
+        sendJson(ex, 200, JsonUtil.obj(out));
     }
 
     private String readClasspathUtf8(String resource) throws IOException {
@@ -774,7 +954,7 @@ public class WebChatServer {
     private void handleRelayLegacyV1(HttpExchange ex) throws IOException {
         ServerRelay relay = host.serverRelay();
         if (relay == null) {
-            sendJson(ex, 426, "{\"ok\":false,\"error\":\"relay_protocol_upgrade_required\",\"protocol\":2,\"version\":\"5.1.0\"}");
+            sendJson(ex, 426, "{\"ok\":false,\"error\":\"relay_protocol_upgrade_required\",\"protocol\":2,\"version\":\"5.2.0\"}");
             return;
         }
         relay.handleLegacyV1(ex);
@@ -819,7 +999,6 @@ public class WebChatServer {
         m.put("uiScrollInteractionIdleMs", c.uiScrollInteractionIdleMs);
         m.put("uiResumeRefreshEnabled", c.uiResumeRefreshEnabled);
         m.put("uiResumeRefreshMinIntervalSeconds", c.uiResumeRefreshMinIntervalSeconds);
-        m.put("uiResumeRefreshSkipUnchanged", c.uiResumeRefreshSkipUnchanged);
         m.put("uiTheme", c.uiTheme);
         m.put("uiSyncBlueMapTheme", c.uiSyncBlueMapTheme);
         m.put("uiOpacity", c.uiOpacity);
@@ -837,9 +1016,9 @@ public class WebChatServer {
         m.put("browserNotificationsNotifyGroupChat", c.browserNotificationsNotifyGroupChat);
         m.put("browserNotificationsNotifyMentions", c.browserNotificationsNotifyMentions);
         m.put("browserNotificationsNotifyReplies", c.browserNotificationsNotifyReplies);
+        m.put("browserNotificationsNotifyReactions", c.browserNotificationsNotifyReactions);
         m.put("browserNotificationsNotifySystem", c.browserNotificationsNotifySystem);
         m.put("browserNotificationsNotifyKeywords", c.browserNotificationsNotifyKeywords);
-        m.put("browserNotificationsShowMessagePreview", c.browserNotificationsShowMessagePreview);
         m.put("webPushEnabled", c.webPushEnabled);
         m.put("webPushAvailable", c.webPushEnabled && webPush.available());
         m.put("webPushVapidPublicKey", c.webPushEnabled ? webPush.vapidPublicKey() : "");
@@ -854,24 +1033,21 @@ public class WebChatServer {
         m.put("webPushNotifyGroupChat", c.webPushNotifyGroupChat);
         m.put("webPushNotifyMentions", c.webPushNotifyMentions);
         m.put("webPushNotifyReplies", c.webPushNotifyReplies);
+        m.put("webPushNotifyReactions", c.webPushNotifyReactions);
         m.put("webPushNotifySystem", c.webPushNotifySystem);
         m.put("webPushNotifyKeywords", c.webPushNotifyKeywords);
-        m.put("webPushShowMessagePreview", c.webPushShowMessagePreview);
-        m.put("playerNameMode", c.playerNameMode);
         m.put("playerNameStripColors", c.playerNameStripColors);
         m.put("webFontsEnabled", c.webFontsEnabled);
         m.put("webFontsItems", c.webFontsItems);
-        m.put("captchaMode", c.captchaMode);
         m.put("captchaEnabled", captcha.enabled(c == null ? null : c.captchaMode));
         m.put("captchaRequireOnEachMessage", c.captchaRequireOnEachMessage);
-        m.put("captchaPassValidMinutes", c.captchaPassValidMinutes);
-        m.put("maxMessageLength", c.maxMessageLength);
-        m.put("maxUrlMessageLength", c.maxUrlMessageLength);
         m.put("maxMessageInputLength", effectiveInputLengthLimit(c));
-        m.put("historySize", c.historySize);
-        m.put("historyRetentionDays", c.historyRetentionDays);
-        m.put("historyStorage", c.historyStorage);
         m.put("historyPageSize", c.historyPageSize);
+        m.put("conversationArchiveEnabled", c.conversationArchiveEnabled);
+        m.put("typingUserDisplayControl", c.typingUserDisplayControl);
+        m.put("typingOpenChatEnabled", c.typingOpenChatEnabled);
+        m.put("typingDmEnabled", c.typingDmEnabled);
+        m.put("typingGroupChatEnabled", c.typingGroupChatEnabled);
         m.put("searchEnabled", c.searchEnabled);
         m.put("searchResultLimit", c.searchResultLimit);
         m.put("directMessageEnabled", c.directMessageEnabled);
@@ -880,7 +1056,6 @@ public class WebChatServer {
         m.put("directMessageRetentionDays", c.directMessageRetentionDays);
         m.put("directMessageWebUnreadBadge", c.directMessageWebUnreadBadge);
         m.put("directMessageConfirmHide", c.directMessageConfirmHide);
-        m.put("directMessageStorage", c.directMessageStorage);
         m.put("groupChatEnabled", c.groupChatEnabled);
         m.put("groupChatAllowWebSend", c.groupChatAllowWebSend);
         m.put("groupChatRetentionDays", c.groupChatRetentionDays);
@@ -889,11 +1064,9 @@ public class WebChatServer {
         m.put("groupChatConfirmHide", c.groupChatConfirmHide);
         m.put("groupChatAllowPublicRooms", c.groupChatAllowPublicRooms);
         m.put("groupChatAllowRoomPasswords", c.groupChatAllowRoomPasswords);
-        m.put("privateChatSuperAdminConfigured", c.privateChatSuperAdmins != null && !c.privateChatSuperAdmins.isEmpty());
         m.put("language", c.uiLanguage);
         m.put("uiTimeZone", c.uiTimeZone);
         m.put("linkifyUrls", c.linkifyUrls);
-        m.put("clickableUrlsInGame", c.clickableUrlsInGame);
         m.put("imagePreviewEnabled", c.imagePreviewEnabled);
         m.put("imagePreviewMaxPerMessage", c.imagePreviewMaxPerMessage);
         m.put("imagePreviewMaxHeight", c.imagePreviewMaxHeight);
@@ -923,7 +1096,6 @@ public class WebChatServer {
         m.put("uploadAllowModerator", c.uploadAllowModerator);
         m.put("uploadAllowAdmin", c.uploadAllowAdmin);
         m.put("uploadMaxFileSizeMb", c.uploadMaxFileSizeMb);
-        m.put("uploadMaxTotalSizeMb", c.uploadMaxTotalSizeMb);
         m.put("uploadMaxFilesPerMessage", c.uploadMaxFilesPerMessage);
         m.put("uploadAllowedExtensions", c.uploadAllowedExtensions);
         m.put("uploadClipboardEnabled", c.uploadClipboardEnabled);
@@ -935,31 +1107,26 @@ public class WebChatServer {
 
         m.put("emojiEnabled", c.emojiEnabled);
         m.put("emojiShowButton", c.emojiShowButton);
+        m.put("emojiFavoritesEnabled", c.emojiFavoritesEnabled);
+        m.put("emojiFavoritesStorage", c.emojiFavoritesStorage == null ? "account" : c.emojiFavoritesStorage);
+        m.put("emojiFavoritesMaxPerAccount", c.emojiFavoritesMaxPerAccount);
         m.put("emojiRenderSizePx", c.emojiRenderSizePx);
         m.put("emojiPickerSizePx", c.emojiPickerSizePx);
         m.put("emojiMessageTokenLimit", c.emojiMessageTokenLimit);
         m.put("emojiTokenFormat", c.emojiTokenFormat == null ? "short" : c.emojiTokenFormat);
-        m.put("pinnedEnabled", c.pinnedEnabled);
-        m.put("pinnedMaxPins", c.pinnedMaxPins);
         m.put("pinnedShowToLoggedOut", c.pinnedShowToLoggedOut);
         m.put("commandsEnabled", c.commandsEnabled);
         m.put("commandsAllowAll", c.commandsAllowAll);
-        m.put("commandsMinRole", c.commandsMinRole == null ? "ADMIN" : c.commandsMinRole.name());
         m.put("commandsShowButton", c.commandsShowButton);
         m.put("commandsShowSlashPanel", c.commandsShowSlashPanel);
         m.put("commandsRunFromChatInput", c.commandsRunFromChatInput);
         m.put("commandsRequireConfirm", c.commandsRequireConfirm);
         m.put("commandsMaxLength", c.commandsMaxLength);
-        m.put("cooldownSeconds", c.guestCooldownSeconds);
         m.put("moderationEnabled", c.moderationEnabled);
         m.put("allowWebAdminPanel", c.allowWebAdminPanel);
         m.put("allowModeratorMessageDelete", c.allowModeratorMessageDelete);
         m.put("allowModeratorGuestMute", c.allowModeratorGuestMute);
         m.put("defaultMuteMinutes", c.defaultMuteMinutes);
-        m.put("discordEnabled", c.discordEnabled);
-        m.put("discordChannel", c.discordChannel);
-        m.put("discordWebToDiscord", c.discordWebToDiscord);
-        m.put("discordDiscordToWeb", c.discordDiscordToWeb);
         sendJson(ex, 200, JsonUtil.obj(m));
     }
 
@@ -980,8 +1147,11 @@ public class WebChatServer {
 
     private void handleHistory(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
+        if (!requirePublicChatReadAccess(ex)) return;
 
         ConfigValues config = host.configValues();
+        SessionContext historyViewer = sessionFromRequest(ex);
+        String historyViewerUuid = viewerUuid(historyViewer);
         Map<String, String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
         int limit = boundedInt(q.get("limit"), config.historyPageSize, 0, 0);
         String before = q.get("before");
@@ -996,6 +1166,7 @@ public class WebChatServer {
         String newestId = "";
 
         if (sqliteHistoryEnabled()) {
+            awaitPendingSqliteHistoryWrites("history");
             SqliteHistoryStore.Page dbPage = sqliteHistory.page(before, after, limit, sqliteCutoffMillis());
             page.addAll(dbPage.messages);
             hasBefore = dbPage.hasBefore;
@@ -1046,7 +1217,7 @@ public class WebChatServer {
         }
 
         List<String> items = new ArrayList<>();
-        for (ChatMessage m : page) items.add(m.toJson());
+        for (ChatMessage m : page) items.add(publicMessageJson(m, historyViewerUuid));
 
         sendJson(ex, 200, "{\"ok\":true,\"messages\":[" + String.join(",", items) + "]"
                 + ",\"hasMore\":" + hasBefore
@@ -1059,12 +1230,14 @@ public class WebChatServer {
 
     private void handleHistoryAround(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
+        if (!requirePublicChatReadAccess(ex)) return;
         if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
             return;
         }
 
         ConfigValues config = host.configValues();
+        String historyViewerUuid = viewerUuid(sessionFromRequest(ex));
         Map<String, String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
         String targetId = stripControl(q.get("id"), 96);
         if (targetId.isBlank()) {
@@ -1074,6 +1247,7 @@ public class WebChatServer {
 
         int before = boundedInt(q.get("before"), 40, 0, 200);
         int after = boundedInt(q.get("after"), 40, 0, 200);
+        if (sqliteHistoryEnabled()) awaitPendingSqliteHistoryWrites("history-around");
         AroundHistoryResult around = findHistoryAround(targetId, before, after);
         if (around.pruned && legacyJsonlHistoryEnabled()) {
             savePersistedHistory();
@@ -1085,7 +1259,7 @@ public class WebChatServer {
 
         List<String> items = new ArrayList<>();
         for (ChatMessage m : around.messages) {
-            items.add(m.toJson());
+            items.add(publicMessageJson(m, historyViewerUuid));
         }
         String oldestId = around.messages.isEmpty() ? "" : around.messages.get(0).id;
         String newestId = around.messages.isEmpty() ? "" : around.messages.get(around.messages.size() - 1).id;
@@ -1101,12 +1275,14 @@ public class WebChatServer {
 
     private void handleHistorySearch(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
+        if (!requirePublicChatReadAccess(ex)) return;
         if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
             return;
         }
 
         ConfigValues config = host.configValues();
+        String historyViewerUuid = viewerUuid(sessionFromRequest(ex));
         if (config == null || !config.searchEnabled) {
             sendJson(ex, 403, "{\"ok\":false,\"error\":\"search_disabled\"}");
             return;
@@ -1136,6 +1312,7 @@ public class WebChatServer {
 
         List<ChatMessage> result;
         if (sqliteHistoryEnabled()) {
+            awaitPendingSqliteHistoryWrites("history-search");
             long cutoff = sqliteCutoffMillis();
             result = sqliteHistory.search(query, limit, cutoff, from, to, senderFilter, sourceFilter, includeSystem);
             // SQL can search stored raw text directly. System/event messages may
@@ -1151,7 +1328,7 @@ public class WebChatServer {
         }
 
         List<String> items = new ArrayList<>();
-        for (ChatMessage msg : result) items.add(msg.toJson());
+        for (ChatMessage msg : result) items.add(publicMessageJson(msg, historyViewerUuid));
         sendJson(ex, 200, "{\"ok\":true,\"messages\":[" + String.join(",", items) + "]}");
     }
 
@@ -1208,12 +1385,6 @@ public class WebChatServer {
         if (preflight(ex)) return;
         String ip = remoteIp(ex);
         ConfigValues config = host.configValues();
-        if (!canOpenSse(ip, config)) {
-            addCors(ex);
-            addSecurityHeaders(ex);
-            sendJson(ex, 429, "{\"ok\":false,\"error\":\"too_many_stream_connections\"}");
-            return;
-        }
 
         Map<String, String> streamQuery = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
         String streamToken = "";
@@ -1236,6 +1407,16 @@ public class WebChatServer {
             sendJson(ex, 403, "{\"ok\":false,\"error\":\"not_logged_in\"}");
             return;
         }
+        if (!publicChatReadAllowed(config, streamContext)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"login_required\"}");
+            return;
+        }
+        if (!canOpenSse(ip, config)) {
+            addCors(ex);
+            addSecurityHeaders(ex);
+            sendJson(ex, 429, "{\"ok\":false,\"error\":\"too_many_stream_connections\"}");
+            return;
+        }
         String streamAccountUuid = streamContext == null || streamContext.account == null || streamContext.account.uuid == null ? "" : streamContext.account.uuid.trim().toLowerCase(Locale.ROOT);
         boolean streamPrivateChatSuperAdmin = isPrivateChatSuperAdmin(streamContext);
 
@@ -1250,6 +1431,7 @@ public class WebChatServer {
         SseConnection client = sseHub.add(ex.getResponseBody(), ip, streamAccountUuid, streamToken, streamPrivateChatSuperAdmin);
         try {
             client.sendRaw("event: ready\ndata: {\"ok\":true}\n\n");
+            if (!streamAccountUuid.isBlank()) sendNotificationViewState(client, streamAccountUuid);
             long lastPing = System.currentTimeMillis();
             while (running && client.isOpen()) {
                 try {
@@ -1376,8 +1558,1008 @@ public class WebChatServer {
         handleGuestSend(ex, body, ip, message, gameMessage, replyToId, replyToSender, replyToPreview);
     }
 
+    private void handlePublicTyping(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        ConfigValues config = host.configValues();
+        if (config == null) {
+            sendJson(ex, 503, "{\"ok\":false,\"error\":\"not_running\"}");
+            return;
+        }
+        // Public typing is its own server policy. Do not couple it to
+        // chat.broadcast-web-chat-to-web: that option controls whether accepted
+        // web-origin chat messages are echoed into web history/SSE, not whether
+        // ephemeral typing-presence events are allowed. DM/group typing already
+        // follow this independent-policy model.
+        if (!config.typingOpenChatEnabled) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"typing_disabled\"}");
+            return;
+        }
+        Map<String, String> body = JsonUtil.parseFlatObject(JsonUtil.readBody(ex.getRequestBody()));
+        String clientId = stripControl(body.get("clientId"), 96).trim();
+        if (!clientId.matches("[A-Za-z0-9._:-]{8,96}")) {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_client_id\"}");
+            return;
+        }
+        SessionContext ctx = sessionForRequest(ex, body.get("token"));
+        String source;
+        String senderUuid = "";
+        String senderUsername;
+        String senderDisplayName;
+        String limiter;
+        if (ctx != null) {
+            if (!ctx.account.role.atLeast(Role.USER)) {
+                sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}");
+                return;
+            }
+            source = "web";
+            senderUuid = stripControl(ctx.account.uuid, 80).trim().toLowerCase(Locale.ROOT);
+            senderUsername = stripControl(ctx.account.safeUsername(), 64).trim();
+            senderDisplayName = stripControl(host.displayNameForAccount(ctx.account), 128).trim();
+            limiter = "typing:public:user:" + senderUuid + ":" + clientId;
+        } else {
+            if (!config.guestEnabled) {
+                sendJson(ex, 403, "{\"ok\":false,\"error\":\"guest_disabled\"}");
+                return;
+            }
+            String ip = remoteIp(ex);
+            String guestName = sanitizeGuestName(body.get("guestName"));
+            if (guestName.isBlank()) guestName = generatedGuestNameForIp(ip);
+            if (!isGuestNameAllowed(guestName)) {
+                sendJson(ex, 403, "{\"ok\":false,\"error\":\"blocked_name\"}");
+                return;
+            }
+            if (config.moderationEnabled && host.moderation().isMuted(guestName, ip)) {
+                sendJson(ex, 403, "{\"ok\":false,\"error\":\"guest_muted\"}");
+                return;
+            }
+            source = "guest";
+            senderUsername = guestName;
+            senderDisplayName = guestName;
+            limiter = "typing:public:guest:" + ip + ":" + guestName.toLowerCase(Locale.ROOT) + ":" + clientId;
+        }
+        if (!rateLimiter.allow(limiter, 4, 20)) {
+            sendJson(ex, 200, "{\"ok\":true,\"suppressed\":true}");
+            return;
+        }
+        long expiresAt = System.currentTimeMillis() + 5000L;
+        publishPublicTypingEvent(senderUuid, senderUsername, senderDisplayName, source, clientId, "", "", expiresAt);
+        ServerRelay relay = host.serverRelay();
+        if (relay != null && relay.isEnabled()) {
+            relay.publishPublicTyping(source, senderUuid, senderUsername, senderDisplayName, clientId, expiresAt);
+        }
+        sendJson(ex, 200, "{\"ok\":true,\"expiresAt\":" + expiresAt + "}");
+    }
 
 
+    private void handleReactionCatalog(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        sendJson(ex, 200, "{\"ok\":true,\"catalog\":" + reactionCatalog.snapshot().toJson() + "}");
+    }
+
+    private void handleReaction(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        if (!rateLimiter.allow("reaction:" + ctx.account.uuid, 0, 120)) {
+            sendJson(ex, 429, "{\"ok\":false,\"error\":\"rate_limited\"}");
+            return;
+        }
+        Map<String,String> body = JsonUtil.parseFlatObject(JsonUtil.readBody(ex.getRequestBody()));
+        String contextType = stripControl(body.get("contextType"), 20).trim().toLowerCase(Locale.ROOT);
+        if ("dm".equals(contextType)) { handleDirectMessageReaction(ex, ctx, body); return; }
+        if ("group".equals(contextType)) { handleGroupMessageReaction(ex, ctx, body); return; }
+        String messageId = stripControl(body.get("messageId"), 160).trim();
+        ChatMessage target = findHistoryMessageById(messageId);
+        if (target == null || target.hidden) {
+            sendJson(ex, 404, "{\"ok\":false,\"error\":\"message_not_found\"}");
+            return;
+        }
+        String reaction = canonicalReactionValue(body.get("reaction"), true);
+        if (reaction.isBlank()) {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_reaction\"}");
+            return;
+        }
+        String key = reactionMessageKey(target);
+        String actor = String.valueOf(ctx.account.uuid == null ? "" : ctx.account.uuid).trim().toLowerCase(Locale.ROOT);
+        String actorLabel = safeReactionActorLabel(host.displayNameForAccount(ctx.account), ctx.account.safeUsername());
+        boolean active = body.containsKey("active")
+                ? Boolean.parseBoolean(String.valueOf(body.get("active")))
+                : !publicReactions.has(key, actor, reaction);
+
+        // This server's feature switch governs whether its users may start a new
+        // reaction action at all. The message-origin server performs the same
+        // validation again before an authoritative commit.
+        if (!reactionCatalog.enabled()) {
+            // Master OFF is read-only: stored chips remain visible, but neither
+            // additions nor removals may mutate reaction state until re-enabled.
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"reactions_disabled\"}");
+            return;
+        }
+        if (active && !reactionCatalog.allows(reaction)) {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"reaction_not_allowed\"}");
+            return;
+        }
+
+        ServerRelay relay = host.serverRelay();
+        String authority = reactionAuthorityServerId(target);
+        String localServerId = localReactionServerId();
+        boolean remoteAuthority = !authority.isBlank() && !localServerId.isBlank() && !authority.equalsIgnoreCase(localServerId);
+        if (remoteAuthority) {
+            if (relay == null || !relay.isEnabled() || target.relayId == null || target.relayId.isBlank()) {
+                sendJson(ex, 503, "{\"ok\":false,\"error\":\"reaction_origin_unavailable\"}");
+                return;
+            }
+            String eventId = relay.createPublicReactionEventId();
+            ServerRelay.ReactionRequestResult delivery;
+            try {
+                ConfigValues config = host.configValues();
+                long timeout = Math.max(2, (config == null ? 4 : config.serverRelayRequestTimeoutSeconds) + 2L);
+                delivery = relay.requestPublicReaction(eventId, authority, target.relayId, actor, actorLabel, reaction, active)
+                        .get(timeout, TimeUnit.SECONDS);
+            } catch (Exception exn) {
+                delivery = null;
+            }
+            if (delivery != null && delivery.committed) {
+                sendJson(ex, 200, "{\"ok\":true,\"pending\":false,\"messageId\":" + JsonUtil.quote(target.id) + "}");
+                return;
+            }
+            if (delivery == null || delivery.retryable) {
+                if (!queuePendingReactionRequest(eventId, authority, target.relayId, target.id, actor, actorLabel, reaction, active)) {
+                    sendJson(ex, 503, "{\"ok\":false,\"error\":\"reaction_outbox_full\"}");
+                    return;
+                }
+                sendJson(ex, 202, "{\"ok\":true,\"pending\":true,\"messageId\":" + JsonUtil.quote(target.id) + "}");
+                return;
+            }
+            String error = delivery.error == null || delivery.error.isBlank() ? "reaction_rejected" : delivery.error;
+            sendJson(ex, delivery.status >= 400 && delivery.status < 500 ? delivery.status : 409,
+                    "{\"ok\":false,\"error\":" + JsonUtil.quote(error) + "}");
+            return;
+        }
+
+        String eventId = relay == null ? "" : relay.createPublicReactionEventId();
+        boolean changed = publicReactions.apply(key, actor, actorLabel, reaction, active);
+        if (changed) {
+            broadcastReactionUpdate(target);
+            if (active) notifyReactionAuthor(target, actor, actorLabel, reaction);
+        }
+        if (relay != null && relay.isEnabled() && target.relayId != null && !target.relayId.isBlank()) {
+            relay.publishCommittedPublicReaction(eventId, target.relayId, actor, actorLabel, reaction, active);
+        }
+        sendJson(ex, 200, "{\"ok\":true,\"pending\":false,\"messageId\":" + JsonUtil.quote(target.id)
+                + ",\"reactions\":" + reactionSummaryJson(target, actor) + "}");
+    }
+
+    private void handleDirectMessageReaction(HttpExchange ex, SessionContext ctx, Map<String,String> body) throws IOException {
+        DirectMessageStore store = host.directMessages();
+        long messageId = parseLong(body.get("messageId"), 0L);
+        DirectMessageMessage target = store == null ? null : store.messageForUser(ctx.account.uuid, messageId);
+        if (target == null) { sendJson(ex, 404, "{\"ok\":false,\"error\":\"message_not_found\"}"); return; }
+        String requestedThread = stripControl(body.get("contextId"), 180).trim();
+        if (!requestedThread.isBlank() && !requestedThread.equals(target.threadId)) { sendJson(ex, 409, "{\"ok\":false,\"error\":\"context_mismatch\"}"); return; }
+        String reaction = canonicalReactionValue(body.get("reaction"), true);
+        if (reaction.isBlank()) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_reaction\"}"); return; }
+        if (!reactionCatalog.enabled()) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"reactions_disabled\"}"); return; }
+        if (Boolean.parseBoolean(String.valueOf(body.getOrDefault("active", "false"))) && !reactionCatalog.allows(reaction)) {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"reaction_not_allowed\"}"); return;
+        }
+        String key = directReactionMessageKey(target);
+        String actor = String.valueOf(ctx.account.uuid == null ? "" : ctx.account.uuid).trim().toLowerCase(Locale.ROOT);
+        String actorLabel = safeReactionActorLabel(host.displayNameForAccount(ctx.account), ctx.account.safeUsername());
+        boolean active = body.containsKey("active") ? Boolean.parseBoolean(String.valueOf(body.get("active"))) : !publicReactions.has(key, actor, reaction);
+        if (active && !reactionCatalog.allows(reaction)) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"reaction_not_allowed\"}"); return; }
+
+        String other = store.otherParticipantUuid(target.threadId, ctx.account.uuid);
+        RemotePlayerRef remote = RemotePlayerRef.parse(other);
+        if (remote != null && target.relayId != null && !target.relayId.isBlank()) {
+            ServerRelay relay = host.serverRelay();
+            if (relay == null || !relay.isEnabled() || !relay.canRouteDirectMessage(remote.serverId)) {
+                sendJson(ex, 503, "{\"ok\":false,\"error\":\"remote_server_unavailable\"}"); return;
+            }
+            ServerRelay.ReactionRequestResult delivery;
+            try {
+                ConfigValues config = host.configValues();
+                long timeout = Math.max(2, (config == null ? 4 : config.serverRelayRequestTimeoutSeconds) + 2L);
+                delivery = relay.requestReaction("dm", relay.createPublicReactionEventId(), remote.serverId, target.relayId,
+                        actor, actorLabel, reaction, active).get(timeout, TimeUnit.SECONDS);
+            } catch (Exception exn) { delivery = null; }
+            if (delivery == null || !delivery.committed) {
+                int status = delivery != null && delivery.status >= 400 && delivery.status < 600 ? delivery.status : 503;
+                String error = delivery == null || delivery.error == null || delivery.error.isBlank() ? "reaction_remote_failed" : delivery.error;
+                sendJson(ex, status, "{\"ok\":false,\"error\":" + JsonUtil.quote(error) + "}"); return;
+            }
+        }
+        boolean changed = publicReactions.apply(key, actor, actorLabel, reaction, active);
+        if (changed) broadcastPrivateReactionUpdate("dm", target.threadId, target.id, key);
+        sendJson(ex, 200, "{\"ok\":true,\"pending\":false,\"contextType\":\"dm\",\"contextId\":"
+                + JsonUtil.quote(target.threadId) + ",\"messageId\":" + JsonUtil.quote(String.valueOf(target.id))
+                + ",\"reactions\":" + reactionSummaryJsonForKey(key, actor) + "}");
+    }
+
+    private void handleGroupMessageReaction(HttpExchange ex, SessionContext ctx, Map<String,String> body) throws IOException {
+        GroupChatStore store = host.groupChats();
+        long messageId = parseLong(body.get("messageId"), 0L);
+        GroupMessage target = store == null ? null : store.messageForUser(ctx.account.uuid, messageId);
+        if (target == null) { sendJson(ex, 404, "{\"ok\":false,\"error\":\"message_not_found\"}"); return; }
+        if (target.eventType != null && !target.eventType.isBlank()) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"reaction_not_supported\"}"); return; }
+        String requestedRoom = stripControl(body.get("contextId"), 140).trim();
+        if (!requestedRoom.isBlank() && !requestedRoom.equals(target.roomId)) { sendJson(ex, 409, "{\"ok\":false,\"error\":\"context_mismatch\"}"); return; }
+        String reaction = canonicalReactionValue(body.get("reaction"), true);
+        if (reaction.isBlank()) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_reaction\"}"); return; }
+        if (!reactionCatalog.enabled()) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"reactions_disabled\"}"); return; }
+        String key = groupReactionMessageKey(target);
+        String actor = String.valueOf(ctx.account.uuid == null ? "" : ctx.account.uuid).trim().toLowerCase(Locale.ROOT);
+        String actorLabel = safeReactionActorLabel(host.displayNameForAccount(ctx.account), ctx.account.safeUsername());
+        boolean active = body.containsKey("active") ? Boolean.parseBoolean(String.valueOf(body.get("active"))) : !publicReactions.has(key, actor, reaction);
+        if (active && !reactionCatalog.allows(reaction)) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"reaction_not_allowed\"}"); return; }
+        boolean changed = publicReactions.apply(key, actor, actorLabel, reaction, active);
+        if (changed) broadcastPrivateReactionUpdate("group", target.roomId, target.id, key);
+        sendJson(ex, 200, "{\"ok\":true,\"pending\":false,\"contextType\":\"group\",\"contextId\":"
+                + JsonUtil.quote(target.roomId) + ",\"messageId\":" + JsonUtil.quote(String.valueOf(target.id))
+                + ",\"reactions\":" + reactionSummaryJsonForKey(key, actor) + "}");
+    }
+
+    private boolean acceptRelayedDirectMessageReactionRequest(RelayPublicReaction reaction) {
+        if (reaction == null || !reaction.request) return false;
+        String relayId = stripControl(reaction.messageRelayId, 180).trim();
+        String rawActor = stripControl(reaction.actorUuid, 96).trim().toLowerCase(Locale.ROOT);
+        String value = canonicalReactionValue(reaction.reaction, false);
+        String originServer = RemotePlayerRef.normalizeServerId(stripControl(reaction.originServerId, 64));
+        if (relayId.isBlank() || rawActor.isBlank() || value.isBlank() || originServer.isBlank()) return false;
+        if (!reactionCatalog.enabled() || (reaction.active && !reactionCatalog.allows(value))) return false;
+        DirectMessageStore store = host.directMessages();
+        if (store == null || !store.available()) return false;
+        String participantKey = RemotePlayerRef.key(originServer, rawActor);
+        DirectMessageMessage target = store.messageForRelayParticipant(participantKey, relayId);
+        if (target == null) return false;
+        String actorLabel = safeReactionActorLabel(reaction.actorLabel, "");
+        String key = directReactionMessageKey(target);
+        boolean changed = publicReactions.apply(key, participantKey, actorLabel, value, reaction.active);
+        if (changed) broadcastPrivateReactionUpdate("dm", target.threadId, target.id, key);
+        return true;
+    }
+
+    public boolean acceptRelayedReaction(RelayPublicReaction reaction) {
+        if (reaction == null) return false;
+        if ("dm".equalsIgnoreCase(reaction.scope)) return reaction.request && acceptRelayedDirectMessageReactionRequest(reaction);
+        if (reaction.request) return acceptRelayedReactionRequest(reaction);
+
+        String relayId = stripControl(reaction.messageRelayId, 160).trim();
+        String actor = stripControl(reaction.actorUuid, 96).trim().toLowerCase(Locale.ROOT);
+        String value = canonicalReactionValue(reaction.reaction, false);
+        if (relayId.isBlank() || actor.isBlank() || value.isBlank()) return false;
+        ChatMessage target = findHistoryMessageById(relayId);
+        if (target == null) {
+            queuePendingRelayedReaction(new RelayPublicReaction(reaction.eventId, relayId, reaction.originServerId,
+                    actor, safeReactionActorLabel(reaction.actorLabel, ""), value, reaction.active));
+            return true;
+        }
+        if (target.hidden || !reactionCommitMatchesAuthority(target, reaction.originServerId)) return true;
+        boolean changed = publicReactions.apply(reactionMessageKey(target), actor,
+                safeReactionActorLabel(reaction.actorLabel, ""), value, reaction.active);
+        if (changed) broadcastReactionUpdate(target);
+        return true;
+    }
+
+    private boolean acceptRelayedReactionRequest(RelayPublicReaction reaction) {
+        String relayId = stripControl(reaction.messageRelayId, 160).trim();
+        String actor = stripControl(reaction.actorUuid, 96).trim().toLowerCase(Locale.ROOT);
+        String value = canonicalReactionValue(reaction.reaction, false);
+        if (relayId.isBlank() || actor.isBlank() || value.isBlank()) return false;
+        ChatMessage target = findHistoryMessageById(relayId);
+        if (target == null || target.hidden || !isLocalReactionAuthority(target)) return false;
+        // The origin/authority owns policy as well as state. Master OFF keeps
+        // existing records readable but rejects every new mutation, including
+        // removals submitted through a stale/malicious remote client.
+        if (!reactionCatalog.enabled()) return false;
+        if (reaction.active && !reactionCatalog.allows(value)) return false;
+        boolean changed = publicReactions.apply(reactionMessageKey(target), actor,
+                safeReactionActorLabel(reaction.actorLabel, ""), value, reaction.active);
+        if (changed) {
+            broadcastReactionUpdate(target);
+            if (reaction.active) notifyReactionAuthor(target, actor, safeReactionActorLabel(reaction.actorLabel, ""), value);
+        }
+        return true;
+    }
+
+    private String localReactionServerId() {
+        ServerRelay relay = host.serverRelay();
+        if (relay != null && relay.serverId() != null && !relay.serverId().isBlank()) return relay.serverId().trim();
+        ConfigValues config = host.configValues();
+        return stripControl(config == null ? "" : config.serverRelayServerId, 64).trim();
+    }
+
+    private String reactionAuthorityServerId(ChatMessage target) {
+        String origin = stripControl(target == null ? "" : target.originServerId, 64).trim();
+        return origin.isBlank() ? localReactionServerId() : origin;
+    }
+
+    private boolean isLocalReactionAuthority(ChatMessage target) {
+        String origin = stripControl(target == null ? "" : target.originServerId, 64).trim();
+        if (origin.isBlank()) return true;
+        String local = localReactionServerId();
+        return !local.isBlank() && origin.equalsIgnoreCase(local);
+    }
+
+    private boolean reactionCommitMatchesAuthority(ChatMessage target, String commitOriginServerId) {
+        String expected = reactionAuthorityServerId(target);
+        String actual = stripControl(commitOriginServerId, 64).trim();
+        return expected.isBlank() || (!actual.isBlank() && expected.equalsIgnoreCase(actual));
+    }
+
+    private void queuePendingRelayedReaction(RelayPublicReaction reaction) {
+        long now = System.currentTimeMillis();
+        cleanupPendingRelayedReactions(now);
+        int count = pendingRelayedReactions.values().stream().mapToInt(List::size).sum();
+        if (count >= MAX_PENDING_REACTIONS) return;
+        pendingRelayedReactions.compute(reaction.messageRelayId, (key, old) -> {
+            List<PendingRelayedReaction> next = old == null ? new ArrayList<>() : new ArrayList<>(old);
+            next.add(new PendingRelayedReaction(reaction, now + PENDING_REACTION_TTL_MILLIS));
+            return next;
+        });
+    }
+
+    private void cleanupPendingRelayedReactions(long now) {
+        for (Map.Entry<String,List<PendingRelayedReaction>> e : pendingRelayedReactions.entrySet()) {
+            List<PendingRelayedReaction> keep = new ArrayList<>();
+            for (PendingRelayedReaction p : e.getValue()) if (p != null && p.expiresAt() > now) keep.add(p);
+            if (keep.isEmpty()) pendingRelayedReactions.remove(e.getKey(), e.getValue());
+            else if (keep.size() != e.getValue().size()) pendingRelayedReactions.replace(e.getKey(), e.getValue(), keep);
+        }
+    }
+
+    private void applyPendingRelayedReactions(ChatMessage msg) {
+        if (msg == null) return;
+        String key = reactionMessageKey(msg);
+        if (key.isBlank()) return;
+        List<PendingRelayedReaction> pending = pendingRelayedReactions.remove(key);
+        if (pending == null || pending.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        boolean changed = false;
+        for (PendingRelayedReaction p : pending) {
+            if (p == null || p.expiresAt() <= now || p.reaction() == null) continue;
+            RelayPublicReaction r = p.reaction();
+            if (!reactionCommitMatchesAuthority(msg, r.originServerId)) continue;
+            changed |= publicReactions.apply(key, r.actorUuid, safeReactionActorLabel(r.actorLabel, ""), r.reaction, r.active);
+        }
+        if (changed) broadcastReactionUpdate(msg);
+    }
+
+    private void startReactionOutbox() {
+        if (reactionOutboxExecutor != null) return;
+        reactionOutboxExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "KOKOTO WebChat-ReactionOutbox");
+            t.setDaemon(true);
+            return t;
+        });
+        reactionOutboxExecutor.scheduleWithFixedDelay(() -> {
+            try { retryPendingReactionRequests(); }
+            catch (Throwable t) { host.logger().warn("Reaction outbox retry failed: " + String.valueOf(t.getMessage())); }
+        }, 2L, 2L, TimeUnit.SECONDS);
+    }
+
+    private String pendingReactionRequestKey(String targetServerId, String messageRelayId, String actorUuid, String reaction) {
+        return String.valueOf(targetServerId == null ? "" : targetServerId).trim().toLowerCase(Locale.ROOT) + "\u0000"
+                + String.valueOf(messageRelayId == null ? "" : messageRelayId).trim() + "\u0000"
+                + String.valueOf(actorUuid == null ? "" : actorUuid).trim().toLowerCase(Locale.ROOT) + "\u0000"
+                + String.valueOf(reaction == null ? "" : reaction);
+    }
+
+    private boolean queuePendingReactionRequest(String eventId, String targetServerId, String messageRelayId,
+                                                String localMessageId, String actorUuid, String actorLabel,
+                                                String reaction, boolean active) {
+        long now = System.currentTimeMillis();
+        String key = pendingReactionRequestKey(targetServerId, messageRelayId, actorUuid, reaction);
+        if (key.replace("\u0000", "").isBlank()) return false;
+        if (!pendingReactionRequests.containsKey(key) && pendingReactionRequests.size() >= MAX_PENDING_REACTIONS) return false;
+        PendingReactionRequest request = new PendingReactionRequest(eventId, targetServerId, messageRelayId,
+                localMessageId, actorUuid, actorLabel, reaction, active,
+                now + PENDING_REACTION_TTL_MILLIS, now + PENDING_REACTION_RETRY_MILLIS);
+        // Same actor/message/reaction collapses to the newest desired state. This
+        // prevents an offline add->remove sequence from creating a stale add alert
+        // when the origin server eventually returns.
+        pendingReactionRequests.put(key, request);
+        return true;
+    }
+
+    private void retryPendingReactionRequests() {
+        if (!running || pendingReactionRequests.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        ServerRelay relay = host.serverRelay();
+        for (Map.Entry<String, PendingReactionRequest> entry : pendingReactionRequests.entrySet()) {
+            String key = entry.getKey();
+            PendingReactionRequest request = entry.getValue();
+            if (request == null) continue;
+            if (request.expiresAt() <= now) {
+                if (pendingReactionRequests.remove(key, request)) {
+                    publishReactionRequestStatus(request.actorUuid(), request.localMessageId(), request.reaction(),
+                            request.active(), "expired", "reaction_origin_unavailable");
+                }
+                continue;
+            }
+            if (request.nextAttemptAt() > now || !pendingReactionRequestsInFlight.add(key)) continue;
+            if (relay == null || !relay.isEnabled()) {
+                pendingReactionRequestsInFlight.remove(key);
+                continue;
+            }
+            PendingReactionRequest scheduled = new PendingReactionRequest(request.eventId(), request.targetServerId(),
+                    request.messageRelayId(), request.localMessageId(), request.actorUuid(), request.actorLabel(),
+                    request.reaction(), request.active(), request.expiresAt(), now + PENDING_REACTION_RETRY_MILLIS);
+            pendingReactionRequests.replace(key, request, scheduled);
+            relay.requestPublicReaction(request.eventId(), request.targetServerId(), request.messageRelayId(),
+                    request.actorUuid(), request.actorLabel(), request.reaction(), request.active())
+                    .whenComplete((result, error) -> {
+                        pendingReactionRequestsInFlight.remove(key);
+                        PendingReactionRequest current = pendingReactionRequests.get(key);
+                        if (current == null || !current.eventId().equals(request.eventId())) return;
+                        if (error == null && result != null && result.committed) {
+                            if (pendingReactionRequests.remove(key, current)) {
+                                publishReactionRequestStatus(current.actorUuid(), current.localMessageId(), current.reaction(),
+                                        current.active(), "committed", "");
+                            }
+                            return;
+                        }
+                        if (error == null && result != null && !result.retryable) {
+                            if (pendingReactionRequests.remove(key, current)) {
+                                publishReactionRequestStatus(current.actorUuid(), current.localMessageId(), current.reaction(),
+                                        current.active(), "failed", result.error);
+                            }
+                        }
+                    });
+        }
+    }
+
+    private void cancelPendingReactionRequests(String error) {
+        for (Map.Entry<String, PendingReactionRequest> entry : pendingReactionRequests.entrySet()) {
+            String key = entry.getKey();
+            PendingReactionRequest request = entry.getValue();
+            if (request != null && pendingReactionRequests.remove(key, request)) {
+                publishReactionRequestStatus(request.actorUuid(), request.localMessageId(), request.reaction(),
+                        request.active(), "failed", error);
+            }
+        }
+    }
+
+    private void publishReactionRequestStatus(String actorUuid, String messageId, String reaction,
+                                              boolean active, String state, String error) {
+        String actor = String.valueOf(actorUuid == null ? "" : actorUuid).trim().toLowerCase(Locale.ROOT);
+        if (actor.isBlank()) return;
+        Map<String,Object> m = new LinkedHashMap<>();
+        m.put("messageId", String.valueOf(messageId == null ? "" : messageId));
+        m.put("reaction", String.valueOf(reaction == null ? "" : reaction));
+        m.put("active", active);
+        m.put("state", String.valueOf(state == null ? "" : state));
+        if (error != null && !error.isBlank()) m.put("error", error);
+        String data = "event: reaction-status\ndata: " + JsonUtil.obj(m) + "\n\n";
+        for (SseConnection client : sseHub.snapshot()) {
+            if (!actor.equalsIgnoreCase(String.valueOf(client.accountUuid() == null ? "" : client.accountUuid()))) continue;
+            try { client.sendRaw(data); }
+            catch (IOException ex) { sseHub.remove(client); client.close(); }
+        }
+    }
+
+    private String canonicalReactionValue(String rawValue, boolean requireLocalCustomEmoji) {
+        String raw = String.valueOf(rawValue == null ? "" : rawValue).trim();
+        if (raw.isBlank() || raw.length() > 240 || raw.indexOf('\n') >= 0 || raw.indexOf('\r') >= 0) return "";
+        if (raw.startsWith(":") && raw.endsWith(":") && raw.length() >= 3) {
+            String inner = raw.substring(1, raw.length() - 1).trim();
+            if (inner.startsWith("emoji:")) inner = inner.substring("emoji:".length()).trim();
+            if (inner.isBlank() || inner.length() > 200 || inner.indexOf(':') >= 0) return "";
+            if (!requireLocalCustomEmoji) return ":" + inner + ":";
+            ConfigValues config = host.configValues();
+            if (config == null || !config.emojiEnabled) return "";
+            EmojiCatalog catalog = scanEmojiCatalog(config);
+            Map<String,EmojiItem> byId = new HashMap<>();
+            for (EmojiItem item : catalog.items) byId.put(item.id, item);
+            EmojiItem item = emojiItemForToken(inner, byId, emojiAliasToWebId(catalog, config));
+            return item == null ? "" : ":" + item.id + ":";
+        }
+        int cpCount = raw.codePointCount(0, raw.length());
+        if (cpCount < 1 || cpCount > 16) return "";
+        boolean emojiBase = false;
+        for (int i = 0; i < raw.length();) {
+            int cp = raw.codePointAt(i); i += Character.charCount(cp);
+            if (Character.isISOControl(cp) || Character.isWhitespace(cp)) return "";
+            if ((cp >= 0x1F000 && cp <= 0x1FAFF) || (cp >= 0x2600 && cp <= 0x27BF)
+                    || (cp >= 0x2300 && cp <= 0x23FF) || (cp >= 0x2190 && cp <= 0x21FF)
+                    || (cp >= 0x1F1E6 && cp <= 0x1F1FF) || cp == 0x00A9 || cp == 0x00AE
+                    || cp == 0x2122 || cp == 0x3030 || cp == 0x303D || cp == 0x3297 || cp == 0x3299) emojiBase = true;
+        }
+        return emojiBase ? raw : "";
+    }
+
+    private String safeReactionActorLabel(String display, String fallback) {
+        String label = stripMinecraftFormatting(stripControl(display, 96)).replaceAll("\\s+", " ").trim();
+        if (label.isBlank()) label = stripMinecraftFormatting(stripControl(fallback, 96)).replaceAll("\\s+", " ").trim();
+        return label.length() > 96 ? label.substring(0, 96) : label;
+    }
+
+    private Map<String,Object> resolveReactionActorIdentity(String uuid, String storedLabel) {
+        String key = stripControl(uuid, 96).trim();
+        String displayName = safeReactionActorLabel(storedLabel, "");
+        String username = "";
+        if (!key.isBlank()) {
+            try {
+                PlayerIdentity player = storage.findKnownPlayerByUuid(key);
+                if (player != null) {
+                    username = safeReactionActorLabel(player.username, "");
+                    if (displayName.isBlank()) displayName = safeReactionActorLabel(player.outputDisplayName(), username);
+                }
+            } catch (Throwable ignored) {}
+            if (username.isBlank() || displayName.isBlank()) {
+                try {
+                    for (Account account : storage.listAccounts()) {
+                        if (account == null || account.uuid == null || !account.uuid.equalsIgnoreCase(key)) continue;
+                        if (username.isBlank()) username = safeReactionActorLabel(account.safeUsername(), "");
+                        if (displayName.isBlank()) displayName = safeReactionActorLabel(host.displayNameForAccount(account), username);
+                        break;
+                    }
+                } catch (Throwable ignored) {}
+            }
+        }
+        if (displayName.isBlank()) displayName = username;
+        Map<String,Object> out = new LinkedHashMap<>();
+        out.put("displayName", displayName);
+        out.put("username", username);
+        return out;
+    }
+
+    private String reactionMessageKey(ChatMessage msg) {
+        if (msg == null) return "";
+        String relayId = String.valueOf(msg.relayId == null ? "" : msg.relayId).trim();
+        return relayId.isBlank() ? String.valueOf(msg.id == null ? "" : msg.id).trim() : relayId;
+    }
+
+    private String viewerUuid(SessionContext ctx) {
+        return ctx == null || ctx.account == null || ctx.account.uuid == null ? "" : ctx.account.uuid.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String publicMessageJson(ChatMessage msg, String viewerUuid) {
+        String base = msg == null ? "{}" : msg.toJson();
+        if (!base.endsWith("}")) return base;
+        List<String> extras = new ArrayList<>();
+        String viewer = String.valueOf(viewerUuid == null ? "" : viewerUuid).trim().toLowerCase(Locale.ROOT);
+        if (!viewer.isBlank()) {
+            extras.add("\"mentioned\":" + mentionTargetUuids(msg == null ? "" : msg.message).contains(viewer));
+        }
+        String reactions = reactionSummaryJson(msg, viewerUuid);
+        if (!"[]".equals(reactions)) extras.add("\"reactions\":" + reactions);
+        if (extras.isEmpty()) return base;
+        return base.substring(0, base.length() - 1) + "," + String.join(",", extras) + "}";
+    }
+
+    /** Resolve public-chat @mentions from real names and current display names. */
+    private Set<String> mentionTargetUuids(String rawText) {
+        List<MentionMatcher.Candidate> candidates = new ArrayList<>();
+        try {
+            for (Account account : storage.listAccounts()) {
+                if (account == null) continue;
+                String uuid = String.valueOf(account.uuid == null ? "" : account.uuid).trim().toLowerCase(Locale.ROOT);
+                if (uuid.isBlank()) continue;
+                candidates.add(new MentionMatcher.Candidate(uuid, account.safeUsername()));
+                candidates.add(new MentionMatcher.Candidate(uuid, account.username));
+                candidates.add(new MentionMatcher.Candidate(uuid, account.lastDisplayName));
+                try {
+                    candidates.add(new MentionMatcher.Candidate(uuid, host.displayNameForAccount(account)));
+                } catch (Throwable ignored) {}
+                try {
+                    PlayerIdentity identity = storage.findKnownPlayerByUuid(uuid);
+                    if (identity != null) {
+                        candidates.add(new MentionMatcher.Candidate(uuid, identity.username));
+                        candidates.add(new MentionMatcher.Candidate(uuid, identity.displayName));
+                        candidates.add(new MentionMatcher.Candidate(uuid, identity.outputDisplayName()));
+                    }
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {
+            return Set.of();
+        }
+        return MentionMatcher.resolve(rawText, candidates);
+    }
+
+    private String reactionSummaryJson(ChatMessage msg, String viewerUuid) {
+        if (msg == null || msg.hidden) return "[]";
+        return reactionSummaryJsonForKey(reactionMessageKey(msg), viewerUuid);
+    }
+
+    private String directReactionMessageKey(DirectMessageMessage msg) {
+        if (msg == null) return "";
+        String relayId = stripControl(msg.relayId, 180).trim();
+        if (!relayId.isBlank()) return "dm-relay:" + relayId;
+        return "dm:" + stripControl(msg.threadId, 180).trim() + ":" + Math.max(0L, msg.id);
+    }
+
+    private String groupReactionMessageKey(GroupMessage msg) {
+        if (msg == null) return "";
+        return "group:" + stripControl(msg.roomId, 140).trim() + ":" + Math.max(0L, msg.id);
+    }
+
+    private String reactionSummaryJsonForKey(String key, String viewerUuid) {
+        if (key == null || key.isBlank()) return "[]";
+        List<String> items = new ArrayList<>();
+        for (PublicReactionStore.Summary summary : publicReactions.summary(key, viewerUuid)) {
+            Map<String,Object> m = new LinkedHashMap<>();
+            m.put("value", summary.value);
+            m.put("count", summary.count);
+            m.put("mine", summary.mine);
+            if (reactionCatalog.showActorList()) {
+                List<String> actorNames = new ArrayList<>();
+                List<Map<String,Object>> actorIdentities = new ArrayList<>();
+                for (PublicReactionStore.Actor actor : summary.actors) {
+                    Map<String,Object> identity = resolveReactionActorIdentity(actor.uuid, actor.label);
+                    String label = String.valueOf(identity.getOrDefault("displayName", ""));
+                    actorNames.add(label);
+                    actorIdentities.add(identity);
+                }
+                m.put("actors", actorNames);
+                m.put("actorIdentities", actorIdentities);
+            }
+            items.add(JsonUtil.obj(m));
+        }
+        return "[" + String.join(",", items) + "]";
+    }
+
+    private String directMessageJson(DirectMessageMessage msg, String viewerUuid) {
+        String base = msg == null ? "{}" : msg.toJson();
+        String reactions = reactionSummaryJsonForKey(directReactionMessageKey(msg), viewerUuid);
+        if ("[]".equals(reactions) || !base.endsWith("}")) return base;
+        return base.substring(0, base.length() - 1) + ",\"reactions\":" + reactions + "}";
+    }
+
+    private String groupMessageJson(GroupMessage msg, String viewerUuid) {
+        String base = msg == null ? "{}" : msg.toJson();
+        if (msg != null && msg.eventType != null && !msg.eventType.isBlank()) return base;
+        String reactions = reactionSummaryJsonForKey(groupReactionMessageKey(msg), viewerUuid);
+        if ("[]".equals(reactions) || !base.endsWith("}")) return base;
+        return base.substring(0, base.length() - 1) + ",\"reactions\":" + reactions + "}";
+    }
+
+    private void notifyReactionAuthor(ChatMessage target, String actorUuid, String actorLabel, String reaction) {
+        if (target == null) return;
+        String author = stripControl(target.playerUuid, 80).trim().toLowerCase(Locale.ROOT);
+        String actor = stripControl(actorUuid, 96).trim().toLowerCase(Locale.ROOT);
+        if (author.isBlank() || (!actor.isBlank() && author.equalsIgnoreCase(actor))) return;
+
+        String who = safeReactionActorLabel(actorLabel, actor);
+        if (who.isBlank()) who = host.language().text("sender.unknown", "Unknown");
+        String value = String.valueOf(reaction == null ? "" : reaction);
+        Map<String,String> vars = new LinkedHashMap<>();
+        vars.put("user", who);
+        vars.put("reaction", value);
+        String messageId = String.valueOf(target.id == null ? "" : target.id);
+
+        Map<String,Object> event = new LinkedHashMap<>();
+        event.put("messageId", messageId);
+        event.put("actorUuid", actor);
+        event.put("actorLabel", who);
+        event.put("reaction", value);
+        event.put("time", System.currentTimeMillis());
+        String data = "event: reaction-notification\ndata: " + JsonUtil.obj(event) + "\n\n";
+        for (SseConnection client : sseHub.snapshot()) {
+            if (!author.equalsIgnoreCase(String.valueOf(client.accountUuid() == null ? "" : client.accountUuid()))) continue;
+            try { client.sendRaw(data); }
+            catch (IOException ex) { sseHub.remove(client); client.close(); }
+        }
+
+        dispatchWebPushReaction(author, actor, who, value, messageId);
+
+        try {
+            java.util.UUID authorUuid = java.util.UUID.fromString(author);
+            ConfigValues config = host.configValues();
+            String gameReaction = restoreTokenGameBreaks(renderImageEmojiSymbolsForGame(value));
+            String originalLine = reactionGameOriginalLine(target, config);
+            Map<String,String> gameVars = new LinkedHashMap<>();
+            gameVars.put("user", who);
+            gameVars.put("reaction", gameReaction.isBlank() ? value : gameReaction);
+            String reactionLine = LegacyText.GRAY + host.language().text("reaction.gameNotice",
+                    "{user} reacted with {reaction}.", gameVars);
+            reactionLine = sanitizeSingleGameLine(reactionLine, 512);
+            final String finalOriginalLine = originalLine;
+            final String finalReactionLine = reactionLine;
+            platform.runMainThread(() -> {
+                if (platform.onlinePlayer(authorUuid).isEmpty()) return;
+                // Match the existing reply/comment presentation: original message
+                // first, reaction notice second. Keep them as separate Minecraft
+                // chat lines instead of flattening both into one sentence.
+                if (!finalOriginalLine.isBlank()) platform.sendPlainMessage(authorUuid, finalOriginalLine);
+                platform.sendPlainMessage(authorUuid, finalReactionLine);
+            });
+        } catch (IllegalArgumentException ignored) {
+            // System/guest/non-player authors have no game UUID and intentionally
+            // receive no private game notification.
+        }
+    }
+
+    private String reactionGameOriginalLine(ChatMessage target, ConfigValues config) {
+        if (target == null) return "";
+        String sender = stripControl(target.sender, 64).trim();
+        if (sender.isBlank()) sender = host.language().text("sender.unknown", "Unknown");
+        String rawPreview = String.valueOf(messageReplyPreview(target)).replace('\n', ' ').replace('\r', ' ').trim();
+        int max = Math.max(0, config == null ? 0 : config.replyGamePreviewMaxLength);
+        rawPreview = truncateVisible(rawPreview, max);
+        String gamePreview = renderImageEmojiSymbolsForGame(messageForGameChat(rawPreview, config));
+        gamePreview = restoreTokenGameBreaks(gamePreview);
+        gamePreview = truncateVisible(gamePreview, max);
+        if (gamePreview.isBlank()) gamePreview = "...";
+
+        String format = String.valueOf(config == null || config.replyGamePreviewFormat == null ? "" : config.replyGamePreviewFormat);
+        if (format.isBlank()) format = "&7{sender}: {preview}";
+        String line = format
+                .replace("{sender}", sender)
+                .replace("{preview}", gamePreview)
+                .replace("{id}", stripControl(target.id, 96));
+        return sanitizeConfiguredGameLine(line, max > 0 ? max + 96 : 512).trim();
+    }
+
+    private void dispatchWebPushReaction(String authorUuid, String actorUuid, String actorLabel,
+                                         String reaction, String messageId) {
+        ConfigValues c = host.configValues();
+        if (c == null || !c.webPushEnabled || authorUuid == null || authorUuid.isBlank()) return;
+        Map<String,String> vars = new LinkedHashMap<>();
+        vars.put("user", String.valueOf(actorLabel == null ? "" : actorLabel));
+        vars.put("reaction", String.valueOf(reaction == null ? "" : reaction));
+        WebPushManager.Payload payload = new WebPushManager.Payload();
+        // Browser and background push share the account-level reaction notification toggle.
+        payload.type = "reaction";
+        payload.title = host.language().text("reaction.notificationTitle", "Reaction", vars);
+        payload.body = host.language().text("reaction.notificationBody", "{user} reacted with {reaction}.", vars);
+        payload.url = webPushNavigationUrlWithParams(Map.of("kwcMessage", String.valueOf(messageId == null ? "" : messageId)));
+        payload.tag = "kwc-reaction-" + String.valueOf(messageId == null ? "" : messageId).replaceAll("[^A-Za-z0-9_-]", "")
+                + "-" + String.valueOf(actorUuid == null ? "" : actorUuid).replaceAll("[^A-Za-z0-9_-]", "");
+        payload.senderUuid = actorUuid == null ? "" : actorUuid;
+        payload.replyTargetUuid = authorUuid;
+        webPush.sendToUser(authorUuid, payload);
+    }
+
+    private void broadcastReactionUpdate(ChatMessage msg) {
+        if (msg == null) return;
+        for (SseConnection client : sseHub.snapshot()) {
+            try {
+                String json = "{\"messageId\":" + JsonUtil.quote(msg.id) + ",\"reactions\":"
+                        + reactionSummaryJson(msg, client.accountUuid()) + "}";
+                client.sendRaw("event: reaction\ndata: " + json + "\n\n");
+            } catch (IOException ignored) {
+                sseHub.remove(client);
+                client.close();
+            }
+        }
+    }
+
+    private void broadcastPrivateReactionUpdate(String contextType, String contextId, long messageId, String reactionKey) {
+        String type = "group".equals(contextType) ? "group" : "dm";
+        String id = String.valueOf(contextId == null ? "" : contextId).trim();
+        for (SseConnection client : sseHub.snapshot()) {
+            String viewer = String.valueOf(client.accountUuid() == null ? "" : client.accountUuid()).trim().toLowerCase(Locale.ROOT);
+            boolean allowed = false;
+            if (!viewer.isBlank()) {
+                if ("dm".equals(type) && host.directMessages() != null) allowed = host.directMessages().messageForUser(viewer, messageId) != null;
+                else if ("group".equals(type) && host.groupChats() != null) allowed = host.groupChats().messageForUser(viewer, messageId) != null;
+            }
+            if (!allowed && client.privateChatSuperAdmin()) allowed = true;
+            if (!allowed) continue;
+            try {
+                String json = "{\"contextType\":" + JsonUtil.quote(type) + ",\"contextId\":" + JsonUtil.quote(id)
+                        + ",\"messageId\":" + JsonUtil.quote(String.valueOf(messageId)) + ",\"reactions\":"
+                        + reactionSummaryJsonForKey(reactionKey, viewer) + "}";
+                client.sendRaw("event: reaction\ndata: " + json + "\n\n");
+            } catch (IOException ex) { sseHub.remove(client); client.close(); }
+        }
+    }
+
+    private void handleConversationArchiveList(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        if (!conversationArchives.available()) { sendJson(ex, 503, "{\"ok\":false,\"error\":\"archive_unavailable\"}"); return; }
+        List<String> items = new ArrayList<>();
+        for (ConversationArchiveStore.Archive archive : conversationArchives.list(ctx.account.uuid, ConversationArchiveStore.MAX_CONFIGURED_ARCHIVES_PER_USER)) {
+            items.add(archive.metadataJson());
+        }
+        sendJson(ex, 200, "{\"ok\":true,\"limits\":{\"archives\":" + conversationArchives.maxArchivesPerUser()
+                + ",\"messagesPerArchive\":" + conversationArchives.maxMessagesPerArchive()
+                + ",\"messagesPerUser\":" + conversationArchives.maxMessagesPerUser()
+                + "},\"archives\":[" + String.join(",", items) + "]}");
+    }
+
+    private void handleConversationArchiveGet(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        Map<String,String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
+        ConversationArchiveStore.Archive archive = conversationArchives.get(ctx.account.uuid, stripControl(q.get("id"), 220));
+        if (archive == null) { sendJson(ex, 404, "{\"ok\":false,\"error\":\"archive_not_found\"}"); return; }
+        if (archiveBlockedByAdminPolicy(archive)) { sendJson(ex, 423, "{\"ok\":false,\"error\":\"archive_locked_by_admin\"}"); return; }
+        sendJson(ex, 200, "{\"ok\":true,\"archive\":" + archive.toJson() + "}");
+    }
+
+    private void handleConversationArchiveSave(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        if (!conversationArchives.available()) { sendJson(ex, 503, "{\"ok\":false,\"error\":\"archive_unavailable\"}"); return; }
+        Map<String,String> body = parsedBody(ex);
+        String type = stripControl(body.get("sourceType"), 20).trim().toLowerCase(Locale.ROOT);
+        String sourceId = stripControl(body.get("sourceId"), 220).trim();
+        String title = stripControl(body.get("title"), 160).trim();
+        String firstId = stripControl(body.get("firstId"), 240).trim();
+        String lastId = stripControl(body.get("lastId"), 240).trim();
+        List<ConversationArchiveStore.SnapshotMessage> snapshot;
+        if ("public".equals(type)) {
+            sourceId = "public";
+            snapshot = publicArchiveSnapshot(ctx.account.uuid, firstId, lastId);
+            if (title.isBlank()) title = "Public chat";
+        } else if ("dm".equals(type)) {
+            DirectMessageStore store = host.directMessages();
+            if (store == null || !store.available() || sourceId.isBlank()) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_source\"}"); return; }
+            if (store.isThreadLocked(sourceId)) { sendJson(ex, 423, "{\"ok\":false,\"error\":\"archive_locked_by_admin\"}"); return; }
+            long first = parseLong(firstId, 0L), last = parseLong(lastId, 0L);
+            List<DirectMessageMessage> messages = store.archiveRange(ctx.account.uuid, sourceId, first, last, conversationArchives.maxMessagesPerArchive());
+            snapshot = directArchiveSnapshot(messages, first, last, ctx.account.uuid);
+            if (title.isBlank()) title = "Direct message";
+        } else if ("group".equals(type)) {
+            GroupChatStore store = host.groupChats();
+            if (store == null || !store.available() || sourceId.isBlank()) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_source\"}"); return; }
+            if (!store.isMemberOfRoom(ctx.account.uuid, sourceId)) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
+            if (store.isRoomLocked(sourceId)) { sendJson(ex, 423, "{\"ok\":false,\"error\":\"archive_locked_by_admin\"}"); return; }
+            long first = parseLong(firstId, 0L), last = parseLong(lastId, 0L);
+            List<GroupMessage> messages = store.archiveRange(ctx.account.uuid, sourceId, first, last, conversationArchives.maxMessagesPerArchive());
+            snapshot = groupArchiveSnapshot(messages, first, last, ctx.account.uuid);
+            GroupRoom room = store.roomForMember(ctx.account.uuid, sourceId);
+            if (title.isBlank()) title = room == null || room.name == null || room.name.isBlank() ? "Group chat" : room.name;
+        } else {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_source\"}"); return;
+        }
+        if (snapshot.isEmpty()) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_range\"}"); return; }
+        ConversationArchiveStore.SaveResult result = conversationArchives.save(ctx.account.uuid, type, sourceId, title, snapshot);
+        if (!result.ok) {
+            int status = result.error != null && result.error.contains("quota") ? 409 : 400;
+            sendJson(ex, status, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return;
+        }
+        audit(ctx, "archive.save", Map.of("archiveId", result.archive == null ? "" : result.archive.id, "sourceType", type, "sourceId", sourceId, "messages", snapshot.size()));
+        sendJson(ex, 200, "{\"ok\":true,\"archive\":" + (result.archive == null ? "null" : result.archive.metadataJson()) + "}");
+    }
+
+    private void handleConversationArchiveRename(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        Map<String,String> body = parsedBody(ex);
+        String id = stripControl(body.get("id"), 220).trim();
+        String title = stripControl(body.get("title"), 160).trim();
+        if (title.isBlank()) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_title\"}"); return; }
+        boolean ok = conversationArchives.rename(ctx.account.uuid, id, title);
+        if (ok) audit(ctx, "archive.rename", Map.of("archiveId", id));
+        sendJson(ex, ok ? 200 : 404, "{\"ok\":" + ok + (ok ? "}" : ",\"error\":\"archive_not_found\"}"));
+    }
+
+    private void handleConversationArchiveDelete(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        Map<String,String> body = parsedBody(ex);
+        String id = stripControl(body.get("id"), 220).trim();
+        boolean ok = conversationArchives.delete(ctx.account.uuid, id);
+        if (ok) audit(ctx, "archive.delete", Map.of("archiveId", id));
+        sendJson(ex, ok ? 200 : 404, "{\"ok\":" + ok + (ok ? "}" : ",\"error\":\"archive_not_found\"}"));
+    }
+
+    private boolean archiveBlockedByAdminPolicy(ConversationArchiveStore.Archive archive) {
+        if (archive == null) return true;
+        if ("dm".equals(archive.sourceType)) {
+            DirectMessageStore store = host.directMessages();
+            return store != null && store.available() && store.isThreadLocked(archive.sourceId);
+        }
+        if ("group".equals(archive.sourceType)) {
+            GroupChatStore store = host.groupChats();
+            return store != null && store.available() && store.isRoomLocked(archive.sourceId);
+        }
+        return false;
+    }
+
+    private List<ConversationArchiveStore.SnapshotMessage> publicArchiveSnapshot(String viewerUuid, String firstId, String lastId) {
+        if (firstId == null || firstId.isBlank() || lastId == null || lastId.isBlank()) return new ArrayList<>();
+        List<ChatMessage> messages = new ArrayList<>();
+        if (sqliteHistoryEnabled()) {
+            messages.addAll(sqliteHistory.rangeInclusive(firstId, lastId, conversationArchives.maxMessagesPerArchive(), sqliteCutoffMillis()));
+        } else {
+            synchronized (history) {
+                List<ChatMessage> all = new ArrayList<>(history);
+                int a = -1, b = -1;
+                for (int i = 0; i < all.size(); i++) {
+                    ChatMessage msg = all.get(i);
+                    if (msg == null) continue;
+                    if (firstId.equals(msg.id)) a = i;
+                    if (lastId.equals(msg.id)) b = i;
+                }
+                if (a >= 0 && b >= 0) {
+                    int lo = Math.min(a,b), hi = Math.max(a,b);
+                    if (hi - lo + 1 <= conversationArchives.maxMessagesPerArchive()) {
+                        for (int i = lo; i <= hi; i++) if (all.get(i) != null && !all.get(i).hidden) messages.add(all.get(i));
+                    }
+                }
+            }
+        }
+        if (messages.isEmpty()) return new ArrayList<>();
+        boolean hasFirst = false, hasLast = false;
+        List<ConversationArchiveStore.SnapshotMessage> out = new ArrayList<>();
+        for (ChatMessage msg : messages) {
+            if (msg == null || msg.hidden) continue;
+            hasFirst |= firstId.equals(msg.id); hasLast |= lastId.equals(msg.id);
+            ConversationArchiveStore.SnapshotMessage snap = new ConversationArchiveStore.SnapshotMessage();
+            snap.sourceMessageId = String.valueOf(msg.id == null ? "" : msg.id);
+            snap.time = msg.time;
+            snap.senderUuid = String.valueOf(msg.playerUuid == null ? "" : msg.playerUuid);
+            snap.senderDisplayName = String.valueOf(msg.sender == null ? "" : msg.sender);
+            snap.senderUsername = String.valueOf(msg.realSender == null || msg.realSender.isBlank() ? msg.sender : msg.realSender);
+            snap.body = String.valueOf(msg.message == null ? "" : msg.message);
+            snap.messageSource = String.valueOf(msg.source == null ? "" : msg.source);
+            snap.role = String.valueOf(msg.role == null ? "" : msg.role);
+            snap.serverId = String.valueOf(msg.originServerId == null ? "" : msg.originServerId);
+            snap.serverName = String.valueOf(msg.originServerName == null ? "" : msg.originServerName);
+            snap.replyToId = String.valueOf(msg.replyToId == null ? "" : msg.replyToId);
+            snap.replyToSender = stripMinecraftFormatting(String.valueOf(msg.replyToSender == null ? "" : msg.replyToSender)).trim();
+            snap.replyToPreview = String.valueOf(msg.replyToPreview == null ? "" : msg.replyToPreview);
+            snap.reactionsJson = reactionSummaryJson(msg, viewerUuid);
+            out.add(snap);
+        }
+        return hasFirst && hasLast ? out : new ArrayList<>();
+    }
+
+    private List<ConversationArchiveStore.SnapshotMessage> directArchiveSnapshot(List<DirectMessageMessage> messages, long firstId, long lastId, String viewerUuid) {
+        if (messages == null || messages.isEmpty()) return new ArrayList<>();
+        boolean hasFirst = false, hasLast = false;
+        List<ConversationArchiveStore.SnapshotMessage> out = new ArrayList<>();
+        for (DirectMessageMessage msg : messages) {
+            if (msg == null) continue;
+            hasFirst |= msg.id == firstId; hasLast |= msg.id == lastId;
+            ConversationArchiveStore.SnapshotMessage snap = new ConversationArchiveStore.SnapshotMessage();
+            snap.sourceMessageId = String.valueOf(msg.id); snap.time = msg.createdAt; snap.senderUuid = String.valueOf(msg.senderUuid == null ? "" : msg.senderUuid);
+            snap.senderUsername = String.valueOf(msg.senderUsername == null ? "" : msg.senderUsername); snap.senderDisplayName = String.valueOf(msg.senderDisplayName == null ? "" : msg.senderDisplayName);
+            snap.body = String.valueOf(msg.body == null ? "" : msg.body); snap.messageSource = "dm";
+            snap.replyToId = msg.replyToId > 0 ? String.valueOf(msg.replyToId) : ""; snap.replyToSender = stripMinecraftFormatting(String.valueOf(msg.replyToSender == null ? "" : msg.replyToSender)).trim(); snap.replyToPreview = String.valueOf(msg.replyToPreview == null ? "" : msg.replyToPreview);
+            RemotePlayerRef remote = RemotePlayerRef.parse(snap.senderUuid); if (remote != null) snap.serverId = remote.serverId;
+            snap.reactionsJson = reactionSummaryJsonForKey(directReactionMessageKey(msg), viewerUuid);
+            out.add(snap);
+        }
+        return hasFirst && hasLast ? out : new ArrayList<>();
+    }
+
+    private List<ConversationArchiveStore.SnapshotMessage> groupArchiveSnapshot(List<GroupMessage> messages, long firstId, long lastId, String viewerUuid) {
+        if (messages == null || messages.isEmpty()) return new ArrayList<>();
+        boolean hasFirst = false, hasLast = false;
+        List<ConversationArchiveStore.SnapshotMessage> out = new ArrayList<>();
+        for (GroupMessage msg : messages) {
+            if (msg == null) continue;
+            hasFirst |= msg.id == firstId; hasLast |= msg.id == lastId;
+            ConversationArchiveStore.SnapshotMessage snap = new ConversationArchiveStore.SnapshotMessage();
+            snap.sourceMessageId = String.valueOf(msg.id); snap.time = msg.createdAt; snap.senderUuid = String.valueOf(msg.senderUuid == null ? "" : msg.senderUuid);
+            snap.senderUsername = String.valueOf(msg.senderUsername == null ? "" : msg.senderUsername); snap.senderDisplayName = String.valueOf(msg.senderDisplayName == null ? "" : msg.senderDisplayName);
+            snap.body = String.valueOf(msg.body == null ? "" : msg.body); snap.eventType = String.valueOf(msg.eventType == null ? "" : msg.eventType); snap.messageSource = "group";
+            snap.replyToId = msg.replyToId > 0 ? String.valueOf(msg.replyToId) : ""; snap.replyToSender = stripMinecraftFormatting(String.valueOf(msg.replyToSender == null ? "" : msg.replyToSender)).trim(); snap.replyToPreview = String.valueOf(msg.replyToPreview == null ? "" : msg.replyToPreview);
+            if (msg.eventType == null || msg.eventType.isBlank()) snap.reactionsJson = reactionSummaryJsonForKey(groupReactionMessageKey(msg), viewerUuid);
+            out.add(snap);
+        }
+        return hasFirst && hasLast ? out : new ArrayList<>();
+    }
 
     private void handleDmThreads(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
@@ -1445,7 +2627,7 @@ public class WebChatServer {
         long readBefore = host.directMessages().readPosition(threadId, ctx.account.uuid);
         List<String> items = new ArrayList<>();
         for (DirectMessageMessage message : host.directMessages().listMessages(ctx.account.uuid, threadId, before, limit)) {
-            items.add(message.toJson());
+            items.add(directMessageJson(message, ctx.account.uuid));
         }
         long readAfter = host.directMessages().readPosition(threadId, ctx.account.uuid);
         if (readAfter > readBefore) {
@@ -1491,7 +2673,7 @@ public class WebChatServer {
         int limit = boundedInt(q.get("limit"), 100, 1, 200);
         List<String> items = new ArrayList<>();
         for (DirectMessageMessage message : host.directMessages().adminListMessages(threadId, before, limit)) {
-            items.add(message.toJson());
+            items.add(directMessageJson(message, ctx.account.uuid));
         }
         audit(ctx, "admin.dm-audit-read", Map.of(
                 "threadId", threadId,
@@ -1679,7 +2861,7 @@ public class WebChatServer {
         }
 
         String threadJson = result.thread == null ? "null" : result.thread.toJson();
-        String messageJson = result.message == null ? "null" : result.message.toJson();
+        String messageJson = result.message == null ? "null" : directMessageJson(result.message, ctx.account.uuid);
         int unread = host.directMessages().unreadCount(ctx.account.uuid);
         sendJson(ex, 200, "{\"ok\":true,\"unread\":" + unread + ",\"thread\":" + threadJson + ",\"message\":" + messageJson + "}");
     }
@@ -1691,6 +2873,80 @@ public class WebChatServer {
         String errorCode = delivered ? "" : (delivery == null ? "dm_transport_error" : delivery.error);
         host.directMessages().updateDeliveryStatus(messageId, delivered ? "delivered" : "failed", errorCode);
         publishDirectMessageUpdate(senderUuid, targetUuid, threadId);
+    }
+
+    private void handleDmTyping(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return;
+        }
+        ConfigValues c = host.configValues();
+        if (c == null || !c.directMessageEnabled || host.directMessages() == null || !host.directMessages().available()) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"dm_disabled\"}"); return;
+        }
+        if (!c.typingDmEnabled) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"typing_disabled\"}"); return;
+        }
+        Map<String, String> body = JsonUtil.parseFlatObject(JsonUtil.readBody(ex.getRequestBody()));
+        SessionContext ctx = sessionForRequest(ex, body.get("token"));
+        if (!validDmUser(ctx)) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
+        String senderUuid = String.valueOf(ctx.account.uuid == null ? "" : ctx.account.uuid).trim().toLowerCase(Locale.ROOT);
+        String targetValue = stripControl(body.get("targetUuid"), 256).trim();
+        String requestedServerId = RemotePlayerRef.normalizeServerId(stripControl(body.get("targetServerId"), 64));
+        RemotePlayerRef remote = RemotePlayerRef.parse(targetValue);
+        if (remote == null && !requestedServerId.isBlank() && !isLocalDirectMessageServer(requestedServerId)) {
+            remote = RemotePlayerRef.parse(RemotePlayerRef.key(requestedServerId, RemotePlayerRef.normalizePlayerUuid(targetValue)));
+        }
+        if (targetValue.isBlank() || targetValue.equalsIgnoreCase(senderUuid)) {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_target\"}"); return;
+        }
+        String rateTarget = remote == null ? targetValue.toLowerCase(Locale.ROOT) : remote.key;
+        // This is a second server-side guard. The client also emits at most one event per 5-second window.
+        if (!rateLimiter.allow("typing:dm:" + senderUuid + ":" + rateTarget, 4, 20)) {
+            sendJson(ex, 200, "{\"ok\":true,\"suppressed\":true}"); return;
+        }
+        long expiresAt = System.currentTimeMillis() + 5000L;
+        String senderUsername = stripControl(ctx.account.safeUsername(), 64).trim();
+        String senderDisplayName = stripControl(host.displayNameForAccount(ctx.account), 96).trim();
+        if (remote != null) {
+            ServerRelay relay = host.serverRelay();
+            if (relay == null || !relay.canRouteDirectMessage(remote.serverId)) {
+                sendJson(ex, 200, "{\"ok\":true,\"delivered\":false}"); return;
+            }
+            relay.publishDirectTyping(remote.serverId, senderUuid, senderUsername, senderDisplayName, remote.playerUuid, expiresAt);
+            sendJson(ex, 200, "{\"ok\":true,\"delivered\":true,\"expiresAt\":" + expiresAt + "}"); return;
+        }
+        PlayerIdentity target = storage.findKnownPlayerByUuid(targetValue);
+        String targetUuid = target == null ? RemotePlayerRef.normalizePlayerUuid(targetValue) : target.uuid;
+        if (targetUuid == null || targetUuid.isBlank()) { sendJson(ex, 200, "{\"ok\":true,\"delivered\":false}"); return; }
+        publishDirectTypingEvent(targetUuid, senderUuid, senderUsername, senderDisplayName, "", "", expiresAt);
+        sendJson(ex, 200, "{\"ok\":true,\"delivered\":true,\"expiresAt\":" + expiresAt + "}");
+    }
+
+    public boolean acceptRelayedPublicTyping(RelayPublicTyping typing) {
+        ConfigValues c = host.configValues();
+        if (c == null || !c.typingOpenChatEnabled) return false;
+        if (typing == null || typing.expiresAt <= System.currentTimeMillis()) return false;
+        String remoteUuid = RemotePlayerRef.normalizePlayerUuid(typing.senderUuid);
+        String eventUuid = remoteUuid.isBlank() ? "" : RemotePlayerRef.key(typing.originServerId, remoteUuid);
+        String decorated = RemotePlayerRef.decorateDisplayName(typing.senderDisplayName, typing.senderUsername, typing.originServerName, typing.originServerId);
+        publishPublicTypingEvent(eventUuid, typing.senderUsername, decorated, typing.source, typing.clientId,
+                typing.originServerId, typing.originServerName, typing.expiresAt);
+        return true;
+    }
+
+    public boolean acceptRelayedDirectTyping(RelayDirectTyping typing) {
+        ConfigValues c = host.configValues();
+        if (c == null || !c.typingDmEnabled) return false;
+        if (typing == null || typing.targetUuid == null || typing.targetUuid.isBlank()) return false;
+        String targetUuid = RemotePlayerRef.normalizePlayerUuid(typing.targetUuid);
+        if (targetUuid.isBlank()) return false;
+        String remoteKey = RemotePlayerRef.key(typing.originServerId, typing.senderUuid);
+        if (remoteKey.isBlank()) return false;
+        String decorated = RemotePlayerRef.decorateDisplayName(typing.senderDisplayName, typing.senderUsername, typing.originServerName, typing.originServerId);
+        storage.updateLastDisplayName(remoteKey, typing.senderUsername, decorated);
+        publishDirectTypingEvent(targetUuid, remoteKey, typing.senderUsername, decorated, typing.originServerId, typing.originServerName, typing.expiresAt);
+        return true;
     }
 
     private void handleDmRetry(HttpExchange ex) throws IOException {
@@ -1898,7 +3154,7 @@ public class WebChatServer {
         long before = parseLong(q.get("before"), 0L);
         int limit = boundedInt(q.get("limit"), 100, 1, 0);
         List<String> messages = new ArrayList<>();
-        for (GroupMessage message : host.groupChats().listMessages(ctx.account.uuid, roomId, before, limit)) messages.add(message.toJson());
+        for (GroupMessage message : host.groupChats().listMessages(ctx.account.uuid, roomId, before, limit)) messages.add(groupMessageJson(message, ctx.account.uuid));
         sendJson(ex, 200, "{\"ok\":true,\"unread\":" + host.groupChats().unreadCount(ctx.account.uuid) + ",\"messages\":[" + String.join(",", messages) + "]}");
     }
 
@@ -1929,7 +3185,7 @@ public class WebChatServer {
         int limit = boundedInt(q.get("limit"), 100, 1, 200);
         List<String> items = new ArrayList<>();
         for (GroupMessage message : host.groupChats().adminListMessages(roomId, before, limit)) {
-            items.add(message.toJson());
+            items.add(groupMessageJson(message, ctx.account.uuid));
         }
         audit(ctx, "admin.group-audit-read", Map.of(
                 "roomId", roomId,
@@ -2051,14 +3307,14 @@ public class WebChatServer {
                 stripControl(req.body.get("clientMessageId"), 180).trim(),
                 Math.max(0L, parseLong(req.body.get("replyToId"), 0L)));
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
-        publishGroupChatUpdate(result.room == null ? req.body.get("roomId") : result.room.id);
         if (!result.duplicate) {
+            publishGroupChatMessageUpdate(result.room == null ? req.body.get("roomId") : result.room.id, result.message);
             String alertId = "group:" + (result.message == null ? 0L : result.message.id);
             adminDiscordAlerts.inspect(alertId, host.displayNameForAccount(req.ctx.account), "web", message, AdminDiscordAlertManager.Scope.GROUP);
             dispatchWebPushGroupMessage(req.ctx.account.uuid, host.displayNameForAccount(req.ctx.account), result.room, result.message, req.body.get("roomId"));
             notifyOnlineGroupMembers(req.ctx.account, result.room, result.message, req.body.get("roomId"), gameNoticeMessage);
         }
-        sendJson(ex, 200, "{\"ok\":true,\"room\":" + (result.room == null ? "null" : result.room.toJson()) + ",\"message\":" + (result.message == null ? "null" : result.message.toJson()) + "}");
+        sendJson(ex, 200, "{\"ok\":true,\"room\":" + (result.room == null ? "null" : result.room.toJson()) + ",\"message\":" + (result.message == null ? "null" : groupMessageJson(result.message, req.ctx.account.uuid)) + "}");
     }
 
     private void handleGroupRead(HttpExchange ex) throws IOException {
@@ -2072,6 +3328,29 @@ public class WebChatServer {
         long readAfter = host.groupChats().readPosition(roomId, req.ctx.account.uuid);
         if (ok && readAfter > readBefore) publishGroupChatUpdate(roomId);
         sendJson(ex, 200, "{\"ok\":" + ok + ",\"unread\":" + host.groupChats().unreadCount(req.ctx.account.uuid) + "}");
+    }
+
+    private void handleGroupTyping(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        ConfigValues c = host.configValues();
+        if (c == null || !c.typingGroupChatEnabled) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"typing_disabled\"}"); return; }
+        GroupRequest req = groupRequest(ex);
+        if (!req.ok) return;
+        String roomId = stripControl(req.body.get("roomId"), 120).trim();
+        String senderUuid = String.valueOf(req.ctx.account.uuid == null ? "" : req.ctx.account.uuid).trim().toLowerCase(Locale.ROOT);
+        if (roomId.isBlank() || !host.groupChats().isMemberOfRoom(senderUuid, roomId)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"not_member\"}"); return;
+        }
+        if (host.groupChats().isRoomLocked(roomId)) { sendJson(ex, 200, "{\"ok\":true,\"suppressed\":true}"); return; }
+        if (!rateLimiter.allow("typing:group:" + senderUuid + ":" + roomId, 4, 20)) {
+            sendJson(ex, 200, "{\"ok\":true,\"suppressed\":true}"); return;
+        }
+        long expiresAt = System.currentTimeMillis() + 5000L;
+        String senderUsername = stripControl(req.ctx.account.safeUsername(), 64).trim();
+        String senderDisplayName = stripControl(host.displayNameForAccount(req.ctx.account), 96).trim();
+        publishGroupTypingEvent(roomId, senderUuid, senderUsername, senderDisplayName, expiresAt);
+        sendJson(ex, 200, "{\"ok\":true,\"expiresAt\":" + expiresAt + "}");
     }
 
     private void handleGroupHideMessage(HttpExchange ex) throws IOException {
@@ -2339,9 +3618,9 @@ public class WebChatServer {
         String roomId = room != null && room.id != null && !room.id.isBlank() ? room.id : String.valueOf(fallbackRoomId == null ? "" : fallbackRoomId);
         if (roomId.isBlank()) return;
         String roomName = room != null && room.name != null && !room.name.isBlank() ? room.name : roomId;
-        String actor = message.senderDisplayName == null || message.senderDisplayName.isBlank()
-                ? (message.senderUsername == null || message.senderUsername.isBlank() ? message.senderUuid : message.senderUsername)
-                : message.senderDisplayName;
+        PlayerIdentity actorIdentity = new PlayerIdentity(message.senderUuid, message.senderUsername, message.senderDisplayName);
+        String actor = actorIdentity.label();
+        if (actor == null || actor.isBlank()) actor = message.senderUuid == null ? "" : message.senderUuid;
         String key = "member_leave".equals(message.eventType) ? "command.groupMemberLeft" : "command.groupMemberJoined";
         String fallback = "member_leave".equals(message.eventType) ? "{player} left group {room}." : "{player} joined group {room}.";
         String line = LegacyText.AQUA + host.language().text(key, fallback, Map.of(
@@ -2352,6 +3631,7 @@ public class WebChatServer {
         platform.runMainThread(() -> {
             for (String memberUuid : members) {
                 if (memberUuid == null || memberUuid.isBlank()) continue;
+                if (message.senderUuid != null && !message.senderUuid.isBlank() && memberUuid.equalsIgnoreCase(message.senderUuid)) continue;
                 try {
                     java.util.UUID recipientUuid = java.util.UUID.fromString(memberUuid);
                     if (platform.onlinePlayer(recipientUuid).isPresent()) platform.sendPlainMessage(recipientUuid, line);
@@ -5417,9 +6697,11 @@ public class WebChatServer {
         Map<String, String> body = parsedBody(ex);
         String id = body.get("id");
         boolean ok = false;
+        String reactionKey = "";
         synchronized (history) {
             for (ChatMessage m : history) {
                 if (m.id != null && m.id.equals(id)) {
+                    reactionKey = reactionMessageKey(m);
                     m.hidden = true;
                     ok = true;
                     break;
@@ -5427,10 +6709,14 @@ public class WebChatServer {
             }
         }
         if (sqliteHistoryEnabled()) {
+            ChatMessage dbTarget = reactionKey.isBlank() ? sqliteHistory.find(id) : null;
             boolean dbOk = sqliteHistory.markHidden(id);
             ok = ok || dbOk;
+            if (dbOk && reactionKey.isBlank() && dbTarget != null) reactionKey = reactionMessageKey(dbTarget);
         }
         if (ok) {
+            publicReactions.removeMessage(reactionKey.isBlank() ? id : reactionKey);
+            conversationArchives.removeSourceMessage("public", "public", id);
             if (legacyJsonlHistoryEnabled()) savePersistedHistory();
             broadcastEvent("delete", "{\"id\":" + JsonUtil.quote(id) + "}");
             audit(ctx, "admin.delete-message", Map.of("messageId", id == null ? "" : id));
@@ -5450,6 +6736,7 @@ public class WebChatServer {
         Set<String> uploadNames = uploadNamesFromTexts(host.directMessages().messageBodiesForThread(threadId));
         boolean ok = host.directMessages().deleteThread(threadId);
         if (ok) {
+            conversationArchives.removeSource("dm", threadId);
             deleteUploadedFilesIfUnreferenced(uploadNames, threadId, "");
             audit(ctx, "admin.delete-dm-thread", Map.of("threadId", threadId, "uploads", uploadNames.size(), "participants", participants.size()));
         }
@@ -5471,6 +6758,7 @@ public class WebChatServer {
         Set<String> uploadNames = uploadNamesFromTexts(host.groupChats().messageBodiesForRoom(roomId));
         boolean ok = host.groupChats().deleteRoom(roomId);
         if (ok) {
+            conversationArchives.removeSource("group", roomId);
             deleteUploadedFilesIfUnreferenced(uploadNames, "", roomId);
             audit(ctx, "admin.delete-group-room", Map.of("roomId", roomId, "uploads", uploadNames.size(), "members", members.size()));
         }
@@ -6090,11 +7378,48 @@ public class WebChatServer {
         }
         if (sqliteHistoryEnabled()) sqliteHistory.clear();
         else savePersistedHistory();
+        publicReactions.clear();
+        conversationArchives.removeSource("public", "public");
+        pendingRelayedReactions.clear();
         broadcastEvent("clear", "{\"ok\":true}");
         audit(ctx, "admin.clear-history", Map.of());
         sendJson(ex, 200, "{\"ok\":true}");
     }
 
+
+    private void handleAdminReactions(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        if (ctx == null) return;
+        if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 200, "{\"ok\":true,\"catalog\":" + reactionCatalog.snapshot().toJson() + "}");
+            return;
+        }
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        Map<String,String> body = parsedBody(ex);
+        try {
+            ReactionCatalogStore.Snapshot snapshot;
+            if ("reset".equalsIgnoreCase(String.valueOf(body.getOrDefault("action", "")))) {
+                snapshot = reactionCatalog.resetDefaults();
+                audit(ctx, "admin.reaction-catalog-reset", Map.of());
+            } else {
+                snapshot = reactionCatalog.save(body);
+                audit(ctx, "admin.reaction-catalog-update", Map.of(
+                        "enabled", snapshot.enabled,
+                        "customEmojiEnabled", snapshot.customEmojiEnabled,
+                        "showActorList", snapshot.showActorList));
+            }
+            if (!snapshot.enabled) cancelPendingReactionRequests("reactions_disabled");
+            broadcastEvent("reaction-catalog", "{\"ok\":true}");
+            sendJson(ex, 200, "{\"ok\":true,\"catalog\":" + snapshot.toJson() + "}");
+        } catch (IOException io) {
+            host.logger().warn("Failed to persist reaction catalog: " + io.getMessage());
+            sendJson(ex, 500, "{\"ok\":false,\"error\":\"reaction_catalog_write_failed\"}");
+        }
+    }
 
     private void handleAdminSettings(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
@@ -6121,6 +7446,7 @@ public class WebChatServer {
         }
         Map<String,String> body = parsedBody(ex);
         Map<String,Object> res = new LinkedHashMap<>();
+        boolean typingConfigChanged = false;
         if (body.containsKey("path")) {
             // Backward-compatible single-setting request used by older frontends/game tools.
             RuntimeSettingsController.Result result = RuntimeSettingsController.set(host, body.get("path"), body.get("value"));
@@ -6129,6 +7455,7 @@ public class WebChatServer {
                 return;
             }
             audit(ctx, "admin.settings-update", Map.of("path", result.path(), "value", String.valueOf(result.value())));
+            typingConfigChanged = result.path() != null && result.path().startsWith("chat.typing-indicator.");
             res.put("ok", true);
             res.put("path", result.path());
             res.put("value", result.value());
@@ -6149,6 +7476,7 @@ public class WebChatServer {
                 return;
             }
             audit(ctx, "admin.settings-update-batch", Map.of("count", updates.size(), "paths", String.join(",", updates.keySet())));
+            typingConfigChanged = updates.keySet().stream().anyMatch(path -> path.startsWith("chat.typing-indicator."));
             res.put("ok", true);
             res.put("updated", result.values());
             res.put("sessionsUpdated", result.sessionsUpdated());
@@ -6163,6 +7491,7 @@ public class WebChatServer {
         res.put("requestId", adminRequestId(ex, body));
         res.put("settings", persisted.values());
         res.put("discordAlertChannels", adminDiscordAlertChannelChoices());
+        if (typingConfigChanged) broadcastEvent("typing-config", "{\"ok\":true}");
         sendJson(ex, 200, JsonUtil.obj(res));
     }
 
@@ -6533,6 +7862,20 @@ public class WebChatServer {
         token = String.valueOf(q.getOrDefault("token", "")).trim();
         if (!token.isBlank() || !allowBody || !"POST".equalsIgnoreCase(ex.getRequestMethod())) return token;
         return String.valueOf(parsedBody(ex).getOrDefault("token", "")).trim();
+    }
+
+    static boolean publicChatReadAllowed(ConfigValues config, SessionContext ctx) {
+        return config == null
+                || config.guestEnabled
+                || !config.hideChatForGuestsWhenGuestDisabled
+                || ctx != null;
+    }
+
+    private boolean requirePublicChatReadAccess(HttpExchange ex) throws IOException {
+        ConfigValues config = host.configValues();
+        if (publicChatReadAllowed(config, sessionFromRequest(ex))) return true;
+        sendJson(ex, 403, "{\"ok\":false,\"error\":\"login_required\"}");
+        return false;
     }
 
     private SessionContext sessionForRequest(HttpExchange ex, String token) {
@@ -8015,6 +9358,7 @@ public class WebChatServer {
         }
 
         ConfigValues config = host.configValues();
+        applyPendingRelayedReactions(msg);
         if (sqliteHistoryEnabled()) {
             enqueueSqliteHistoryWrite(msg, config);
         } else if (legacyJsonlHistoryEnabled()) {
@@ -8042,6 +9386,33 @@ public class WebChatServer {
             worker.execute(task);
         } catch (RejectedExecutionException ex) {
             task.run();
+        }
+    }
+
+    /**
+     * Establish read-after-write ordering for SQLite history reads. The history writer is
+     * single-threaded, so a no-op submitted here cannot complete until every message
+     * queued before this request has been committed. This prevents a browser refresh
+     * from observing an older "latest" page while the live in-memory timeline already
+     * contains newer messages.
+     */
+    private void awaitPendingSqliteHistoryWrites(String operation) {
+        ExecutorService worker = historyExecutor;
+        if (worker == null || worker.isShutdown() || Thread.currentThread().getName().equals("KOKOTO WebChat-History")) return;
+        Future<?> barrier;
+        try {
+            barrier = worker.submit(() -> { });
+        } catch (RejectedExecutionException ex) {
+            return;
+        }
+        try {
+            barrier.get(5, TimeUnit.SECONDS);
+        } catch (TimeoutException ex) {
+            host.logger().warn("SQLite history write barrier timed out before " + operation + "; serving the best available committed page.");
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException ignored) {
+            // Individual write failures are already logged by the storage path.
         }
     }
 
@@ -8242,7 +9613,15 @@ public class WebChatServer {
     }
 
     private void broadcast(ChatMessage msg) {
-        broadcastEvent("chat", msg.toJson());
+        if (msg == null) return;
+        for (SseConnection client : sseHub.snapshot()) {
+            try {
+                client.sendRaw("event: chat\ndata: " + publicMessageJson(msg, client.accountUuid()) + "\n\n");
+            } catch (IOException ignored) {
+                sseHub.remove(client);
+                client.close();
+            }
+        }
     }
 
     private void dispatchWebPushChat(ChatMessage msg) {
@@ -8262,6 +9641,7 @@ public class WebChatServer {
         p.systemKind = systemKindFor(msg);
         String replyTargetUuid = replyTargetUuidFor(msg);
         p.replyTargetUuid = replyTargetUuid;
+        p.mentionTargetUuids = system ? Set.of() : mentionTargetUuids(msg.message);
         webPush.sendToAll(p);
         dispatchWebPushReply(msg, replyTargetUuid);
     }
@@ -8346,6 +9726,7 @@ public class WebChatServer {
         p.url = webPushNavigationUrlWithParams(Map.of("kwcDmThread", String.valueOf(threadId == null ? "" : threadId), "kwcDmMessage", String.valueOf(messageId > 0 ? messageId : 0)));
         p.tag = "kwc-dm-" + String.valueOf(targetUuid == null ? "" : targetUuid).replaceAll("[^A-Za-z0-9_-]", "");
         p.senderUuid = senderUuid == null ? "" : senderUuid;
+        p.dmThreadId = threadId == null ? "" : threadId;
         webPush.sendToUser(targetUuid, p);
     }
 
@@ -8365,6 +9746,7 @@ public class WebChatServer {
         p.url = webPushNavigationUrlWithParams(Map.of("kwcGroupRoom", roomId, "kwcGroupMessage", String.valueOf(message == null || message.id <= 0 ? 0 : message.id)));
         p.tag = "kwc-group-" + roomId.replaceAll("[^A-Za-z0-9_-]", "");
         p.senderUuid = senderUuid == null ? (message == null ? "" : message.senderUuid) : senderUuid;
+        p.groupRoomId = roomId;
         webPush.sendToUsers(members, p);
     }
 
@@ -8415,6 +9797,62 @@ public class WebChatServer {
     }
 
 
+    private void publishPublicTypingEvent(String senderUuid, String senderUsername, String senderDisplayName, String source,
+                                          String clientId, String originServerId, String originServerName, long expiresAt) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("kind", "public");
+        m.put("fromUuid", String.valueOf(senderUuid == null ? "" : senderUuid));
+        m.put("fromUsername", String.valueOf(senderUsername == null ? "" : senderUsername));
+        m.put("fromDisplayName", String.valueOf(senderDisplayName == null ? "" : senderDisplayName));
+        m.put("source", String.valueOf(source == null ? "" : source));
+        m.put("clientId", String.valueOf(clientId == null ? "" : clientId));
+        m.put("originServerId", String.valueOf(originServerId == null ? "" : originServerId));
+        m.put("originServerName", String.valueOf(originServerName == null ? "" : originServerName));
+        m.put("expiresAt", expiresAt);
+        String data = "event: typing\ndata: " + JsonUtil.obj(m) + "\n\n";
+        for (SseConnection client : sseHub.snapshot()) {
+            try { client.sendRaw(data); } catch (IOException ex) { sseHub.remove(client); client.close(); }
+        }
+    }
+
+    private void publishDirectTypingEvent(String targetUuid, String senderUuid, String senderUsername, String senderDisplayName,
+                                          String originServerId, String originServerName, long expiresAt) {
+        String target = String.valueOf(targetUuid == null ? "" : targetUuid).trim().toLowerCase(Locale.ROOT);
+        if (target.isBlank()) return;
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("kind", "dm");
+        m.put("fromUuid", String.valueOf(senderUuid == null ? "" : senderUuid));
+        m.put("fromUsername", String.valueOf(senderUsername == null ? "" : senderUsername));
+        m.put("fromDisplayName", String.valueOf(senderDisplayName == null ? "" : senderDisplayName));
+        m.put("originServerId", String.valueOf(originServerId == null ? "" : originServerId));
+        m.put("originServerName", String.valueOf(originServerName == null ? "" : originServerName));
+        m.put("expiresAt", expiresAt);
+        String data = "event: typing\ndata: " + JsonUtil.obj(m) + "\n\n";
+        for (SseConnection client : sseHub.snapshot()) {
+            if (!target.equalsIgnoreCase(String.valueOf(client.accountUuid() == null ? "" : client.accountUuid()))) continue;
+            try { client.sendRaw(data); } catch (IOException ex) { sseHub.remove(client); client.close(); }
+        }
+    }
+
+    private void publishGroupTypingEvent(String roomId, String senderUuid, String senderUsername, String senderDisplayName, long expiresAt) {
+        String id = String.valueOf(roomId == null ? "" : roomId).trim();
+        if (id.isBlank() || host.groupChats() == null) return;
+        Set<String> members = host.groupChats().memberUuids(id);
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("kind", "group");
+        m.put("roomId", id);
+        m.put("fromUuid", String.valueOf(senderUuid == null ? "" : senderUuid));
+        m.put("fromUsername", String.valueOf(senderUsername == null ? "" : senderUsername));
+        m.put("fromDisplayName", String.valueOf(senderDisplayName == null ? "" : senderDisplayName));
+        m.put("expiresAt", expiresAt);
+        String data = "event: typing\ndata: " + JsonUtil.obj(m) + "\n\n";
+        for (SseConnection client : sseHub.snapshot()) {
+            String clientUuid = String.valueOf(client.accountUuid() == null ? "" : client.accountUuid()).trim().toLowerCase(Locale.ROOT);
+            if (clientUuid.isBlank() || clientUuid.equalsIgnoreCase(senderUuid) || !members.contains(clientUuid)) continue;
+            try { client.sendRaw(data); } catch (IOException ex) { sseHub.remove(client); client.close(); }
+        }
+    }
+
     public void inspectAdminDirectMessageAlert(String id, String sender, String source, String message) {
         adminDiscordAlerts.inspect(id, sender, source, message, AdminDiscordAlertManager.Scope.DM);
     }
@@ -8433,6 +9871,29 @@ public class WebChatServer {
         m.put("ok", true);
         m.put("roomId", id);
         broadcastGroupChatEvent(JsonUtil.obj(m), id, extraUserUuid);
+    }
+
+    public void publishGroupChatMessageUpdate(String roomId, GroupMessage message) {
+        String id = String.valueOf(roomId == null ? "" : roomId).trim();
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("ok", true);
+        m.put("roomId", id);
+        if (message != null) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", message.id);
+            item.put("roomId", message.roomId == null || message.roomId.isBlank() ? id : message.roomId);
+            item.put("senderUuid", message.senderUuid == null ? "" : message.senderUuid);
+            item.put("senderUsername", message.senderUsername == null ? "" : message.senderUsername);
+            item.put("senderDisplayName", message.senderDisplayName == null ? "" : message.senderDisplayName);
+            item.put("body", message.body == null ? "" : message.body);
+            item.put("eventType", message.eventType == null ? "" : message.eventType);
+            item.put("time", message.createdAt);
+            item.put("replyToId", Math.max(0L, message.replyToId));
+            item.put("replyToSender", message.replyToSender == null ? "" : message.replyToSender);
+            item.put("replyToPreview", message.replyToPreview == null ? "" : message.replyToPreview);
+            m.put("message", item);
+        }
+        broadcastGroupChatEvent(JsonUtil.obj(m), id, "");
     }
 
     private void broadcastGroupChatEvent(String json, String roomId, String extraUserUuid) {
@@ -8456,6 +9917,50 @@ public class WebChatServer {
         for (SseConnection client : sseHub.snapshot()) {
             String clientUuid = client.accountUuid() == null ? "" : client.accountUuid();
             if (!client.privateChatSuperAdmin() && !clientUuid.equals(a) && !clientUuid.equals(b)) continue;
+            try {
+                client.sendRaw(data);
+            } catch (IOException ex) {
+                sseHub.remove(client);
+                client.close();
+            }
+        }
+    }
+
+    private String notificationViewStateJson(String accountUuid) {
+        WebPushManager.ActivePrivateViewSnapshot snapshot = webPush.activePrivateViewSnapshot(accountUuid);
+        List<Map<String, Object>> dmThreads = new ArrayList<>();
+        for (Map.Entry<String, Long> e : snapshot.dmThreadExpiresAt.entrySet()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", e.getKey());
+            item.put("expiresAt", e.getValue());
+            dmThreads.add(item);
+        }
+        List<Map<String, Object>> groupRooms = new ArrayList<>();
+        for (Map.Entry<String, Long> e : snapshot.groupRoomExpiresAt.entrySet()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", e.getKey());
+            item.put("expiresAt", e.getValue());
+            groupRooms.add(item);
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("ok", true);
+        payload.put("dmThreads", dmThreads);
+        payload.put("groupRooms", groupRooms);
+        payload.put("serverTime", System.currentTimeMillis());
+        return JsonUtil.obj(payload);
+    }
+
+    private void sendNotificationViewState(SseConnection client, String accountUuid) throws IOException {
+        if (client == null) return;
+        client.sendRaw("event: notification-view-state\ndata: " + notificationViewStateJson(accountUuid) + "\n\n");
+    }
+
+    private void broadcastNotificationViewState(String accountUuid) {
+        String user = String.valueOf(accountUuid == null ? "" : accountUuid).trim().toLowerCase(Locale.ROOT);
+        if (user.isBlank()) return;
+        String data = "event: notification-view-state\ndata: " + notificationViewStateJson(user) + "\n\n";
+        for (SseConnection client : sseHub.snapshot()) {
+            if (!user.equals(String.valueOf(client.accountUuid() == null ? "" : client.accountUuid()).trim().toLowerCase(Locale.ROOT))) continue;
             try {
                 client.sendRaw(data);
             } catch (IOException ex) {
@@ -8683,12 +10188,9 @@ public class WebChatServer {
         ConfigValues config = host.configValues();
         String fwd = ex.getRequestHeaders().getFirst("X-Forwarded-For");
         boolean trustedProxy = IpAddressMatcher.matchesAny(actual, config.trustedProxies);
-        String resolved = actual;
-
-        if (trustedProxy && fwd != null && !fwd.isBlank()) {
-            String first = IpAddressMatcher.normalizeIpLiteral(fwd.split(",", 2)[0]);
-            if (IpAddressMatcher.isValidAddress(first)) resolved = first;
-        }
+        String resolved = trustedProxy
+                ? IpAddressMatcher.resolveForwardedClientIp(actual, fwd, config.trustedProxies)
+                : actual;
 
         if (config.logClientIpResolution) {
             host.logger().info("Client IP resolved: socket=" + actual

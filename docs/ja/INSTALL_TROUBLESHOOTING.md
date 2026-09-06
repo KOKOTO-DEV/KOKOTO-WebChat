@@ -17,14 +17,14 @@ mvn clean package
 出力:
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.1.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.0-Bukkit-1.18-26.2.jar
 ```
 
 Windows では root validator を platform build helper としても使用できます。
 
 ```bat
 
-> `validate-release-windows.bat` と必要な PowerShell helper は source archive に含まれています。別の `KWC-5.1.0-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、release build の実行には不要です。
+> `validate-release-windows.bat` と必要な PowerShell helper は source archive に含まれています。別の `KWC-5.2.0-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、release build の実行には不要です。
 
 validate-release-windows.bat --bukkit
 validate-release-windows.bat --bukkit --fast
@@ -52,9 +52,9 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 現在バージョンの query が含まれている必要があります。
 
 ```text
-addons/kokoto-web-chat/config.js?v=5.1.0-<cache-token>
-addons/kokoto-web-chat/chat.js?v=5.1.0-<cache-token>
-addons/kokoto-web-chat/chat.css?v=5.1.0-<cache-token>
+addons/kokoto-web-chat/config.js?v=5.2.0-<cache-token>
+addons/kokoto-web-chat/chat.js?v=5.2.0-<cache-token>
+addons/kokoto-web-chat/chat.css?v=5.2.0-<cache-token>
 ```
 
 実際の Web ファイル更新も確認します。

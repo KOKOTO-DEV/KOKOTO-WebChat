@@ -1,11 +1,11 @@
-# KOKOTO WebChat 5.1.0 完整用户与运维手册
+# KOKOTO WebChat 5.2.0 完整用户与运维手册
 
 
 ## 可视化资料
 
 | 范围 | 图示 |
 | --- | --- |
-| 架构 | [PNG](../assets/architecture-5.1.0.png) · [SVG](../assets/architecture-5.1.0.svg) |
+| 架构 | [PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg) |
 | Relay Protocol v2 | [Animated GIF](../assets/relay-v2-flow.gif) · [PNG](../assets/relay-v2-flow.png) · [SVG](../assets/relay-v2-flow.svg) |
 | DM/群组 Reply | [PNG](../assets/private-reply-flow.png) · [SVG](../assets/private-reply-flow.svg) |
 | 配置迁移 | [Animated GIF](../assets/config-language-migration.gif) · [PNG](../assets/config-language-migration.png) · [SVG](../assets/config-language-migration.svg) |
@@ -15,14 +15,24 @@
 
 本文引用的一手标准与第三方官方文档统一列在 [REFERENCES.md](REFERENCES.md) 中。
 
-> **5.1.0 运维：** Web Admin **Filter** 管理公开聊天/群聊/可选私信的 block/mask/replace 规则与不发送测试，**Settings** 只管理受支持的实时安全设置：访客/CAPTCHA、会话、用户资料、管理员提醒、上传与内容过滤。5 个 moderation 策略设置仅允许在 `config.yml` 中配置，不会暴露到 Web Admin。游戏侧使用 `/kchat filter` / `/kchat settings`。会话期限变更按创建时间重算现有目标会话，且不会复活已经过期的会话。`upload.filename-mode: original` 为新上传保留安全的 Unicode 原名并在重名时自动编号。
+> **5.2.0 运维：** Web Admin **Filter** 管理公开聊天/群聊/可选私信的 block/mask/replace 规则与不发送测试，**Settings** 只管理受支持的实时安全设置：访客/CAPTCHA、会话、用户资料、公开聊天/DM/群聊 typing-indicator 策略、管理员提醒、上传与内容过滤。5 个 moderation 策略设置仅允许在 `config.yml` 中配置，不会暴露到 Web Admin。游戏侧使用 `/kchat filter` / `/kchat settings`。会话期限变更按创建时间重算现有目标会话，且不会复活已经过期的会话。`upload.filename-mode: original` 为新上传保留安全的 Unicode 原名并在重名时自动编号。
 
 
-本文从普通用户和服务器管理员两个角度说明 KOKOTO WebChat 5.1.0 的全部功能。逐项配置说明请参阅 `CONFIGURATION.md`，服务器中继请参阅 `SERVER_RELAY.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS.md` 与 `NGINX_HTTPS.md`。
+本文从普通用户和服务器管理员两个角度说明 KOKOTO WebChat 5.2.0 的全部功能。逐项配置说明请参阅 `CONFIGURATION.md`，服务器中继请参阅 `SERVER_RELAY.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS.md` 与 `NGINX_HTTPS.md`。
+
+
+## 5.2.0 新增功能
+
+- **消息 reaction：** 登录用户可以在公共聊天、DM 与普通群聊消息中添加/取消 Unicode 或 KWC 自定义表情 reaction；群聊加入/离开事件不支持 reaction。没有实际 reaction 时，32 × 16px 的 `+` 按钮与当前正文和下一条消息各保留 1px 的视觉间距，不覆盖文字；reaction OFF 时继续使用原来的 8px 消息间距，出现实际 reaction 后才使用正常的 in-flow row/chip 间距。picker 支持表情字符、服务器生成的 Unicode 名称、管理员搜索别名、自定义表情 ID/名称/表情包。别名在 **Admin > Emojis > Reaction icons** 中按 `表情 = 搜索词` 编辑，并保存到 `reaction-search-aliases.txt`。分类/搜索重新渲染后仍保持位置与外部点击关闭。反应悬停列表中的用户名称使用与普通聊天发送者相同的显示名称 ↔ 原始名称切换。总开关和 KWC 自定义表情允许开关使用与其他 Admin settings 相同的圆角主题行。关闭功能后已有数据保留并只读显示，同时拒绝所有本地/Relay mutation。
+- **对话存档：** `chat.conversation-archive.enabled: true`（默认）时可用；服务器关闭后不会生成保存相关 DOM，不注册 archive API，也不打开或新建 archive DB。可指定公共/DM/群聊范围的第一条与最后一条消息，保存为私有 snapshot。普通 retention 删除原始历史后 snapshot 仍保留，但管理员强制删除原消息/房间以及私聊房间锁定策略始终优先。附件字节不会复制；原图仍可用时可显示在打印/PDF 中，其他文件保留链接，原件不存在时标记为不可用。PDF 使用用户当前的 KWC 外观设置。 服务器端保存容量由 `chat.conversation-archive` 下的 `max-archives-per-user`、`max-messages-per-archive` 和 `max-messages-per-user` 限制。
+- **“正在输入…”：** 公共/DM/群聊 typing 完全由事件驱动。服务器管理员可在 Web Admin **Settings** 或 `chat.typing-indicator.*` 中分别控制公开聊天、DM 与群聊，默认值为 OFF / ON / ON。`chat.typing-indicator.user-display-control` 默认 OFF；管理员启用后，登录用户会获得一个按账号保存的 **输入中提示** 选项。个人关闭只隐藏自己屏幕上的接收提示，不影响发送自己的 typing 状态。首次输入事件开启 5 秒显示窗口，窗口期间不重复发送；没有 polling、消息数据库写入或常驻 typing worker。提示以高不透明度圆角 pill 浮在当前输入框上方一行，使用与普通消息相同的显示名称 ↔ 原始名称切换，并去除名称中的 formatting tag。字体约为用户聊天字体的 80%，但不会小于服务器基础 UI 字体。多个长名称无法在一行显示时自动折叠为人数。
+- **私聊房间标题栏：** 仅长标题使用省略号，在线人数、Settings 与 Leave 保持固定宽度。Invite、对话存档、隐藏与房间管理按权限集中到 Settings。
+- **自动跟随底部：** 公共、DM、群聊统一使用 32px 阈值。emoji/icon/attachment 面板引起的布局移动会保留 viewport，不会仅因布局变化立即强制滚到底部。
+- **Relay 2.1：** KWC 产品版本与 relay protocol revision 分离。Protocol major 2 是 wire compatibility 边界；2.1 公告 `public`、`dm`、`read`、`reaction`、`reaction-authority`、`typing` capability。
 
 ## 1. 插件概述
 
-KOKOTO WebChat 用于把 Minecraft 服务器聊天连接到浏览器。5.1.0 提供 Bukkit/Paper/Spigot，以及 Fabric 1.18.2～26.2、NeoForge 1.20.2～26.2、Forge 1.18.2～26.2 exact-target 构建。
+KOKOTO WebChat 用于把 Minecraft 服务器聊天连接到浏览器。5.2.0 提供 Bukkit/Paper/Spigot，以及 Fabric 1.18.2～26.2、NeoForge 1.20.2～26.2、Forge 1.18.2～26.2 exact-target 构建。
 
 支持：
 
@@ -64,7 +74,7 @@ KOKOTO WebChat 用于把 Minecraft 服务器聊天连接到浏览器。5.1.0 提
 7. 重启服务器或执行 `/kchat reload`。
 
 ```yaml
-config-version: "5.1.0"
+config-version: "5.2.0"
 enabled: false
 ```
 
@@ -77,7 +87,7 @@ enabled: false
 当前版本的完整 reference 始终写入：
 
 ```text
-<KWC data dir>/config-reference-5.1.0.yml
+<KWC data dir>/config-reference-5.2.0.yml
 ```
 
 它是当前默认设置的管理员可读参考文件，展示语言与 `ui.language` 选择的内置语言（`en-US`、`ko-KR`、`ja-JP`、`zh-CN`）一致；不受支持或自定义的 UI 语言使用英文展示。reference 文件不会作为迁移输入。`/kchat reload` 会在替换正在运行的服务之前验证 YAML；无效 YAML 会保留此前正在运行的配置。
@@ -89,12 +99,12 @@ enabled: false
 - 不继承旧注释、顺序、空白和缩进。
 - 如果旧版本标记不是 `*_auto_migration`，真正进行版本升级前会完整备份原 `config.yml`。
 - 已存在设置的内置默认值若在新版本发生变化，不会静默覆盖，而是保留为审核项目。
-- 实际文件会标记为 `config-version: "5.1.0_auto_migration"`。
+- 实际文件会标记为 `config-version: "5.2.0_auto_migration"`。
 
 随后生成：
 
 ```text
-<KWC data dir>/config-migration-5.1.0.yml
+<KWC data dir>/config-migration-5.2.0.yml
 ```
 
 它不再是让管理员复制缺失设置的 fragment，而是**审核报告**。其中记录自动插入数量、仍需管理员判断的默认值变化、最终确认用的精确版本标记，以及 current-vs-reference 的**设置值语义差异**。Difference 只比较已解析的 YAML path/value；注释、空行、缩进、引号格式、行位置和键顺序都会被忽略。每个 Difference 块只显示该设置的实际 YAML 值块，不重复复制说明注释，list/map 仍保持多行结构。由于缺失设置和注释已经放进真实 config 的正确位置，不会再作为大块 reference-only 内容堆在 diff 顶部。
@@ -103,18 +113,18 @@ enabled: false
 
 | 真实 `config.yml` 状态 | 行为 |
 |---|---|
-| `config-version` 缺失或为旧/其他版本 | 执行迁移，写入 `5.1.0_auto_migration` 并生成迁移/审核报告 |
-| `config-version: "5.1.0_auto_migration"` | 启用自动迁移；每次启动/reload 都从最新内置 `config.yml` 重建并覆盖当前值，然后刷新报告/差异 |
-| `config-version: "5.1.0"` | 停止当前版本的自动迁移；跳过同版本迁移/补全，并删除旧迁移提示 |
+| `config-version` 缺失或为旧/其他版本 | 执行迁移，写入 `5.2.0_auto_migration` 并生成迁移/审核报告 |
+| `config-version: "5.2.0_auto_migration"` | 启用自动迁移；每次启动/reload 都从最新内置 `config.yml` 重建并覆盖当前值，然后刷新报告/差异 |
+| `config-version: "5.2.0"` | 停止当前版本的自动迁移；跳过同版本迁移/补全，并删除旧迁移提示 |
 
 该版本标记表示**是否启用自动迁移，而不是审核状态**。
 
 ```yaml
 # 即使已经审核，也继续自动 migration
-config-version: "5.1.0_auto_migration"
+config-version: "5.2.0_auto_migration"
 
 # 停止同版本自动 migration
-config-version: "5.1.0"
+config-version: "5.2.0"
 ```
 
 以后真正升级到新的插件版本时，会再次进入该新版本的 `_auto_migration` 状态。
@@ -398,7 +408,7 @@ chat:
 
 ### 8.5 消息令牌
 
-KOKOTO WebChat 5.1.0 可以在消息保存或中继前替换管理员配置的 `:alias:` 令牌。内置 alias 只提供英文默认值，管理员可以改成或追加任意语言的 alias。
+KOKOTO WebChat 5.2.0 可以在消息保存或中继前替换管理员配置的 `:alias:` 令牌。内置 alias 只提供英文默认值，管理员可以改成或追加任意语言的 alias。
 
 - `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 换行 1 次
 - `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 留 1 个空行
@@ -978,7 +988,7 @@ imageemojis.use
 
 ## 23. 浏览器通知与 Web Push
 
-从 5.0.0 开始，登录用户的关键词与通知类型设置保存在账号数据中，并在不同浏览器/设备之间共享。Windows、移动端等显示环境可以分别保存多个账号 UI 配置；窗口位置、尺寸、最小化状态和 Web Push endpoint 仍保留为设备本地状态。Web Admin 可限制配置数量并控制是否允许 JSON 导入/导出。同一设备已有有效 KWC Web Push 订阅时，实时页面不会再次弹出重复的系统 Notification，但应用内通知记录仍保留。
+从 5.0.0 开始，登录用户的关键词与通知类型设置保存在账号数据中，并在不同浏览器/设备之间共享。Windows、移动端等显示环境可以分别保存多个账号 UI 配置；窗口位置、尺寸、最小化状态和 Web Push endpoint 仍保留为设备本地状态。Web Admin 可限制配置数量并控制是否允许 JSON 导入/导出。只要同一账号登录的任意 KWC 页面实际可见且处于焦点、聊天窗口未最小化、DM/群聊窗口已打开，并且当前线程/房间 ID 与新消息目标完全一致，就视为用户正在查看该会话。这个短时浏览器/标签页 heartbeat 即使用于查看的设备本身没有 Web Push subscription 也会报告给服务器。只要任意 active client 正在查看该会话，同一账号所有已连接 KWC 标签页都会抑制该 DM/群聊的浏览器通知和浏览器本地通知收件箱写入，同时所有 Web Push subscription 也会在发送前排除该 DM/群聊通知。查看其他房间、关闭窗口、页面隐藏/失焦或聊天最小化时则视为未查看，并恢复正常通知。
 
 
 服务器端视觉配置由以下设置控制：
@@ -1004,10 +1014,12 @@ notifications:
   notify-group-chat: true
   notify-mentions: true
   notify-replies: true
+  notify-reactions: true
   notify-system: true
   notify-keywords: true
-  show-message-preview: true
 ```
+
+用户可以在聊天设置中进一步开关服务器允许的通知类别。**表情反应**只使用一个复选框，同时控制实时浏览器通知和后台/移动 Web Push；每个浏览器/设备只会使用自身支持的投递方式。**@提及**只有在 `@` 后紧跟已登记真实名或显示名时才成立。每个 `@` 位置优先采用最长匹配的登记名称；多个账户使用完全相同的显示名时会全部收到通知，因此共享显示名也可以作为团队呼叫。登录用户的选择按账号同步，访客保存在当前浏览器。服务器端设为 `false` 的类别不能由用户重新启用。**消息预览是默认内置行为**，符合条件的浏览器通知与 Web Push 始终使用消息预览，不提供用户或管理员单独复选项。
 
 ```yaml
 web-push:
@@ -1109,7 +1121,7 @@ discordsrv:
 
 ## 26. 多服务器中继
 
-KOKOTO WebChat 5.1.0 对 public chat 与跨服务器 1:1 DM/read receipt 使用 **Relay Protocol v2**。group chat room 仍为本地功能。
+KOKOTO WebChat 5.2.0 对 public chat 与跨服务器 1:1 DM/read receipt 使用保留 Relay v2 信任/加密模型的 **Relay Protocol 2.1**。group chat room 仍为本地功能。
 
 Relay v2 采用 `groups -> peers`。每个 group 只有一个 shared secret，peer 只保存 server ID、API URL 与 enabled 状态。首次设置时，可只在一台服务器上保留 `shared-secret: ""` 并启动/重载，然后把其 `config.yml` 中自动生成的值复制到同一 group 的其他服务器。已有的非空 secret 不会自动重新生成；手工 secret 不足 32 字符时保持 invalid。双方必须在同一个 group 中互相登记 peer，同一个 peer ID 不能登记到多个本地 group。
 

@@ -1,11 +1,11 @@
-# KOKOTO WebChat 5.1.0 Complete User and Operations Manual
+# KOKOTO WebChat 5.2.0 Complete User and Operations Manual
 
 
 ## Visual map
 
 | Area | Diagram |
 | --- | --- |
-| Architecture | [PNG](../assets/architecture-5.1.0.png) · [SVG](../assets/architecture-5.1.0.svg) |
+| Architecture | [PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg) |
 | Relay Protocol v2 | [Animated GIF](../assets/relay-v2-flow.gif) · [PNG](../assets/relay-v2-flow.png) · [SVG](../assets/relay-v2-flow.svg) |
 | DM/group Reply | [PNG](../assets/private-reply-flow.png) · [SVG](../assets/private-reply-flow.svg) |
 | Configuration migration | [Animated GIF](../assets/config-language-migration.gif) · [PNG](../assets/config-language-migration.png) · [SVG](../assets/config-language-migration.svg) |
@@ -15,14 +15,24 @@
 
 See [REFERENCES.md](REFERENCES.md) for the primary standards and official third-party documentation cited by this manual.
 
-> **5.1.0 operations:** Web Admin **Filter** manages shared public/group/optional-DM block/mask/replace rules and no-send testing; **Settings** exposes only the supported live-safe guest/CAPTCHA, session, profile, administrator-alert, upload, and content-filter values. The five moderation policy switches remain `config.yml`-only and are not exposed by Web Admin. `/kchat filter` and `/kchat settings` provide game-side controls. Session lifetime changes recalculate existing affected sessions from their creation time without resurrecting already-expired sessions. `upload.filename-mode: original` preserves safe Unicode original names for new uploads with collision suffixes.
+> **5.2.0 operations:** Web Admin **Filter** manages shared public/group/optional-DM block/mask/replace rules and no-send testing; **Settings** exposes only the supported live-safe guest/CAPTCHA, session, profile, server-wide typing-indicator policy, administrator-alert, upload, and content-filter values. The five moderation policy switches remain `config.yml`-only and are not exposed by Web Admin. `/kchat filter` and `/kchat settings` provide game-side controls. Session lifetime changes recalculate existing affected sessions from their creation time without resurrecting already-expired sessions. `upload.filename-mode: original` preserves safe Unicode original names for new uploads with collision suffixes.
 
 
-This manual describes all KOKOTO WebChat 5.1.0 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION.md`. For relay protocol details, see `SERVER_RELAY.md`. For HTTPS deployment, also see `CADDY_HTTPS.md` and `NGINX_HTTPS.md`.
+This manual describes all KOKOTO WebChat 5.2.0 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION.md`. For relay protocol details, see `SERVER_RELAY.md`. For HTTPS deployment, also see `CADDY_HTTPS.md` and `NGINX_HTTPS.md`.
+
+
+## 5.2.0 additions
+
+- **Message reactions:** signed-in users can add/remove Unicode or KWC custom-emoji reactions on public, DM, and normal group-chat messages. Group membership join/leave events are excluded. When no reaction exists, the 32 × 16 px hover `+` sits between messages with 1 px visual clearance above and below, so it does not cover either text line and still avoids reserving the full 22 px reaction row. Reaction OFF restores the original 8 px message spacing; real reactions use the normal in-flow row/chip spacing. Search uses the literal emoji, server-generated Unicode names, administrator-managed aliases, or custom-emoji ID/name/pack. The alias list is editable under **Admin > Emojis > Reaction icons** as `emoji = search words` and persists to `reaction-search-aliases.txt`. The picker remains anchored across category/search rerenders and outside-click dismissal continues to work. Hovering a chip shows all sanitized reactor names in a bounded scroll list, using the same display-name/original-name toggle as chat senders. The same Admin screen uses the normal rounded themed setting rows for the master reaction ON/OFF switch and separate KWC custom-emoji allowance. Turning the feature off preserves existing data and leaves existing chips visible/read-only while rejecting all local and relayed reaction mutations, including removals. Relay 2.1 synchronizes reactions and reactor display labels for relayed public messages and cross-server DMs without rebuilding the message/media DOM; actor UUIDs remain internal.
+- **Saved conversations:** when `chat.conversation-archive.enabled: true` (default), public, DM, and group ranges can be stored as private snapshots. Disabling the server option removes archive controls from the DOM, leaves archive API routes unregistered, and does not open/create the archive DB. Normal retention does not remove the snapshot, but administrator-forced source deletion/room deletion and private-room lock policy remain authoritative. Attachments are not copied; available images can appear in the printable view, other files remain links, and missing originals are marked unavailable. PDF export reuses the user's current KWC appearance. Server-side archive capacity is bounded by `max-archives-per-user`, `max-messages-per-archive`, and `max-messages-per-user` under `chat.conversation-archive`.
+- **Typing indicator:** public/DM/group typing is event-driven. The server administrator controls Open chat, DM, and Group chat separately in Web Admin **Settings** or `chat.typing-indicator.*`; defaults are OFF, ON, and ON. `chat.typing-indicator.user-display-control` defaults OFF; when an administrator enables it, signed-in users get one account-stored **Typing indicators** choice that affects only incoming display on their own screen, never transmission of their own typing activity. One input event opens a five-second indicator window; there is no polling, message-database write, or continuously running typing worker. The rounded high-opacity indicator floats one line above the active composer, uses the normal display-name/original-name toggle, strips formatting tags from names, and uses about 80% of the user chat-font size without going below the configured base UI font. Group displays collapse to a count when multiple long names do not fit.
+- **Private-room header:** long room titles ellipsize while member count, Settings, and Leave keep their width. Invite, saved-conversation, hide, and room-management actions are consolidated under Settings according to permission.
+- **Auto-follow:** public, DM, and group chat use a 32 px bottom threshold. Layout movement caused by emoji/icon/attachment panels preserves the viewport and does not by itself trigger an immediate forced scroll to the bottom.
+- **Relay 2.1:** product version and relay protocol revision are independent. Protocol major 2 remains the wire-compatibility boundary; 2.1 advertises `public`, `dm`, `read`, `reaction`, `reaction-authority`, and `typing` capabilities.
 
 ## 1. Overview
 
-KOKOTO WebChat connects Minecraft server chat to a browser-based chat interface. Version 5.1.0 provides Bukkit/Paper/Spigot plus exact-target Fabric 1.18.2–26.2, NeoForge 1.20.2–26.2, and Forge 1.18.2–26.2 builds.
+KOKOTO WebChat connects Minecraft server chat to a browser-based chat interface. Version 5.2.0 provides Bukkit/Paper/Spigot plus exact-target Fabric 1.18.2–26.2, NeoForge 1.20.2–26.2, and Forge 1.18.2–26.2 builds.
 
 Supported deployment and feature areas:
 
@@ -44,7 +54,7 @@ Required:
 - A Java runtime supported by that Minecraft/server target. The Bukkit artifact is compiled for Java 17. Fabric/NeoForge/Forge exact-target helpers select JDK 17, 21, or 25 according to the Minecraft target; 26.x targets use Java 25.
 - Permission to install the platform JAR in `plugins/` (Bukkit family) or `mods/` (Fabric/NeoForge/Forge)
 
-KOKOTO WebChat 5.1.0 declares `api-version: '1.18'` and compiles against `spigot-api:1.18.2-R0.1-SNAPSHOT`. Minecraft 1.17 and older are not claimed by this release.
+KOKOTO WebChat 5.2.0 declares `api-version: '1.18'` and compiles against `spigot-api:1.18.2-R0.1-SNAPSHOT`. Minecraft 1.17 and older are not claimed by this release.
 
 Optional integrations:
 
@@ -68,7 +78,7 @@ For public servers, do not expose port `8899` directly to the Internet. Bind KOK
 Safe initial state:
 
 ```yaml
-config-version: "5.1.0"
+config-version: "5.2.0"
 enabled: false
 ```
 
@@ -81,7 +91,7 @@ KOKOTO WebChat preserves existing configured values by rebuilding an active-migr
 The complete current reference is always written as:
 
 ```text
-<KWC data dir>/config-reference-5.1.0.yml
+<KWC data dir>/config-reference-5.2.0.yml
 ```
 
 It is an administrator-readable copy of the current default rendered in the same built-in language selected by `ui.language` (`en-US`, `ko-KR`, `ja-JP`, or `zh-CN`). Unsupported/custom UI languages use the English configuration presentation. The reference is never migration input. `/kchat reload` validates YAML before any live service is stopped; invalid YAML leaves the previous running configuration active.
@@ -93,12 +103,12 @@ When `config-version` is missing or differs from the running plugin version, KWC
 - Old comments, ordering, whitespace, indentation, and duplicate textual copies are not carried forward.
 - If the old version marker is not `*_auto_migration`, the original `config.yml` is backed up before a real version upgrade.
 - Existing defaults that changed in the new version are **not** silently replaced; they stay review items.
-- The real file is marked `config-version: "5.1.0_auto_migration"`.
+- The real file is marked `config-version: "5.2.0_auto_migration"`.
 
 KWC then writes:
 
 ```text
-<KWC data dir>/config-migration-5.1.0.yml
+<KWC data dir>/config-migration-5.2.0.yml
 ```
 
 This is a **review report**, not a copy/paste file for missing settings. It records the automatic insertion count, changed defaults that still need an operator decision, the exact final confirmation marker, and a semantic current-vs-reference setting diff. Difference blocks compare parsed YAML path/value pairs; comments, blank lines, indentation, quoting style, line positions, and key order are ignored. Each Difference block prints only that setting's YAML value block without duplicating its explanatory comments, while list/map values remain multi-line. Because missing settings and their bundled comments are already inserted into the real config, they no longer appear as a large reference-only block at the top of the diff.
@@ -107,18 +117,18 @@ Decision rules:
 
 | Physical `config.yml` state | Behavior |
 |---|---|
-| `config-version` missing or older/different | Perform the migration, write `5.1.0_auto_migration`, and generate/update the migration report |
-| `config-version: "5.1.0_auto_migration"` | Automatic migration enabled; rebuild from the latest same-version bundled `config.yml`, overlay current values, and refresh the migration report/diff |
-| `config-version: "5.1.0"` | Automatic migration disabled for the current version; skip same-version migration/backfill and remove stale same-version migration guidance |
+| `config-version` missing or older/different | Perform the migration, write `5.2.0_auto_migration`, and generate/update the migration report |
+| `config-version: "5.2.0_auto_migration"` | Automatic migration enabled; rebuild from the latest same-version bundled `config.yml`, overlay current values, and refresh the migration report/diff |
+| `config-version: "5.2.0"` | Automatic migration disabled for the current version; skip same-version migration/backfill and remove stale same-version migration guidance |
 
 The marker controls migration behavior rather than review status:
 
 ```yaml
 # Keep same-version automatic migration enabled, even after you have reviewed the config
-config-version: "5.1.0_auto_migration"
+config-version: "5.2.0_auto_migration"
 
 # Disable same-version automatic migration
-config-version: "5.1.0"
+config-version: "5.2.0"
 ```
 
 A later real plugin-version upgrade enters the new version's `_auto_migration` state again.
@@ -420,7 +430,7 @@ Normal text and URL-oriented messages can use different limits. `0` means unlimi
 
 ### 8.5 Message Tokens
 
-KOKOTO WebChat 5.1.0 can replace administrator-configured `:alias:` tokens before messages are stored or relayed. The built-in alias names are English-only defaults, but aliases can be replaced or extended in any language.
+KOKOTO WebChat 5.2.0 can replace administrator-configured `:alias:` tokens before messages are stored or relayed. The built-in alias names are English-only defaults, but aliases can be replaced or extended in any language.
 
 Default controls:
 
@@ -1046,7 +1056,7 @@ Reconnect if the resource pack must be refreshed. See `IMAGEEMOJIS_BERO_1_9_0.md
 
 ## 23. Browser Notifications and Web Push
 
-Since 5.0.0, logged-in users' keyword and notification-type choices are stored as account preferences and reused across browsers/devices. Visual settings can be kept in multiple per-account UI profiles for Windows/mobile/etc.; window geometry, minimized state and Web Push endpoints remain device-local. Web Admin controls the maximum profile count and whether JSON import/export is allowed. When the current device already has an active KWC Web Push subscription, the live page suppresses its duplicate OS Notification while keeping the in-app notification entry.
+Since 5.0.0, logged-in users' keyword and notification-type choices are stored as account preferences and reused across browsers/devices. Visual settings can be kept in multiple per-account UI profiles for Windows/mobile/etc.; window geometry, minimized state and Web Push endpoints remain device-local. Web Admin controls the maximum profile count and whether JSON import/export is allowed. A private conversation counts as actively viewed only when at least one signed-in KWC browser for the account has a visible and focused page, the chat window is not minimized, the DM/group modal is open, and the current thread/room ID exactly matches the incoming target. This short-lived browser/tab state is reported to the server even when the viewing browser has no Web Push subscription. While any active client is viewing the exact conversation, live browser notifications and browser-local notification-inbox insertion are suppressed in every connected KWC tab for that account, and every Web Push subscription for that account is excluded for that DM/group target. A different room, closed modal, hidden/unfocused page, or minimized chat is treated as not viewing, and normal notification delivery resumes.
 
 
 Server-side visual profiles are controlled by:
@@ -1071,12 +1081,12 @@ notifications:
   notify-group-chat: true
   notify-mentions: true
   notify-replies: true
+  notify-reactions: true
   notify-system: true
   notify-keywords: true
-  show-message-preview: true
 ```
 
-Users can further restrict allowed notification types in Chat settings. For signed-in users these choices are account-level; guests keep browser-local choices. A server-side `false` cannot be overridden by the user. The browser-local notification inbox keeps recent events, and notification clicks can navigate to a public message, reply, DM thread, or group room when a target is available.
+Users can further restrict allowed notification types in Chat settings. **Reactions** is one shared checkbox for both live browser notifications and background/mobile Web Push; each browser/device simply uses the delivery methods it supports. The **@Mention** option triggers only for an explicit `@` followed by a registered real name or display name. At each `@`, KWC chooses the longest matching registered name; accounts that share that exact display name are all notified, so a shared display name can also be used as a team mention. For signed-in users these choices are account-level; guests keep browser-local choices. A server-side `false` cannot be overridden by the user. **Message preview is built in** for eligible browser notifications and Web Push and has no separate user or administrator checkbox. The browser-local notification inbox keeps recent events, and notification clicks can navigate to a public message, reply, DM thread, or group room when a target is available.
 
 Web Push:
 
@@ -1188,7 +1198,7 @@ discordsrv:
 
 ## 26. Multi-Server Relay
 
-KOKOTO WebChat 5.1.0 uses **Relay Protocol v2** for public chat and cross-server 1:1 DM/read receipts. Group-chat rooms remain local.
+KOKOTO WebChat 5.2.0 uses **Relay Protocol 2.1** over the Relay v2 trust/encryption model for public chat and cross-server 1:1 DM/read receipts. Group-chat rooms remain local.
 
 Relay v2 is configured as `groups -> peers`. Each group has one shared secret, and its peer entries contain only server ID, API URL and enabled state. For first setup, use `shared-secret: ""` on one server, start/reload KWC, then copy the generated value from that server's `config.yml` to the other servers in the same group. Existing non-empty secrets are never regenerated; a non-empty manual secret shorter than 32 characters remains invalid. Both servers must list each other in the same group, and the same peer ID cannot be registered in multiple local groups.
 

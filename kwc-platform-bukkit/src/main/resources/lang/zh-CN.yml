@@ -26,7 +26,7 @@ web:
     skip: 跳过
     logout: 退出登录
     setPassword: 设置密码
-    clearHistory: 清空网页历史
+    clearHistory: 删除全部公开聊天记录
     mute: 禁言
     unmute: 解除禁言
     revoke: 撤销会话
@@ -34,6 +34,7 @@ web:
     accept: 接受
     decline: 拒绝
     cancel: 取消
+    react: 反应
     reply: 回复
     pin: 置顶
     moderationActionsEnable: 启用置顶/删除
@@ -59,6 +60,7 @@ web:
     change: 更改
     rename: 更改
     renamePack: 重命名文件夹
+    open: '打开'
     hide: '隐藏'
   placeholder:
     guestName: 访客名称
@@ -80,6 +82,16 @@ web:
   emoji:
     empty: 没有配置表情。
     emptyPack: 无表情
+    recent: 最近
+    searchPlaceholder: 搜索表情
+    searchEmpty: 没有匹配的表情。
+    emptyRecent: 没有最近使用的表情。
+    favorites: 收藏
+    emptyFavorites: 没有收藏的表情。
+    favoriteAdd: 添加到收藏
+    favoriteRemove: 从收藏中移除
+    favoriteLimitReached: 最多可以保存 {count} 个收藏表情。
+    favoriteSaveFailed: 无法保存表情收藏。
   alert:
     emojiTooMany: 每条消息最多只能使用 {max} 个表情。
     rateLimited: 发送太快了，请稍后再试。
@@ -93,7 +105,7 @@ web:
     uploadFailed: '上传失败: {error}'
     confirmDelete: 要隐藏这条消息吗？
     deleteFailed: '删除失败: {error}'
-    confirmClearHistory: 要清空网页聊天历史吗？
+    confirmClearHistory: "警告：服务器上的全部公开聊天记录、相关反应以及已保存的公开聊天归档将被永久删除。此操作无法撤销或恢复。确定要删除吗？"
     adminActionFailed: '管理操作失败：{error}'
     failed: '失败: {error}'
     loginFailed: '登录失败: {error}'
@@ -133,6 +145,64 @@ web:
     groupActionFailed: '群组操作失败：{error}'
     groupSettingsFailed: '无法保存群组设置：{error}'
     renameFailed: '重命名失败: {error}'
+  typing:
+    generic: '正在输入...'
+    user: '{user} 正在输入...'
+    users: '{users} 正在输入...'
+    two: '{user1}、{user2} 正在输入...'
+    count: '{count} 人正在输入...'
+    multiple: '多人正在输入...'
+  reaction:
+    remove: '取消反应'
+    add: '添加反应'
+    noActors: '没有反应用户信息'
+    categoryRecent: '最近使用'
+    categorySmileys: '表情'
+    categoryPeople: '人物'
+    categoryAnimals: '动物/自然'
+    categoryFood: '食物'
+    categoryActivities: '活动'
+    categoryObjects: '物品'
+    categorySymbols: '符号'
+    categoryCustom: 'KWC 表情'
+    searchPlaceholder: '搜索表情'
+    searchEmpty: '没有匹配的反应。'
+    notificationTitle: '反应'
+    notificationBody: '{user} 使用 {reaction} 作出了反应。'
+    gameNotice: '{user} 使用 {reaction} 作出了反应。'
+    pending: '原消息服务器重新连接后将应用该反应。'
+    failed: '无法应用反应：{error}'
+    expired: '原消息服务器重新连接前，反应请求已过期。'
+    manage: '反应设置'
+    addSame: '添加相同反应'
+  archive:
+    library: '已保存的对话'
+    saveConversation: '保存对话'
+    savePublic: '保存公共聊天'
+    selectFirst: '请选择要保存的第一条消息。'
+    selectLast: '请选择要保存的最后一条消息。'
+    rangeReady: '已选择要保存的对话范围。'
+    title: '标题'
+    defaultTitle: '已保存的对话'
+    rangeSummary: '{count} 条消息 · {time}'
+    saved: '对话已保存。'
+    saveFailed: '无法保存对话：{error}'
+    loadFailed: '无法加载已保存的对话：{error}'
+    renameFailed: '无法重命名已保存的对话：{error}'
+    deleteFailed: '无法删除已保存的对话：{error}'
+    empty: '没有已保存的对话。'
+    renamePrompt: '新的已保存对话标题'
+    confirmDelete: '删除这个已保存的对话吗？'
+    typePublic: '公共聊天'
+    typeDm: '私信'
+    typeGroup: '群聊'
+    exportPdf: '导出 PDF'
+    originalLost: '原文件已丢失'
+    adminLocked: '根据管理员锁定策略，无法保存此对话。'
+    adminLockedOpen: '根据管理员策略，目前无法打开此已保存对话。'
+    popupBlocked: '浏览器阻止了 PDF 导出窗口。'
+    savedAt: '保存时间'
+    accountButton: '保存对话'
   admin:
     title: KOKOTO WebChat 管理
     summary: 摘要
@@ -174,6 +244,18 @@ web:
     currentMutes: 当前禁言
     expires: 到期
     never: 永不
+    reactions: '反应'
+    reactionCatalog: '反应图标'
+    reactionCatalogManage: '管理反应图标'
+    reactionCatalogHint: '管理反应选择器中显示的 Unicode 表情。移除图标不会删除已有反应，只会禁止新增。'
+    reactionEnabled: '启用反应图标功能'
+    reactionEnabledHint: '关闭后会保留已有反应记录，同时禁止新的反应操作并隐藏新增/选择器控件。'
+    reactionCustomEmoji: '允许 KWC 自定义表情用于反应'
+    reactionCategoryHint: '用空格分隔表情。输入顺序即选择器显示顺序。'
+    reactionSearchAliases: '搜索别名'
+    reactionSearchAliasesHint: '每行一项，格式为 `表情 = 搜索词`。新增 Unicode 反应图标时，也请在此添加搜索词。Unicode 名称也会自动用于搜索。'
+    reactionSaved: '反应图标已保存。'
+    reactionResetConfirm: '将反应图标列表重置为默认值吗？'
     emojis: 表情
     emojiTitle: 自定义表情
     emojiMoveTarget: 目标文件夹
@@ -244,6 +326,10 @@ web:
       ui-user-profiles-enabled: '用户聊天设置配置文件'
       ui-user-profiles-max-profiles: '每个用户的最大配置文件数'
       ui-user-profiles-allow-import-export: '允许导入/导出配置文件'
+      chat-typing-indicator-user-display-control: '允许用户单独设置输入中提示'
+      chat-typing-indicator-open-chat-enabled: '开放聊天输入中提示'
+      chat-typing-indicator-dm-enabled: '私信输入中提示'
+      chat-typing-indicator-group-chat-enabled: '群聊输入中提示'
       admin-alerts-discord-enabled: 'Discord 管理员关键词提醒'
       admin-alerts-discord-channel: 'Discord 提醒频道'
       admin-alerts-discord-sources-public-chat: '检测公开聊天'
@@ -269,6 +355,7 @@ web:
     settingsGroupGuestCaptcha: '访客 / CAPTCHA'
     settingsGroupAuthSessions: '认证 / 会话'
     settingsGroupProfiles: '用户配置文件'
+    settingsGroupTyping: '输入中提示'
     settingsGroupUploads: '上传'
     settingsGroupDiscordAlerts: 'Discord 管理员提醒'
     filterGroupGeneral: '基本 / 适用范围'
@@ -354,6 +441,8 @@ web:
     filterTestRuleCount: '已加载规则：{count} 条'
     filterTestListWordCount: '列表词数：{count}'
     filterTestInput: '测试输入'
+    reactionShowActors: '显示反应用户列表'
+    reactionShowActorsHint: '关闭后仍保留反应数量和自己的反应状态，但服务器响应和工具提示不会包含反应用户的名称信息。开启时使用与普通聊天相同的显示名称 ↔ 原始名称切换。'
   prompt:
     createEmojiPack: 新文件夹名称
     renameEmoji: 新表情名称
@@ -442,6 +531,9 @@ web:
     textShadowCustomPreview: 阴影预览
     textShadowCustomPlaceholder: 0 1px 2px rgba(0, 0, 0, 0.85)
     inputBackgroundColor: 输入框背景颜色
+    chatBehavior: '聊天行为'
+    showTypingIndicator: '输入中提示'
+    showTypingIndicatorHelp: '在自己的屏幕上显示其他用户的输入中状态。此设置保存到 KWC 账号；关闭后也不会停止发送你自己的输入中状态。'
     notifications: '通知'
     notificationsPage: '浏览器系统通知'
     notificationsPageHelp: '浏览器通知仅可在支持通知功能的浏览器中使用。'
@@ -468,7 +560,8 @@ web:
     notifyDm: '私信'
     notifyGroupChat: '群聊'
     notifyReplies: '回复'
-    notifyMentions: '提及'
+    notifyReactions: '表情反应'
+    notifyMentions: '@提及'
     notifySystem: '服务器'
     notifySystemAll: '全部'
     notifySystemJoinLeave: '仅加入/退出'
@@ -481,7 +574,6 @@ web:
     notifyKeywordsNeedsApply: '关键词列表已更改。点击应用关键词以更新推送过滤。'
     notifyDisabledByServer: '已被服务器配置禁用。'
     keywordNotificationTitle: '关键词：{keyword}'
-    notifyPreview: '消息预览'
     notificationsServerDisabled: '服务器配置已禁用通知。'
     notificationsEnabledStatus: '浏览器通知已启用。'
     notificationsAllowedDisabledStatus: '浏览器权限已允许，但聊天设置中已关闭。'
@@ -648,6 +740,7 @@ web:
     unread: '未读'
     unreadCount: '未读接收者：{count}人'
   group:
+    roomSettings: '房间设置'
     title: '群组聊天'
     noRooms: '没有群组聊天。'
     backToList: '返回群聊列表'

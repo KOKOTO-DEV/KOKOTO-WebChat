@@ -39,22 +39,49 @@ public final class CoreHttpServer implements AutoCloseable {
     }
 
     public void createContext(String path, HttpHandler handler) {
+        createPrefixContext(path, handler);
+    }
+
+    /**
+     * Registers an endpoint that must match the request path exactly. JDK HttpServer
+     * contexts are prefix-based by default, so without this guard a context such as
+     * /api/config would also accept /api/config.yml or /api/config-anything.
+     */
+    public void createExactContext(String path, HttpHandler handler) {
         server.createContext(path, exchange -> {
-            try {
-                handler.handle(exchange);
-            } catch (JsonUtil.BodyTooLargeException tooLarge) {
-                byte[] data = "{\"ok\":false,\"error\":\"request_body_too_large\"}".getBytes(StandardCharsets.UTF_8);
-                try {
-                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                    exchange.getResponseHeaders().set("Cache-Control", "no-store");
-                    exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
-                    exchange.sendResponseHeaders(413, data.length);
-                    try (var out = exchange.getResponseBody()) { out.write(data); }
-                } catch (IOException ignored) {
-                    try { exchange.close(); } catch (Exception ignored2) {}
-                }
+            String requestPath = exchange.getRequestURI() == null ? "" : exchange.getRequestURI().getPath();
+            if (!path.equals(requestPath)) {
+                sendTransportJson(exchange, 404, "{\"ok\":false,\"error\":\"not_found\"}");
+                return;
             }
+            handleSafely(exchange, handler);
         });
+    }
+
+    /** Registers a deliberately prefix-matched route such as /uploads/ or /fonts/. */
+    public void createPrefixContext(String path, HttpHandler handler) {
+        server.createContext(path, exchange -> handleSafely(exchange, handler));
+    }
+
+    private void handleSafely(com.sun.net.httpserver.HttpExchange exchange, HttpHandler handler) throws IOException {
+        try {
+            handler.handle(exchange);
+        } catch (JsonUtil.BodyTooLargeException tooLarge) {
+            sendTransportJson(exchange, 413, "{\"ok\":false,\"error\":\"request_body_too_large\"}");
+        }
+    }
+
+    private void sendTransportJson(com.sun.net.httpserver.HttpExchange exchange, int status, String json) {
+        byte[] data = json.getBytes(StandardCharsets.UTF_8);
+        try {
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            exchange.getResponseHeaders().set("Cache-Control", "no-store");
+            exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
+            exchange.sendResponseHeaders(status, data.length);
+            try (var out = exchange.getResponseBody()) { out.write(data); }
+        } catch (IOException ignored) {
+            try { exchange.close(); } catch (Exception ignored2) {}
+        }
     }
 
     public synchronized void start() {

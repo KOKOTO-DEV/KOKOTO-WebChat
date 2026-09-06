@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ExpectedVersion = '5.1.0'
+$ExpectedVersion = '5.2.0'
 $ExpectedModId = 'kokoto_webchat'
 
 if (-not (Test-Path -LiteralPath $JarPath -PathType Leaf)) {
@@ -95,6 +95,7 @@ try {
   # Common runtime payload required by every mod-loader JAR.
   Require-Entry 'standalone/chat.js'
   Require-Entry 'standalone/chat.css'
+  Require-Entry 'reaction-search-aliases.txt'
   if (-not (Test-BundledDependency 'org/yaml/snakeyaml/Yaml.class' 'snakeyaml')) {
     throw 'Missing bundled runtime dependency: SnakeYAML.'
   }
@@ -140,7 +141,7 @@ try {
       $checks = [ordered]@{
         'modLoader="javafml"' = '(?m)^\s*modLoader\s*=\s*"javafml"\s*(?:#.*)?$'
         'modId="kokoto_webchat"' = '(?m)^\s*modId\s*=\s*"kokoto_webchat"\s*(?:#.*)?$'
-        'version="5.1.0"' = '(?m)^\s*version\s*=\s*"5\.1\.0"\s*(?:#.*)?$'
+        'version' = ('(?m)^\s*version\s*=\s*"' + [regex]::Escape($ExpectedVersion) + '"\s*(?:#.*)?$')
         'Forge dependency' = '(?ms)\[\[dependencies\.kokoto_webchat\]\].*?modId\s*=\s*"forge"'
         'exact Minecraft dependency' = ('(?ms)\[\[dependencies\.kokoto_webchat\]\]\s*modId\s*=\s*"minecraft".*?versionRange\s*=\s*"\[' + [regex]::Escape($MinecraftVersion) + ',')
       }
@@ -171,7 +172,7 @@ try {
         'modLoader="javafml"' = '(?m)^\s*modLoader\s*=\s*"javafml"\s*(?:#.*)?$'
         'loaderVersion="[1,)"' = '(?m)^\s*loaderVersion\s*=\s*"\[1,\)"\s*(?:#.*)?$'
         'modId="kokoto_webchat"' = '(?m)^\s*modId\s*=\s*"kokoto_webchat"\s*(?:#.*)?$'
-        'version="5.1.0"' = '(?m)^\s*version\s*=\s*"5\.1\.0"\s*(?:#.*)?$'
+        'version' = ('(?m)^\s*version\s*=\s*"' + [regex]::Escape($ExpectedVersion) + '"\s*(?:#.*)?$')
         'NeoForge dependency' = '(?ms)\[\[dependencies\.kokoto_webchat\]\].*?modId\s*=\s*"neoforge"'
         'exact Minecraft dependency' = ('(?ms)\[\[dependencies\.kokoto_webchat\]\]\s*modId\s*=\s*"minecraft".*?versionRange\s*=\s*"\[' + [regex]::Escape($MinecraftVersion) + '\]"')
       }

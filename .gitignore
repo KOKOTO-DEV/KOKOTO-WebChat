@@ -11,5 +11,5 @@ build/
 
 # Root Windows validation outputs
 validation-logs/
-release-5.1.0/
-build-5.1.0/
+release-5.2.0/
+build-5.2.0/

@@ -100,7 +100,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
         proxy_buffering off;
@@ -114,7 +114,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
     }
@@ -227,4 +227,4 @@ HTTPS 公开 API 的基准是 `http.public-prefix + http.path-prefix`，默认�
 - [NGINX `ngx_http_proxy_module`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html)
 - [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
 
-KWC 特有的 path-prefix、trusted-proxy、SSE、上传和认证行为应以 KWC 5.1.0 源码与配置为准，而不是由这些外部文档定义。
+KWC 特有的 path-prefix、trusted-proxy、SSE、上传和认证行为应以 KWC 5.2.0 源码与配置为准，而不是由这些外部文档定义。

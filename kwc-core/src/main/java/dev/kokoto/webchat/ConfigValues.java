@@ -87,6 +87,14 @@ public class ConfigValues implements MessageTokenConfig {
     public String historySqliteFile;
     public boolean historySqliteMigrateJsonl;
     public int historyPageSize;
+    public boolean conversationArchiveEnabled;
+    public int conversationArchiveMaxArchivesPerUser;
+    public int conversationArchiveMaxMessagesPerArchive;
+    public int conversationArchiveMaxMessagesPerUser;
+    public boolean typingUserDisplayControl;
+    public boolean typingOpenChatEnabled;
+    public boolean typingDmEnabled;
+    public boolean typingGroupChatEnabled;
     public boolean searchEnabled;
     public int searchResultLimit;
 
@@ -263,9 +271,9 @@ public class ConfigValues implements MessageTokenConfig {
     public boolean browserNotificationsNotifyGroupChat;
     public boolean browserNotificationsNotifyMentions;
     public boolean browserNotificationsNotifyReplies;
+    public boolean browserNotificationsNotifyReactions;
     public boolean browserNotificationsNotifySystem;
     public boolean browserNotificationsNotifyKeywords;
-    public boolean browserNotificationsShowMessagePreview;
 
     public boolean webPushEnabled;
     public String webPushVapidPublicKey;
@@ -279,9 +287,9 @@ public class ConfigValues implements MessageTokenConfig {
     public boolean webPushNotifyGroupChat;
     public boolean webPushNotifyMentions;
     public boolean webPushNotifyReplies;
+    public boolean webPushNotifyReactions;
     public boolean webPushNotifySystem;
     public boolean webPushNotifyKeywords;
-    public boolean webPushShowMessagePreview;
 
     public String playerNameMode;
     public boolean playerNameStripColors;
@@ -404,6 +412,9 @@ public class ConfigValues implements MessageTokenConfig {
 
     public boolean emojiEnabled;
     public boolean emojiShowButton;
+    public boolean emojiFavoritesEnabled;
+    public String emojiFavoritesStorage;
+    public int emojiFavoritesMaxPerAccount;
     public String emojiDirectory;
     public String emojiPublicBaseUrl;
     public int emojiMaxFileSizeKb;

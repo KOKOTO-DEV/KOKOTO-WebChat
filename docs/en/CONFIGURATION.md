@@ -43,7 +43,7 @@ After saving, use **Test** in the same Filter screen. It evaluates both TXT list
 Mapping keys are merged into the rule's target words automatically. When a custom rule and a TXT list match the same span, the custom rule has priority; a separate non-overlapping `block` hit elsewhere in the message still blocks the whole message.
 
 
-Web Admin adds **Filter** and **Settings** tabs. Filter controls scopes, anti-evasion options, filter-word list files with per-list Block/Filter mode, custom rule CRUD, and no-send testing. Settings exposes only live-safe guest/CAPTCHA, authentication/session, user-profile, upload, and Discord administrator-alert values. `moderation.*` and relay/network/adapter topology remain config-file only. The corresponding game commands are `/kchat filter ...` and `/kchat settings ...`.
+Web Admin adds **Filter** and **Settings** tabs. Filter controls scopes, anti-evasion options, filter-word list files with per-list Block/Filter mode, custom rule CRUD, and no-send testing. Settings exposes only live-safe guest/CAPTCHA, authentication/session, user-profile, typing-indicator policy plus the optional per-account typing-display permission, upload, and Discord administrator-alert values. `moderation.*` and relay/network/adapter topology remain config-file only. The corresponding game commands are `/kchat filter ...` and `/kchat settings ...`.
 
 Changing `auth.remember-session-days` recalculates existing USER/MODERATOR sessions from their original `createdAt`; changing `admin.admin-session-expire-hours` independently recalculates ADMIN sessions. `0` means unlimited for both USER/MODERATOR and ADMIN session lifetime settings. Sessions already expired are never resurrected, and sessions older than a newly shortened lifetime expire immediately. The same policy is applied on startup/reload after editing `config.yml`.
 
@@ -59,7 +59,7 @@ This document describes `plugins/KOKOTO-WebChat/config.yml`.
 If `config-version` is missing or belongs to another version, KWC reads the existing values, backs up the original `config.yml` first when the previous marker is not `*_auto_migration`, creates a fresh file from the running plugin's bundled default config, and overlays the existing values. Old comments, order, whitespace, and indentation are intentionally discarded; bundled comments/layout become authoritative while operator values remain authoritative. Retired settings are not copied back. The result is marked `<plugin-version>_auto_migration`. While that marker remains, startup/reload repeats the same bundled-default rebuild so newly added settings and current bundled comments/layout are picked up automatically. Exact `<plugin-version>` disables same-version automatic **setting** reconstruction. The only same-version rewrite still allowed in that fixed state is a `ui.language` presentation change, which rebuilds comments/layout from the selected built-in template while overlaying every parsed operator value.
 
 `config-migration-<plugin-version>.yml` is a review/diff report. Older generated `config-reference-*`, `config-migration-*`, and `config-upgrade-*` files are removed automatically; internal `config-baselines/*` resources remain because they are required to identify changed defaults across real version upgrades.
-In 5.1.0, `ui.language` also selects the comment/presentation language used when KWC rebuilds `config.yml`, writes `config-reference-5.1.0.yml`, and writes the migration/difference report. Bundled templates are `en-US`, `ko-KR`, `ja-JP`, and `zh-CN`; switching language changes comments/layout only and overlays the existing parsed operator values, including Relay groups/secrets/peers. The semantic difference report compares parsed YAML setting paths and values, not comments, whitespace, indentation, quote style, line numbers, or key order.
+In 5.2.0, `ui.language` also selects the comment/presentation language used when KWC rebuilds `config.yml`, writes `config-reference-5.2.0.yml`, and writes the migration/difference report. Bundled templates are `en-US`, `ko-KR`, `ja-JP`, and `zh-CN`; switching language changes comments/layout only and overlays the existing parsed operator values, including Relay groups/secrets/peers. The semantic difference report compares parsed YAML setting paths and values, not comments, whitespace, indentation, quote style, line numbers, or key order.
 
 ## Master switch
 
@@ -72,7 +72,7 @@ update-check:
   enabled: true
 ```
 
-When enabled, KOKOTO WebChat checks Modrinth for a newer stable release in the background on Bukkit, Fabric, NeoForge, and Forge. During the current project-address transition KWC 5.1.0 queries `kokoto-webchat` first and falls back to `bluemapwebchat` when the canonical project is unavailable. The fallback remains a real update source until the transition is complete; a newer BMWC-published version can still generate the normal update notice, and a warning is emitted only if both sources fail. An OP or a player with `kwc.update.notify` also triggers a rate-limited refresh on login, so a newly published release is not dependent only on the periodic result. For
+When enabled, KOKOTO WebChat checks the canonical Modrinth `kokoto-webchat` project for a newer stable release in the background on Bukkit, Fabric, NeoForge, and Forge. Starting with 5.2.0, legacy BMWC project addresses are not queried as update sources. An OP or a player with `kwc.update.notify` also triggers a rate-limited refresh on login, so a newly published release is not dependent only on the periodic result. For
 ## Deployment modes
 
 ### BlueMap addon
@@ -208,7 +208,7 @@ message-tokens:
 
 ## Message search
 
-`/history/search` and the in-chat search modal are available for message text and sender searches when stored history is enabled. The search options section can filter by date/time range, sender, source, and system/event inclusion. The search button is in the floating chat-panel area so the input row stays compact, and search results use a scrollable list with the configured chat theme/font settings. Search results can jump to the matching message using the existing history-around navigation. i18n-backed system/event messages are searched and displayed in the requested web UI language when possible. Search can be disabled with `search.enabled`, and the single `search.result-limit` setting controls both the web UI result count and the `/history/search` API limit. There is no separate internal maximum: setting it to 2000 returns up to 2000 results, while setting it to 10 returns up to 10. Very large values such as 10000 or 100000 are accepted, but they can slow searches, increase response size, and add significant CPU, memory, and database load. The default is 50, and 50-200 is recommended for normal use. With `config-version: "5.1.0_auto_migration"`, missing search settings are inserted automatically on startup/reload. If same-version automatic migration has been disabled with exact `config-version: "5.1.0"`, add the missing keys manually or re-enable `_auto_migration`.
+`/history/search` and the in-chat search modal are available for message text and sender searches when stored history is enabled. The search options section can filter by date/time range, sender, source, and system/event inclusion. The search button is in the floating chat-panel area so the input row stays compact, and search results use a scrollable list with the configured chat theme/font settings. Search results can jump to the matching message using the existing history-around navigation. i18n-backed system/event messages are searched and displayed in the requested web UI language when possible. Search can be disabled with `search.enabled`, and the single `search.result-limit` setting controls both the web UI result count and the `/history/search` API limit. There is no separate internal maximum: setting it to 2000 returns up to 2000 results, while setting it to 10 returns up to 10. Very large values such as 10000 or 100000 are accepted, but they can slow searches, increase response size, and add significant CPU, memory, and database load. The default is 50, and 50-200 is recommended for normal use. With `config-version: "5.2.0_auto_migration"`, missing search settings are inserted automatically on startup/reload. If same-version automatic migration has been disabled with exact `config-version: "5.2.0"`, add the missing keys manually or re-enable `_auto_migration`.
 
 
 ## Direct message threads
@@ -239,11 +239,15 @@ direct-message:
 
 ## Important 0-value semantics
 
-`0` does not have one universal meaning. These behaviors are taken from the current 5.1.0 loader/runtime paths; do not infer “unlimited” where the documented behavior is different.
+`0` does not have one universal meaning. These behaviors are taken from the current 5.2.0 loader/runtime paths; do not infer “unlimited” where the documented behavior is different.
 
 - `chat.history-size`: Maximum number of public-chat history rows retained by count. This works alongside the age-retention policy. 0 removes the count limit.
 - `chat.history-retention-days`: Age-retention window in days for public-chat history. 0 disables age-based expiration.
 - `chat.history-page-size`: Default number of history messages requested per page. 0 means no explicit page limit for in-memory/JSONL history, while SQLite applies its built-in 500-row query safety cap.
+- `chat.conversation-archive.enabled`: Enables per-account Saved conversations. When `false`, archive API routes are not registered, `conversation-archives.db` is not opened or created, and archive controls are not rendered into the web UI DOM. Existing archive data is left untouched.
+- `chat.conversation-archive.max-archives-per-user`: Maximum saved snapshots owned by one account. Default `100`, allowed `1-1000`.
+- `chat.conversation-archive.max-messages-per-archive`: Maximum messages in one snapshot. Default `1000`, allowed `1-10000`. Larger values increase range-read, memory, response, and SQLite write cost.
+- `chat.conversation-archive.max-messages-per-user`: Maximum total saved messages across all snapshots owned by one account. Default `10000`, allowed `1-100000`. If lower than the per-archive limit, the smaller account-total quota wins. Saved snapshots do not expire through normal chat retention. Lowering a quota does not delete or hide existing snapshots; it only prevents new saves that would exceed the active quota.
 - `chat.max-message-length`: Maximum normal public-chat message length accepted by KWC. 0 removes this length limit.
 - `chat.max-url-message-length`: Maximum public-chat message length when the message contains a URL. A positive value is kept at least as large as a positive normal-message limit. 0 removes this length limit.
 - `message-tokens.max-replacements-per-message`: Maximum token expansions performed in one message to bound replacement work. 0 removes the count limit.
@@ -352,7 +356,7 @@ A local game sender name suggests `/w <realName> ` when clicked. Linked web-user
 
 ## Server relay configuration
 
-KOKOTO WebChat 5.1.0 uses **Relay Protocol v2**. A relay group is the trust boundary: every peer in that group uses the same group `shared-secret`, and peer entries contain only `id`, `url`, and `enabled`. There is no `peers[].secret`.
+KOKOTO WebChat 5.2.0 uses the Relay v2 trust/encryption model with **Relay Protocol 2.1**. A relay group is the trust boundary: every peer in that group uses the same group `shared-secret`, and peer entries contain only `id`, `url`, and `enabled`. There is no `peers[].secret`.
 
 ```yaml
 server-relay:
@@ -438,7 +442,7 @@ This is an administrator-wide alert policy, not a per-user Discord notification.
 
 ## Pin/delete action toggle
 
-Per-message pin/delete buttons are hidden by default to avoid accidental clicks. ADMIN/MOD users can open the admin panel and use the pin/delete action toggle next to the web-history clear button. The toggle is not persisted and resets to off after refresh.
+Per-message pin/delete buttons are hidden by default to avoid accidental clicks. ADMIN/MOD users can open the admin panel and use the pin/delete action toggle next to the Delete all public chat history button. The toggle is not persisted and resets to off after refresh.
 
 ## UI
 
@@ -547,6 +551,8 @@ TikTok uses the official `player/v1` iframe with `description=0` and `music_info
 Set `youtube-click-to-load` or `media-click-to-load` to `false` to render those previews immediately. Autoplay is still controlled by browser policy.
 
 
+`emoji.favorites.enabled` controls whether the custom-emoji Favorites UI exists. `emoji.favorites.storage` selects `account` (default; signed-in `user-preferences`, independent of chat-history storage) or `browser` (localStorage). `emoji.favorites.max-per-account` defaults to 100; `0` means unlimited and positive values set the retained-item limit.
+
 ## User profiles and account preferences
 
 ```yaml
@@ -561,7 +567,7 @@ Signed-in users can save visual settings such as theme, font, font size, colors,
 
 ## Browser notifications and Web Push
 
-`notifications` controls the shared notification defaults and server-side allow limits for both browser notifications and mobile/background Web Push. `notifications.enabled` is the single default on/off switch for both delivery paths; the old `browser-notifications.*` and `web-push.notify-*` keys are only read as legacy migration/compatibility input. Leave `notify-*` values `true` to let users choose in Chat settings, or set one to `false` to block that notification type even if a user enables it. When `notify-system` is allowed, users can choose all server notifications, join/leave only, or off. Since 5.0.0, signed-in users' notification-type and keyword choices are stored once at account level and reused across browsers/devices; the existing browser values are promoted on first initialization. Guests keep browser-local preferences. Each device's Web Push subscription still stores only the delivery endpoint/filter data needed for background delivery.
+`notifications` controls the shared notification defaults and server-side allow limits for both browser notifications and mobile/background Web Push. `notifications.enabled` is the single default on/off switch for both delivery paths; the old `browser-notifications.*` and `web-push.notify-*` keys are only read as legacy migration/compatibility input. Leave `notify-*` values `true` to let users choose in Chat settings, or set one to `false` to block that notification type even if a user enables it. `notifications.notify-reactions` controls the single **Reactions** checkbox shared by live browser notifications and background/mobile Web Push; it is not split into separate browser/push choices. When `notify-system` is allowed, users can choose all server notifications, join/leave only, or off. Since 5.0.0, signed-in users' notification-type and keyword choices are stored once at account level and reused across browsers/devices; the existing browser values are promoted on first initialization. Guests keep browser-local preferences. Each device's Web Push subscription still stores only the delivery endpoint/filter data needed for background delivery.
 
 `web-push` stores Web Push transport settings such as VAPID keys, subject, subscription file, TTL, and default push title. It can send background/mobile push notifications through Service Worker + Push API when HTTPS or localhost, browser permission, and push support are available. Android/desktop browsers can enable it from either the BlueMap addon or the standalone page when the current origin supports Service Worker + Push API. Ordinary iOS/iPadOS browser tabs do not support Web Push; on iOS/iPadOS only try it from a page added to the Home Screen and opened as a web app, and treat unsupported behavior as a platform limitation. If VAPID keys are left empty while `notifications.enabled: true`, the plugin creates persistent keys in `web-push-vapid.properties`. Set `web-push.subject` to real VAPID contact information such as `mailto:admin@example.com` or `https://map.example.com`; arbitrary text is not recommended and may be rejected or distrusted by push services. Browser or OS warnings such as “may be spam” are controlled by the device/browser and cannot be disabled by the plugin. A stable HTTPS domain, meaningful notification title/body, conservative notification filters, and avoiding repeated test notifications can reduce the chance of that warning.
 

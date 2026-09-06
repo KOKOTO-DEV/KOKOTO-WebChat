@@ -121,6 +121,7 @@ public class FabricAuthManager implements WebChatAuth {
         m.put("status", "linked");
         m.put("token", token);
         m.put("username", lc.account.safeUsername());
+        m.put("uuid", lc.account.uuid == null ? "" : lc.account.uuid);
         m.put("displayName", plugin.displayNameForAccount(lc.account));
         m.put("role", lc.account.role.name());
         m.put("passwordSet", lc.account.hasPassword());
@@ -170,6 +171,7 @@ public class FabricAuthManager implements WebChatAuth {
         m.put("ok", true);
         m.put("token", token);
         m.put("username", account.safeUsername());
+        m.put("uuid", account.uuid == null ? "" : account.uuid);
         m.put("displayName", plugin.displayNameForAccount(account));
         m.put("role", account.role.name());
         return JsonUtil.obj(m);
@@ -213,6 +215,7 @@ public class FabricAuthManager implements WebChatAuth {
         }
         m.put("ok", true);
         m.put("username", ctx.account.safeUsername());
+        m.put("uuid", ctx.account.uuid == null ? "" : ctx.account.uuid);
         m.put("displayName", plugin.displayNameForAccount(ctx.account));
         m.put("role", ctx.account.role.name());
         m.put("passwordSet", ctx.account.hasPassword());

@@ -5,6 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ExpectedVersion = '5.2.0'
 $JarPath = [System.IO.Path]::GetFullPath($JarPath)
 $ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)
 $targetBuild = Join-Path $ProjectRoot ("kwc-platform-neoforge\targets\{0}\build.gradle" -f $MinecraftVersion)
@@ -40,7 +41,7 @@ $checks = [ordered]@{
     'loaderVersion="[1,)"' = '(?m)^\s*loaderVersion\s*=\s*"\[1,\)"\s*(?:#.*)?$'
     'license="MIT"' = '(?m)^\s*license\s*=\s*"MIT"\s*(?:#.*)?$'
     'modId="kokoto_webchat"' = '(?m)^\s*modId\s*=\s*"kokoto_webchat"\s*(?:#.*)?$'
-    'version="5.1.0"' = '(?m)^\s*version\s*=\s*"5\.1\.0"\s*(?:#.*)?$'
+    'version' = ('(?m)^\s*version\s*=\s*"' + [regex]::Escape($ExpectedVersion) + '"\s*(?:#.*)?$')
     'NeoForge dependency' = '(?ms)\[\[dependencies\.kokoto_webchat\]\].*?modId\s*=\s*"neoforge"'
     'exact Minecraft dependency' = ('(?m)^\s*versionRange\s*=\s*"\[' + [regex]::Escape($MinecraftVersion) + '\]"\s*(?:#.*)?$')
 }

@@ -423,7 +423,7 @@ public final class KwcFabricRuntime {
     public ServerRelay serverRelay() { return serverRelay; }
     public WebChatServer webServer() { return webServer; }
 
-    public String version() { return "5.1.0"; }
+    public String version() { return "5.2.0"; }
 
     public String serverName() {
         if (configValues != null && configValues.serverRelayServerName != null && !configValues.serverRelayServerName.isBlank()) return configValues.serverRelayServerName;

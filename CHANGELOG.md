@@ -1,87 +1,107 @@
 # Changelog
 
+## 5.2.0
+
+5.2.0 adds message reactions, personal conversation archives/PDF export, public/DM/group typing indicators, custom-emoji picker enhancements, and Relay Protocol 2.1 capability negotiation. It also includes security and account-linking corrections carried forward from the 5.1.0 release baseline.
+
+### Added
+
+#### Public, DM, and group message reactions
+- Added persistent reactions for logged-in users on public-chat, DM, and normal group-chat messages using Unicode emoji and KWC custom emoji (`:pack/name:`). Group membership join/leave events are excluded.
+- Added multi-server reaction support. Public reactions use the message origin server as the authority, cross-server DM reactions are exchanged only between the two participant servers, and group-room reactions remain local to that server.
+- Added **Admin > Emojis > Reaction icons** management with a master reaction switch, a separate KWC custom-emoji allowance, Unicode reaction ordering/catalog control, and administrator-managed search aliases.
+- Added a per-account **Reactions** notification preference shared by live browser notifications and background/mobile Web Push. Each browser/device uses only the delivery path it supports. The server-side allow/default key is `notifications.notify-reactions`.
+- Suppress duplicate DM/group attention account-wide when that exact conversation is actively being viewed in any signed-in KWC browser for the account: the page must be visible and focused, the chat window must not be minimized, the DM/group modal must be open, and the current thread/room ID must match. This short-lived view heartbeat is independent of whether the viewing browser itself subscribes to Web Push. While one active client is reading the exact private conversation, all browser notification/in-chat notification-inbox paths and all Web Push subscriptions for that account are suppressed for that conversation; when no active client is viewing it, normal notification delivery resumes.
+
+#### Custom-emoji picker
+- Added a browser-local **Recent** pseudo-folder for recently inserted custom emoji.
+- Added an optional **Favorites** pseudo-folder with hover `☆`/`★` controls. Administrators can disable Favorites, store favorite IDs with the signed-in KWC account by default, or select browser storage; `emoji.favorites.max-per-account` uses `0` for unlimited or a positive retained-item limit. Account storage uses KWC `user-preferences` and is independent of public/DM history storage backends. Favorites keep the original catalog IDs and message insertion continues to use the original `:pack/name:` token.
+- Added floating custom-emoji search across ID, name, display label, pack name, and every public alias with NFKC/case normalization. Recent and Favorites are shared by public chat, DM, and group-chat pickers.
+
+#### Relay Protocol 2.1
+- Added independent relay protocol revision/capability negotiation instead of using the KWC product version as the compatibility key.
+- Relay Protocol 2.1 advertises `public`, `dm`, `read`, `reaction`, `reaction-authority`, and `typing` capabilities. KWC 5.1.0 peers remain compatible with 5.2.0 for the common Relay v2 public-chat/DM/read feature set; reactions and typing require participating 5.2.0 / Relay 2.1 peers.
+- Retained verification compatibility with the legacy Relay 2.0 handshake canonical used before revision negotiation.
+
+#### Saved conversations and PDF export
+- Added per-account **Saved conversations** for public chat, DMs, and group rooms. Users select a message range, and the server re-reads and validates that range before creating the private snapshot.
+- Added static archive/PDF views that preserve KWC chat presentation, reply/reaction/server context, display name and real account name. Attachments remain references to their original KWC sources rather than being duplicated into the archive.
+- Added PDF export using the user's currently applied KWC appearance.
+- Added `chat.conversation-archive.enabled` (default `true`). When disabled, archive API routes are not registered, `conversation-archives.db` is not opened/created, and saved-conversation controls are not created in the web DOM. Existing archive data is preserved for later re-enable.
+- Added configurable archive quotas: `max-archives-per-user` (default 100), `max-messages-per-archive` (default 1000), and `max-messages-per-user` (default 10000). Lowering a quota does not delete existing snapshots; it blocks new saves that would exceed the active limit.
+
+#### Public/DM/group typing and private-chat controls
+- Added event-driven public/DM/group typing indicators without polling or persistent typing state. Server administrators control Open chat, DM, and Group chat independently in Web Admin **Settings** or `chat.typing-indicator.*` in `config.yml`; defaults are Open chat OFF, DM ON, and Group chat ON. `chat.typing-indicator.user-display-control` defaults OFF; when an administrator enables it, signed-in users can use one account-stored **Typing indicators** preference that hides incoming hints on their own screen without suppressing their outgoing typing activity. The rounded high-opacity indicator floats above the active composer, follows each viewer's existing display-name/original-name toggle, strips formatting tags from shown names, and scales to about 80% of the user chat font without dropping below the configured base UI font. Public and remote-DM typing can use Relay 2.1; group typing remains scoped to room participants.
+- Consolidated private-room invite, saved-conversation, hide, and room-management actions under the room Settings menu according to the existing permissions.
+
+### Fixed from 5.1.0
+- Corrected mention notification matching inherited from 5.1.0. Ordinary occurrences of a user's name no longer count as mentions: a mention must start with `@`, matches registered real/display names using the longest name at each `@`, and notifies all accounts that share the same exact display name.
+- Corrected existing bundled/account-linking language values that still showed the obsolete `/kwc auth` command. KWC now migrates those built-in login hint/waiting texts to the supported `/kchat auth <code>` command without overwriting unrelated customized translations.
+- Enforced the guest-disabled public-chat visibility policy on server-side history, search, around-history, and SSE endpoints instead of relying on frontend hiding alone.
+- Hardened trusted-proxy / `X-Forwarded-For` client-IP resolution against leftmost-header spoofing.
+- Enforced exact paths for leaf HTTP API contexts while retaining prefix routing only for intentional file/subtree endpoints.
+- Reduced the unauthenticated client-config response to fields actually consumed by the frontend.
+
 ## 5.1.0
 
-5.1.0 is a feature, reliability, compatibility, and security update over the **5.0.0 release baseline**. Changes are grouped by function below.
+5.1.0 is a feature, reliability, compatibility, and security update over the **5.0.0** public release baseline.
 
 ### Security — Relay Protocol v2
 
-#### Why the relay protocol changed
+**Who should prioritize this upgrade:** servers that enabled/configured Relay v1 in KWC 5.0.0 or a compatible BMWC relay deployment. Servers that did not use server relay are not affected by the relay-specific issue.
 
-Relay Protocol v1 used by KWC 5.0.0 and compatible BMWC relay peers had two important security limitations:
+- Relay v1 over `http://` carried relay payloads without transport encryption, so those deployments are the highest-priority upgrade case.
+- Relay v1 also used a flat peer trust set and top-level shared secret. HTTPS protected the network hop, but exposure of that secret or a peer/forwarding misconfiguration still affected the whole flat relay trust set.
+- Relay v2 replaces that model with explicit `groups -> peers`, one shared secret per group, reciprocal same-group peer configuration, request-by-request authenticated encryption, replay/loop defenses, and authenticated responses.
+- Relay v2 payloads use directional HKDF-SHA256 keys and AES-256-GCM. Protection is hop-by-hop, not end-to-end; forwarding servers remain trusted participants.
+- Direct one-hop HTTP remains possible with an explicit warning because the v2 payload itself is encrypted/authenticated, but HTTP peers cannot be forwarding hops. Forwarding is same-group HTTPS only.
+- Legacy Relay v1/BMWC endpoints return HTTP 426.
+- The first **5.0.0 -> 5.1.0** migration disables relay instead of guessing new trust groups. Reconfigure reciprocal v2 groups before re-enabling it.
 
-- **Relay v1 over `http://` sent the relay payload in plaintext at the application/transport path.** A network observer between peers could therefore read relayed content when TLS was not providing protection.
-- **Relay v1 used one flat trust set with a top-level shared secret and flat peer list.** Even when the peer URL used HTTPS, exposure of that shared secret or an unintended peer/forwarding configuration affected the whole relay trust set instead of a smaller explicit trust group.
+### Cross-server chat, DM, and Reply
 
-The relay-specific exposure applies to servers that actually enabled/configured **Relay v1**. Servers that did not use server relay are not affected by this relay transport/trust issue. The highest-priority upgrades are Relay v1 deployments with one or more `http://` peers. This changelog describes the protocol design exposure; it does not claim a known in-the-wild exploit or assign a CVE.
+- Public relay, cross-server DM delivery/read receipts, stable remote identities, duplicate protection, and forwarding now use the same Relay v2 trust boundary.
+- Added persistent Web/game DM and group-chat Reply metadata, original-message preview/jump, restart persistence, and server-side validation.
+- Unified game-side private Reply presentation with public Reply while preserving private delivery scope.
+- Fixed `/kchat group` room names containing spaces/quotes/repeated whitespace and added optional real membership join/leave notices.
+- Improved narrow/mobile DM/group metadata layout.
 
-#### What 5.1.0 changes
+### Emoji, notifications, pins, and browser UI
 
-- Replaced the flat v1 trust model with explicit **`groups -> peers`** trust groups. Each group is a separate trust boundary with one shared secret, and both servers must configure each other reciprocally in the same group.
-- Added safe first-setup secret provisioning: one server may start with an empty group `shared-secret`, KWC generates and persists a cryptographically secure value, and the operator copies that exact value to the other members of the group. Manually configured secrets shorter than 32 characters fail closed.
-- Public relay, cross-server 1:1 DM, and DM read receipts now use request-by-request authenticated/encrypted Relay v2 transport. Directional keys are derived with HKDF-SHA256 and relay payloads are protected with AES-256-GCM; timestamps, nonces, relay IDs, hop counts, and authenticated responses provide replay/loop and forged-response protection.
-- Relay v2 protection is **hop-by-hop, not end-to-end encryption**. A forwarding KWC server is a trusted participant that decrypts and re-encrypts the message for the next hop.
-- Direct one-hop `http://` peers remain possible because the v2 payload itself is encrypted/authenticated, but KWC emits a security warning because HTTP still lacks TLS server identity and transport-metadata confidentiality.
-- Forwarding is restricted to the same trust group and only through HTTPS peers. An HTTP peer can be used only as a direct hop and is excluded from incoming/outgoing forwarding.
-- Legacy Relay v1/BMWC endpoints return **HTTP 426** and do not interoperate with Relay v2.
-- The first **5.0.0 -> 5.1.0** relay migration retires the old global secret/flat peers/forwarding settings and resets `server-relay.enabled: false` instead of guessing new trust groups. Operators must explicitly rebuild reciprocal v2 groups before re-enabling relay.
-- `/kchat reload` rechecks exposed built-in HTTP listeners and direct HTTP relay peers and reports localized warnings to the server log and command sender.
+- Canonicalized custom emoji names/tokens, improved Reply URL/emoji rendering, exact-token picker insertion, and emoji catalog recovery after fetch/SSE/catalog changes.
+- Custom emoji now render in the notification center and pinned-message UI with compact size limits without changing normal chat emoji sizing.
+- Fixed refresh-time history emoji that could stay blank until the message scrolled out of view and back; transient custom-emoji image failures are retried in place.
+- Fixed exact account chat-profile persistence/application, including intentionally unset visual fields.
+- Avoided Android Chrome Autofill accessory UI on normal chat composers and switched administrator emoji upload to the generic system file picker path.
 
-### Cross-server relay and private messaging
+### HTTP, SSE, configuration, and operations
 
-- Public relay, cross-server DM delivery, DM read receipts, origin identity, duplicate protection, and forwarding now share the same Relay v2 group boundary and authenticated transport.
-- Preserved stable cross-server DM reply references so a reply continues to target the original remote message identity after relay delivery or restart.
-- Fixed structured relay configuration reconstruction so multiple groups/peers remain intact without duplicate empty `groups: []` values or collapsed list entries.
+- Raised default SSE limits to **10 per resolved client IP / 500 total** with clearer 429/trusted-proxy diagnostics.
+- Added EN/KO/JA/ZH config comment templates selected by `ui.language` and a complete **394-setting** administrator input guide.
+- Migration/difference output now compares semantic YAML paths/values and preserves readable structured YAML.
+- Fixed Relay config reconstruction for multiple groups/peers.
+- Added localized warnings for externally exposed plain-HTTP listeners and direct HTTP Relay peers.
+- Repeated operational HTTP/network failures now suppress identical repeats, summarize them, and report recovery while still logging the first/changed failure immediately.
+- Web-command execution notices can also be delivered to online Minecraft players when enabled.
+- Update checks use `kokoto-webchat` first and fall back to `bluemapwebchat` during the project-address transition.
 
-### Replies, direct messages, and group rooms
+### Compatibility
 
-- Added complete persistent Reply metadata and interaction for Web/game DM and group chat, including original-message preview/jump, restart persistence, and server-side conversation validation.
-- Unified Minecraft DM/group Reply rendering with the public-chat Reply presentation while preserving private delivery scope.
-- Fixed game-side group commands so room names containing spaces, quoted names, and repeated whitespace resolve correctly.
-- Added a per-room member join/leave notice option. Actual join/invite-accept and leave/kick/ban membership changes are stored as informational events and shown in Web/history and live game chat; closing, hiding, or switching a room is not treated as leaving.
-- Improved DM/group message metadata flow so full-date timestamps, Reply actions, and read state no longer reserve one oversized fixed metadata column on narrow/mobile layouts.
+- Fixed Fabric 1.18.2 legacy mixin packaging/startup.
+- Fixed NeoForge 1.21.1 modern metadata startup (`InvalidModFileException: Missing ModLoader`).
+- Fixed Forge 1.18.2–1.19.4 runtime dependency packaging.
+- Fixed Forge/NeoForge runtime Minecraft target reporting so exact-target JARs no longer report a hard-coded `26.2` value.
+- Bukkit/Paper/Spigot: Minecraft 1.18–26.2
+- Fabric: 16 exact targets, Minecraft 1.18.2–26.2
+- NeoForge: 12 exact targets, Minecraft 1.20.2–26.2
+- Forge: 16 exact targets, Minecraft 1.18.2–26.2
+- Mod-loader targets use Java 17/21/25 according to Minecraft version; Bukkit uses Java 17.
 
-### Emoji, notifications, pinned messages, and browser UI
+### Documentation and source packages
 
-- Canonicalized custom emoji pack/file/token names, preserved full Reply source text, improved URL/emoji rendering inside Reply previews, and changed the picker to insert only the exact emoji token at the caret.
-- Custom emoji tokens now render as compact inline emoji in the notification center and pinned-message UI. Notification emoji are capped at 18px, collapsed pin emoji at 16px, and expanded pin emoji at 22px without changing normal chat emoji sizing.
-- Fixed custom emoji images that could remain blank in the initially visible history after a browser refresh. Transient image-load failures are retried in place so scrolling away and back is no longer required.
-- Improved emoji catalog recovery across temporary fetch failures, SSE reconnects, and administrator catalog changes while keeping `emoji.message-token-limit: 0` as unlimited.
-- Fixed account chat-profile persistence so explicit font size/opacity values and intentionally unset theme, font, and text-shadow fields round-trip exactly. Loaded font settings are also applied to already-open DM/group windows.
-- Changed public/DM/group message composers to one-line textareas to avoid Android Chrome Autofill accessory UI on normal chat inputs without changing login/password fields.
-- Changed Android administrator emoji upload selection to use the generic system file/DocumentsUI picker path while retaining server-side image validation.
-
-### HTTP, SSE, logging, and operator behavior
-
-- Raised the default SSE limits to **10 connections per resolved client IP / 500 total** and improved HTTP 429 diagnostics and reverse-proxy client-IP guidance.
-- Repeated operational HTTP/network failures now use a state-aware logging policy: the first failure and changed failure states are logged immediately, identical repeats are suppressed/summarized, and recovery is reported once.
-- When `commands.broadcast-result-to-web-chat: true`, the localized Web-command execution notice is also delivered to online Minecraft players without adding a duplicate console/audit broadcast.
-- During the project-address transition, the update checker tries canonical Modrinth `kokoto-webchat` first and falls back to the existing `bluemapwebchat` publication; a warning is emitted only when both sources fail.
-
-### Configuration and migration
-
-- Added EN/KO/JA/ZH `config.yml` comment templates. `ui.language` selects the presentation language used for rebuilt config/reference/migration output while preserving parsed operator values.
-- Added a complete **394-setting** administrator input guide with setting type/default, accepted values, ranges, units, and special zero/negative meanings.
-- Configuration migration/difference output now compares semantic YAML paths and values rather than formatting and keeps structured list/map values as readable physical multi-line YAML. Difference blocks show only changed value blocks instead of duplicating long comments.
-- Aligned platform loader fallbacks with the canonical defaults for captured whispers and game-click Reply settings.
-
-### Compatibility and packaging
-
-- Fixed Fabric 1.18.2 startup by moving the legacy chat mixin into a dedicated mixin package so the Fabric entrypoint is not treated as a mixin class by older Mixin runtimes.
-- Fixed NeoForge startup metadata for Minecraft 1.21.1 and other targets using the same modern NeoForge metadata template, resolving `InvalidModFileException: Missing ModLoader`.
-- Fixed Forge 1.18.2–1.19.4 distribution packaging so the required SnakeYAML and SQLite JDBC runtime libraries are embedded in the deployable JARs.
-- Fixed Forge/NeoForge runtime target reporting so each JAR reads its generated target metadata instead of reporting a hard-coded `Minecraft=26.2` value.
-- Bukkit/Paper/Spigot: Minecraft **1.18–26.2**
-- Fabric: **16 exact targets**, Minecraft **1.18.2–26.2**
-- NeoForge: **12 exact targets**, Minecraft **1.20.2–26.2**
-- Forge: **16 exact targets**, Minecraft **1.18.2–26.2**
-- Loader builds select Java **17 / 21 / 25** according to the Minecraft target; Bukkit remains Java 17.
-
-### Documentation and source distribution
-
-- Reorganized documentation into language-specific User Guide, Installation & Operations, Technical Reference, Upgrade, and Wiki documentation in English, Korean, Japanese, and Simplified Chinese.
-- Consolidated version-specific Upgrade documents and duplicate long-form reference pages, and deduplicated Wiki diagrams so each flow has one canonical explanation page.
-- Public source packages include the product/build source, documentation, and the release build/validation scripts required by `validate-release-windows.bat`. Development-only browser regression tooling is distributed separately as validation-tools so test-only code is not mixed into the buildable release source.
+- Reorganized and synchronized the English/Korean/Japanese/Simplified-Chinese documentation and Wiki.
+- Consolidated duplicate/version-specific upgrade/reference pages and canonicalized Wiki diagrams.
+- Public source packages contain product/build source only; internal validation scripts/harnesses are distributed separately as validation tools.
 
 ## 5.0.0
 
@@ -89,10 +109,10 @@ The relay-specific exposure applies to servers that actually enabled/configured 
 
 ### Platform and map expansion
 
-- Renamed the project to **KOKOTO WebChat (KWC)**. `/kchat` and `/kc` are the canonical commands, `/chat` is the default public web path, first-run migration from BlueMapWebChat 4.x is supported without modifying the original BMWC data, and update checks support the BMWC → KWC distribution transition.
+- Standardized the project identity as **KOKOTO WebChat (KWC)**. `/kchat` and `/kc` are the canonical commands and `/chat` is the default public web path.
 - Added server builds for **Bukkit/Paper/Spigot**, **Fabric (16 exact targets)**, **NeoForge (12 exact targets)**, and **Forge (16 exact targets)**, covering supported Minecraft versions up to 26.2.
 - Expanded frontend integration beyond BlueMap with **squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD, Minecraft Overviewer**, and a **standalone WebChat** mode.
-- Improved multi-server operation for public relay, cross-server DM/group chat, remote-user handling, delivery/read status, relay failure backoff, and mixed KWC/BMWC transition deployments.
+- Improved multi-server operation for public relay, cross-server DM/group chat, remote-user handling, delivery/read status, relay failure backoff, and mixed-version transition deployments.
 
 ### Chat, moderation and user features
 
@@ -355,6 +375,7 @@ notifications:
   notify-group-chat: true
   notify-mentions: true
   notify-replies: true
+  notify-reactions: true
   # true = allow users to receive server notifications.
   # Users can still choose all, join/leave only, or off in Chat settings.
   notify-system: true
@@ -436,7 +457,7 @@ Existing configs do not have to be rewritten immediately. However, if both the n
 - Added browser-local setting presets for visual chat settings, window size/position, resize lock, minimized state, language, notification toggles, and related browser-local preferences.
 
 ### Standalone, HTTPS, and resource loading
-- Fixed standalone `chat.js` bootstrap so the embedded inner application is available and does not fail with `BMWC_EMBEDDED_INNER_TEXT is not defined`.
+- Fixed standalone `chat.js` bootstrap so the embedded inner application is available instead of failing with an undefined embedded-content bootstrap error.
 - Fixed standalone manifest URL generation so the configured public standalone prefix serves its manifest from the standalone route.
 - Improved API base handling for direct HTTP, same-domain HTTPS reverse proxy, standalone pages, uploads, and emoji URLs.
 - Refreshed Caddy/Nginx and configuration documentation around same-domain `/chat` + `/chat/api` deployments.

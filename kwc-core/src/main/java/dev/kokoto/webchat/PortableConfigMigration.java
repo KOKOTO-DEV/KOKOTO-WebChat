@@ -33,6 +33,7 @@ public final class PortableConfigMigration {
             "ui.virtual-scroll.preserve-playing-media",
             "ui.resume-refresh.skip-while-media-active",
             "notifications.notify-own-messages",
+            "notifications.show-message-preview",
             "server-relay.forward-received-public-chat"
     );
     private static final String CONFIG_LANGUAGE_MARKER = "# KWC config-comment-language: ";
@@ -51,7 +52,8 @@ public final class PortableConfigMigration {
             "4.6.4", "config-baselines/config-4.6.4.yml",
             "4.7.0", "config-baselines/config-4.7.0.yml",
             "5.0.0", "config-baselines/config-5.0.0.yml",
-            "5.1.0", "config-baselines/config-5.1.0.yml"
+            "5.1.0", "config-baselines/config-5.1.0.yml",
+            "5.2.0", "config-baselines/config-5.2.0.yml"
     );
 
     private PortableConfigMigration() {}
@@ -113,22 +115,26 @@ public final class PortableConfigMigration {
 
         if (target.equals(declared)) {
             boolean languageChanged = !configLanguage.equals(renderedLanguage);
-            if (languageChanged) {
+            boolean retiredPresent = actual.keySet().stream().anyMatch(RETIRED_SETTINGS::contains);
+            if (languageChanged || retiredPresent) {
                 rebuildPhysical(configPath, templateText, actual, target, false);
             }
             boolean removed = Files.deleteIfExists(reportPath) | Files.deleteIfExists(legacyGuidePath);
             if (info != null) {
                 String prefix = "Config version " + target + " has automatic migration disabled.";
-                if (languageChanged) {
-                    info.log(prefix + " Rebuilt comments/layout for ui.language=" + configLanguage
-                            + " while preserving every parsed setting value.");
+                if (languageChanged || retiredPresent) {
+                    String reason = languageChanged && retiredPresent
+                            ? "ui.language/comment layout and retired settings"
+                            : (languageChanged ? "ui.language/comment layout" : "retired settings");
+                    info.log(prefix + " Rebuilt the current template for " + reason
+                            + " while preserving active parsed setting values.");
                 } else {
                     info.log(removed
                             ? prefix + " Stale migration files were removed."
                             : prefix + " Migration comparison was skipped.");
                 }
             }
-            return new Result(languageChanged, false, 0);
+            return new Result(languageChanged || retiredPresent, false, 0);
         }
 
         if (autoVersion.equals(declared)) {
@@ -158,7 +164,7 @@ public final class PortableConfigMigration {
             Path backup = backupFixedConfig(configPath, target);
             if (info != null) info.log("Backed up fixed config before version migration: " + backup.getFileName());
         }
-        boolean resetRelayV2 = "5.1.0".equals(target) && !declared.startsWith("5.1.0");
+        boolean resetRelayV2 = versionAtLeast(target, 5, 1, 0) && !versionAtLeast(declared, 5, 1, 0);
         rebuildPhysical(configPath, templateText, actual, autoVersion, resetRelayV2);
         Map<String,Object> migrated = loadSnapshot(loader, Files.newInputStream(configPath));
         if (!autoVersion.equals(safe(string(migrated.get("config-version"))))) {
@@ -292,6 +298,24 @@ public final class PortableConfigMigration {
         }
         if (declared.isBlank() && BASELINE_RESOURCES.containsKey("4.5.5")) return "4.5.5";
         return "";
+    }
+
+    private static boolean versionAtLeast(String value, int major, int minor, int patch) {
+        String raw = safe(value);
+        int suffix = raw.indexOf('_');
+        if (suffix >= 0) raw = raw.substring(0, suffix);
+        String[] parts = raw.split("\\.");
+        if (parts.length < 3) return false;
+        try {
+            int a = Integer.parseInt(parts[0]);
+            int b = Integer.parseInt(parts[1]);
+            int c = Integer.parseInt(parts[2]);
+            if (a != major) return a > major;
+            if (b != minor) return b > minor;
+            return c >= patch;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
     }
 
     private static MigrationDiff compare(Map<String,Object> actual,

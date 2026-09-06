@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.1.0 — 설치·운영 가이드
+# KOKOTO WebChat 5.2.0 — 설치·운영 가이드
 
 
 ![KWC 배포 모드](../assets/deployment-modes.svg)
@@ -14,13 +14,13 @@
 한 번 실행해 KWC 데이터/설정을 생성한 뒤 standalone, 지원 map adapter 또는 둘을 함께 사용합니다. 인터넷에 공개할 때는 가능하면 built-in HTTP를 loopback에 bind하고 Caddy/Nginx에서 HTTPS를 종료하세요. non-loopback plain HTTP는 명시적 경고를 출력합니다.
 
 ## 설정 lifecycle
-현재 `config.yml`을 수정한 뒤 `/kchat reload`를 사용합니다. reload는 live service를 교체하기 전에 YAML을 검증하므로 malformed YAML이면 기존 실행 설정을 유지합니다. `config-reference-5.1.0.yml`은 내장 `ui.language`와 같은 언어로 렌더링한 관리자용 현재 기본 설정이며, 사용자 정의/미지원 UI 언어는 영어 표현을 사용합니다. 5.0.0 → 5.1.0 migration은 5.1.0 template을 기준으로 지원되는 운영자 값을 보존하지만 Relay v1 trust 설정은 의도적으로 reset합니다. 5.1.0에서는 `ui.language`가 `config.yml` 주석 template, 생성 reference, migration/difference 안내문 언어도 선택하며, 파싱된 운영 설정값은 그대로 overlay해 보존하고 Difference는 YAML path/value만 비교합니다.
+현재 `config.yml`을 수정한 뒤 `/kchat reload`를 사용합니다. reload는 live service를 교체하기 전에 YAML을 검증하므로 malformed YAML이면 기존 실행 설정을 유지합니다. `config-reference-5.2.0.yml`은 내장 `ui.language`와 같은 언어로 렌더링한 관리자용 현재 기본 설정이며, 사용자 정의/미지원 UI 언어는 영어 표현을 사용합니다. 5.2.0 업그레이드는 지원되는 파싱된 운영자 값을 보존합니다. 과거 최초 5.0.0 → 5.1.0 relay migration에서만 Relay v1 trust 설정을 의도적으로 reset했으며, 일반 5.1.0 → 5.2.0 업그레이드는 기존 Relay v2 group/secret/peer 설정을 보존합니다. `ui.language`는 `config.yml` 주석 template, 생성 reference, migration/difference 안내문 언어도 선택하고 Difference는 YAML path/value만 비교합니다.
 
 ## Relay Protocol v2
 `server-relay.groups`를 명시적으로 구성합니다. 각 group은 shared secret 하나를 사용하며 peer별 secret은 없습니다. 최초 설정은 한 서버에서 빈 secret으로 시작/리로드해 KWC가 안전한 값을 생성하게 한 다음 그 값을 같은 group의 다른 서버에 복사합니다. 수동으로 넣는 non-empty secret은 여전히 최소 32자여야 합니다. 같은 group에서 양쪽 서버가 서로를 peer로 등록해야 합니다. direct HTTP는 relay payload 자체가 암호화/인증되지만 경고가 발생하고, forwarding은 같은 group 안의 HTTPS→HTTPS만 허용합니다. Relay v1 endpoint는 426을 반환합니다. 자세한 내용은 `SERVER_RELAY.md`를 보세요.
 
 ## 업데이트와 배포
-프로젝트 주소 전환 중에는 5.1.0 updater가 canonical Modrinth `kokoto-webchat`을 먼저 확인하고 기존 `bluemapwebchat`으로 fallback합니다. BMWC는 전환 완료 전까지 실제 업데이트 소스로 유지합니다. 배포 전에는 45개 deployable target, SHA-256, 현재 release text를 검증합니다. Windows에서는 전체 build 전에 build-path preflight를 실행해 검증 범위를 벗어난 긴 경로를 먼저 차단합니다.
+5.2.0부터 updater는 canonical Modrinth `kokoto-webchat`만 확인하며 기존 BMWC 프로젝트 주소는 실제 업데이트 소스로 사용하지 않습니다. 배포 전에는 45개 deployable target, SHA-256, 현재 release text를 검증합니다. Windows에서는 전체 build 전에 build-path preflight를 실행해 검증 범위를 벗어난 긴 경로를 먼저 차단합니다.
 
 ## 백업
 KWC 데이터 디렉터리 전체를 백업하고 SQLite `-wal`/`-shm` sidecar도 일관되게 보존하세요. 가장 안전한 offline backup은 서버 종료 후 수행합니다. config, account/profile, push subscription, upload/emoji asset, relay 설정을 함께 보관합니다.

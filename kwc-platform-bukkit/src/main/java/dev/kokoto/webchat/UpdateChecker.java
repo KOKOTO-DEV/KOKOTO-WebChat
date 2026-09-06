@@ -37,11 +37,6 @@ public final class UpdateChecker implements Listener, AutoCloseable {
             "https://modrinth.com/plugin/kokoto-webchat",
             "https://www.curseforge.com/minecraft/bukkit-plugins/kokoto-webchat",
             "kokoto-webchat");
-    private static final UpdateSource LEGACY_SOURCE = new UpdateSource(
-            URI.create("https://api.modrinth.com/v2/project/bluemapwebchat/version"),
-            "https://modrinth.com/plugin/bluemapwebchat",
-            "https://www.curseforge.com/minecraft/bukkit-plugins/bluemapwebchat",
-            "bluemapwebchat");
     private static final long INITIAL_DELAY_TICKS = 60L;
     private static final long CHECK_INTERVAL_TICKS = 12L * 60L * 60L * 20L;
     private static final long JOIN_NOTICE_DELAY_TICKS = 60L;
@@ -109,17 +104,12 @@ public final class UpdateChecker implements Listener, AutoCloseable {
             String current = plugin.getDescription().getVersion();
             SourceResult result = querySource(PRIMARY_SOURCE, current);
             if (!result.usable()) {
-                SourceResult legacy = querySource(LEGACY_SOURCE, current);
-                if (legacy.usable()) {
-                    result = legacy;
-                } else {
-                    String detail = "Modrinth sources unavailable: " + result.detail + "; fallback " + legacy.detail;
-                    issues.failed("update-check", detail,
-                            "KOKOTO WebChat update check failed: " + detail
-                                    + ". Current version=" + current
-                                    + ", sources=" + PRIMARY_SOURCE.api + " -> " + LEGACY_SOURCE.api);
-                    return;
-                }
+                String detail = "Modrinth source unavailable: " + result.detail;
+                issues.failed("update-check", detail,
+                        "KOKOTO WebChat update check failed: " + detail
+                                + ". Current version=" + current
+                                + ", source=" + PRIMARY_SOURCE.api);
+                return;
             }
 
             UpdateInfo newest = result.update;

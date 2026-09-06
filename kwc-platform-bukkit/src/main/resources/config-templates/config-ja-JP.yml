@@ -2,14 +2,14 @@
 # コア設定
 # =============================================================================
 
-# KOKOTO WebChat 5.1.0
+# KOKOTO WebChat 5.2.0
 # KWC config-comment-language: ja-JP
 
 
 # 設定バージョンです。旧バージョンは可能な限り既存設定値を保持して移行します。
 # <version>_auto_migration 中は同一バージョンのテンプレート補完を継続します。
 # ui.language 変更時は設定値を保持したままコメント/レイアウト言語だけ再構成できます。
-config-version: "5.1.0"
+config-version: "5.2.0"
 
 # 全機能のスイッチです。false でも /kchat reload は使用できます。
 # 新規設定ファイルは確認後に有効化できるよう false で生成されます。
@@ -258,6 +258,34 @@ chat:
   # 0 の場合 memory/JSONL 履歴には明示的なページ制限を設けませんが、SQLite
   # は内蔵のクエリ安全上限 500 件を適用します。
   history-page-size: 80
+
+  # アカウント単位の会話保存（snapshot）機能です。
+  # false の場合 archive API を登録せず、conversation-archives.db を開く/新規作成せず、
+  # Web UI にも会話保存関連 DOM を生成しません。既存 archive データは削除しません。
+  # 保存 snapshot は通常の chat retention では自動期限切れにならず、ユーザー削除/管理者ポリシーで削除されます。
+  conversation-archive:
+    enabled: true
+    # 上限を下げても既存の保存会話は削除せず、新しい保存が上限を超える場合のみ拒否します。
+    # 1 アカウントが保持できる保存会話の最大数です。許容範囲: 1-1000。
+    max-archives-per-user: 100
+    # 1 つの保存 snapshot に含められる最大メッセージ数です。許容範囲: 1-10000。
+    max-messages-per-archive: 1000
+    # 1 アカウントの全保存会話に含められる合計メッセージ最大数です。許容範囲: 1-100000。
+    # この値が max-messages-per-archive より小さい場合、より小さいアカウント合計上限が優先されます。
+    max-messages-per-user: 10000
+
+  # 入力中表示の利用可否は、すべてのクライアントに共通で適用されるサーバーポリシーです。
+  # 各範囲の項目は、入力中状態を送信し表示可能にするかを制御します。
+  # user-display-control が true の場合、ログインユーザーは自分の画面の入力中表示だけを無効にできます。
+  # 個人表示を無効にしても、自分の入力中状態の送信は停止しません。
+  typing-indicator:
+    user-display-control: false
+    open-chat:
+      enabled: false
+    dm:
+      enabled: true
+    group-chat:
+      enabled: true
   # KWC が受け付ける通常公開チャットメッセージの最大長です。
   # 0 はこの長さ制限をなくします。
   max-message-length: 120
@@ -1010,7 +1038,7 @@ ui:
     min-px: 200
   # 自動最新メッセージ追従で、まだ bottom 追従中と判断する下端距離(px)です。
   # runtime 範囲は 2-300 で、範囲外は境界値へ補正します。
-  auto-follow-bottom-threshold-px: 80
+  auto-follow-bottom-threshold-px: 32
   # ユーザー直接スクロール後、自動 scroll/follow 処理を再開できるまでの idle
   # 時間(ms)です。
   # runtime 範囲は 50-1000 で、範囲外は境界値へ補正します。
@@ -1040,19 +1068,19 @@ notifications:
   notify-dm: true
   # 新着グループルームメッセージの browser notification を許可します。
   notify-group-chat: true
-  # KWC mention 判定で現在ユーザーが言及された時の browser notification を許可します。
+  # 明示的な @メンション通知を許可します。@ の後では登録済みの実名/表示名のうち最長一致を
+  # 優先し、同じ表示名を共有するアカウントはすべて対象になります。
   notify-mentions: true
   # 現在ユーザーの関連メッセージ/会話への Reply に対する browser notification
   # を許可します。
   notify-replies: true
+  # メッセージへの新しい絵文字リアクションの browser notification と Web Push を許可します。
+  notify-reactions: true
   # サーバー/system announcement 通知を許可します。
   # 対応環境ではユーザー設定で all、join/leave only、off にさらに絞れます。
   notify-system: true
   # ユーザー/管理者 keyword 通知規則で発生する browser notification を許可します。
   notify-keywords: true
-  # 対象 browser notification にタイトル/カテゴリだけでなく安全なメッセージ text preview
-  # を含めます。
-  show-message-preview: true
 web-push:
   # Web Push subscription 作成に使う VAPID public key です。
   # 空なら Web Push が必要な時に KWC が key pair を生成/管理します。
@@ -1372,6 +1400,14 @@ emoji:
   enabled: true
   # emoji 機能が利用可能な時、Web チャット composer に custom emoji picker ボタンを表示します。
   show-button: true
+  favorites:
+    # custom emoji picker の Favorites pseudo-folder と星ボタンを有効にします。
+    enabled: true
+    # account = chat history の保存方式に依存せず、ログイン中 KWC account の user-preferences に保存します（既定）。
+    # browser = このブラウザーの localStorage のみに favorite emoji ID を保存します。
+    storage: "account"
+    # favorite emoji ID の最大保持数です。0 = 無制限。browser mode にも同じ値を適用します。
+    max-per-account: 100
   # KWC custom emoji ファイルと pack サブディレクトリを scan/store する data directory
   # 基準の相対フォルダーです。
   directory: "emojis"

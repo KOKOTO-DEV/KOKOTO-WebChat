@@ -19,7 +19,7 @@ When `plugins/BlueMapWebChat` exists, KOKOTO WebChat imports it only if `plugins
 
 The generated/reference/migration config files from BMWC are not copied as active KWC configuration. KWC generates its own current `config.yml` and maps values from the legacy file into the new layout. `.legacy-import-complete` is temporary migration state only: while the BMWC source remains it can record that import was completed or intentionally skipped because KWC data already existed; once `plugins/BlueMapWebChat` is removed, KWC deletes the marker automatically on startup or `/kchat reload`.
 
-When the legacy `config-version` matches a bundled BMWC baseline, values that are still exactly equal to that BMWC version's defaults do not overwrite the current KWC defaults. This keeps a normal BMWC installation aligned with the current 5.1.0 reference while preserving settings the administrator actually changed. Retired keys that no longer exist in the KWC reference are not copied.
+When the legacy `config-version` matches a bundled BMWC baseline, values that are still exactly equal to that BMWC version's defaults do not overwrite the current KWC defaults. This keeps a normal BMWC installation aligned with the current 5.2.0 reference while preserving settings the administrator actually changed. Retired keys that no longer exist in the KWC reference are not copied.
 
 ## Config key migration
 

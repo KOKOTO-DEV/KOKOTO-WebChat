@@ -1,0 +1,139 @@
+# KOKOTO WebChat 5.2.0 default Unicode reaction search aliases
+# Format: emoji<TAB>keywords. Administrators can edit the runtime copy from Web Admin > Emojis > Reaction icons.
+😀	smile happy grin 웃음 웃는 미소 행복 笑顔 笑う 微笑 开心 笑脸
+😃	smile happy grin 웃음 미소 행복 笑顔 笑う 开心 笑脸
+😄	smile happy laugh 웃음 미소 기쁨 笑顔 笑う 开心 笑脸
+😁	grin smile happy 웃음 미소 활짝 笑顔 にこにこ 开心 咧嘴笑
+😆	laugh lol 웃음 빵터짐 爆笑 笑う 大笑
+😅	sweat nervous laugh 땀 웃음 머쓱 苦笑 汗 尴尬 汗笑
+😂	laugh tears lol 웃음 눈물 빵터짐 爆笑 涙 笑哭 笑泪
+🙂	smile okay 미소 웃음 微笑 笑顔 微笑
+🙃	upside down sarcasm 거꾸로 장난 逆さ 皮肉 倒脸 反讽
+😉	wink 윙크 眨眼 ウインク
+😊	smile blush happy 미소 행복 수줍 笑顔 微笑 害羞 开心
+😍	love heart eyes 사랑 하트눈 반함 ハート 愛 心 爱心 喜欢
+🥰	love hearts affection 사랑 하트 행복 愛 ハート 爱心 喜欢
+😘	kiss love 키스 뽀뽀 사랑 キス 爱 亲亲
+😎	cool sunglasses 멋짐 선글라스 クール サングラス 酷 墨镜
+🤔	think thinking 고민 생각 考える 思考 思考 想
+😮	wow surprise 놀람 헉 驚き びっくり 惊讶
+😢	sad cry tear 슬픔 눈물 悲しい 涙 伤心 眼泪
+😭	cry crying tears 울음 눈물 슬픔 泣く 涙 大哭 眼泪
+😡	angry mad 화남 분노 怒る 怒り 生气 愤怒
+🤯	mind blown shocked 충격 놀람 爆発 衝撃 震惊 爆炸头
+🥳	party celebrate 축하 파티 お祝い パーティ 庆祝 派对
+👍	thumbs up like yes good 좋아요 엄지 찬성 굿 いいね 賛成 点赞 赞 同意
+👎	thumbs down dislike no bad 싫어요 엄지 반대 よくない 反対 点踩 反对
+👌	ok okay perfect 오케이 확인 完璧 オーケー 好 可以 完美
+✌️	victory peace v 브이 승리 평화 ピース 勝利 胜利 和平
+🤞	fingers crossed luck 행운 기원 幸運 祈る 好运 祈愿
+🤟	love you hand 사랑 손 愛 手 爱你 手势
+🤘	rock horns 락 록 ロック 摇滚
+👏	clap applause 박수 拍手 喝彩 鼓掌
+🙌	hooray raise hands 만세 환호 万歳 バンザイ 欢呼 举手
+🫶	heart hands love 손하트 하트 사랑 ハート 愛 比心 爱心
+🙏	pray please thanks 기도 부탁 감사 祈り お願い 感謝 祈祷 拜托 感谢
+💪	strong muscle 힘 근육 強い 筋肉 强 肌肉
+👀	eyes look watch 눈 보다 시선 目 見る 眼睛 看
+🧠	brain think 뇌 생각 脳 思考 大脑 思考
+❤️	heart love 하트 사랑 좋아 ハート 愛 红心 爱
+💔	broken heart heartbreak 깨진하트 실연 이별 失恋 ハート 心碎 失恋
+💯	100 hundred perfect 백점 만점 100점 百点 満点 满分 一百分
+🔥	fire hot 불 화염 핫 인기 炎 熱い 火 热
+⭐	star favorite 별 스타 즐겨찾기 星 お気に入り 星 收藏
+✨	sparkles shine 반짝 반짝임 キラキラ 闪亮 闪光
+⚡	lightning electricity 번개 전기 雷 電気 闪电 电
+💥	boom explosion 폭발 충돌 爆発 爆炸
+🎁	gift present 선물 プレゼント 礼物
+🏆	trophy winner 우승 트로피 トロフィー 優勝 奖杯 冠军
+🥇	gold first medal 금메달 1등 金メダル 一位 金牌 第一
+📌	pin pushpin 핀 고정 ピン 固定 图钉 固定
+🔒	lock locked 잠금 자물쇠 ロック 鍵 锁
+🔑	key 열쇠 키 鍵 钥匙
+💻	computer pc 컴퓨터 노트북 パソコン 电脑
+📱	phone mobile 스마트폰 휴대폰 スマホ 携帯 手机
+⏰	alarm clock time 알람 시계 アラーム 時計 闹钟 时间
+✅	check yes done success 체크 확인 완료 성공 チェック 完了 确认 完成 成功
+❌	x no cancel fail 엑스 취소 실패 バツ キャンセル 错 取消 失败
+⭕	circle correct 원 동그라미 정답 丸 正解 圆 正确
+❗	exclamation important 느낌표 중요 주의 感嘆符 重要 叹号 重要
+❓	question 물음표 질문 疑問 質問 问号 问题
+⚠️	warning caution 경고 주의 警告 注意 警告 注意
+♻️	recycle recycling 재활용 リサイクル 回收
+➕	plus add 더하기 플러스 추가 プラス 追加 加 添加
+➖	minus subtract 빼기 마이너스 マイナス 减 减少
+➡️	right arrow 오른쪽 화살표 右 矢印 右 箭头
+⬆️	up arrow 위 화살표 上 矢印 上 箭头
+⬇️	down arrow 아래 화살표 下 矢印 下 箭头
+🔴	red circle 빨강 빨간색 赤 红色 红
+🟠	orange circle 주황 오렌지 オレンジ 橙色
+🟡	yellow circle 노랑 黄色 黄
+🟢	green circle 초록 緑 绿色
+🔵	blue circle 파랑 青 蓝色
+🟣	purple circle 보라 紫 紫色
+⚫	black circle 검정 黒 黑色
+⚪	white circle 흰색 白 白色
+🎉	party celebrate 축하 파티 お祝い パーティ 庆祝 派对
+🎊	confetti celebrate 축하 색종이 お祝い 紙吹雪 庆祝 彩球
+🎮	game controller 게임 게임패드 ゲーム 游戏 手柄
+🎵	music note 음악 노래 音楽 音符 音乐
+🎤	microphone mic 마이크 노래 マイク 麦克风
+🎧	headphones headset 헤드폰 이어폰 ヘッドホン 耳机
+🎬	movie film 영화 촬영 映画 电影
+📷	camera photo 카메라 사진 カメラ 写真 相机 照片
+🚗	car 자동차 차 車 汽车
+✈️	airplane plane 비행기 飛行機 飞机
+🚀	rocket 우주 로켓 ロケット 火箭
+🍕	pizza 피자 ピザ 披萨
+🍔	burger hamburger 햄버거 バーガー 汉堡
+🍟	fries 감자튀김 フライドポテト 薯条
+☕	coffee cafe 커피 카페 コーヒー 咖啡
+🍺	beer 맥주 ビール 啤酒
+🎂	cake birthday 생일 케이크 誕生日 ケーキ 生日 蛋糕
+🍰	cake dessert 케이크 디저트 ケーキ デザート 蛋糕 甜点
+🌈	rainbow 무지개 虹 彩虹
+🌸	flower cherry blossom 꽃 벚꽃 桜 花 樱花 花
+🐶	dog puppy 강아지 개 犬 狗
+🐱	cat kitten 고양이 猫 猫
+🐰	rabbit bunny 토끼 うさぎ 兔子
+🦊	fox 여우 キツネ 狐狸
+🐻	bear 곰 熊 熊
+🐼	panda 판다 パンダ 熊猫
+🐸	frog 개구리 カエル 青蛙
+🐵	monkey 원숭이 猿 猴子
+🐧	penguin 펭귄 ペンギン 企鹅
+🦄	unicorn 유니콘 ユニコーン 独角兽
+🦋	butterfly 나비 蝶 蝴蝶
+🐭	mouse 쥐 마우스 ネズミ 老鼠
+🐹	hamster 햄스터 ハムスター 仓鼠
+🐨	koala 코알라 コアラ 考拉
+🐯	tiger 호랑이 トラ 老虎
+🦁	lion 사자 ライオン 狮子
+🐔	chicken 닭 치킨 ニワトリ 鸡
+🐦	bird 새 鳥 鸟
+🐝	bee honeybee 벌 꿀벌 ハチ 蜜蜂
+🍎	apple red apple 사과 りんご 苹果
+🍊	orange tangerine 귤 오렌지 みかん オレンジ 橘子 橙子
+🍋	lemon 레몬 レモン 柠檬
+🍉	watermelon 수박 スイカ 西瓜
+🍇	grape grapes 포도 ぶどう 葡萄
+🍓	strawberry 딸기 いちご 草莓
+🍒	cherry cherries 체리 버찌 さくらんぼ 樱桃
+🍑	peach 복숭아 桃 桃子
+🌭	hot dog 핫도그 ホットドッグ 热狗
+🍿	popcorn 팝콘 ポップコーン 爆米花
+🍩	donut doughnut 도넛 ドーナツ 甜甜圈
+🍪	cookie biscuit 쿠키 クッキー 饼干
+⚽	soccer football 축구 サッカー 足球
+🏀	basketball 농구 バスケットボール 篮球
+🏈	american football 미식축구 アメフト 橄榄球
+⚾	baseball 야구 野球 棒球
+🎾	tennis 테니스 テニス 网球
+🏐	volleyball 배구 バレーボール 排球
+🎲	dice 주사위 サイコロ 骰子
+🎯	target bullseye 과녁 목표 ダーツ 的 靶心
+💡	light bulb idea 전구 아이디어 電球 アイデア 灯泡 主意
+💎	diamond gem 보석 다이아 ダイヤ 宝石 钻石 宝石
+📎	paperclip clip 클립 종이클립 クリップ 回形针
+🛠️	tools hammer wrench 도구 망치 렌치 工具 ハンマー レンチ 工具 锤子 扳手
+🧪	test tube experiment 시험관 실험 試験管 実験 试管 实验

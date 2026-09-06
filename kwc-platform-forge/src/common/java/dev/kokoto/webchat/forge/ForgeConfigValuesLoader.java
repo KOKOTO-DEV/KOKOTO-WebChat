@@ -93,6 +93,14 @@ public final class ForgeConfigValuesLoader {
         v.historySqliteFile = c.getString("chat.history-sqlite-file", "history.db");
         v.historySqliteMigrateJsonl = c.getBoolean("chat.history-sqlite-migrate-jsonl", true);
         v.historyPageSize = Math.max(0, c.getInt("chat.history-page-size", 80));
+        v.conversationArchiveEnabled = c.getBoolean("chat.conversation-archive.enabled", true);
+        v.conversationArchiveMaxArchivesPerUser = Math.max(1, Math.min(1000, c.getInt("chat.conversation-archive.max-archives-per-user", 100)));
+        v.conversationArchiveMaxMessagesPerArchive = Math.max(1, Math.min(10000, c.getInt("chat.conversation-archive.max-messages-per-archive", 1000)));
+        v.conversationArchiveMaxMessagesPerUser = Math.max(1, Math.min(100000, c.getInt("chat.conversation-archive.max-messages-per-user", 10000)));
+        v.typingUserDisplayControl = c.getBoolean("chat.typing-indicator.user-display-control", false);
+        v.typingOpenChatEnabled = c.getBoolean("chat.typing-indicator.open-chat.enabled", false);
+        v.typingDmEnabled = c.getBoolean("chat.typing-indicator.dm.enabled", true);
+        v.typingGroupChatEnabled = c.getBoolean("chat.typing-indicator.group-chat.enabled", true);
         v.searchEnabled = c.getBoolean("search.enabled", true);
         v.searchResultLimit = Math.max(1, c.getInt("search.result-limit", 50));
 
@@ -274,7 +282,7 @@ public final class ForgeConfigValuesLoader {
         v.uiVirtualScrollMinRenderedMessages = Math.max(0, c.getInt("ui.virtual-scroll.min-rendered-messages", 30));
         v.uiHistoryPreloadScreens = Math.max(0.0, Math.min(5.0, c.getDouble("ui.history-preload.screens", 0.70)));
         v.uiHistoryPreloadMinPx = Math.max(0, Math.min(1000, c.getInt("ui.history-preload.min-px", 200)));
-        v.uiAutoFollowBottomThresholdPx = Math.max(2, Math.min(300, c.getInt("ui.auto-follow-bottom-threshold-px", 80)));
+        v.uiAutoFollowBottomThresholdPx = Math.max(2, Math.min(300, c.getInt("ui.auto-follow-bottom-threshold-px", 32)));
         v.uiScrollInteractionIdleMs = Math.max(50, Math.min(1000, c.getInt("ui.scroll-interaction-idle-ms", 160)));
         v.uiResumeRefreshEnabled = c.getBoolean("ui.resume-refresh.enabled", true);
         v.uiResumeRefreshMinIntervalSeconds = Math.max(1, Math.min(300, c.getInt("ui.resume-refresh.min-interval-seconds", 5)));
@@ -312,9 +320,11 @@ public final class ForgeConfigValuesLoader {
         boolean notifyGroupChat = notificationBool(c, "notify-group-chat", legacyPairBool(c, "browser-notifications.notify-group-chat", "web-push.notify-group-chat", true));
         boolean notifyMentions = notificationBool(c, "notify-mentions", legacyPairBool(c, "browser-notifications.notify-mentions", "web-push.notify-mentions", true));
         boolean notifyReplies = notificationBool(c, "notify-replies", legacyPairBool(c, "browser-notifications.notify-replies", "web-push.notify-replies", true));
+        // Reactions were introduced after the browser/Web Push notification settings were unified,
+        // so this category intentionally has only the shared notifications.* key.
+        boolean notifyReactions = notificationBool(c, "notify-reactions", true);
         boolean notifySystem = notificationBool(c, "notify-system", legacyPairBool(c, "browser-notifications.notify-system", "web-push.notify-system", true));
         boolean notifyKeywords = notificationBool(c, "notify-keywords", legacyPairBool(c, "browser-notifications.notify-keywords", "web-push.notify-keywords", true));
-        boolean showMessagePreview = notificationBool(c, "show-message-preview", legacyPairBool(c, "browser-notifications.show-message-preview", "web-push.show-message-preview", true));
 
         v.browserNotificationsEnabled = notificationsEnabled;
         v.browserNotificationsOnlyWhenHidden = notificationBool(c, "only-when-hidden", configBool(c, "browser-notifications.only-when-hidden", true));
@@ -323,9 +333,9 @@ public final class ForgeConfigValuesLoader {
         v.browserNotificationsNotifyGroupChat = notifyGroupChat;
         v.browserNotificationsNotifyMentions = notifyMentions;
         v.browserNotificationsNotifyReplies = notifyReplies;
+        v.browserNotificationsNotifyReactions = notifyReactions;
         v.browserNotificationsNotifySystem = notifySystem;
         v.browserNotificationsNotifyKeywords = notifyKeywords;
-        v.browserNotificationsShowMessagePreview = showMessagePreview;
 
         v.webPushEnabled = notificationsEnabled;
         v.webPushVapidPublicKey = c.getString("web-push.vapid-public-key", "");
@@ -341,9 +351,9 @@ public final class ForgeConfigValuesLoader {
         v.webPushNotifyGroupChat = notifyGroupChat;
         v.webPushNotifyMentions = notifyMentions;
         v.webPushNotifyReplies = notifyReplies;
+        v.webPushNotifyReactions = notifyReactions;
         v.webPushNotifySystem = notifySystem;
         v.webPushNotifyKeywords = notifyKeywords;
-        v.webPushShowMessagePreview = showMessagePreview;
 
         v.playerNameMode = c.getString("player-display.mode", "name");
         if (v.playerNameMode == null) v.playerNameMode = "name";
@@ -494,6 +504,10 @@ public final class ForgeConfigValuesLoader {
 
         v.emojiEnabled = c.getBoolean("emoji.enabled", true);
         v.emojiShowButton = c.getBoolean("emoji.show-button", true);
+        v.emojiFavoritesEnabled = c.getBoolean("emoji.favorites.enabled", true);
+        String emojiFavoritesStorage = String.valueOf(c.getString("emoji.favorites.storage", "account")).trim().toLowerCase(Locale.ROOT);
+        v.emojiFavoritesStorage = "browser".equals(emojiFavoritesStorage) ? "browser" : "account";
+        v.emojiFavoritesMaxPerAccount = Math.max(0, c.getInt("emoji.favorites.max-per-account", 100));
         v.emojiDirectory = c.getString("emoji.directory", "emojis");
         v.emojiPublicBaseUrl = c.getString("emoji.public-base-url", "");
         v.emojiMaxFileSizeKb = Math.max(0, c.getInt("emoji.max-file-size-kb", 512));

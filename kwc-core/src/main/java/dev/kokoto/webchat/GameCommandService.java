@@ -369,7 +369,7 @@ public final class GameCommandService {
         if (body.isBlank()) return fail(sender, msg("groupEmpty", "Message is empty."));
         GroupChatStore.SendResult r = host.groupChats().send(me, room.id, body, replyToId);
         if (!r.ok) return fail(sender, msg("groupFailed", "Group chat failed: {error}", "error", r.error));
-        WebChatServer s = webServer.get(); if (s != null) { s.publishGroupChatUpdate(room.id); s.inspectAdminGroupAlert("group:" + (r.message == null ? 0L : r.message.id), sender.displayName(), "game", body); s.dispatchWebPushGroupMessage(me, sender.displayName(), room, r.message, room.id); }
+        WebChatServer s = webServer.get(); if (s != null) { s.publishGroupChatMessageUpdate(room.id, r.message); s.inspectAdminGroupAlert("group:" + (r.message == null ? 0L : r.message.id), sender.displayName(), "game", body); s.dispatchWebPushGroupMessage(me, sender.displayName(), room, r.message, room.id); }
         sendInteractiveWithReply(sender,
                 msg("groupSentEcho", "to group {room}: {message}", "room", room.name, "message", gameBody),
                 room.name, msg("groupClickHint", "Click to write to group {room}", "room", room.name),
