@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ExpectedVersion = '5.2.0'
+$ExpectedVersion = '5.2.1'
 $ExpectedModId = 'kokoto_webchat'
 
 if (-not (Test-Path -LiteralPath $JarPath -PathType Leaf)) {

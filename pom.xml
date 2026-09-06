@@ -5,7 +5,7 @@
 
     <groupId>dev.kokoto</groupId>
     <artifactId>kokoto-webchat-parent</artifactId>
-    <version>5.2.0</version>
+    <version>5.2.1</version>
     <packaging>pom</packaging>
 
     <name>KOKOTO WebChat Parent</name>

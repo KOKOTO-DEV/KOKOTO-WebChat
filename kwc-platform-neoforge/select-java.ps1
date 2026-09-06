@@ -86,7 +86,7 @@ function Return-JavaHome([string]$JavaHome) {
 }
 
 function Invoke-KwcJsonRequest([string]$Uri) {
-    $headers = @{ 'User-Agent' = 'KOKOTO-WebChat-Build/5.2.0' }
+    $headers = @{ 'User-Agent' = 'KOKOTO-WebChat-Build/5.2.1' }
     $lastError = $null
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         try {
@@ -107,7 +107,7 @@ function Invoke-KwcJsonRequest([string]$Uri) {
         Write-Host "$Label PowerShell web request failed; trying curl.exe fallback..."
         $tmp = Join-Path ([IO.Path]::GetTempPath()) ("kwc-adoptium-{0}-{1}.json" -f $PID, [Guid]::NewGuid().ToString('N'))
         try {
-            & $curl.Source '--fail' '--silent' '--show-error' '--location' '--retry' '3' '--retry-delay' '2' '--connect-timeout' '20' '--max-time' '90' '--user-agent' 'KOKOTO-WebChat-Build/5.2.0' '--output' $tmp $Uri
+            & $curl.Source '--fail' '--silent' '--show-error' '--location' '--retry' '3' '--retry-delay' '2' '--connect-timeout' '20' '--max-time' '90' '--user-agent' 'KOKOTO-WebChat-Build/5.2.1' '--output' $tmp $Uri
             if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $tmp)) {
                 $json = [IO.File]::ReadAllText($tmp)
                 if (![string]::IsNullOrWhiteSpace($json)) {
@@ -122,7 +122,7 @@ function Invoke-KwcJsonRequest([string]$Uri) {
 }
 
 function Invoke-KwcDownload([string]$Uri, [string]$OutFile) {
-    $headers = @{ 'User-Agent' = 'KOKOTO-WebChat-Build/5.2.0' }
+    $headers = @{ 'User-Agent' = 'KOKOTO-WebChat-Build/5.2.1' }
     $lastError = $null
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         try {
@@ -143,7 +143,7 @@ function Invoke-KwcDownload([string]$Uri, [string]$OutFile) {
     if ($curl) {
         Write-Host "$Label PowerShell download failed; trying curl.exe fallback..."
         if (Test-Path -LiteralPath $OutFile) { Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue }
-        & $curl.Source '--fail' '--silent' '--show-error' '--location' '--retry' '3' '--retry-delay' '2' '--connect-timeout' '20' '--user-agent' 'KOKOTO-WebChat-Build/5.2.0' '--output' $OutFile $Uri
+        & $curl.Source '--fail' '--silent' '--show-error' '--location' '--retry' '3' '--retry-delay' '2' '--connect-timeout' '20' '--user-agent' 'KOKOTO-WebChat-Build/5.2.1' '--output' $OutFile $Uri
         if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $OutFile) -and ((Get-Item -LiteralPath $OutFile).Length -gt 0)) { return }
     }
     throw "Download failed for $Uri. Last PowerShell error: $lastError"

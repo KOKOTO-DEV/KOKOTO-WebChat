@@ -1,6 +1,6 @@
 plugins { id 'java-library'; id 'net.neoforged.moddev' version '2.0.143' }
-version='5.2.0'; group='dev.kokoto.webchat'
-base { archivesName='KOKOTO-WebChat-5.2.0-NeoForge-1.21.11' }
+version='5.2.1'; group='dev.kokoto.webchat'
+base { archivesName='KOKOTO-WebChat-5.2.1-NeoForge-1.21.11' }
 java.toolchain.languageVersion=JavaLanguageVersion.of(21)
 repositories { mavenCentral(); maven { url 'https://repo.bluecolored.de/releases' } }
 sourceSets.main.java.srcDirs=['../../src/common/java','../../src/compatEvents/java','../../src/compatModern/java','../../../kwc-core/src/main/java','../../../kwc-adapter-bluemap/src/main/java','../../../kwc-adapter-squaremap/src/main/java','../../../kwc-adapter-dynmap/src/main/java','../../../kwc-adapter-pl3xmap/src/main/java','../../../kwc-adapter-liveatlas/src/main/java','../../../kwc-adapter-unmined/src/main/java','../../../kwc-adapter-overviewer/src/main/java']
@@ -15,4 +15,4 @@ def metadata=tasks.register('generateModMetadata',Copy) { from('../../src/common
 tasks.named('processResources').configure { dependsOn(metadata); from(layout.buildDirectory.dir('generated/resources')); from('../../../kwc-platform-bukkit/src/main/resources') { include 'config.yml'; include 'config-baselines/**'; include 'config-templates/**'; include 'lang/**'; include 'filter-lists-default/**' } }
 tasks.withType(JavaCompile).configureEach { options.release=21; options.encoding='UTF-8' }
 jar { duplicatesStrategy=DuplicatesStrategy.EXCLUDE; from({ configurations.kwcEmbed.collect { it.isDirectory()?it:zipTree(it) } }); exclude 'META-INF/*.SF','META-INF/*.RSA','META-INF/*.DSA'; from('../../../LICENSE') { rename { 'LICENSE_KOKOTO-WebChat' } } }
-tasks.withType(AbstractArchiveTask).configureEach { archiveBaseName.set('KOKOTO-WebChat-5.2.0-NeoForge-1.21.11'); archiveVersion.set('') }
+tasks.withType(AbstractArchiveTask).configureEach { archiveBaseName.set('KOKOTO-WebChat-5.2.1-NeoForge-1.21.11'); archiveVersion.set('') }

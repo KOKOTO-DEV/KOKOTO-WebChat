@@ -8,6 +8,10 @@
 
 > Visual manuals, animated flows, editable diagram sources, and standards references are included under `docs/assets/`, `docs/en/VISUAL_DOCUMENTATION.md`, and `docs/en/REFERENCES.md`.
 
+## 5.2.1 hotfix
+
+5.2.1 is a focused frontend hotfix over 5.2.0. BlueMap refresh startup now recovers when addon `config.js` arrives late instead of freezing an incorrect site-root `/api` base; the notification settings keep the mention label explicitly prefixed with `@`; and the custom-emoji horizontal category scrollbar uses the same theme-aware thumb/hover treatment as the vertical settings scrollbar while retaining a 12px horizontal height. The configuration schema remains 5.2.0 and Relay Protocol remains 2.1.
+
 - **5.2.0 controls:** `notifications.notify-reactions` provides one Reactions choice shared by browser notifications and Web Push; `chat.conversation-archive.enabled: false` hard-disables Saved-conversation DOM/API/DB startup while preserving existing archive data; the three archive `max-*` keys control saved-conversation quotas; `chat.typing-indicator.open-chat.enabled`, `.dm.enabled`, and `.group-chat.enabled` are server-wide typing-indicator policy switches (defaults OFF/ON/ON) exposed in Web Admin Settings; `chat.typing-indicator.user-display-control` (default OFF) lets the administrator optionally expose one account-level **Typing indicators** viewer setting; `emoji.favorites.enabled`, `storage`, and `max-per-account` control whether custom-emoji Favorites exist and whether they are browser-local or account-stored.
 
 ## 5.2.0 release
@@ -80,7 +84,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.1-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target builds
@@ -95,7 +99,7 @@ kwc-platform-fabric\build-all.bat
 ./kwc-platform-fabric/build-all.sh
 ```
 
-Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.0-Fabric-<Minecraft>.jar`.
+Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-Fabric-<Minecraft>.jar`.
 
 ### NeoForge exact-target builds
 
@@ -109,7 +113,7 @@ kwc-platform-neoforge\build-all.bat
 ./kwc-platform-neoforge/build-all.sh
 ```
 
-Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.0-NeoForge-<Minecraft>.jar`.
+Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-NeoForge-<Minecraft>.jar`.
 
 ### Forge exact-target builds
 
@@ -125,13 +129,13 @@ On Linux/macOS:
 ./kwc-platform-forge/build-all.sh
 ```
 
-The Forge build helpers select JDK 17/21/25 per target and produce `KOKOTO-WebChat-5.2.0-Forge-<Minecraft>.jar` under each target's `build/libs/` directory.
+The Forge build helpers select JDK 17/21/25 per target and produce `KOKOTO-WebChat-5.2.1-Forge-<Minecraft>.jar` under each target's `build/libs/` directory.
 
 ### Final Windows release acceptance
 
-> **The release build/validation workflow is included in the source package.** `validate-release-windows.bat` and the PowerShell helpers it requires are shipped with the source. The separate `KWC-5.2.0-validation-tools.zip` contains development-only browser regression tooling and is not required for normal or release builds.
+> **The release build/validation workflow is included in the source package.** `validate-release-windows.bat` and the PowerShell helpers it requires are shipped with the source. The separate `KWC-5.2.1-validation-tools.zip` contains development-only browser regression tooling and is not required for normal or release builds.
 
-Run `validate-release-windows.bat` from the source root to build Bukkit, all 16 Fabric targets, all 12 NeoForge targets, and all 16 Forge targets in one pass. A fully build-validated release must end with `FINAL RELEASE BUILD PASS`, collect exactly 45 deployable JARs under `release-5.2.0/`, and generate `SHA256SUMS.txt`. The same release gate also runs the loader-neutral security and Relay/reaction/typing regression harnesses, adapter/config migration harnesses, and a finished-Bukkit-JAR conversation-archive runtime smoke that opens the shaded SQLite driver and exercises save/read/rename/quota/admin-delete cascade behavior.
+Run `validate-release-windows.bat` from the source root to build Bukkit, all 16 Fabric targets, all 12 NeoForge targets, and all 16 Forge targets in one pass. A fully build-validated release must end with `FINAL RELEASE BUILD PASS`, collect exactly 45 deployable JARs under `release-5.2.1/`, and generate `SHA256SUMS.txt`. The same release gate also runs the loader-neutral security and Relay/reaction/typing regression harnesses, adapter/config migration harnesses, and a finished-Bukkit-JAR conversation-archive runtime smoke that opens the shaded SQLite driver and exercises save/read/rename/quota/admin-delete cascade behavior.
 
 For normal development builds on Windows, the same script supports platform selection, incremental cache reuse, parallel platform scheduling, and live progress:
 
@@ -142,7 +146,7 @@ validate-release-windows.bat --fabric --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-Platform flags may be combined. `--bukkit` builds only the Bukkit/Paper artifact and its required Maven reactor dependencies. `--fast` skips `clean`, reuses existing Maven/Gradle outputs and dependency caches, and enables the Gradle build cache. `--parallel` keeps the selected build mode, builds Bukkit first when it is selected, and after Bukkit passes opens separate live build windows for Fabric, NeoForge, and Forge and runs them concurrently; therefore `validate-release-windows.bat --parallel` is still a clean 45-target release validation and may print `FINAL RELEASE BUILD PASS`. The main console continuously shows elapsed time, overall completed targets, each platform count, and the current Minecraft target while each worker window shows its actual build log and full logs remain in `validation-logs/`. Partial or `--fast` builds are written under `build-5.2.0/` and never count as final release validation. Root `mvn clean package` remains a valid Bukkit-only Maven build and does not build Fabric/NeoForge/Forge.
+Platform flags may be combined. `--bukkit` builds only the Bukkit/Paper artifact and its required Maven reactor dependencies. `--fast` skips `clean`, reuses existing Maven/Gradle outputs and dependency caches, and enables the Gradle build cache. `--parallel` keeps the selected build mode, builds Bukkit first when it is selected, and after Bukkit passes opens separate live build windows for Fabric, NeoForge, and Forge and runs them concurrently; therefore `validate-release-windows.bat --parallel` is still a clean 45-target release validation and may print `FINAL RELEASE BUILD PASS`. The main console continuously shows elapsed time, overall completed targets, each platform count, and the current Minecraft target while each worker window shows its actual build log and full logs remain in `validation-logs/`. Partial or `--fast` builds are written under `build-5.2.1/` and never count as final release validation. Root `mvn clean package` remains a valid Bukkit-only Maven build and does not build Fabric/NeoForge/Forge.
 If a loader worker fails with a recognized Gradle cache/workspace corruption or cache-lock signature (for example an unreadable `caches/<Gradle>/transforms/.../metadata.bin`), the validation runner does not delete the possibly locked primary cache. It retries that platform once with a fresh isolated cache under `.build-cache/gradle-recovery/`. Source compilation and ordinary dependency/build failures are never retried. A successful recovery leaves the original cache untouched so it can be cleaned manually after Explorer, antivirus, or another locking process releases it.
 
 

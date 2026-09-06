@@ -4157,6 +4157,7 @@ body.kwc-emoji-resizing {
   overflow-y: hidden;
   padding-bottom: 2px;
   scrollbar-width: thin;
+  scrollbar-color: var(--kwc-border-color, rgba(255,255,255,0.24)) transparent;
 }
 
 @supports selector(::-webkit-scrollbar) {
@@ -4174,12 +4175,14 @@ body.kwc-emoji-resizing {
 }
 
 .kwc-emoji-tabs::-webkit-scrollbar-thumb {
-  background: var(--kwc-border-color, rgba(255,255,255,0.24));
+  background-color: var(--kwc-border-color, rgba(255,255,255,0.24));
+  border: 3px solid transparent;
+  background-clip: content-box;
   border-radius: 999px;
 }
 
 .kwc-emoji-tabs::-webkit-scrollbar-thumb:hover {
-  background: var(--kwc-muted-text, rgba(255,255,255,0.42));
+  background-color: var(--kwc-link-color, rgba(130,190,255,0.65));
 }
 
 .kwc-emoji-search-toggle {

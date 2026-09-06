@@ -13104,7 +13104,13 @@
       const checked = notificationOption(name) ? " checked" : "";
       const disabled = allowed ? "" : " disabled";
       const title = allowed ? "" : ` title="${esc(labels.notifyDisabledByServer || "Disabled by server configuration.")}"`;
-      const text = labels[def && def.label] || fallback;
+      let text = labels[def && def.label] || fallback;
+      // Keep the mention preference visually explicit even when an existing server
+      // still serves an older/custom language file whose label is just "Mention".
+      if (name === "mentions") {
+        const mentionText = String(text || fallback || "Mention").trim();
+        text = mentionText.startsWith("@") ? mentionText : "@" + mentionText;
+      }
       return `<label class="kwc-notify-option${allowed ? "" : " kwc-notify-option-disabled"}"${title}><input id="${prefix}-${name}" type="checkbox" data-kwc-notify-option="${name}"${checked}${disabled}> <span>${esc(text)}</span></label>`;
     };
     const systemAllowed = notificationServerAllows("system");

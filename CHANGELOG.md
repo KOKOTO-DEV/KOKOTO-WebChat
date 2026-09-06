@@ -1,5 +1,14 @@
 # Changelog
 
+## 5.2.1
+
+5.2.1 is a focused web-frontend hotfix release over 5.2.0. It does not change the configuration schema or Relay protocol revision.
+
+### Fixed
+- Fixed an intermittent BlueMap refresh race where `chat.js` could initialize before the generated `config.js`, freeze the fallback site-root `/api` URL, and keep retrying incorrect endpoints instead of recovering. The BlueMap wrapper now defers startup until its generated API base is available and can reload the addon config before re-bootstrapping the chat.
+- Kept the notification preference label explicitly formatted as `@Mention` / `@멘션` / `@メンション` / `@提及`, including upgrades with older or customized language files whose mention label omitted the leading `@`.
+- Matched the custom-emoji horizontal category scrollbar to the themed vertical scrollbar colors and thumb treatment while retaining a 12px horizontal scrollbar height.
+
 ## 5.2.0
 
 5.2.0 adds message reactions, personal conversation archives/PDF export, public/DM/group typing indicators, custom-emoji picker enhancements, and Relay Protocol 2.1 capability negotiation. It also includes security and account-linking corrections carried forward from the 5.1.0 release baseline.

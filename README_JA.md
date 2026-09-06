@@ -8,6 +8,10 @@
 
 > ビジュアル資料、アニメーションフロー、編集可能な図の source、参照規格一覧は `docs/assets/`、`docs/en/VISUAL_DOCUMENTATION.md`、`docs/en/REFERENCES.md` に含まれています。
 
+## 5.2.1 hotfix
+
+5.2.1 は 5.2.0 向けの frontend hotfix です。BlueMap の再読み込み時に addon `config.js` が遅れても誤った site-root `/api` を固定せず自動復旧し、通知設定の mention 表示は常に `@` 接頭辞付きになり、custom emoji の横 category scrollbar は高さ 12px を維持しつつ縦 settings scrollbar と同じ theme-aware thumb/hover 表示を使用します。config schema は 5.2.0、Relay Protocol は 2.1 のままです。
+
 - **5.2.0 制御:** `notifications.notify-reactions` は browser notification と Web Push で共用する reaction 選択 1 個を提供し、`chat.conversation-archive.enabled: false` は既存 archive data を残したまま保存済み会話の DOM/API/DB 起動をすべて無効化し、archive の 3 つの `max-*` key でアカウント当たり snapshot 数・snapshot 当たり message 数・アカウント合計保存 message 数を調整できます。`chat.typing-indicator.open-chat.enabled`、`.dm.enabled`、`.group-chat.enabled` はサーバー共通の入力中表示ポリシーで、既定値は OFF/ON/ON、Web Admin Settings からも変更できます。`chat.typing-indicator.user-display-control`（既定 OFF）を有効にすると、ログインユーザーはアカウント単位の **入力中表示** を無効にできます。この個人設定は自分の画面の表示だけを制御し、自分の typing 送信は停止しません。`emoji.favorites.enabled`、`storage`、`max-per-account` は custom emoji Favorites の有効/無効、browser/account 保存方式、最大保持数を制御します。
 
 ## 5.2.0 リリース
@@ -71,7 +75,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.1-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target
@@ -82,7 +86,7 @@ Fabric は Minecraft version 別の 16 exact-target JAR として build しま�
 kwc-platform-fabric\build-all.bat
 ```
 
-Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.0-Fabric-<Minecraft>.jar` です。
+Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-Fabric-<Minecraft>.jar` です。
 
 ### NeoForge exact-target
 
@@ -92,7 +96,7 @@ NeoForge は 12 exact-target JAR として build します。1.20.2〜1.20.6 は
 kwc-platform-neoforge\build-all.bat
 ```
 
-Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.0-NeoForge-<Minecraft>.jar` です。
+Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-NeoForge-<Minecraft>.jar` です。
 
 ### Forge exact-target
 
@@ -102,13 +106,13 @@ Forge は単一の広域 JAR ではなく、16 個の Minecraft version 別 exac
 kwc-platform-forge\build-all.bat
 ```
 
-script が target ごとに JDK 17/21/25 を選択し、各 target の `build/libs/` に `KOKOTO-WebChat-5.2.0-Forge-<Minecraft>.jar` を生成します。
+script が target ごとに JDK 17/21/25 を選択し、各 target の `build/libs/` に `KOKOTO-WebChat-5.2.1-Forge-<Minecraft>.jar` を生成します。
 
 ### Windows 最終 release 検証
 
-> **release build/validation workflow は source package に含まれています。** `validate-release-windows.bat` と、それが必要とする PowerShell helper は source に同梱されています。別の `KWC-5.2.0-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、通常 build / release build には不要です。
+> **release build/validation workflow は source package に含まれています。** `validate-release-windows.bat` と、それが必要とする PowerShell helper は source に同梱されています。別の `KWC-5.2.1-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、通常 build / release build には不要です。
 
-source root で `validate-release-windows.bat` を実行すると、Bukkit、Fabric 16 target、NeoForge 12 target、Forge 16 target を連続 build します。`FINAL RELEASE BUILD PASS` が表示され、`release-5.2.0/` に配布用 JAR が正確に 45 個集まり、`SHA256SUMS.txt` が生成された場合のみ実 build まで最終検証済みと判定します。
+source root で `validate-release-windows.bat` を実行すると、Bukkit、Fabric 16 target、NeoForge 12 target、Forge 16 target を連続 build します。`FINAL RELEASE BUILD PASS` が表示され、`release-5.2.1/` に配布用 JAR が正確に 45 個集まり、`SHA256SUMS.txt` が生成された場合のみ実 build まで最終検証済みと判定します。
 
 Windows の反復 build では、同じ script で platform 選択、incremental cache、platform 並列 build、live progress を使用できます。
 
@@ -121,7 +125,7 @@ validate-release-windows.bat --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-platform option は組み合わせ可能です。`--bukkit` は Bukkit/Paper artifact と必要な Maven reactor dependency だけを build します。`--fast` は `clean` を省略し、既存の Maven/Gradle 出力と dependency cache を再利用して Gradle build cache を有効化します。`--parallel` は選択した build mode を維持し、Bukkit が選択されている場合は Bukkit を先に build し、PASS 後に Fabric/NeoForge/Forge をそれぞれ別の live build window で並列実行します。そのため `validate-release-windows.bat --parallel` は clean 45-target 最終検証として扱われ、成功時は `FINAL RELEASE BUILD PASS` を表示します。main console には経過時間、全体完了 target 数、platform 別完了数と現在の Minecraft target が表示され、各 worker window には実際の build log が表示されます。詳細 log は `validation-logs/` に残ります。部分 build または `--fast` build は `build-5.2.0/` に出力され、最終 release validation にはなりません。source root の `mvn clean package` は引き続き Bukkit 専用 Maven build です。
+platform option は組み合わせ可能です。`--bukkit` は Bukkit/Paper artifact と必要な Maven reactor dependency だけを build します。`--fast` は `clean` を省略し、既存の Maven/Gradle 出力と dependency cache を再利用して Gradle build cache を有効化します。`--parallel` は選択した build mode を維持し、Bukkit が選択されている場合は Bukkit を先に build し、PASS 後に Fabric/NeoForge/Forge をそれぞれ別の live build window で並列実行します。そのため `validate-release-windows.bat --parallel` は clean 45-target 最終検証として扱われ、成功時は `FINAL RELEASE BUILD PASS` を表示します。main console には経過時間、全体完了 target 数、platform 別完了数と現在の Minecraft target が表示され、各 worker window には実際の build log が表示されます。詳細 log は `validation-logs/` に残ります。部分 build または `--fast` build は `build-5.2.1/` に出力され、最終 release validation にはなりません。source root の `mvn clean package` は引き続き Bukkit 専用 Maven build です。
 Loader worker が Gradle cache/workspace の破損または cache lock と明確に判定できるエラー（例: `caches/<Gradle>/transforms/.../metadata.bin` の読み取り失敗）で終了した場合、検証 runner は lock されている可能性がある既存 cache を自動削除しません。代わりに `.build-cache/gradle-recovery/` 配下の新しい分離 cache を使って、その platform を 1 回だけ再試行します。ソースのコンパイルエラーや通常の dependency/build failure は自動再試行しません。復旧ビルドが成功しても元の cache は変更しないため、Explorer・antivirus・他プロセスの lock が解除された後に必要に応じて手動で整理できます。
 
 

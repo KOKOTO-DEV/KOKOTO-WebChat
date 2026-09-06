@@ -4,7 +4,7 @@ license="MIT"
 
 [[mods]]
 modId="kokoto_webchat"
-version="5.2.0"
+version="5.2.1"
 displayName="KOKOTO WebChat"
 authors="KOKOTO"
 description='Server-side KOKOTO WebChat Forge platform module.'

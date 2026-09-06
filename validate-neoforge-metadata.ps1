@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ExpectedVersion = '5.2.0'
+$ExpectedVersion = '5.2.1'
 $JarPath = [System.IO.Path]::GetFullPath($JarPath)
 $ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)
 $targetBuild = Join-Path $ProjectRoot ("kwc-platform-neoforge\targets\{0}\build.gradle" -f $MinecraftVersion)

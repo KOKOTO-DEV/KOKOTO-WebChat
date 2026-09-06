@@ -8,6 +8,10 @@
 
 > 시각 매뉴얼, 움직이는 흐름도, 편집 가능한 다이어그램 원본, 참조 표준 목록은 `docs/assets/`, `docs/en/VISUAL_DOCUMENTATION.md`, `docs/en/REFERENCES.md`에 포함되어 있습니다.
 
+## 5.2.1 핫픽스
+
+5.2.1은 5.2.0 기반 프런트엔드 핫픽스입니다. BlueMap 새로고침에서 addon `config.js` 로딩이 늦어도 잘못된 사이트 루트 `/api`가 고정되지 않고 자동 복구하며, 사용자 알림 설정의 맨션 항목은 항상 `@` 접두어를 표시하고, 커스텀 이모지 가로 카테고리 스크롤바는 높이 12px을 유지하면서 세로 설정 스크롤바와 같은 테마 기반 thumb/hover 스타일을 사용합니다. config 스키마는 5.2.0, Relay Protocol은 2.1을 그대로 유지합니다.
+
 - **5.2.0 제어 옵션:** `notifications.notify-reactions`는 브라우저 알림과 Web Push가 공통으로 쓰는 이모지 반응 선택 하나를 제공하고, `chat.conversation-archive.enabled: false`는 기존 archive 데이터는 유지하면서 대화 저장 DOM/API/DB 시작을 모두 비활성화하며, archive의 세 `max-*` 키로 계정당 저장 대화 수·snapshot당 메시지 수·계정당 총 저장 메시지 수를 조절합니다. `chat.typing-indicator.open-chat.enabled`, `.dm.enabled`, `.group-chat.enabled`는 서버 전체 입력 중 표시 정책이며 기본값은 OFF/ON/ON이고 Web Admin Settings에서도 조절할 수 있습니다. `chat.typing-indicator.user-display-control`(기본 OFF)을 켜면 로그인 사용자가 계정별 **입력 중 표시**를 끌 수 있으며, 이 개인 설정은 본인 화면의 표시만 제어하고 본인의 typing 전송은 막지 않습니다. `emoji.favorites.enabled`, `storage`, `max-per-account`는 커스텀 이모지 즐겨찾기 기능 사용 여부, 브라우저/계정 저장 방식, 최대 보관 개수를 제어합니다.
 
 ## 5.2.0 릴리스
@@ -77,7 +81,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.1-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target
@@ -88,7 +92,7 @@ Fabric은 16개 Minecraft 버전별 exact-target JAR로 빌드합니다. 스크�
 kwc-platform-fabric\build-all.bat
 ```
 
-대상: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.0-Fabric-<Minecraft>.jar`입니다.
+대상: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-Fabric-<Minecraft>.jar`입니다.
 
 ### NeoForge exact-target
 
@@ -98,7 +102,7 @@ NeoForge는 12개 Minecraft 버전별 exact-target JAR로 빌드합니다. 1.20.
 kwc-platform-neoforge\build-all.bat
 ```
 
-대상: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.0-NeoForge-<Minecraft>.jar`입니다.
+대상: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-NeoForge-<Minecraft>.jar`입니다.
 
 ### Forge exact-target
 
@@ -108,13 +112,13 @@ Forge는 범용 JAR 하나가 아니라 16개 Minecraft 버전별 exact-target J
 kwc-platform-forge\build-all.bat
 ```
 
-스크립트가 각 대상에 맞춰 JDK 17/21/25를 선택하고 `KOKOTO-WebChat-5.2.0-Forge-<Minecraft>.jar`을 각 target의 `build/libs/` 아래에 생성합니다.
+스크립트가 각 대상에 맞춰 JDK 17/21/25를 선택하고 `KOKOTO-WebChat-5.2.1-Forge-<Minecraft>.jar`을 각 target의 `build/libs/` 아래에 생성합니다.
 
 ### Windows 최종 릴리스 검증
 
-> **릴리스 빌드/검증 워크플로는 source 패키지에 포함되어 있습니다.** `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source에 함께 들어 있습니다. 별도의 `KWC-5.2.0-validation-tools.zip`에는 개발용 브라우저 회귀검증 도구만 들어 있으며 일반 빌드나 릴리스 빌드에는 필요하지 않습니다.
+> **릴리스 빌드/검증 워크플로는 source 패키지에 포함되어 있습니다.** `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source에 함께 들어 있습니다. 별도의 `KWC-5.2.1-validation-tools.zip`에는 개발용 브라우저 회귀검증 도구만 들어 있으며 일반 빌드나 릴리스 빌드에는 필요하지 않습니다.
 
-소스 루트에서 `validate-release-windows.bat`를 실행하면 Bukkit, Fabric 16개 target, NeoForge 12개 target, Forge 16개 target을 연속 빌드합니다. `FINAL RELEASE BUILD PASS`가 출력되고 `release-5.2.0/`에 배포용 JAR이 정확히 45개 모이며 `SHA256SUMS.txt`가 생성되어야 실제 빌드까지 최종 검증된 것으로 판정합니다.
+소스 루트에서 `validate-release-windows.bat`를 실행하면 Bukkit, Fabric 16개 target, NeoForge 12개 target, Forge 16개 target을 연속 빌드합니다. `FINAL RELEASE BUILD PASS`가 출력되고 `release-5.2.1/`에 배포용 JAR이 정확히 45개 모이며 `SHA256SUMS.txt`가 생성되어야 실제 빌드까지 최종 검증된 것으로 판정합니다.
 
 Windows 반복 빌드에서는 같은 스크립트로 플랫폼 선택, 증분 캐시, 플랫폼 병렬 빌드와 실시간 진행률을 사용할 수 있습니다.
 
@@ -125,7 +129,7 @@ validate-release-windows.bat --fabric --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-플랫폼 옵션은 조합할 수 있습니다. `--bukkit`은 Bukkit/Paper 산출물과 필요한 Maven reactor 의존 모듈만 빌드합니다. `--fast`는 `clean`을 생략하고 기존 Maven/Gradle 산출물과 dependency cache를 재사용하며 Gradle build cache를 활성화합니다. `--parallel`은 선택된 빌드 모드는 그대로 유지하면서 Bukkit이 선택되어 있으면 Bukkit을 먼저 빌드하고, Bukkit이 통과한 뒤 Fabric/NeoForge/Forge를 각각 별도 실시간 빌드 창으로 열어 병렬 실행합니다. 따라서 `validate-release-windows.bat --parallel`은 clean 45-target 최종 검증이며 성공하면 `FINAL RELEASE BUILD PASS`가 출력됩니다. 메인 콘솔에는 경과시간, 전체 완료 target 수, 플랫폼별 완료 수와 현재 Minecraft target이 계속 표시되고, 각 작업 창에는 실제 빌드 로그가 표시되며 전체 로그는 `validation-logs/`에 남습니다. 부분 빌드 또는 `--fast` 빌드는 `build-5.2.0/`에 저장되며 최종 릴리스 검증으로 취급하지 않습니다. 루트의 `mvn clean package`도 계속 Bukkit 전용 Maven 빌드입니다.
+플랫폼 옵션은 조합할 수 있습니다. `--bukkit`은 Bukkit/Paper 산출물과 필요한 Maven reactor 의존 모듈만 빌드합니다. `--fast`는 `clean`을 생략하고 기존 Maven/Gradle 산출물과 dependency cache를 재사용하며 Gradle build cache를 활성화합니다. `--parallel`은 선택된 빌드 모드는 그대로 유지하면서 Bukkit이 선택되어 있으면 Bukkit을 먼저 빌드하고, Bukkit이 통과한 뒤 Fabric/NeoForge/Forge를 각각 별도 실시간 빌드 창으로 열어 병렬 실행합니다. 따라서 `validate-release-windows.bat --parallel`은 clean 45-target 최종 검증이며 성공하면 `FINAL RELEASE BUILD PASS`가 출력됩니다. 메인 콘솔에는 경과시간, 전체 완료 target 수, 플랫폼별 완료 수와 현재 Minecraft target이 계속 표시되고, 각 작업 창에는 실제 빌드 로그가 표시되며 전체 로그는 `validation-logs/`에 남습니다. 부분 빌드 또는 `--fast` 빌드는 `build-5.2.1/`에 저장되며 최종 릴리스 검증으로 취급하지 않습니다. 루트의 `mvn clean package`도 계속 Bukkit 전용 Maven 빌드입니다.
 Loader 작업이 Gradle cache/workspace 손상 또는 cache 잠금으로 명확히 판별되는 오류(예: `caches/<Gradle>/transforms/.../metadata.bin` 읽기 실패)로 끝나면 검증 runner는 잠겨 있을 수 있는 기본 cache를 자동 삭제하지 않습니다. 대신 `.build-cache/gradle-recovery/` 아래의 새 격리 cache로 해당 플랫폼을 한 번만 다시 시도합니다. 소스 컴파일 오류나 일반적인 dependency/build 실패는 자동 재시도하지 않습니다. 복구 빌드가 성공해도 원래 cache는 그대로 두므로 탐색기, 백신 또는 다른 프로세스의 파일 잠금이 풀린 뒤 필요할 때 수동으로 정리할 수 있습니다.
 
 

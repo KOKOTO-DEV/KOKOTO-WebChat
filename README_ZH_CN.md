@@ -8,6 +8,10 @@
 
 > 可视化手册、动态图、可编辑的图表源文件以及参考标准列表位于 `docs/assets/`、`docs/en/VISUAL_DOCUMENTATION.md` 和 `docs/en/REFERENCES.md`。
 
+## 5.2.1 热修复
+
+5.2.1 是基于 5.2.0 的前端热修复。BlueMap 刷新时即使 addon `config.js` 较晚加载，也不会固定错误的站点根 `/api`，而会自动恢复；通知设置中的提及标签始终带有 `@` 前缀；自定义表情横向分类滚动条保持 12px 高度，同时使用与纵向设置滚动条相同的主题 thumb/hover 样式。配置 schema 仍为 5.2.0，Relay Protocol 仍为 2.1。
+
 - **5.2.0 控制项：** `notifications.notify-reactions` 提供浏览器通知与 Web Push 共用的单个表情反应选项；`chat.conversation-archive.enabled: false` 会保留已有 archive 数据，同时彻底禁用保存对话 DOM/API/DB 启动；archive 下的三个 `max-*` 键可控制每账号 snapshot 数、每 snapshot 消息数和每账号总保存消息数。`chat.typing-indicator.open-chat.enabled`、`.dm.enabled`、`.group-chat.enabled` 是服务器级输入中提示策略，默认 OFF/ON/ON，也可在 Web Admin Settings 中调整。启用 `chat.typing-indicator.user-display-control`（默认 OFF）后，登录用户可按账号关闭 **输入中提示**；该个人设置只影响自己屏幕上的显示，不会停止发送自己的 typing 状态。`emoji.favorites.enabled`、`storage` 和 `max-per-account` 用于控制自定义表情收藏是否启用、采用浏览器或账号存储，以及最大保留数量。
 
 ## 5.2.0 版本
@@ -71,7 +75,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.1-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target
@@ -82,7 +86,7 @@ Fabric 按 Minecraft 版本构建 16 个 exact-target JAR，脚本会按 target 
 kwc-platform-fabric\build-all.bat
 ```
 
-Targets：`1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`。产物位于 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.0-Fabric-<Minecraft>.jar`。
+Targets：`1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`。产物位于 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-Fabric-<Minecraft>.jar`。
 
 ### NeoForge exact-target
 
@@ -92,7 +96,7 @@ NeoForge 构建 12 个 exact-target JAR。1.20.2～1.20.6 使用 NeoGradle userd
 kwc-platform-neoforge\build-all.bat
 ```
 
-Targets：`1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`。产物位于 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.0-NeoForge-<Minecraft>.jar`。
+Targets：`1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`。产物位于 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-NeoForge-<Minecraft>.jar`。
 
 ### Forge exact-target
 
@@ -102,13 +106,13 @@ Forge 不使用单个宽版本 JAR，而是构建 16 个按 Minecraft 版本区�
 kwc-platform-forge\build-all.bat
 ```
 
-脚本会为每个目标选择 JDK 17/21/25，并在对应 target 的 `build/libs/` 下生成 `KOKOTO-WebChat-5.2.0-Forge-<Minecraft>.jar`。
+脚本会为每个目标选择 JDK 17/21/25，并在对应 target 的 `build/libs/` 下生成 `KOKOTO-WebChat-5.2.1-Forge-<Minecraft>.jar`。
 
 ### Windows 最终发布验证
 
-> **发布构建/验证工作流包含在 source 包中。** `validate-release-windows.bat` 及其所需的 PowerShell helper 会随 source 一起提供。单独的 `KWC-5.2.0-validation-tools.zip` 只包含开发专用的浏览器回归测试工具，普通构建和发布构建都不需要它。
+> **发布构建/验证工作流包含在 source 包中。** `validate-release-windows.bat` 及其所需的 PowerShell helper 会随 source 一起提供。单独的 `KWC-5.2.1-validation-tools.zip` 只包含开发专用的浏览器回归测试工具，普通构建和发布构建都不需要它。
 
-在源码根目录运行 `validate-release-windows.bat`，会依次构建 Bukkit、16 个 Fabric target、12 个 NeoForge target 和 16 个 Forge target。只有输出 `FINAL RELEASE BUILD PASS`、在 `release-5.2.0/` 收集到准确 45 个可发布 JAR，并生成 `SHA256SUMS.txt` 后，才判定实际构建也完成最终验证。
+在源码根目录运行 `validate-release-windows.bat`，会依次构建 Bukkit、16 个 Fabric target、12 个 NeoForge target 和 16 个 Forge target。只有输出 `FINAL RELEASE BUILD PASS`、在 `release-5.2.1/` 收集到准确 45 个可发布 JAR，并生成 `SHA256SUMS.txt` 后，才判定实际构建也完成最终验证。
 
 Windows 下进行重复构建时，同一脚本支持平台选择、增量缓存、平台并行构建和实时进度：
 
@@ -121,7 +125,7 @@ validate-release-windows.bat --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-平台选项可以组合使用。`--bukkit` 只构建 Bukkit/Paper 产物及其所需的 Maven reactor 依赖模块。`--fast` 会跳过 `clean`，复用已有 Maven/Gradle 输出与 dependency cache，并启用 Gradle build cache。`--parallel` 保持所选 clean/fast 模式不变；如果选择了 Bukkit，会先构建 Bukkit，Bukkit 通过后分别打开 Fabric、NeoForge、Forge 的实时构建窗口并并行运行，因此 `validate-release-windows.bat --parallel` 仍是 clean 的 45-target 最终验证，成功时会输出 `FINAL RELEASE BUILD PASS`。主控制台会持续显示经过时间、总体完成 target 数、各平台完成数和当前 Minecraft target，各工作窗口显示实际构建日志，完整日志保留在 `validation-logs/`。部分构建或 `--fast` 构建写入 `build-5.2.0/`，不视为最终发布验证。源码根目录的 `mvn clean package` 仍然只是 Bukkit Maven 构建。
+平台选项可以组合使用。`--bukkit` 只构建 Bukkit/Paper 产物及其所需的 Maven reactor 依赖模块。`--fast` 会跳过 `clean`，复用已有 Maven/Gradle 输出与 dependency cache，并启用 Gradle build cache。`--parallel` 保持所选 clean/fast 模式不变；如果选择了 Bukkit，会先构建 Bukkit，Bukkit 通过后分别打开 Fabric、NeoForge、Forge 的实时构建窗口并并行运行，因此 `validate-release-windows.bat --parallel` 仍是 clean 的 45-target 最终验证，成功时会输出 `FINAL RELEASE BUILD PASS`。主控制台会持续显示经过时间、总体完成 target 数、各平台完成数和当前 Minecraft target，各工作窗口显示实际构建日志，完整日志保留在 `validation-logs/`。部分构建或 `--fast` 构建写入 `build-5.2.1/`，不视为最终发布验证。源码根目录的 `mvn clean package` 仍然只是 Bukkit Maven 构建。
 如果 Loader worker 因可明确识别的 Gradle cache/workspace 损坏或 cache 锁定错误而失败（例如无法读取 `caches/<Gradle>/transforms/.../metadata.bin`），验证 runner 不会自动删除可能仍被锁定的主 cache，而会改用 `.build-cache/gradle-recovery/` 下的全新隔离 cache 对该平台仅重试一次。源码编译错误以及普通 dependency/build 失败不会自动重试。即使恢复构建成功，原 cache 也保持不变，可在资源管理器、杀毒软件或其他进程释放文件锁后再手动清理。
 
 
