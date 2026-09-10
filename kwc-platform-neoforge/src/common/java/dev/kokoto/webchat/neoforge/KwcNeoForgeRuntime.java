@@ -1,5 +1,13 @@
 package dev.kokoto.webchat.neoforge;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * KwcNeoForgeRuntime는 NeoForge 모드의 lifecycle/runtime 진입점으로 core server, config, storage, listeners와 map adapter를 조립한다.
+ * KwcNeoForgeRuntime is the NeoForge mod lifecycle/runtime entry point assembling core server, config, storage, listeners, and map adapters.
+ *
+ * 서버 start/stop/reload에서 등록 객체를 중복 생성하지 않고, shutdown 시 background/SSE/relay 자원을 확실히 정리한다.
+ * Avoid duplicate registrations across start/stop/reload and reliably close background/SSE/relay resources on shutdown.
+ */
 import dev.kokoto.webchat.*;
 import dev.kokoto.webchat.adapter.squaremap.SquaremapAdapter;
 import dev.kokoto.webchat.adapter.dynmap.DynmapAdapter;
@@ -102,6 +110,8 @@ public final class KwcNeoForgeRuntime {
         });
     }
 
+    // NeoForge 서버가 준비된 뒤 호출되는 runtime start 진입점이다. data/config를 읽고 platform bridge와 core 서비스를 조립한 뒤 listener가 안전하게 사용할 수 있는 active 상태로 전환한다.
+    // NeoForge runtime start entry point invoked after the server is ready. It reads data/config, assembles platform bridges and core services, then transitions to an active state safe for listeners.
     public synchronized void start(MinecraftServer server) {
         this.server = Objects.requireNonNull(server, "server");
         try {
@@ -134,6 +144,8 @@ public final class KwcNeoForgeRuntime {
         info("KOKOTO WebChat NeoForge enabled. Minecraft=" + minecraftVersion());
     }
 
+    // config 검증이 끝난 뒤 auth/storage/moderation/private chat/Relay/Web 서버 같은 장기 서비스를 정해진 순서로 시작한다. 일부만 시작된 상태에서 예외가 나면 stop 경로가 처리할 수 있게 field 할당 순서를 주의한다.
+    // Starts long-lived auth/storage/moderation/private-chat/Relay/web services in a defined order after config validation. Field assignment order must allow the stop path to clean up safely if startup fails partway.
     private void startServices() {
         startServices(true);
     }
@@ -177,6 +189,8 @@ public final class KwcNeoForgeRuntime {
         TransportSecurityWarnings.logAll(configValues, langManager, CoreLogger.of(this::info, this::warn));
     }
 
+    // 현재 서버 객체는 유지한 채 설정·언어·필터·Relay·웹 서버·map integration을 재조정한다. 새 설정이 잘못됐을 때 실행 중인 서비스를 불필요하게 파괴하지 않는 것이 목표다.
+    // Reconciles config, language, filters, Relay, web server, and map integration while keeping the current server object. The goal is to avoid needlessly destroying working services when new configuration is invalid.
     public synchronized boolean reload() {
         if (server == null) return false;
         try { installDefaultFilterLists(); }
@@ -236,6 +250,8 @@ public final class KwcNeoForgeRuntime {
         server = null;
     }
 
+    // SSE/HTTP/Relay처럼 background thread 또는 socket을 가진 서비스를 먼저 닫고 저장소를 flush/close한다. loader shutdown 중에는 새 task를 예약하지 않는다.
+    // Closes services with background threads/sockets such as SSE/HTTP/Relay first, then flushes/closes stores. Do not schedule new work while the loader is shutting down.
     private void stopServices(boolean save) {
         if (updateChecker != null) { updateChecker.close(); updateChecker = null; }
         if (serverRelay != null) { serverRelay.close(); serverRelay = null; }
@@ -253,6 +269,8 @@ public final class KwcNeoForgeRuntime {
         storage = null;
     }
 
+    // 게임 접속을 presence/identity/announcement 흐름에 반영한다. Invisible preference는 브라우저 viewer별 응답 정책에서 마스킹되므로 raw Game presence 자체는 정확히 유지한다.
+    // Feeds game login into presence, identity, and announcement flows. Invisible is masked later per browser viewer, so raw Game presence itself must remain accurate.
     public void onPlayerJoin(ServerPlayer player) {
         if (!active() || player == null) return;
         String uuid = player.getUUID().toString();
@@ -264,6 +282,8 @@ public final class KwcNeoForgeRuntime {
                 "real_name", username, "uuid", uuid, "world", NeoForgeCompat.worldDimension(player)));
     }
 
+    // 게임 연결 해제를 presence와 account/SSE 갱신에 반영한다. Web 접속이 남아 있을 수 있으므로 Game offline을 전체 Offline과 동일하게 취급하지 않는다.
+    // Feeds game disconnect into presence/account/SSE updates. A Web connection may remain, so Game offline must not automatically mean overall Offline.
     public void onPlayerLeave(ServerPlayer player) {
         if (!active() || player == null) return;
         String uuid = player.getUUID().toString();
@@ -417,7 +437,7 @@ public final class KwcNeoForgeRuntime {
     public ServerRelay serverRelay() { return serverRelay; }
     public WebChatServer webServer() { return webServer; }
 
-    public String version() { return "5.2.1"; }
+    public String version() { return "5.3.0"; }
 
     public String serverName() {
         if (configValues != null && configValues.serverRelayServerName != null && !configValues.serverRelayServerName.isBlank()) return configValues.serverRelayServerName;

@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * BukkitPlatformAdapter는 Bukkit API를 loader-neutral core/adapter 계약으로 변환하는 플랫폼 bridge다.
+ * BukkitPlatformAdapter bridges Bukkit APIs into loader-neutral core/adapter contracts.
+ *
+ * Bukkit 객체를 core에 장기 보관하지 말고 UUID/문자열/중립 모델로 변환해 loader 경계를 유지한다.
+ * Do not retain Bukkit objects in core; convert them to UUID/string/neutral models to preserve the loader boundary.
+ */
 import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.ComponentBuilder;
@@ -49,6 +57,8 @@ public final class BukkitPlatformAdapter implements PlatformAdapter {
     }
 
     @Override
+    // Bukkit Player 객체를 core가 장기 보관하지 않도록 현재 온라인 플레이어를 PlatformPlayer snapshot으로 변환한다. presence/identity 계산은 이 snapshot을 기준으로 한다.
+    // Converts current Bukkit Player objects into PlatformPlayer snapshots so core never retains loader objects. Presence/identity calculations use these neutral snapshots.
     public Collection<PlatformPlayer> onlinePlayers() {
         ArrayList<PlatformPlayer> out = new ArrayList<>();
         for (Player player : Bukkit.getOnlinePlayers()) out.add(snapshot(player));
@@ -75,6 +85,8 @@ public final class BukkitPlatformAdapter implements PlatformAdapter {
     }
 
     @Override
+    // Bukkit API가 main thread를 요구하는 작업을 안전하게 scheduler로 넘긴다. 이미 main thread라면 불필요한 tick 지연 없이 즉시 실행한다.
+    // Safely schedules work that requires the Bukkit main thread. When already on the main thread, execute immediately to avoid unnecessary tick delay.
     public void runMainThread(Runnable task) {
         if (task == null) return;
         if (Bukkit.isPrimaryThread()) task.run();
@@ -145,6 +157,8 @@ public final class BukkitPlatformAdapter implements PlatformAdapter {
     }
 
     @Override
+    // 클릭 URL·hover·reply context가 포함된 게임 메시지를 Adventure/Bungee component로 렌더링한다. 웹에서 받은 HTML을 그대로 전달하지 않고 core의 중립 PlatformGameMessage만 사용한다.
+    // Renders game messages with clickable URLs, hover text, and reply context into Adventure/Bungee components. It never forwards browser HTML directly and uses only neutral PlatformGameMessage data from core.
     public void sendInteractiveMessage(Collection<UUID> recipients, PlatformGameMessage message) {
         if (message == null) return;
         Collection<UUID> ids = recipients == null ? null : new ArrayList<>(recipients);

@@ -7,18 +7,19 @@ web:
     guest: ゲスト
     reconnecting: 再接続中...
     loggedIn: ログイン済み
+    loggedInCount: 'ログイン {count}人'
   button:
     emoji: 絵文字
     admin: 管理
     login: ログイン
     upload: 添付
     resizeEmojiPanel: ドラッグして絵文字選択欄のサイズを変更
-    resizeLock: リサイズをロック
-    resizeUnlock: リサイズのロック解除
     resize: サイズ変更
     send: 送信
     reset: リセット
     close: 閉じる
+    closeAllDm: すべてのDMを閉じる
+    closeAllGroups: すべてのグループチャットを閉じる
     start: 開始
     save: 保存
     edit: 編集
@@ -73,7 +74,12 @@ web:
     minutes: 分
     reason: 理由
     emojiPack: 新しいパック/フォルダー名
+  captcha:
+    enterCode: 'コード入力: {code}'
+  mention:
+    suggestions: メンション候補
   reply:
+    reply: '返信'
     composing: '{sender}へ返信'
     jump: 返信元メッセージへ移動
     notFound: 参照先のメッセージが見つかりません。
@@ -103,7 +109,7 @@ web:
     uploadTooLarge: 'ファイルが大きすぎます: {name}'
     emojiBatchUploadFailed: '{total} 件中 {uploaded} 件をアップロードしました。失敗: {failed}'
     uploadFailed: 'アップロード失敗: {error}'
-    confirmDelete: このメッセージを非表示にしますか？
+    confirmDelete: このメッセージを削除しますか？
     deleteFailed: '削除失敗: {error}'
     confirmClearHistory: "警告: サーバー上の公開チャット履歴、関連するリアクション、保存済みの公開チャットアーカイブがすべて完全に削除されます。この操作は取り消しも復元もできません。本当に削除しますか？"
     adminActionFailed: '管理操作に失敗しました: {error}'
@@ -133,15 +139,15 @@ web:
     dmAuditLoadFailed: "DM監査内容を読み込めませんでした: {error}"
     dmSendFailed: "メッセージの送信に失敗しました: {error}"
     dmRetryFailed: 'メッセージの再送に失敗しました: {error}'
-    dmHideFailed: "メッセージの非表示に失敗しました: {error}"
+    dmDeleteFailed: 'メッセージの削除に失敗しました: {error}'
     groupLoadFailed: 'グループチャットの読み込みに失敗しました: {error}'
     groupAuditLoadFailed: "グループチャット監査内容を読み込めませんでした: {error}"
     groupJoinFailed: 'グループチャットへの参加に失敗しました: {error}'
     groupSendFailed: 'グループメッセージの送信に失敗しました: {error}'
+    groupDeleteFailed: 'グループメッセージを削除できませんでした: {error}'
     groupCreateFailed: 'グループチャットの作成に失敗しました: {error}'
     groupInviteFailed: 'プレイヤーを招待できませんでした: {error}'
     groupLeaveFailed: 'グループチャットから退出できませんでした: {error}'
-    groupHideFailed: 'メッセージを非表示にできませんでした: {error}'
     groupActionFailed: 'グループ操作に失敗しました: {error}'
     groupSettingsFailed: 'グループ設定を保存できませんでした: {error}'
     renameFailed: '名前変更に失敗しました: {error}'
@@ -215,7 +221,8 @@ web:
     privateMetaOnly: '非公開メッセージのメタデータのみ'
     privateContentAccess: '管理者DM監査（本文閲覧可）'
     openDmAudit: 'このDMセッションを読み取り専用の監査ビューで開きます。'
-    dmAuditView: 'DM監査（読み取り専用）'
+    dmAuditView: 'DM監査'
+    groupAuditView: 'グループチャット監査'
     dmAuditReadOnly: '管理者監査ビューは読み取り専用で、すべての閲覧が監査ログに記録されます。'
     groupMetaOnly: 'グループルームのメタデータ'
     groupAuditTitle: '管理者グループチャット監査'
@@ -237,6 +244,8 @@ web:
     archived: 'アーカイブ済み'
     accounts: アカウント
     onlinePlayers: オンラインプレイヤー
+    onlineUsers: 'オンラインユーザー'
+    showOfflineUsers: 'オフラインユーザーを表示'
     none: なし
     muteGuestIp: ゲスト/IPをミュート
     typeGuest: ゲスト
@@ -300,14 +309,25 @@ web:
     filter: 'フィルター'
     settings: 設定
     discordAlertNoChannels: '利用可能な DiscordSRV チャンネルがありません'
+    navAdministration: '上位管理'
+    navOperations: '運用管理'
+    blocksAndRestrictions: 'ブロック / 制限'
+    guestIpBlocks: 'ゲスト / IP ミュート'
+    accountRestrictions: 'ログインユーザー制限'
+    optionCaptchaMathEasy: '簡単'
+    optionCaptchaMathNormal: '標準'
+    optionCaptchaMathHard: '難しい'
     setting:
       guest-enabled: 'ゲストアクセス'
       guest-allow-custom-name: 'ゲスト名の変更'
       guest-cooldown-seconds: 'ゲスト送信間隔（秒）'
       guest-max-messages-per-minute: 'ゲストの毎分メッセージ数'
       captcha-mode: 'CAPTCHA 方式'
+      captcha-math-complexity: '算数 CAPTCHA 難易度'
       captcha-require-on-each-message: '毎メッセージ CAPTCHA'
       captcha-pass-valid-minutes: 'CAPTCHA 有効時間（分）'
+      moderation-allow-user-self-message-delete: 'ユーザー自身のメッセージ削除を許可'
+      moderation-self-message-delete-window-minutes: '自分のメッセージを削除できる時間'
       auth-password-login: 'パスワードログイン'
       auth-remember-session-days: '一般セッション期間（日）'
       admin-admin-session-expire-hours: '管理者セッション期間（時間）'
@@ -352,10 +372,29 @@ web:
       content-filter-anti-evasion-interleave-unlimited-gap: '無制限間隔検出'
       content-filter-anti-evasion-collapse-repeats: '繰り返し文字を圧縮'
       content-filter-anti-evasion-repeat-limit: '繰り返し上限'
+    userControls: 'ユーザー制限'
+    userControlsHint: 'チャット禁止はKWC公開/DM/グループ送信を、アップロード禁止はチャットとプロフィール画像のアップロードを禁止します。'
+    chatBan: 'チャット禁止'
+    uploadBan: 'アップロード禁止'
+    deleteProfileImage: 'プロフィール画像を削除'
+    deleteProfileImageConfirm: 'このユーザーのカスタムプロフィール画像を削除しますか？'
+    moderatorPermissions: 'モデレーター権限'
+    moderatorPermissionsHint: 'モデレーターごとにmoderation機能を委譲します。管理者専用のサーバー/アカウント/セッション機能は委譲されません。'
+    capabilityViewOnline: 'オンライン/オフラインユーザーを表示'
+    capabilityMessageDelete: '公開メッセージを削除'
+    capabilityGuestMute: 'ゲスト/IPをミュート/解除'
+    capabilityPinManage: '公開ピン留めを管理'
+    capabilityContentFilterManage: 'フィルターと単語リストを管理'
+    capabilityEmojiManage: '絵文字のアップロード・パック・リアクションを管理'
+    capabilityGameManage: 'イベントの作成・抽選・終了を管理'
+    capabilityUserRestrictions: 'ユーザーのチャット/アップロードを禁止'
+    capabilityProfileAvatarDelete: 'ユーザーのプロフィール画像を削除'
+    onlinePermissionMissing: 'このモデレーターにはオンラインユーザー表示権限がありません。'
     settingsGroupGuestCaptcha: 'ゲスト / CAPTCHA'
     settingsGroupAuthSessions: '認証 / セッション'
     settingsGroupProfiles: 'ユーザープロファイル'
     settingsGroupTyping: '入力中表示'
+    settingsGroupModeration: 'メッセージ削除'
     settingsGroupUploads: 'アップロード'
     settingsGroupDiscordAlerts: 'Discord 管理者通知'
     filterGroupGeneral: '基本 / 適用範囲'
@@ -369,9 +408,13 @@ web:
     settingsVerifyMismatch: '{setting} の保存確認に失敗しました。'
     optionCaptchaOff: '無効'
     optionCaptchaMath: '計算問題'
+    optionCaptchaText: '文字コード'
+    optionCaptchaMixed: '混合（計算/文字）'
     optionFilenameRandom: 'ランダム名'
     optionFilenameOriginal: '元のファイル名'
     optionMentionNone: 'なし'
+    optionDeleteWindowAlways: '常に'
+    optionDeleteWindowMinutes: '{minutes}分以内'
     filterHint: '登録済みの KWC 絵文字トークンはブロック/フィルタリングにかからないよう保護されます。未登録の :fake: トークンは通常のテキストとして扱われます。'
     filterGuideTitle: 'カスタムルールの使用例'
     filterGuideChoose: '単純なブロック/フィルター語が多い場合は TXT リストを使い、動作の変更、置換候補、単語別置換が必要な場合はカスタムルールを使います。'
@@ -534,6 +577,12 @@ web:
     chatBehavior: 'チャット動作'
     showTypingIndicator: '入力中表示'
     showTypingIndicatorHelp: '他のユーザーの入力中状態を自分の画面に表示します。この設定は KWC アカウントに保存され、無効にしても自分の入力中状態の送信は停止しません。'
+    presenceSettings: 'プライバシーとオンライン状態'
+    profileButton: 'プロフィール'
+    presenceStatus: 'オンライン状態'
+    presenceStatusHelp: 'オフラインは実際のゲーム/Web接続状態を他のユーザーから隠します。取り込み中は接続状態を維持したまま忙しい状態として表示します。'
+    blockedUsers: 'ブロックしたユーザー'
+    blockedUsersEmpty: 'ブロックしたユーザーはいません。'
     notifications: '通知'
     notificationsPage: 'ブラウザーシステム通知'
     notificationsPageHelp: 'ブラウザー通知は対応しているブラウザーでのみ利用できます。'
@@ -617,6 +666,40 @@ web:
     fontSystem: システム
     note: 'この設定ウィンドウはタイトルをドラッグして移動できます。'
     noteDrag: この設定ウィンドウはタイトルをドラッグして移動できます。
+  presence:
+    profileTitle: 'ユーザープロファイル'
+    game: 'ゲーム'
+    web: 'Web'
+    online: 'オンライン'
+    busy: '取り込み中'
+    offline: 'オフライン'
+    invisible: 'オフライン表示'
+    visibleStatus: '表示状態'
+    nameToggle: '名前表示: {mode}'
+    nameDisplay: '名前表示'
+    displayName: '表示名'
+    realName: '実際の名前'
+    sendDirectMessage: 'DMを送る'
+    profileImage: 'プロフィール画像'
+    profileImageNone: 'なし'
+    profileImageMinecraft: 'Minecraft Head'
+    profileImageCustom: 'カスタム画像'
+    uploadProfileImage: '画像をアップロード'
+    deleteProfileImage: '画像を削除'
+    saveProfile: 'プロフィールを保存'
+    about: '紹介 / ひとこと'
+    aboutPlaceholder: '短い紹介やひとことを入力してください。'
+    aboutEmpty: '自己紹介やひとことは登録されていません。'
+    roleChange: '権限変更'
+    roleUser: '一般ユーザー'
+    roleModerator: 'モデレーター'
+    roleAdmin: '管理者'
+    userManagement: 'ユーザー管理'
+    blockUser: 'ブロック'
+    unblockUser: 'ブロック解除'
+    invisibleSelfNote: 'オフライン表示が有効です。他のユーザーにはオフラインとして表示されます。'
+    offlineSelfNote: '他のユーザーにはオフラインとして表示されます。自分のプロフィールでは実際のゲーム/Web接続状態を確認できます。'
+
   opacity:
     title: 透明度
   role:
@@ -702,7 +785,6 @@ web:
     command_failed: コマンド実行に失敗しました
     command_too_long: コマンドが長すぎます
     dmLoadFailed: 'メッセージを読み込めませんでした: {error}'
-    dmHideFailed: 'メッセージを非表示にできませんでした: {error}'
     dmSendFailed: 'メッセージを送信できませんでした: {error}'
     dm_disabled: ダイレクトメッセージは無効です
     web_send_disabled: Web からの DM 送信は無効です
@@ -710,6 +792,7 @@ web:
     remote_server_unavailable: 対象サーバーに接続できません
     self_message: 自分自身には送信できません
   dm:
+    open: 'DMを開く'
     title: メッセージ
     noThreads: メッセージスレッドはありません。
     selectThread: スレッドを選択してください
@@ -722,8 +805,8 @@ web:
     hideThreads: 会話一覧を隠す
     showThreadsShort: 表示
     hideThreadsShort: 折りたたむ
-    confirmHideMessage: このメッセージを自分の表示から隠しますか？
-    hideMessage: 自分だけこのメッセージを非表示
+    deleteOwnMessage: 'メッセージを削除'
+    confirmDeleteOwnMessage: 'このメッセージを両方の参加者から削除しますか？'
     threadList: 会話一覧
     showConversationList: 一覧を表示
     showCurrentConversation: 会話のみ
@@ -756,6 +839,9 @@ web:
     passwordOptionalLabel: 'パスワード（任意）'
     passwordSettingsLabel: 'パスワード（空欄で解除）'
     membershipEvents: 'メンバーの入退室通知を表示'
+    pinsEnabled: 'このルームでピン留めメッセージを有効化'
+    messageDeleteEnabled: 'このルームでメッセージ削除を有効化'
+    memberSelfDeleteEnabled: '一般メンバーによる自分のメッセージ削除を許可'
     memberJoined: '{player} がルームに参加しました。'
     memberLeft: '{player} がルームから退出しました。'
     membersShort: '人'
@@ -776,9 +862,13 @@ web:
     inviteSent: '招待を送信しました。'
     confirmInvite: '{player} をこのグループチャットに招待しますか？'
     confirmLeave: 'このグループチャットから退出しますか？'
-    confirmHideMessage: 'このメッセージを自分の表示から隠しますか？'
+    confirmDeleteMessage: 'このメッセージをルーム全体から削除しますか？'
     manage: '管理'
-    manageNote: 'ルーム管理者はキック、ブロック、オーナー移譲ができます。メッセージ本文は表示されません。'
+    manageNote: 'ルーム管理者はメンバーのキック/ブロックができ、オーナーはルーム管理者の指定/解除とオーナー移譲ができます。メッセージ本文は表示されません。'
+    makeAdmin: '管理者にする'
+    removeAdmin: '管理者を解除'
+    confirmMakeAdmin: '{player} をこのルームの管理者にしますか？'
+    confirmRemoveAdmin: '{player} のルーム管理者権限を解除しますか？'
     memberListNote: 'メンバーは参加者リストを表示できます。管理操作はルーム管理者にのみ表示されます。'
     memberOnlineCount: '{online}/{total} オンライン'
     online: 'オンライン'
@@ -790,6 +880,7 @@ web:
     confirmKick: '{player} をこのルームからキックしますか？'
     confirmBan: '{player} をこのルームからブロックしますか？'
     confirmTransferOwner: 'ルームのオーナーを {player} に移譲しますか？'
+    hideRoom: '一覧から非表示'
     confirmHideRoom: 'このルームを自分のグループチャット一覧から非表示にしますか？'
     retentionLimited: '保存期間: {days}日'
     retentionUnlimited: '保存期間: 無期限'
@@ -881,6 +972,37 @@ web:
     helpRevoke: Web セッションを取り消し
     helpFilter: フィルタールールを管理
     helpSettings: ライブ設定を表示・変更
+    helpGame: 'イベント一覧の表示・確認・参加'
+    gameUnavailable: 'イベントサービスを利用できません。'
+    gameAlreadyJoined: 'このイベントにはすでに参加しています。'
+    gameJoined: 'イベントに参加しました。'
+    gameClosed: 'イベントを閉じました。'
+    gameDeleted: 'イベント削除: {title}'
+    gameNone: 'イベントはありません。'
+    gameWinnerCount: '当選者: {count}人'
+    gameNoParticipants: '参加者はまだいません。'
+    gameNoWinners: '当選者はいません。'
+    gameWinners: '当選者: {names}'
+    gameNotOpen: 'このイベントは受付中ではありません。'
+    gameFull: 'このイベントは定員に達しています。'
+    gameNotEnough: '抽選に必要な参加者数が足りません。'
+    gameFailed: 'イベント操作に失敗しました: {error}'
+    gameCreated: 'イベントを作成しました: {title} ({id})'
+    gameDrawn: '{title} の当選者を抽選しました。'
+    gameFinished: 'イベントを確定しました: {title}'
+    gameListTitle: 'イベント一覧: {count}件'
+    gameListEntry: '- {id} | {title} | {status} | {participants}/{max}'
+    gameTypeFirstCome: '先着順'
+    gameTypeLottery: '抽選'
+    gameStatusOpen: '募集中'
+    gameStatusReady: '定員到達'
+    gameStatusCompleted: '終了'
+    gameStatusClosed: 'クローズ'
+    gameInvalidType: 'イベント種類は firstcome または lottery にしてください。'
+    gameInvalidTitle: '80文字以内のイベント名を入力してください。'
+    gameInvalidParticipantCount: '参加人数は2人以上にしてください。'
+    gameInvalidWinnerCount: '当選人数は1人以上、参加人数以下にしてください。'
+    gameNotLottery: 'このイベントは抽選形式ではありません。'
     filterStatus: 'フィルター: {state} / public={public} group={group} dm={dm} / rules={rules}'
     filterListTitle: 'フィルタールール: {count}'
     filterRuleNotFound: 'フィルタールールが見つかりません: {id}'
@@ -896,7 +1018,7 @@ web:
     settingsUpdated: '{key}={value} を更新しました。セッション更新={updated}、期限切れ={expired}。'
     helpDm: ダイレクトメッセージを送信
     helpDmList: DM スレッド一覧を表示
-    helpDmHide: DM を自分の表示から隠す
+    helpDmDelete: 自分が送信した DM を両方の会話から削除
     helpDmRead: 1:1 メッセージスレッドを読む
     helpReply: 公開 KWC メッセージに返信
     replyClickHint: "クリックして返信 (#{id})"
@@ -954,10 +1076,13 @@ web:
     dmReadLastPage: 'すでに最古ページです。'
     dmNoMessages: このスレッドにメッセージはありません。
     dmMe: 自分
-    dmHideHint: '自分の表示から隠す: /kchat dm hide <messageId>'
+    dmDeleteHint: '自分が送信したメッセージを削除: /kchat dm delete <messageId>'
     dmInvalidMessageId: メッセージ ID が正しくありません。
-    dmHideFailed: "メッセージの非表示に失敗しました。"
-    dmHidden: 自分の表示からメッセージを隠しました。
+    dmDeleteFailed: "メッセージを削除できませんでした。"
+    dmDeleteRemoteUnavailable: "相手サーバーに接続できないため、メッセージは削除されませんでした。"
+    dmDeleteNotOwner: "自分が送信した DM だけ削除できます。"
+    dmDeleteWindowExpired: 'このメッセージは削除可能時間を過ぎています。'
+    dmDeleted: "両方の会話からメッセージを削除しました。"
     never: なし
     authInvalid: 無効な認証リクエストです。
     authCodeExpired: 認証コードが存在しないか期限切れです。
@@ -987,6 +1112,64 @@ web:
     failed: 'コマンド実行失敗: {error}'
     tooLong: コマンドが長すぎます。最大 {max} 文字です。
     maxLengthHint: 最大 {max} 文字
+  game:
+    list: 'イベント一覧'
+    backToList: 'イベント一覧へ'
+    newEvent: '新しいイベント'
+    server: 'サーバー'
+    remote: 'Relayサーバー'
+    noEvents: 'イベントはありません。'
+    confirmDeleteEvent: 'このイベントを削除しますか？'
+    remoteUnavailable: '元サーバーからイベントを取得できませんでした。'
+    deleted: '削除済みイベント'
+    deletedNotice: 'このイベントは削除されたため、開くことができません。'
+    remoteReadOnly: 'イベント管理は元サーバーでのみ行えます。'
+    select: '開く'
+    createdAt: '作成'
+    error.remote_server_unavailable: '元サーバーに接続できません。'
+    error.game_relay_unavailable: '元サーバーはイベント参照に対応していません。'
+    error.remote_game_manage_not_allowed: 'リモートイベントへの参加はできますが、管理は元サーバーで行ってください。'
+    error.permission_denied: 'このイベントを管理する権限がありません。'
+    error.not_lottery: 'このイベントは抽選形式ではありません。'
+    error.invalid_type: '先着順または抽選を選択してください。'
+    title: イベント
+    type: 方式
+    eventTitle: タイトル
+    maxParticipants: 参加人数
+    winnerCountLabel: 当選人数
+    winnerCount: '当選 {count}名'
+    notificationScope: 通知範囲
+    scopeLocal: 現在のサーバーのみ
+    scopeRelay: Relay サーバーにも配信
+    create: イベント作成
+    join: 参加
+    joined: 参加済み
+    finish: 募集を締め切って結果を確定
+    finishLottery: 募集を締め切って抽選
+    refresh: 更新
+    open: イベントを開く
+    draw: 抽選
+    close: イベント終了
+    participants: 参加者
+    participantHeading: '参加者（{count}人）'
+    noParticipants: 参加者はまだいません。
+    winners: 当選者
+    chat.created: 'イベント開始: {title}（{type}、参加 {participants}人、当選 {winners}人）'
+    chat.results: 'イベント結果: {title} - 当選者: {winners}'
+    none: 開催中のイベントはありません。
+    type.firstcome: 先着順
+    type.lottery: 抽選
+    status.open: 募集中
+    status.ready: 募集完了
+    status.completed: 終了
+    status.closed: クローズ
+    error.invalid_title: イベントのタイトルを入力してください。
+    error.invalid_participant_count: 参加人数は2人以上で入力してください。
+    error.invalid_winner_count: 当選人数は1人以上、参加人数以下で入力してください。
+    error.game_not_found: 開催中のイベントはありません。
+    error.game_not_open: このイベントは参加を受け付けていません。
+    error.game_full: 参加人数が上限に達しました。
+    error.not_enough_participants: 抽選に必要な参加者が不足しています。
   security:
     httpServerWarning: "[警告] KOKOTO WebChat は HTTP に設定されています ({url})。ログイン情報やチャット内容がネットワーク上で平文として見える可能性があります。可能な限りリバースプロキシ経由で HTTPS を使用してください。"
     relayHttpPeerWarning: "[警告] Relay peer '{peer}' は HTTP を使用しています ({url})。Direct Relay は許可されますが、この peer は forwarding から除外されます。HTTPS を強く推奨します。"
@@ -1015,4 +1198,3 @@ web:
     offline: '接続が切れています。
 
       ネットワークを確認してください。'
-

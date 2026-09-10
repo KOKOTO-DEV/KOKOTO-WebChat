@@ -2,14 +2,14 @@
 # 核心设置
 # =============================================================================
 
-# KOKOTO WebChat 5.2.0
+# KOKOTO WebChat 5.3.0
 # KWC config-comment-language: zh-CN
 
 
 # 配置版本。旧版本迁移时会尽量保留现有设置值。
 # <version>_auto_migration 状态会继续应用同版本模板补全。
 # 修改 ui.language 时可保留设置值，只重新生成注释/布局语言。
-config-version: "5.2.0"
+config-version: "5.3.0"
 
 # 总开关。false 时仍可使用 /kchat reload，但不会启动 Web/聊天服务。
 # 新配置默认生成为 false，便于检查后再启用。
@@ -463,8 +463,8 @@ direct-message:
   notify-on-message: true
   # 在 Web UI 显示未读 DM 数量/badge。
   web-unread-badge: true
-  # 从当前用户会话列表隐藏 DM 会话前要求确认。
-  confirm-hide: true
+  # 删除自己发送的 DM 消息并从双方会话中移除前要求确认。
+  confirm-delete: true
   # 选择 jsonl 后端时使用的旧式 DM JSONL 存储文件。
   jsonl-file: "direct-messages.jsonl"
   # 用于持久 DM 存储（包括 Reply metadata）的 SQLite 数据库文件。
@@ -480,8 +480,8 @@ group-chat:
   allow-room-passwords: true
   # 当前用户离开群组房间前要求确认。
   confirm-leave: true
-  # 从当前用户会话列表隐藏群组房间前要求确认。
-  confirm-hide: true
+  # 从整个群组房间删除群组消息前要求确认。
+  confirm-delete: true
   admin-audit:
     # 允许有权限的管理员审计查看群组房间记录；普通用户仍受正常房间成员校验。
     enabled: false
@@ -537,6 +537,8 @@ server-relay:
     discord: false
     # 同时 Relay 本地 system/announcement 消息。
     system: false
+    # 聊天活动使用独立于普通 system 通知的 source gate，因此可以只 Relay 活动而不 Relay 其他 system 通知。
+    event: true
 
   # 接收到的公开 Relay 消息投递位置。DM 单独处理。
   delivery:
@@ -562,6 +564,18 @@ server-relay:
   #       - id: "server-2"
   #         url: "https://server2.example.com/api"
   #         enabled: true
+  #         # send/receive 相互独立；省略的项目默认使用 true。
+  #         # 使用标量 `send: false` 或 `receive: false` 可禁用整个方向。
+  #         send:
+  #           public-chat: true
+  #           event: true
+  #           dm: true
+  #           profile: true
+  #         receive:
+  #           public-chat: true
+  #           event: true
+  #           dm: true
+  #           profile: true
   groups: []
 player-display:
   # KWC 显示玩家身份的来源：name=Minecraft 账号名，display-name=服务器显示名，
@@ -599,9 +613,10 @@ guest:
     - "moderator"
     - "owner"
 captcha:
-  # 访客验证码模式。
-  # 只有 math 会启用内置算术验证码；包括 off 在内的非 math 值都会关闭验证码校验。
+  # 访客 CAPTCHA 模式。math=算术题，text=6位字符验证码，mixed=随机算术/字符，off=关闭。
   mode: "math"
+  # 算术 CAPTCHA 难度。easy=一位数+/-，normal=+/-/×，hard=+/-/×/÷（整除）。
+  math-complexity: "normal"
   # 每个已签发验证码题目的有效期（秒）。
   # 该值不钳制；0/负数会让新题立即或几乎立即过期。
   expire-seconds: 120
@@ -704,6 +719,10 @@ moderation:
   # 允许 MODERATOR 角色通过 moderation 控件对 guest/IP 执行 mute/unmute。
   # 此策略开关仅限 config。
   allow-moderator-guest-mute: true
+  # Allow ordinary users to delete their own messages in open chat, DM, and group chat.
+  allow-user-self-message-delete: false
+  # 0 = always; otherwise deletion is allowed only this many minutes after sending.
+  self-message-delete-window-minutes: 0
   # 未指定时默认禁言时长（分钟）。
   # <=0 表示永久禁言；此设置仅限 config。
   default-mute-minutes: 60

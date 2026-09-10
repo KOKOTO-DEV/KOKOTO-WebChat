@@ -1,6 +1,6 @@
 # ImageEmojis-Bero 연동 (1.9.x)
 
-KOKOTO WebChat 5.2.0은 [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)와 선택적으로 연동할 수 있습니다. 서버측 runtime glyph 연동은 **Bukkit/Paper 계열**에서 동작하며, 현재 1.9.x Bero 계열(1.9.2 포함)을 기준으로 확인되어 있습니다. reflection 기반이라 ImageEmojis-Bero가 없어도 KWC 자체는 정상 시작합니다.
+KOKOTO WebChat 5.3.0은 [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)와 선택적으로 연동할 수 있습니다. 서버측 runtime glyph 연동은 **Bukkit/Paper 계열**에서 동작하며, 현재 1.9.x Bero 계열(1.9.2 포함)을 기준으로 확인되어 있습니다. reflection 기반이라 ImageEmojis-Bero가 없어도 KWC 자체는 정상 시작합니다.
 
 기본 설치, 명령어, 권한, 리소스팩 생성 및 일반 운영은 [원본 ImageEmojis 문서](https://github.com/MrQuackDuck/ImageEmojis)를 참고하세요. 이 문서는 KWC와 같이 사용할 때 필요한 차이와 운영 설정만 설명합니다.
 

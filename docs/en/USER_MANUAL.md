@@ -1,11 +1,11 @@
-# KOKOTO WebChat 5.2.0 Complete User and Operations Manual
+# KOKOTO WebChat 5.3.0 Complete User and Operations Manual
 
 
 ## Visual map
 
 | Area | Diagram |
 | --- | --- |
-| Architecture | [PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg) |
+| Architecture | [PNG](../assets/architecture-5.3.0.png) · [SVG](../assets/architecture-5.3.0.svg) |
 | Relay Protocol v2 | [Animated GIF](../assets/relay-v2-flow.gif) · [PNG](../assets/relay-v2-flow.png) · [SVG](../assets/relay-v2-flow.svg) |
 | DM/group Reply | [PNG](../assets/private-reply-flow.png) · [SVG](../assets/private-reply-flow.svg) |
 | Configuration migration | [Animated GIF](../assets/config-language-migration.gif) · [PNG](../assets/config-language-migration.png) · [SVG](../assets/config-language-migration.svg) |
@@ -15,11 +15,22 @@
 
 See [REFERENCES.md](REFERENCES.md) for the primary standards and official third-party documentation cited by this manual.
 
-> **5.2.0 operations:** Web Admin **Filter** manages shared public/group/optional-DM block/mask/replace rules and no-send testing; **Settings** exposes only the supported live-safe guest/CAPTCHA, session, profile, server-wide typing-indicator policy, administrator-alert, upload, and content-filter values. The five moderation policy switches remain `config.yml`-only and are not exposed by Web Admin. `/kchat filter` and `/kchat settings` provide game-side controls. Session lifetime changes recalculate existing affected sessions from their creation time without resurrecting already-expired sessions. `upload.filename-mode: original` preserves safe Unicode original names for new uploads with collision suffixes.
+> **5.3.0 operations:** Web Admin **Filter** manages shared public/group/optional-DM block/mask/replace rules and no-send testing; **Settings** exposes only the supported live-safe guest/CAPTCHA, session, profile, server-wide typing-indicator policy, administrator-alert, upload, and content-filter values. The five moderation policy switches remain `config.yml`-only and are not exposed by Web Admin. `/kchat filter` and `/kchat settings` provide game-side controls. Session lifetime changes recalculate existing affected sessions from their creation time without resurrecting already-expired sessions. `upload.filename-mode: original` preserves safe Unicode original names for new uploads with collision suffixes.
 
 
-This manual describes all KOKOTO WebChat 5.2.0 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION.md`. For relay protocol details, see `SERVER_RELAY.md`. For HTTPS deployment, also see `CADDY_HTTPS.md` and `NGINX_HTTPS.md`.
+This manual describes all KOKOTO WebChat 5.3.0 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION.md`. For relay protocol details, see `SERVER_RELAY.md`. For HTTPS deployment, also see `CADDY_HTTPS.md` and `NGINX_HTTPS.md`.
 
+
+## 5.3.0 additions
+
+- **Private chat:** DM and group rooms can search full retained history. DM “hide for me” is removed. When ordinary-user self-delete is enabled, only the sender can delete their own DM and deletion removes it for both participants. Group rooms add room-local `owner/admin/member` roles, pinned-message management, room-wide deletion, and a room-local member self-delete policy that works together with the global self-delete setting.
+- **Chat Events:** multiple First come and Lottery events can run at once from Web or `/kchat game`. First come uses winner count as its only capacity and completes automatically when full; Lottery keeps separate participant and winner counts. Event announcements may stay local or use Relay.
+- **Profiles and presence:** user profile cards expose Minecraft Head/custom avatar, a 280-character About field, role, personal block list, and Game/Web connection state. Users choose Online/Busy/Offline; Offline masks actual Game/Web state from other viewers server-side.
+- **Moderation:** administrators can apply account chat/upload restrictions, remove custom profile images, change local roles, and delegate selected capabilities per moderator.
+- **CAPTCHA and mentions:** guest CAPTCHA supports off/math/text/mixed plus math complexity, and public/DM/group Web composers share IME-safe `@` autocomplete.
+- **Relay 2.2:** targeted sender-owned DM delete, Chat Event routing, and remote public-profile lookup are capability-gated within protocol major 2. Each peer can independently allow send/receive for `public-chat`, `event`, `dm`, and `profile`.
+- **Window/UI and adapters:** public, DM, and group windows share drag/resize/maximize behavior; adapter/standalone wrappers are generated from the same frontend fragments and CSS to keep layout behavior synchronized.
+- **Image privacy:** uploaded/profile images strip supported EXIF/IPTC/comment/XMP metadata before storage.
 
 ## 5.2.0 additions
 
@@ -32,7 +43,7 @@ This manual describes all KOKOTO WebChat 5.2.0 features from both the user and s
 
 ## 1. Overview
 
-KOKOTO WebChat connects Minecraft server chat to a browser-based chat interface. Version 5.2.0 provides Bukkit/Paper/Spigot plus exact-target Fabric 1.18.2–26.2, NeoForge 1.20.2–26.2, and Forge 1.18.2–26.2 builds.
+KOKOTO WebChat connects Minecraft server chat to a browser-based chat interface. Version 5.3.0 provides Bukkit/Paper/Spigot plus exact-target Fabric 1.18.2–26.2, NeoForge 1.20.2–26.2, and Forge 1.18.2–26.2 builds.
 
 Supported deployment and feature areas:
 
@@ -54,7 +65,7 @@ Required:
 - A Java runtime supported by that Minecraft/server target. The Bukkit artifact is compiled for Java 17. Fabric/NeoForge/Forge exact-target helpers select JDK 17, 21, or 25 according to the Minecraft target; 26.x targets use Java 25.
 - Permission to install the platform JAR in `plugins/` (Bukkit family) or `mods/` (Fabric/NeoForge/Forge)
 
-KOKOTO WebChat 5.2.0 declares `api-version: '1.18'` and compiles against `spigot-api:1.18.2-R0.1-SNAPSHOT`. Minecraft 1.17 and older are not claimed by this release.
+KOKOTO WebChat 5.3.0 declares `api-version: '1.18'` and compiles against `spigot-api:1.18.2-R0.1-SNAPSHOT`. Minecraft 1.17 and older are not claimed by this release.
 
 Optional integrations:
 
@@ -78,7 +89,7 @@ For public servers, do not expose port `8899` directly to the Internet. Bind KOK
 Safe initial state:
 
 ```yaml
-config-version: "5.2.0"
+config-version: "5.3.0"
 enabled: false
 ```
 
@@ -91,7 +102,7 @@ KOKOTO WebChat preserves existing configured values by rebuilding an active-migr
 The complete current reference is always written as:
 
 ```text
-<KWC data dir>/config-reference-5.2.0.yml
+<KWC data dir>/config-reference-5.3.0.yml
 ```
 
 It is an administrator-readable copy of the current default rendered in the same built-in language selected by `ui.language` (`en-US`, `ko-KR`, `ja-JP`, or `zh-CN`). Unsupported/custom UI languages use the English configuration presentation. The reference is never migration input. `/kchat reload` validates YAML before any live service is stopped; invalid YAML leaves the previous running configuration active.
@@ -103,12 +114,12 @@ When `config-version` is missing or differs from the running plugin version, KWC
 - Old comments, ordering, whitespace, indentation, and duplicate textual copies are not carried forward.
 - If the old version marker is not `*_auto_migration`, the original `config.yml` is backed up before a real version upgrade.
 - Existing defaults that changed in the new version are **not** silently replaced; they stay review items.
-- The real file is marked `config-version: "5.2.0_auto_migration"`.
+- The real file is marked `config-version: "5.3.0_auto_migration"`.
 
 KWC then writes:
 
 ```text
-<KWC data dir>/config-migration-5.2.0.yml
+<KWC data dir>/config-migration-5.3.0.yml
 ```
 
 This is a **review report**, not a copy/paste file for missing settings. It records the automatic insertion count, changed defaults that still need an operator decision, the exact final confirmation marker, and a semantic current-vs-reference setting diff. Difference blocks compare parsed YAML path/value pairs; comments, blank lines, indentation, quoting style, line positions, and key order are ignored. Each Difference block prints only that setting's YAML value block without duplicating its explanatory comments, while list/map values remain multi-line. Because missing settings and their bundled comments are already inserted into the real config, they no longer appear as a large reference-only block at the top of the diff.
@@ -117,18 +128,18 @@ Decision rules:
 
 | Physical `config.yml` state | Behavior |
 |---|---|
-| `config-version` missing or older/different | Perform the migration, write `5.2.0_auto_migration`, and generate/update the migration report |
-| `config-version: "5.2.0_auto_migration"` | Automatic migration enabled; rebuild from the latest same-version bundled `config.yml`, overlay current values, and refresh the migration report/diff |
-| `config-version: "5.2.0"` | Automatic migration disabled for the current version; skip same-version migration/backfill and remove stale same-version migration guidance |
+| `config-version` missing or older/different | Perform the migration, write `5.3.0_auto_migration`, and generate/update the migration report |
+| `config-version: "5.3.0_auto_migration"` | Automatic migration enabled; rebuild from the latest same-version bundled `config.yml`, overlay current values, and refresh the migration report/diff |
+| `config-version: "5.3.0"` | Automatic migration disabled for the current version; skip same-version migration/backfill and remove stale same-version migration guidance |
 
 The marker controls migration behavior rather than review status:
 
 ```yaml
 # Keep same-version automatic migration enabled, even after you have reviewed the config
-config-version: "5.2.0_auto_migration"
+config-version: "5.3.0_auto_migration"
 
 # Disable same-version automatic migration
-config-version: "5.2.0"
+config-version: "5.3.0"
 ```
 
 A later real plugin-version upgrade enters the new version's `_auto_migration` state again.
@@ -430,7 +441,7 @@ Normal text and URL-oriented messages can use different limits. `0` means unlimi
 
 ### 8.5 Message Tokens
 
-KOKOTO WebChat 5.2.0 can replace administrator-configured `:alias:` tokens before messages are stored or relayed. The built-in alias names are English-only defaults, but aliases can be replaced or extended in any language.
+KOKOTO WebChat can replace administrator-configured `:alias:` tokens before messages are stored or relayed. The built-in alias names are English-only defaults, but aliases can be replaced or extended in any language.
 
 Default controls:
 
@@ -627,10 +638,24 @@ Captcha:
 ```yaml
 captcha:
   mode: "math"
+  math-complexity: "normal"
   expire-seconds: 120
   require-on-each-message: false
   pass-valid-minutes: 120
 ```
+
+`captcha.math-complexity` applies whenever math is selected (including `mixed`): `easy` = single-digit addition/subtraction, `normal` = moderate addition/subtraction/multiplication, `hard` = larger operands plus exact-integer division. The text-code prompt is localized by the selected KWC language.
+
+`captcha.mode` supports four built-in modes and does not require an external CAPTCHA provider:
+
+- `off`: disable guest CAPTCHA.
+- `math`: an arithmetic expression shown directly as `a op b = ?` without a `Solve:` prefix.
+- `text`: a short case-insensitive code using an ambiguity-reduced letter/number alphabet.
+- `mixed`: randomly issue either a math or text challenge.
+
+`expire-seconds` keeps its existing semantics, including immediate/effectively expired challenges when configured as `0` or a negative value. `require-on-each-message` and `pass-valid-minutes` continue to control whether a successful challenge can be reused.
+
+Account/profile moderation in 5.3.0 is intentionally separate from guest/IP mute. ADMIN can apply per-account chat/upload restrictions and remove custom profile images; moderator accounts receive only individually delegated moderation capabilities. Personal user blocks are available to every signed-in role and affect only the blocking user's view/notifications.
 
 Guest/IP moderation commands:
 
@@ -698,7 +723,7 @@ reply:
 Clicking a non-URL part of a KWC-rendered Minecraft message suggests:
 
 ```text
-/kchat reply <messageId> 
+/kchat reply <messageId>
 ```
 
 Send a reply with:
@@ -739,10 +764,12 @@ direct-message:
   notify-on-login: true
   notify-on-message: true
   web-unread-badge: true
-  confirm-hide: true
+  confirm-delete: true
 ```
 
 Recipients must be known by UUID. In addition to local join and linked-account records, a relayed game or linked-web message with `playerUuid` registers the sender's display name and real Minecraft name in the new-conversation recipient search. This allows a remote-server sender seen in public chat to be found through the normal DM search and sent through the existing DM path. The latest identity is retained in `known-display-names.yml` and remains searchable after restart. Guest and Discord messages without a player UUID are not registered. With `storage: auto`, DM uses JSONL only when public chat storage is JSONL; otherwise it uses SQLite. You may explicitly select `sqlite` or `jsonl`.
+
+In 5.3.0, DM has no message-level **hide for me** operation. A user may delete only a DM they sent; the delete removes it for both participants and clears surviving Reply snapshots that referenced it. `direct-message.confirm-delete` controls the confirmation prompt. Received DMs cannot be deleted by the recipient. Cross-server deletion is acknowledged by the target peer before the origin copy is removed.
 
 Game commands:
 
@@ -756,7 +783,7 @@ Game commands:
 /kchat dm read <player> [pageSize]
 /kchat dm next
 /kchat dm prev
-/kchat dm hide <messageId>
+/kchat dm delete <messageId>
 ```
 
 Permission:
@@ -804,7 +831,7 @@ group-chat:
   sqlite-file: "group-messages.db"
 ```
 
-Web features include public/private room creation, optional room passwords stored as PBKDF2 hashes, invites, accept/reject, leave, hide/restore, room settings, unread tracking, per-user message hiding, member kick/block/unblock, and ownership transfer.
+Web features include public/private room creation, optional room passwords stored as PBKDF2 hashes, invites, accept/reject, leave, hide/restore, room settings, unread tracking, room-local owner/admin/member roles, room pinned messages, real room-wide message deletion, member kick/block/unblock, and ownership transfer.
 
 Every group message shows its recipient read state. The number is the count of current room members who were already members when the message was sent and have not yet read it; the message sender is not a recipient. When the unread-recipient count reaches zero, the number changes to `✓`. Normal successful delivery itself is not labeled.
 
@@ -871,7 +898,7 @@ pinned:
   preserve-uploads: true
 ```
 
-Pinned messages are stored separately from normal history and appear in a compact top bar. Referenced uploads are protected from cleanup when `preserve-uploads` is enabled. Moderator/admin pin and delete controls are shown only after the corresponding temporary admin-panel toggle is enabled.
+Pinned messages are stored separately from normal history and appear in a compact top bar. Referenced uploads are protected from cleanup when `preserve-uploads` is enabled. Moderator/admin pin and delete controls are shown only after the corresponding temporary admin-panel toggle is enabled. In both public chat and group chat, the **pinned by** identity follows the same Display name / Real name mode as ordinary user names. Older public pins that predate structured pinner identity remain readable and use their saved label as a fallback.
 
 ## 19. File and Clipboard Uploads
 
@@ -905,6 +932,8 @@ Clipboard modes:
 
 - `insert`: insert the uploaded URL into the composer
 - `send`: send immediately after upload
+
+On desktop multi-window layouts, each detached DM or group conversation window is also a direct drag-and-drop target. Dropping files on a child window activates that exact thread/room and inserts the uploaded URLs into that conversation; the parent DM/group list window remains a valid drop target as well.
 
 With `filename-mode: original`, clipboard uploads prefer the long filename reported by `clipboardData.files`. On Windows/Chromium, if an alternate clipboard entry reports a DOS 8.3 alias such as `202608~1.JPG`, KWC prefers the long name. If the browser exposes only the 8.3 alias, KWC uses a generated `clipboard-...` filename rather than storing the misleading alias as the original name.
 
@@ -1198,7 +1227,7 @@ discordsrv:
 
 ## 26. Multi-Server Relay
 
-KOKOTO WebChat 5.2.0 uses **Relay Protocol 2.1** over the Relay v2 trust/encryption model for public chat and cross-server 1:1 DM/read receipts. Group-chat rooms remain local.
+KOKOTO WebChat 5.3.0 uses **Relay Protocol 2.2** over the Relay v2 trust/encryption model. Public chat, cross-server 1:1 DM/read/delete/reaction/typing, targeted event lookup/join, and remote public-profile lookup use capability-negotiated 2.x traffic; group-chat rooms remain local. Each peer can independently allow sending and receiving `public-chat`, `event`, `dm`, and `profile` traffic.
 
 Relay v2 is configured as `groups -> peers`. Each group has one shared secret, and its peer entries contain only server ID, API URL and enabled state. For first setup, use `shared-secret: ""` on one server, start/reload KWC, then copy the generated value from that server's `config.yml` to the other servers in the same group. Existing non-empty secrets are never regenerated; a non-empty manual secret shorter than 32 characters remains invalid. Both servers must list each other in the same group, and the same peer ID cannot be registered in multiple local groups.
 
@@ -1260,9 +1289,11 @@ commands:
 
 Depending on role and configuration, the web administration UI provides:
 
-- Message hide/delete controls
+- Message deletion and public pin/delete action controls
 - Pin management
 - Guest and IP mutes
+- Per-user chat/upload restrictions and custom-profile-image removal
+- Per-moderator delegated capability checkboxes
 - Session review and revoke
 - Custom emoji folder/file management
 - Upload and storage usage information
@@ -1280,6 +1311,8 @@ moderation:
 
 These five `moderation.*` policy keys are **config.yml-only**. They are intentionally not exposed as editable settings in Web Admin; change them in `config.yml` and reload KWC. They govern whether the web moderation surface is available and what moderators may do.
 
+ADMIN can additionally apply/release per-account chat and upload restrictions and delete custom profile images. Moderator permissions for online-list access, message delete, guest/IP mute, pin management, USER restrictions, and USER profile-image deletion are stored per moderator; the global moderator policy switches remain ceilings. These delegated capabilities never grant administrator role/settings/session powers. Every signed-in role also has its own personal block list, which is not an administrative sanction.
+
 ### 28.1 Private-Chat Metadata Super Administrators
 
 ```yaml
@@ -1290,7 +1323,7 @@ private-chat-super-admins:
 
 The metadata view can show DM/group titles and participants, message counts, approximate storage usage, retention state, cleanup previews, locks/exclusions, and other metadata-management actions.
 
-`direct-message.admin-audit.enabled` is a default-off, read-only DM body-audit switch. It grants content access only to exact accounts also listed in `private-chat-super-admins`. The audit view cannot send, reply, hide messages, or change read state, and each page read is logged as `admin.dm-audit-read`. `group-chat.admin-audit.enabled` remains an independent read-only group-body audit switch.
+`direct-message.admin-audit.enabled` is a default-off, read-only DM body-audit switch. It grants content access only to exact accounts also listed in `private-chat-super-admins`. The audit view cannot send, reply, delete messages, or change read state, and each page read is logged as `admin.dm-audit-read`. `group-chat.admin-audit.enabled` remains an independent read-only group-body audit switch.
 
 ### 28.2 Audit Log
 
@@ -1382,7 +1415,7 @@ User commands:
 /kchat dm read <player> [pageSize]
 /kchat dm next
 /kchat dm prev
-/kchat dm hide <messageId>
+/kchat dm delete <messageId>
 /kchat reply <messageId> <message>
 /kchat group list
 /kchat group <room> <message>
@@ -1409,7 +1442,7 @@ Administrator commands:
 Root alias:
 
 ```text
-/kc
+/kchat
 ```
 
 Group alias:
@@ -1580,7 +1613,7 @@ Requires a server restart:
 
 ### Administrator group-chat body audit (4.6.3)
 
-Set `group-chat.admin-audit.enabled: true` and list the exact Minecraft name or UUID in `private-chat-super-admins`. Both gates are required. A qualifying administrator may open group-chat bodies from the administrator room metadata list even when they are not a room member. The audit view is read-only: it does not join the room, mark messages read, change unread counts, send/upload/hide messages, or change membership. Every page read records `admin.group-audit-read`; message bodies are not copied into the audit log.
+Set `group-chat.admin-audit.enabled: true` and list the exact Minecraft name or UUID in `private-chat-super-admins`. Both gates are required. A qualifying administrator may open group-chat bodies from the administrator room metadata list even when they are not a room member. The audit view is read-only: it does not join the room, mark messages read, change unread counts, send/upload/delete messages, or change membership. Every page read records `admin.group-audit-read`; message bodies are not copied into the audit log.
 
 
 

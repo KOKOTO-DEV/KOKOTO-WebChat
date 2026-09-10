@@ -2,15 +2,17 @@
 
 
 
-![架构总览](docs/assets/architecture-5.2.0.svg)
+![架构总览](docs/assets/architecture-5.3.0.svg)
 
-[PNG](docs/assets/architecture-5.2.0.png) · [SVG](docs/assets/architecture-5.2.0.svg)
+[PNG](docs/assets/architecture-5.3.0.png) · [SVG](docs/assets/architecture-5.3.0.svg)
 
 > 可视化手册、动态图、可编辑的图表源文件以及参考标准列表位于 `docs/assets/`、`docs/en/VISUAL_DOCUMENTATION.md` 和 `docs/en/REFERENCES.md`。
 
-## 5.2.1 热修复
+## 5.3.0 版本
 
-5.2.1 是基于 5.2.0 的前端热修复。BlueMap 刷新时即使 addon `config.js` 较晚加载，也不会固定错误的站点根 `/api`，而会自动恢复；通知设置中的提及标签始终带有 `@` 前缀；自定义表情横向分类滚动条保持 12px 高度，同时使用与纵向设置滚动条相同的主题 thumb/hover 样式。配置 schema 仍为 5.2.0，Relay Protocol 仍为 2.1。
+5.3.0 以 5.2.1 为基线，新增 DM/群聊完整已保存历史搜索与发送者本人删除、房间级群组角色/置顶/删除策略、可同时运行多个的先到先得/抽奖 Chat Event、用户资料与 Game/Web 在线状态及 Offline 隐私、个人屏蔽、按版主委派权限、扩展的内置 CAPTCHA、Web `@` 自动完成和图片元数据清除。Relay Protocol **2.2** 保持 protocol major 2 兼容，并通过 capability 支持 DM 删除、活动路由、远程资料查询，以及每个 peer 对 `public-chat` / `event` / `dm` / `profile` 的独立发送/接收策略。桌面公共/DM/群组窗口统一 drag/resize/maximize 行为，8 个适配器/standalone 由相同的 frontend fragment 与 CSS 生成，因此 responsive 标题栏和最小化外框保持一致。
+
+
 
 - **5.2.0 控制项：** `notifications.notify-reactions` 提供浏览器通知与 Web Push 共用的单个表情反应选项；`chat.conversation-archive.enabled: false` 会保留已有 archive 数据，同时彻底禁用保存对话 DOM/API/DB 启动；archive 下的三个 `max-*` 键可控制每账号 snapshot 数、每 snapshot 消息数和每账号总保存消息数。`chat.typing-indicator.open-chat.enabled`、`.dm.enabled`、`.group-chat.enabled` 是服务器级输入中提示策略，默认 OFF/ON/ON，也可在 Web Admin Settings 中调整。启用 `chat.typing-indicator.user-display-control`（默认 OFF）后，登录用户可按账号关闭 **输入中提示**；该个人设置只影响自己屏幕上的显示，不会停止发送自己的 typing 状态。`emoji.favorites.enabled`、`storage` 和 `max-per-account` 用于控制自定义表情收藏是否启用、采用浏览器或账号存储，以及最大保留数量。
 
@@ -45,7 +47,7 @@
 - `upload.filename-mode: original` 可为新上传保留安全的 Unicode 原文件名，同名文件自动编号且不覆盖
 - BlueMap / squaremap / Dynmap / Pl3xMap / LiveAtlas / uNmINeD / Overviewer 内嵌聊天面板，或 standalone Web 聊天页面
 - 游戏 ↔ Web 双向聊天
-- 面向 group 隔离公共聊天和跨服务器私信/已读 receipt 的 Relay Protocol 2.1：在保留 Relay v2 信任/加密模型的基础上扩展 reaction/typing capability，并提供逐请求 peer 认证、HKDF-SHA256/AES-256-GCM 逐跳认证加密、replay 防护与仅 HTTPS forwarding
+- 面向 group 隔离公共聊天和跨服务器私信/已读 receipt 的 Relay Protocol 2.2：在保留 Relay v2 信任/加密模型的基础上支持 reaction/typing 与 sender-authoritative DM delete capability，并提供逐请求 peer 认证、HKDF-SHA256/AES-256-GCM 逐跳认证加密、replay 防护与仅 HTTPS forwarding
 - 可保存公共/DM/群聊范围的账号级对话存档 snapshot，管理员删除/锁定策略优先，并支持浏览器 PDF 导出
 - 无 polling、无持久化、仅使用 5 秒窗口的事件驱动 DM/群聊“正在输入…”
 - 登录用户的公共/DM/群聊消息 reaction：支持 Unicode/KWC 自定义表情；无 reaction 时仅为 `+` 按钮保留最小高度，出现实际 reaction 后才扩展为正常行；分类/搜索 picker 保持打开位置并可在任意分类操作后通过外部点击关闭；支持 reactor 名称 hover 列表，以及 **Admin > Emojis > Reaction icons** 的功能 ON/OFF 与 catalog 管理。公共 reaction 按 origin authority 进行 Relay 同步，跨服务器 DM reaction 只发送到另一参与者服务器，群聊 reaction 保持本地
@@ -53,7 +55,7 @@
 - 可选将游戏 `/w`/`/msg`/`/tell` 类私聊复制到双方 Web DM
 - 访客聊天、数学验证码、冷却与每分钟限制
 - 通过 `/kchat auth <code>` 绑定账号、Web 密码登录、本地管理员账号
-- Web 管理/版主面板、隐藏消息、访客/IP 禁言、撤销会话
+- Web 管理/版主面板、删除消息、访客/IP 禁言、撤销会话
 - 管理员自定义表情管理：创建、多文件上传、重命名、移动和删除表情文件夹/文件
 - ImageEmojis-Bero 1.9.x token、游戏回复与服务器中继兼容
 - 文件/剪贴板上传，图片/视频/音频/YouTube/Shorts 预览，以及可选的 TikTok 和 X/Twitter 嵌入
@@ -75,7 +77,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.1-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.0-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target
@@ -86,7 +88,7 @@ Fabric 按 Minecraft 版本构建 16 个 exact-target JAR，脚本会按 target 
 kwc-platform-fabric\build-all.bat
 ```
 
-Targets：`1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`。产物位于 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-Fabric-<Minecraft>.jar`。
+Targets：`1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`。产物位于 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-Fabric-<Minecraft>.jar`。
 
 ### NeoForge exact-target
 
@@ -96,7 +98,7 @@ NeoForge 构建 12 个 exact-target JAR。1.20.2～1.20.6 使用 NeoGradle userd
 kwc-platform-neoforge\build-all.bat
 ```
 
-Targets：`1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`。产物位于 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-NeoForge-<Minecraft>.jar`。
+Targets：`1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`。产物位于 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-NeoForge-<Minecraft>.jar`。
 
 ### Forge exact-target
 
@@ -106,13 +108,13 @@ Forge 不使用单个宽版本 JAR，而是构建 16 个按 Minecraft 版本区�
 kwc-platform-forge\build-all.bat
 ```
 
-脚本会为每个目标选择 JDK 17/21/25，并在对应 target 的 `build/libs/` 下生成 `KOKOTO-WebChat-5.2.1-Forge-<Minecraft>.jar`。
+脚本会为每个目标选择 JDK 17/21/25，并在对应 target 的 `build/libs/` 下生成 `KOKOTO-WebChat-5.3.0-Forge-<Minecraft>.jar`。
 
 ### Windows 最终发布验证
 
-> **发布构建/验证工作流包含在 source 包中。** `validate-release-windows.bat` 及其所需的 PowerShell helper 会随 source 一起提供。单独的 `KWC-5.2.1-validation-tools.zip` 只包含开发专用的浏览器回归测试工具，普通构建和发布构建都不需要它。
+> **发布构建/验证工作流包含在 source 包中。** `validate-release-windows.bat` 及其所需的 PowerShell helper 会随 source 一起提供。单独的 `KWC-5.3.0-validation-tools.zip` 只包含开发专用的浏览器回归测试工具，普通构建和发布构建都不需要它。
 
-在源码根目录运行 `validate-release-windows.bat`，会依次构建 Bukkit、16 个 Fabric target、12 个 NeoForge target 和 16 个 Forge target。只有输出 `FINAL RELEASE BUILD PASS`、在 `release-5.2.1/` 收集到准确 45 个可发布 JAR，并生成 `SHA256SUMS.txt` 后，才判定实际构建也完成最终验证。
+在源码根目录运行 `validate-release-windows.bat`，会依次构建 Bukkit、16 个 Fabric target、12 个 NeoForge target 和 16 个 Forge target。只有输出 `FINAL RELEASE BUILD PASS`、在 `release-5.3.0/` 收集到准确 45 个可发布 JAR，并生成 `SHA256SUMS.txt` 后，才判定实际构建也完成最终验证。
 
 Windows 下进行重复构建时，同一脚本支持平台选择、增量缓存、平台并行构建和实时进度：
 
@@ -125,7 +127,7 @@ validate-release-windows.bat --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-平台选项可以组合使用。`--bukkit` 只构建 Bukkit/Paper 产物及其所需的 Maven reactor 依赖模块。`--fast` 会跳过 `clean`，复用已有 Maven/Gradle 输出与 dependency cache，并启用 Gradle build cache。`--parallel` 保持所选 clean/fast 模式不变；如果选择了 Bukkit，会先构建 Bukkit，Bukkit 通过后分别打开 Fabric、NeoForge、Forge 的实时构建窗口并并行运行，因此 `validate-release-windows.bat --parallel` 仍是 clean 的 45-target 最终验证，成功时会输出 `FINAL RELEASE BUILD PASS`。主控制台会持续显示经过时间、总体完成 target 数、各平台完成数和当前 Minecraft target，各工作窗口显示实际构建日志，完整日志保留在 `validation-logs/`。部分构建或 `--fast` 构建写入 `build-5.2.1/`，不视为最终发布验证。源码根目录的 `mvn clean package` 仍然只是 Bukkit Maven 构建。
+平台选项可以组合使用。`--bukkit` 只构建 Bukkit/Paper 产物及其所需的 Maven reactor 依赖模块。`--fast` 会跳过 `clean`，复用已有 Maven/Gradle 输出与 dependency cache，并启用 Gradle build cache。`--parallel` 保持所选 clean/fast 模式不变；如果选择了 Bukkit，会先构建 Bukkit，Bukkit 通过后分别打开 Fabric、NeoForge、Forge 的实时构建窗口并并行运行，因此 `validate-release-windows.bat --parallel` 仍是 clean 的 45-target 最终验证，成功时会输出 `FINAL RELEASE BUILD PASS`。主控制台会持续显示经过时间、总体完成 target 数、各平台完成数和当前 Minecraft target，各工作窗口显示实际构建日志，完整日志保留在 `validation-logs/`。部分构建或 `--fast` 构建写入 `build-5.3.0/`，不视为最终发布验证。源码根目录的 `mvn clean package` 仍然只是 Bukkit Maven 构建。
 如果 Loader worker 因可明确识别的 Gradle cache/workspace 损坏或 cache 锁定错误而失败（例如无法读取 `caches/<Gradle>/transforms/.../metadata.bin`），验证 runner 不会自动删除可能仍被锁定的主 cache，而会改用 `.build-cache/gradle-recovery/` 下的全新隔离 cache 对该平台仅重试一次。源码编译错误以及普通 dependency/build 失败不会自动重试。即使恢复构建成功，原 cache 也保持不变，可在资源管理器、杀毒软件或其他进程释放文件锁后再手动清理。
 
 
@@ -145,11 +147,11 @@ validate-release-windows.bat --parallel
 12. 重启服务器或执行 `/kchat reload`。BlueMap 会自动请求 `bluemap reload light`，squaremap/Dynmap/Pl3xMap/LiveAtlas/uNmINeD/Overviewer 则由 KWC 直接重新检查网页文件。如果地图/站点生成器之后重新生成网页文件，再执行一次 `/kchat reload`。
 
 
-现有已解析的管理员设置值会被完整保留；migration 时的注释和布局则从 `ui.language` 选择的内置展示模板重建。`en-US` 使用 `config.yml`，`ko-KR`、`ja-JP`、`zh-CN` 使用各自的本地化模板；不受支持或自定义的 UI 语言使用英文 config 展示。`<KWC data dir>/config-reference-5.2.0.yml` 是使用相同内置语言生成的管理员可读当前默认配置，绝不会作为 migration 输入。固定的旧版本 config 会在真实版本 migration 前备份。migration 后写入 `config-version: "5.2.0_auto_migration"`；只要该 marker 保留，startup/reload 都会从当前选定模板重建并覆盖保留的已解析值，使新增设置和当前注释/布局保持同步。精确的 `config-version: "5.2.0"` 会停止普通的 same-version 自动设置重建，但修改 `ui.language` 时仍可只重建注释/布局展示语言，并保持所有已解析值不变。`config-migration-5.2.0.yml` 的 Difference 比较已解析 YAML path/value 的语义，不比较注释、空白、引号、行位置或 key 顺序。旧版本生成的 reference/migration/upgrade 文件会自动删除。内置 UTF-8 初始过滤词列表 `filter-lists/ko-KR.txt`、`en-US.txt`、`ja-JP.txt`、`zh-CN.txt` 会在 starter-list 初始化标记不存在时仅初始化一次，因此早于该功能创建的数据目录也会获得这些文件。已有或已禁用的列表文件不会被覆盖；初始化完成后由管理员删除的初始列表也不会在重启时重新生成。
+现有已解析的管理员设置值会被完整保留；migration 时的注释和布局则从 `ui.language` 选择的内置展示模板重建。`en-US` 使用 `config.yml`，`ko-KR`、`ja-JP`、`zh-CN` 使用各自的本地化模板；不受支持或自定义的 UI 语言使用英文 config 展示。`<KWC data dir>/config-reference-5.3.0.yml` 是使用相同内置语言生成的管理员可读当前默认配置，绝不会作为 migration 输入。固定的旧版本 config 会在真实版本 migration 前备份。migration 后写入 `config-version: "5.3.0_auto_migration"`；只要该 marker 保留，startup/reload 都会从当前选定模板重建并覆盖保留的已解析值，使新增设置和当前注释/布局保持同步。精确的 `config-version: "5.3.0"` 会停止普通的 same-version 自动设置重建，但修改 `ui.language` 时仍可只重建注释/布局展示语言，并保持所有已解析值不变。`config-migration-5.3.0.yml` 的 Difference 比较已解析 YAML path/value 的语义，不比较注释、空白、引号、行位置或 key 顺序。旧版本生成的 reference/migration/upgrade 文件会自动删除。内置 UTF-8 初始过滤词列表 `filter-lists/ko-KR.txt`、`en-US.txt`、`ja-JP.txt`、`zh-CN.txt` 会在 starter-list 初始化标记不存在时仅初始化一次，因此早于该功能创建的数据目录也会获得这些文件。已有或已禁用的列表文件不会被覆盖；初始化完成后由管理员删除的初始列表也不会在重启时重新生成。
 
 ### 5.0.0 KOKOTO WebChat 架构与名称迁移
 
-从 5.0.0 开始，正式项目标识统一为 KOKOTO WebChat。Maven 模块为 `kwc-core`、`kwc-standalone-frontend`、`kwc-adapter-bluemap`、`kwc-adapter-squaremap`、`kwc-adapter-dynmap`、`kwc-adapter-pl3xmap`、`kwc-adapter-liveatlas`、`kwc-adapter-unmined`、`kwc-adapter-overviewer`、`kwc-platform-bukkit`，Java package 为 `dev.kokoto.webchat`。所有平台的正式游戏命令为 `/kchat`（短别名 `/kc`），权限使用 `kwc.*`，数据目录为 `<KWC data dir>`，反向代理示例使用 `/chat`。
+从 5.0.0 开始，正式项目标识统一为 KOKOTO WebChat。Maven 模块为 `kwc-core`、`kwc-standalone-frontend`、`kwc-adapter-bluemap`、`kwc-adapter-squaremap`、`kwc-adapter-dynmap`、`kwc-adapter-pl3xmap`、`kwc-adapter-liveatlas`、`kwc-adapter-unmined`、`kwc-adapter-overviewer`、`kwc-platform-bukkit`，Java package 为 `dev.kokoto.webchat`。所有平台的正式游戏命令为 `/kchat`（短别名 `/kchat`），权限使用 `kwc.*`，数据目录为 `<KWC data dir>`，反向代理示例使用 `/chat`。
 
 旧 BlueMapWebChat 4.x 只作为迁移输入。只有当 `plugins/KOKOTO-WebChat` 中不存在任何已有数据文件时，才会导入 `plugins/BlueMapWebChat` 的运行数据，并把 `web-addon.*` 转换为 `adapters.bluemap.*`、`standalone-web.*` 转换为 `frontend.standalone.*`。如果 KWC 数据已经存在，即使手动删除 `.legacy-import-complete` 也不会再次合并 BMWC 数据。删除原 `plugins/BlueMapWebChat` 目录后，临时 `.legacy-import-complete` 标记也会自动删除。不再提供 `/bmchat`、`/bluemapchat`、`/bmc`、`/kwc` 命令别名。旧 `bluemapwebchat.*` 权限仍可由权限兼容层处理，但新配置和文档使用 `kwc.*`。
 
@@ -168,7 +170,7 @@ Bukkit/Spigot API 基线从 1.21 下调到 1.18，同时继续使用 Java 17。�
 
 ## 4.6.3 管理员群聊审计
 
-4.6.3 新增了可选的只读管理员群聊正文审计。5.2.0 中，私信与群聊正文审计相互独立：私信使用 `direct-message.admin-audit.enabled`，群聊使用 `group-chat.admin-audit.enabled`，两者都只允许 `private-chat-super-admins` 中明确列出的账号访问。审计视图只读，不会发送、回复、隐藏消息、更新已读状态或加入房间；每次分页读取都会写入审计日志。
+4.6.3 新增了可选的只读管理员群聊正文审计。当前 5.3.0 中，私信与群聊正文审计相互独立：私信使用 `direct-message.admin-audit.enabled`，群聊使用 `group-chat.admin-audit.enabled`，两者都只允许 `private-chat-super-admins` 中明确列出的账号访问。审计视图只读，不会发送、回复、删除消息、更新已读状态或加入房间；每次分页读取都会写入审计日志。
 
 ```yaml
 private-chat-super-admins:
@@ -330,7 +332,7 @@ kwc.update.notify
 - `docs/zh-CN/USER_MANUAL.md` - 所有功能的完整用户与运维手册
 - `docs/zh-CN/CONFIGURATION.md`
 - `docs/zh-CN/SERVER_RELAY.md` - Relay Protocol v2 公共聊天、跨服务器私信/已读 receipt、信任与 forwarding 规则
-- `docs/zh-CN/UPGRADE.md` - 截至 5.2.0 的统一升级与迁移指南
+- `docs/zh-CN/UPGRADE.md` - 截至 5.3.0 的统一升级与迁移指南
 - `docs/zh-CN/CADDY_HTTPS.md`
 - `docs/zh-CN/I18N.md`
 - `docs/zh-CN/INSTALL_TROUBLESHOOTING.md`
@@ -357,7 +359,7 @@ URL 设置说明：`http.path-prefix` 是 KWC 内部 API 路径，`http.public-p
 
 启用 `direct-message.enabled` 后，可以使用 1:1 会话线程式消息箱。目标包括已有 UUID/名称记录的已关联或曾加入玩家，以及中继消息中带有玩家 UUID 的其他服务器发送者。收到的显示名和真实 Minecraft 名会加入 Web DM 的新会话对象搜索，因此无需单独添加 DM 按钮即可通过普通搜索开始会话。没有玩家 UUID 的访客和 Discord 发送者不会被加入。A→B 与 B→A 会使用同一个线程，存储按 UUID 进行，UI 会尽可能显示为 `显示名 (真实账号名)`。
 
-DM 使用独立于公开聊天历史的专用存储。`direct-message.storage: auto` 会在公开聊天使用 `jsonl` 存储时让 DM 也使用 JSONL，其他情况下使用 SQLite。也可以显式设置为 `sqlite` 或 `jsonl`，并分别使用 `direct-message.sqlite-file` 或 `direct-message.jsonl-file`。`direct-message.retention-days: 0` 表示无保留期限；其他值会显示在 DM 窗口标题旁作为保留期限，超过该天数的 DM 原文会被物理删除。`direct-message.max-messages-per-thread: 0` 表示不按线程消息数清理。`direct-message.confirm-hide` 控制 Web UI 在从自己视图隐藏 DM 前是否显示确认框。由于私信会保存在服务器上，此功能默认关闭，建议先确定服务器保留策略后再启用。
+DM 使用独立于公开聊天历史的专用存储。`direct-message.storage: auto` 会在公开聊天使用 `jsonl` 存储时让 DM 也使用 JSONL，其他情况下使用 SQLite。也可以显式设置为 `sqlite` 或 `jsonl`，并分别使用 `direct-message.sqlite-file` 或 `direct-message.jsonl-file`。`direct-message.retention-days: 0` 表示无保留期限；其他值会显示在 DM 窗口标题旁作为保留期限，超过该天数的 DM 原文会被物理删除。`direct-message.max-messages-per-thread: 0` 表示不按线程消息数清理。`direct-message.confirm-delete` 控制 Web UI 在删除自己发送的 DM、并使其从双方会话中移除之前是否显示确认框。接收者不能隐藏或删除收到的 DM。由于私信会保存在服务器上，此功能默认关闭，建议先确定服务器保留策略后再启用。
 
 
 启用 `direct-message.capture-game-whispers` 后，游戏 `/w`、`/msg`、`/tell` 等会复制到相同 Web DM 会话。点击同服游戏发送者名称会建议 `/w <真实名称> `；Web 发送者会建议 `/kchat dm <真实名称> `；其他服务器的游戏发送者会建议 `/kchat dm <真实名称>@<server-id> `。在 `/w`、`/msg`、`/tell`、`/whisper`、`/m`、`/pm`、`/message`、`/t` 中使用 `名称@server-id` 目标时，也会通过同一跨服务器 KWC DM relay 发送。
@@ -396,3 +398,5 @@ Forge 对 Minecraft 1.18.2～26.2 使用按 Minecraft 版本区分的 exact-targ
 ## 生成式 AI 使用说明
 
 本项目在开发过程中使用生成式 AI 作为辅助工具，用于代码审查、实现与补丁编写辅助、文档编写和多语言翻译。项目需求、架构与设计决策、源码整合、测试、兼容性验证、发布验证和最终批准均由人工维护者主导并审核。AI 辅助产生的内容只有在人工审查和验证后才会纳入项目。详情请参阅 `AI_USAGE.md`。
+
+> Relay 2.2 增加 targeted event（`game`）路由。relay 事件链接会打开/参加来源服务器上的对应事件，不会替换成本地事件。

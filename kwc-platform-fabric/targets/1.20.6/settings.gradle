@@ -1,2 +1,8 @@
+// KWC 파일 안내 / KWC file guide
+// 이 Gradle 파일은 kwc-platform-fabric/targets/1.20.6/settings.gradle 빌드의 plugin/toolchain/dependency/산출물 이름을 정의한다.
+// This Gradle file defines plugins, toolchains, dependencies, and artifact naming for kwc-platform-fabric/targets/1.20.6/settings.gradle.
+// exact-target JDK/loader pin은 릴리스 호환성 계약이므로 버전 변경 시 build-all 스크립트와 validation matrix를 함께 확인한다.
+// Exact-target JDK/loader pins are release compatibility contracts; update build-all scripts and validation matrices together when versions change.
+
 pluginManagement { repositories { maven { name='Fabric'; url='https://maven.fabricmc.net/' }; mavenCentral(); gradlePluginPortal() } }
 rootProject.name='kwc-fabric-1-20-6'

@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * Bukkit/Paper 플러그인의 main lifecycle 진입점이다. config/storage/core server/adapter/listener를 enable 순서대로 조립하고 disable 때 역순으로 정리한다.
+ * Main lifecycle entry point for the Bukkit/Paper plugin. It assembles config, storage, core server, adapters, and listeners on enable and tears them down safely on disable.
+ *
+ * reload는 새 객체를 무조건 중복 생성하기보다 기존 listener/SSE/adapter 자원을 닫고 재등록하는 순서를 지켜야 한다.
+ * Reload must close/re-register existing listeners, SSE resources, and adapters in order rather than blindly creating duplicates.
+ */
 import dev.kokoto.webchat.adapter.bluemap.BlueMapAdapter;
 import dev.kokoto.webchat.adapter.squaremap.SquaremapAdapter;
 import dev.kokoto.webchat.adapter.dynmap.DynmapAdapter;
@@ -39,6 +47,8 @@ public class KokotoWebChatPlugin extends JavaPlugin {
     private String lastConfigReloadError = "";
 
     @Override
+    // Bukkit plugin enable 진입점이다. config migration/검증을 먼저 끝낸 뒤 storage·auth·moderation·DM/group·Relay·HTTP·adapter·listener 순서로 런타임을 조립한다. 중간 실패 시 이미 열린 자원을 남기지 않는 것이 중요하다.
+    // Bukkit plugin enable entry point. It completes config migration/validation first, then assembles storage, auth, moderation, DM/group, Relay, HTTP, adapters, and listeners. Partial startup must not leave already-open resources behind.
     public void onEnable() {
         platformAdapter = new BukkitPlatformAdapter(this);
         conversationStoreHost = new BukkitConversationStoreHost(this);
@@ -138,6 +148,8 @@ public class KokotoWebChatPlugin extends JavaPlugin {
     }
 
     @Override
+    // disable 시 background service와 web/relay 연결을 먼저 중단하고 저장 가능한 runtime state를 flush한 뒤 adapter/listener 자원을 정리한다. 재시작 때 포트·SSE thread가 남지 않게 종료 순서를 유지한다.
+    // On disable, stop background services and web/relay connections first, flush persistable runtime state, then release adapters/listeners. Preserve shutdown order so ports and SSE threads do not survive a restart.
     public void onDisable() {
         if (configValues != null && configValues.pluginEnabled) {
             publishAnnouncement("server-stop", Map.of("server", getServer().getName()));
@@ -167,6 +179,8 @@ public class KokotoWebChatPlugin extends JavaPlugin {
         return MessageTokenProcessor.splitGameDisplayLines(text);
     }
 
+    // reload는 기존 core 객체를 무조건 덮어쓰는 작업이 아니다. 새 설정을 migration/validation한 뒤 session policy와 adapter/web/relay 상태를 안전하게 재구성하고 실패하면 오류 원인을 caller에게 남긴다.
+    // Reload is not a blind replacement of core objects. It migrates/validates new configuration, safely reconciles session policy plus adapter/web/relay state, and preserves the failure reason for callers.
     public boolean reloadPlugin() {
         lastConfigReloadError = "";
         LegacyBmwcMigrationManager.cleanupMarkerIfSourceGone(this);
@@ -301,6 +315,8 @@ public class KokotoWebChatPlugin extends JavaPlugin {
         updateChecker.start();
     }
 
+    // Relay는 web server와 독립적인 peer transport이므로 shared secret provisioning과 security warning을 먼저 확인하고, disabled 상태에서는 listener/worker를 만들지 않는다.
+    // Relay is a peer transport independent of the web server; provision shared secrets and evaluate security warnings first, and create no listener/worker when disabled.
     private void startServerRelay() {
         startServerRelay(true);
     }
@@ -407,6 +423,8 @@ public class KokotoWebChatPlugin extends JavaPlugin {
         }
     }
 
+    // HTTP/SSE 서버를 실제 bind하는 지점이다. host/port/TLS/proxy 관련 설정이 확정된 뒤 호출하며, 이미 열린 서버가 있으면 중복 bind하지 않도록 lifecycle을 관리한다.
+    // This is the point that actually binds the HTTP/SSE server. Call only after host/port/TLS/proxy settings are finalized, and manage lifecycle to avoid duplicate binds when a server is already open.
     private void startWebServer() {
         startWebServer(true);
     }

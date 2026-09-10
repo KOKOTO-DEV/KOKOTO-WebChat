@@ -2,10 +2,16 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+  <!-- KWC 파일 안내 / KWC file guide
+       이 POM은 kwc-adapter-dynmap/pom.xml의 Maven module 관계, Java toolchain/dependency, 최종 artifact 구성을 정의한다.
+       This POM defines Maven module relationships, Java toolchain/dependencies, and final artifact composition for kwc-adapter-dynmap/pom.xml.
+       shaded Bukkit JAR에 포함될 dependency와 loader-neutral core의 compile boundary를 바꿀 때는 45-target release 검증과 함께 확인한다.
+       When changing shaded-Bukkit dependencies or loader-neutral core compile boundaries, validate them together with the 45-target release matrix. -->
+
     <parent>
         <groupId>dev.kokoto</groupId>
         <artifactId>kokoto-webchat-parent</artifactId>
-        <version>5.2.1</version>
+        <version>5.3.0</version>
     </parent>
     <artifactId>kwc-adapter-dynmap</artifactId>
     <packaging>jar</packaging>

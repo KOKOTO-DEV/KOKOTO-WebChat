@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * EventAnnouncementListener는 Bukkit event bus에서 게임 이벤트를 받아 KWC core 이벤트/메시지로 변환하는 listener다.
+ * EventAnnouncementListener listens on the Bukkit event bus and translates game events into KWC core events/messages.
+ *
+ * Paper/Bukkit main-thread 규칙을 지키고, HTTP/SQLite처럼 오래 걸릴 수 있는 작업을 이벤트 thread에서 직접 block하지 않도록 한다.
+ * Respect Paper/Bukkit main-thread rules and avoid blocking event threads on potentially slow HTTP/SQLite work.
+ */
 import org.bukkit.ChatColor;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;

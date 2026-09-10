@@ -1,5 +1,13 @@
 package dev.kokoto.webchat.fabric;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * FabricConfigValuesLoader는 KWC 설정을 core가 사용할 수 있는 형태로 읽거나 보관하는 설정 계층이다.
+ * FabricConfigValuesLoader is part of the configuration layer that reads or carries KWC settings in a core-friendly form.
+ *
+ * 설정 키를 바꿀 때는 canonical config, 과거 baseline, migration, 다국어 template, 문서 reference가 함께 움직여야 한다.
+ * When changing a setting key, update canonical config, historical baselines, migration, localized templates, and documentation references together.
+ */
 import dev.kokoto.webchat.*;
 
 
@@ -117,7 +125,7 @@ public final class FabricConfigValuesLoader {
         v.directMessageNotifyOnLogin = c.getBoolean("direct-message.notify-on-login", true);
         v.directMessageNotifyOnMessage = c.getBoolean("direct-message.notify-on-message", true);
         v.directMessageWebUnreadBadge = c.getBoolean("direct-message.web-unread-badge", true);
-        v.directMessageConfirmHide = c.getBoolean("direct-message.confirm-hide", true);
+        v.directMessageConfirmDelete = c.contains("direct-message.confirm-delete") ? c.getBoolean("direct-message.confirm-delete", true) : c.getBoolean("direct-message.confirm-hide", true);
         v.directMessageCaptureGameWhispers = c.getBoolean("direct-message.capture-game-whispers", true);
         v.directMessageAdminAuditEnabled = c.getBoolean("direct-message.admin-audit.enabled", false);
         v.directMessageRetentionDays = Math.max(0, c.getInt("direct-message.retention-days", 0));
@@ -141,7 +149,7 @@ public final class FabricConfigValuesLoader {
         v.groupChatAllowPublicRooms = c.getBoolean("group-chat.allow-public-rooms", true);
         v.groupChatAllowRoomPasswords = c.getBoolean("group-chat.allow-room-passwords", true);
         v.groupChatConfirmLeave = c.getBoolean("group-chat.confirm-leave", true);
-        v.groupChatConfirmHide = c.getBoolean("group-chat.confirm-hide", true);
+        v.groupChatConfirmDelete = c.contains("group-chat.confirm-delete") ? c.getBoolean("group-chat.confirm-delete", true) : c.getBoolean("group-chat.confirm-hide", true);
         v.groupChatAdminAuditEnabled = c.getBoolean("group-chat.admin-audit.enabled", false);
         v.groupChatRetentionDays = Math.max(0, c.getInt("group-chat.retention-days", 30));
         v.groupChatMaxMessagesPerRoom = Math.max(0, c.getInt("group-chat.max-messages-per-room", 1000));
@@ -207,6 +215,7 @@ public final class FabricConfigValuesLoader {
         v.serverRelayGuestChat = c.getBoolean("server-relay.sources.guest", true);
         v.serverRelayDiscordChat = c.getBoolean("server-relay.sources.discord", false);
         v.serverRelaySystemEvents = c.getBoolean("server-relay.sources.system", false);
+        v.serverRelayEventAnnouncements = c.getBoolean("server-relay.sources.event", true);
         v.serverRelayDeliverToWeb = c.getBoolean("server-relay.delivery.web", true);
         v.serverRelayDeliverToGame = c.getBoolean("server-relay.delivery.game", true);
         v.serverRelayGameFormat = c.getString("server-relay.game-format", "&8[&b{server}&8] &f{sender}&7: &f{message}");
@@ -382,6 +391,8 @@ public final class FabricConfigValuesLoader {
         v.guestBlockedNames = c.getStringList("guest.blocked-names");
 
         v.captchaMode = c.getString("captcha.mode", "math").toLowerCase();
+        v.captchaMathComplexity = c.getString("captcha.math-complexity", "normal").toLowerCase();
+        if (!java.util.Set.of("easy", "normal", "hard").contains(v.captchaMathComplexity)) v.captchaMathComplexity = "normal";
         v.captchaExpireSeconds = c.getInt("captcha.expire-seconds", 120);
         v.captchaRequireOnEachMessage = c.getBoolean("captcha.require-on-each-message", false);
         v.captchaPassValidMinutes = c.getInt("captcha.pass-valid-minutes", 120);
@@ -410,6 +421,8 @@ public final class FabricConfigValuesLoader {
         v.allowWebAdminPanel = c.getBoolean("moderation.allow-web-admin-panel", true);
         v.allowModeratorMessageDelete = c.getBoolean("moderation.allow-moderator-message-delete", true);
         v.allowModeratorGuestMute = c.getBoolean("moderation.allow-moderator-guest-mute", true);
+        v.selfMessageDeleteEnabled = c.getBoolean("moderation.allow-user-self-message-delete", false);
+        v.selfMessageDeleteWindowMinutes = Math.max(0, c.getInt("moderation.self-message-delete-window-minutes", 0));
         v.defaultMuteMinutes = c.getInt("moderation.default-mute-minutes", 60);
 
         v.contentFilterEnabled = c.getBoolean("content-filter.enabled", false);
@@ -609,12 +622,33 @@ public final class FabricConfigValuesLoader {
                     boolean enabled = boolValue(peer.get("enabled"), true);
                     String peerId = normalizeRelayId(String.valueOf(mapValue(peer, "id", "")));
                     String url = String.valueOf(mapValue(peer, "url", "")).trim();
-                    peers.add(new ConfigValues.RelayPeer(peerId, url, enabled));
+                    ConfigValues.RelayDirectionPolicy send = relayDirectionPolicy(peer.get("send"));
+                    ConfigValues.RelayDirectionPolicy receive = relayDirectionPolicy(peer.get("receive"));
+                    peers.add(new ConfigValues.RelayPeer(peerId, url, enabled, send, receive));
                 }
             }
             out.add(new ConfigValues.RelayGroup(id, secret, forwarding, peers));
         }
         return out;
+    }
+
+    /**
+     * Peer direction policy is intentionally backward compatible. Missing send/receive
+     * entries allow every traffic class; a scalar false disables the whole direction;
+     * a map may independently toggle public-chat, event, dm, and profile.
+     */
+    private static ConfigValues.RelayDirectionPolicy relayDirectionPolicy(Object raw) {
+        if (raw == null) return ConfigValues.RelayDirectionPolicy.allowAll();
+        if (!(raw instanceof Map<?, ?> map)) {
+            boolean enabled = boolValue(raw, true);
+            return new ConfigValues.RelayDirectionPolicy(enabled, true, true, true, true);
+        }
+        boolean enabled = boolValue(map.get("enabled"), true);
+        boolean publicChat = boolValue(map.get("public-chat"), true);
+        boolean event = boolValue(map.get("event"), true);
+        boolean dm = boolValue(map.get("dm"), true);
+        boolean profile = boolValue(map.get("profile"), true);
+        return new ConfigValues.RelayDirectionPolicy(enabled, publicChat, event, dm, profile);
     }
 
     private static String normalizeRelayId(String raw) {

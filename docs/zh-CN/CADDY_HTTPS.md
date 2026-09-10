@@ -240,4 +240,4 @@ HTTPS 公开 API 的基准是 `http.public-prefix + http.path-prefix`，默认�
 - [Caddy reverse-proxy quick start](https://caddyserver.com/docs/quick-starts/reverse-proxy)
 - [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
 
-KWC 特有的 path-prefix、trusted-proxy、SSE、上传和认证行为应以 KWC 5.2.0 源码与配置为准，而不是由这些外部文档定义。
+KWC 特有的 path-prefix、trusted-proxy、SSE、上传和认证行为应以 KWC 5.3.0 源码与配置为准，而不是由这些外部文档定义。

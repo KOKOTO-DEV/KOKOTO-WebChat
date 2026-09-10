@@ -1,6 +1,6 @@
 # KOKOTO WebChat Upgrade Guide
 
-This document consolidates the supported upgrade notes from 4.5.5 through 5.2.0. Follow the sections in version order when skipping multiple releases.
+This document consolidates the supported upgrade notes from 4.5.5 through 5.3.0. Follow the sections in version order when skipping multiple releases.
 
 ## Upgrade from 4.5.5 to 4.6.0
 
@@ -192,7 +192,7 @@ group-chat:
     enabled: true
 ```
 
-Ordinary ADMIN/MODERATOR roles are not sufficient. The audit view is read-only, does not require or create room membership, does not mark messages read or change unread counts, and cannot send/upload/hide messages or modify membership. Each page read is logged as `admin.group-audit-read` without copying message bodies into the audit log.
+Ordinary ADMIN/MODERATOR roles are not sufficient. The audit view is read-only, does not require or create room membership, does not mark messages read or change unread counts, and cannot send/upload/delete messages or modify membership. Each page read is logged as `admin.group-audit-read` without copying message bodies into the audit log.
 
 ### Configuration comments
 
@@ -268,7 +268,7 @@ For GitHub, renaming the repository to `KOKOTO-WebChat` is preferred; GitHub red
 
 ### Major changes from 4.7.0
 
-- Canonical identity changed to **KOKOTO WebChat**: `/kchat` (`/kc`), `kwc.*`, `plugins/KOKOTO-WebChat` or `config/KOKOTO-WebChat`, `dev.kokoto.webchat`, and `kwc-*` modules.
+- Canonical identity changed to **KOKOTO WebChat**: `/kchat` (`/kchat`), `kwc.*`, `plugins/KOKOTO-WebChat` or `config/KOKOTO-WebChat`, `dev.kokoto.webchat`, and `kwc-*` modules.
 - Added shared multi-platform core and server platforms for Bukkit/Paper/Spigot, 16 exact Fabric targets, 12 exact NeoForge targets, and 16 exact Forge targets.
 - Added BlueMap, squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD and Minecraft Overviewer adapter architecture; supported adapter combinations vary by loader as documented in the README.
 - Standalone is enabled by default and the canonical public prefix is `/chat`; API becomes `/chat/api` with the bundled reverse-proxy layout.
@@ -320,7 +320,7 @@ Public deployments should use HTTPS. Direct-IP operation remains supported for n
 ### Release acceptance
 
 
-> `validate-release-windows.bat` and its required PowerShell helpers are included in the source archive. The separate `KWC-5.2.0-validation-tools.zip` contains development-only browser regression tooling and is not required to run release builds.
+> `validate-release-windows.bat` and its required PowerShell helpers are included in the source archive. Development regression harnesses are also included under `validation/`; no separate validation-tools archive is required.
 
 A final release candidate is accepted only after `validate-release-windows.bat` finishes with `FINAL RELEASE BUILD PASS`, exactly 45 deployable JARs are collected, static/config/i18n/document checks pass, and the final candidate has been smoke-tested for login, public chat, upload/clipboard upload, DM/group, relay and enabled map/Discord integrations.
 
@@ -403,7 +403,7 @@ Custom emoji pack/item names are canonicalized in 5.1.0. Unsupported characters 
 
 ## Upgrade from KOKOTO WebChat 5.1.0 to 5.2.0
 
-Back up the KWC data directory before upgrading. A normal 5.1.0 → 5.2.0 migration preserves supported operator values and the existing Relay v2 groups/secrets/peers; the relay trust reset belongs only to the historical pre-5.1.0 → 5.1.0 migration. The current reference is `config-reference-5.2.0.yml`, and automatic review uses `5.2.0_auto_migration` until the administrator chooses exact `config-version: "5.2.0"`.
+Back up the KWC data directory before upgrading. A normal 5.1.0 → 5.2.0 migration preserves supported operator values and the existing Relay v2 groups/secrets/peers; the relay trust reset belongs only to the historical pre-5.1.0 → 5.1.0 migration. The reference for that 5.2.0 migration is `config-reference-5.2.0.yml`, and automatic review uses `5.2.0_auto_migration` until the administrator chooses exact `config-version: "5.2.0"`.
 
 5.2.0 introduces Relay Protocol 2.1 as a backward-compatible 2.x capability revision. Protocol major `2` remains the compatibility boundary; product version is diagnostic only. Public reactions, targeted cross-server DM reactions, and remote DM typing use 2.1 extensions, while common v2 public/DM/read behavior remains compatible with the 2.x family.
 
@@ -411,3 +411,16 @@ New user data includes `conversation-archives.db` for private saved-conversation
 
 After upgrade, verify public/DM/group reactions, public/DM/group typing, Saved conversations and PDF/print output, private-room Settings/Invite/Leave permissions, and the 32 px public/DM/group bottom-follow behavior. If multiple relay servers are used, upgrade all peers to 5.2.0/Relay 2.1 to use reaction/typing extensions consistently; common Relay 2.x traffic remains the compatibility baseline.
 
+## Upgrade from KOKOTO WebChat 5.2.x to 5.3.0
+
+Back up the KWC data directory first. 5.3.0 uses `config-version: "5.3.0_auto_migration"` while automatic review is active and writes `config-reference-5.3.0.yml` / `config-migration-5.3.0.yml`. Existing 5.2.x operator values are preserved. The retired `direct-message.confirm-hide` and `group-chat.confirm-hide` keys are migrated to `confirm-delete` with their boolean values preserved.
+
+During this migration, existing Relay `groups[].peers[]` entries are also physically augmented with missing `send` / `receive` policy maps and missing `public-chat`, `event`, `dm`, and `profile` entries, using `true` for compatibility. Explicit map values and scalar `send: false` / `receive: false` values are preserved.
+
+KWC 5.3.0 keeps Relay Protocol 2.2 for the entire release line. Within that same revision, capability negotiation enables sender-owned cross-server DM deletion (`delete`), targeted event requests (`game`), and targeted public profile/presence lookup (`profile`). Public/DM/read/reaction/typing behavior stays on the same Relay v2 trust/encryption boundary. Unsupported optional capabilities fail safely without changing the protocol revision.
+
+DM no longer has a message-level hide-for-me operation: only the sender may delete their own message. Group message deletion is room-wide; ordinary members may delete their own normal messages while room-local owner/admin roles can manage room messages. Group pins are room-local and visible to all members, with pin/reorder/unpin restricted to owner/admin. DM and group stored-history search now use the public-search interaction pattern.
+
+Presence now distinguishes Game and Web connections. Compact lists show Game > Web > Offline, profiles show Game/Web separately, and the account-level Offline status masks both states from other viewers server-side (legacy `invisible` preference data migrates to Offline).
+
+Retest BlueMap refresh/recovery, DM/group search and deletion, group pins/roles, Game/Web presence, Offline privacy, and any cross-server DM delete path after all relevant peers are upgraded.

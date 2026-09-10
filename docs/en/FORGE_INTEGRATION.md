@@ -1,6 +1,6 @@
 # KOKOTO WebChat - Forge
 
-Server-side Forge platform for KOKOTO WebChat 5.2.0. Forge is built as **exact Minecraft-version JARs** rather than one broad-range binary because Forge/Minecraft APIs changed across the supported span.
+Server-side Forge platform for KOKOTO WebChat 5.3.0. Forge is built as **exact Minecraft-version JARs** rather than one broad-range binary because Forge/Minecraft APIs changed across the supported span.
 
 ## Targets
 
@@ -60,7 +60,7 @@ build-all.bat
 ```
 
 
-> `validate-release-windows.bat` and its required PowerShell helpers are included in the source archive. The separate `KWC-5.2.0-validation-tools.zip` contains development-only browser regression tooling and is not required to run release builds.
+> `validate-release-windows.bat`, its required PowerShell helpers, and development regression harnesses under `validation/` are included in the source archive. No separate validation-tools package is required to run the release build.
 
 For repeat Windows builds, append `--fast` to `build-all.bat` or `build-target.bat <minecraft-version>` to skip `clean` and enable the Gradle build cache. The root `validate-release-windows.bat --parallel` option is the clean full-matrix path that builds Bukkit first, then opens separate live Fabric/NeoForge/Forge build windows while the main console aggregates progress.
 
@@ -70,7 +70,7 @@ For repeat Windows builds, append `--fast` to `build-all.bat` or `build-target.b
 
 `./gradlew buildAllForge` remains available and delegates each target to the same JDK-selecting helper instead of running every ForgeGradle generation inside one JVM. Do not run old ForgeGradle targets with the system Java 25 directly: Gradle 7.6.4 cannot run on Java 25 and fails with `Unsupported class file major version 69`.
 
-The deployable Jar-in-Jar artifact is `KOKOTO-WebChat-5.2.0-Forge-<Minecraft>.jar`. ForgeGradle 6/7 targets also produce `KOKOTO-WebChat-5.2.0-Forge-<Minecraft>-slim.jar` as the plain input JAR used to create the final Jar-in-Jar artifact; do not deploy the `-slim.jar` file.
+The deployable Jar-in-Jar artifact is `KOKOTO-WebChat-5.3.0-Forge-<Minecraft>.jar`. ForgeGradle 6/7 targets also produce `KOKOTO-WebChat-5.3.0-Forge-<Minecraft>-slim.jar` as the plain input JAR used to create the final Jar-in-Jar artifact; do not deploy the `-slim.jar` file.
 
 ## Runtime
 

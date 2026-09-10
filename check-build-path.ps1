@@ -1,3 +1,9 @@
+﻿# KWC 파일 안내 / KWC file guide
+# KWC Windows 개발/검증 흐름을 자동화하는 PowerShell 스크립트다.
+# PowerShell script automating part of the KWC Windows development/validation workflow.
+# 실패 시 부분 산출물을 최종 릴리스로 오인하지 않도록 exit code와 검증 marker를 유지한다.
+# Preserve exit codes and validation markers so partial output cannot be mistaken for a final release.
+
 param(
     [Parameter(Mandatory = $true)]
     [string]$Root

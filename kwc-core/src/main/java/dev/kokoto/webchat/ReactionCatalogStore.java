@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * ReactionCatalogStore는 KWC 상태를 메모리/JSONL/SQLite 같은 영속 매체에 저장하고 조회하는 계층이다.
+ * ReactionCatalogStore is a persistence layer storing and reading KWC state from memory, JSONL, SQLite, or another backing store.
+ *
+ * 조회 visibility와 mutation 권한을 분리하고, transaction/atomic rewrite가 필요한 작업은 중간 실패로 데이터가 반쯤 적용되지 않게 해야 한다.
+ * Keep read visibility separate from mutation authorization, and use transactions/atomic rewrites where partial failure could leave inconsistent data.
+ */
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;

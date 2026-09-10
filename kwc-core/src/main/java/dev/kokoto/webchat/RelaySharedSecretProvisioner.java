@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * RelaySharedSecretProvisioner는 서버간 Relay Protocol 2.x의 설정·호스트 계약·전송 데이터를 담당한다.
+ * RelaySharedSecretProvisioner participates in configuration, host contracts, or transport data for Relay Protocol 2.x.
+ *
+ * Relay payload는 서버 경계를 넘으므로 origin/target/sender 식별과 capability negotiation을 신뢰 경계 안에서 다시 검증해야 한다.
+ * Relay payloads cross a server trust boundary, so origin/target/sender identity and capability negotiation must be revalidated inside the trust boundary.
+ */
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;

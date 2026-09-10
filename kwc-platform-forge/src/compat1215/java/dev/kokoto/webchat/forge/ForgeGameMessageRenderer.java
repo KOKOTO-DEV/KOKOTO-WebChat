@@ -1,5 +1,13 @@
 package dev.kokoto.webchat.forge;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * ForgeGameMessageRenderer는 Minecraft/loader 버전 차이를 흡수하는 Forge compatibility shim이다.
+ * ForgeGameMessageRenderer is a Forge compatibility shim absorbing Minecraft/loader API differences across target versions.
+ *
+ * reflection/method signature 분기는 정확한 target 범위에만 적용하고, 공통 runtime 코드가 버전별 API를 직접 참조하지 않게 한다.
+ * Restrict reflection/signature branches to their exact target range and keep version-specific APIs out of common runtime code.
+ */
 import dev.kokoto.webchat.PlatformGameMessage;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;

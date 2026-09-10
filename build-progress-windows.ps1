@@ -1,4 +1,10 @@
-﻿param(
+﻿# KWC 파일 안내 / KWC file guide
+# 여러 build worker의 상태 파일을 읽어 전체/플랫폼별 진행률과 실패 지점을 메인 콘솔에 표시한다.
+# Reads worker state files to display overall/platform progress and failure locations in the main console.
+# 실패 시 부분 산출물을 최종 릴리스로 오인하지 않도록 exit code와 검증 marker를 유지한다.
+# Preserve exit codes and validation markers so partial output cannot be mistaken for a final release.
+
+param(
     [Parameter(Mandatory = $true)][string]$Root,
     [Parameter(Mandatory = $true)][string]$LogDir,
     [Parameter(Mandatory = $true)][string]$Platforms,
@@ -59,7 +65,7 @@ function Write-WorkerFile([object]$state) {
         )
         [System.IO.File]::WriteAllLines($state.WorkerPath, $workerLines, [System.Text.Encoding]::Default)
 
-        $title = "KWC 5.2.1 - $($state.FullLabel) build"
+        $title = "KWC 5.3.0 - $($state.FullLabel) build"
         $windowLines = @(
             '@echo off',
             ('title {0}' -f $title),
@@ -94,7 +100,7 @@ function Start-State([object]$state) {
         $state.Process = Start-Process -FilePath $env:ComSpec -ArgumentList $arg -WorkingDirectory $Root -PassThru
     } else {
         if (-not (Test-Path -LiteralPath $WorkerRunner)) { throw "Worker runner not found: $WorkerRunner" }
-        $title = "KWC 5.2.1 - $($state.FullLabel) build"
+        $title = "KWC 5.3.0 - $($state.FullLabel) build"
         $runnerArgs = '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "{0}" -WorkerPath "{1}" -LogPath "{2}" -ExitCodePath "{3}" -WindowTitle "{4}" -ProjectRoot "{5}" -Platform "{6}"' -f $WorkerRunner, $state.WorkerPath, $state.LogPath, $state.ExitCodePath, $title, $Root, $state.Name
         $state.Process = Start-Process -FilePath 'powershell.exe' -ArgumentList $runnerArgs -PassThru -NoNewWindow
     }

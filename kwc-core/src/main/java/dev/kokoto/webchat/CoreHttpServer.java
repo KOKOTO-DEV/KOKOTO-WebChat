@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * JDK HTTP server lifecycle을 감싸 KWC WebChatServer가 사용할 listener/start/stop 기반을 제공한다.
+ * Wraps JDK HTTP-server lifecycle to provide the listener/start/stop foundation used by WebChatServer.
+ *
+ * bind address, thread executor, graceful stop은 외부 reverse proxy와 서버 재시작 안정성에 직접 영향을 준다.
+ * Bind address, executor behavior, and graceful shutdown directly affect reverse-proxy deployment and restart stability.
+ */
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 

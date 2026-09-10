@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * Storage는 KWC 상태를 메모리/JSONL/SQLite 같은 영속 매체에 저장하고 조회하는 계층이다.
+ * Storage is a persistence layer storing and reading KWC state from memory, JSONL, SQLite, or another backing store.
+ *
+ * 조회 visibility와 mutation 권한을 분리하고, transaction/atomic rewrite가 필요한 작업은 중간 실패로 데이터가 반쯤 적용되지 않게 해야 한다.
+ * Keep read visibility separate from mutation authorization, and use transactions/atomic rewrites where partial failure could leave inconsistent data.
+ */
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -199,6 +207,13 @@ public class Storage implements WebChatStorage {
         pin.pinnedAt = s.getLong("pinnedAt", System.currentTimeMillis());
         pin.sortOrder = s.getLong("sortOrder", pin.pinnedAt);
         pin.pinnedBy = yamlValue(s.getString("pinnedBy"), "");
+        pin.pinnedByUuid = yamlValue(s.getString("pinnedByUuid"), "");
+        pin.pinnedByUsername = yamlValue(s.getString("pinnedByUsername"), "");
+        pin.pinnedByDisplayName = yamlValue(s.getString("pinnedByDisplayName"), pin.pinnedBy);
+        if (pin.pinnedBy.isBlank()) {
+            pin.pinnedBy = !pin.pinnedByDisplayName.isBlank() ? pin.pinnedByDisplayName
+                    : !pin.pinnedByUsername.isBlank() ? pin.pinnedByUsername : pin.pinnedByUuid;
+        }
         pin.time = s.getLong("time", pin.pinnedAt);
         pin.source = yamlValue(s.getString("source"), "web");
         pin.sender = yamlValue(s.getString("sender"), "Unknown");
@@ -225,6 +240,9 @@ public class Storage implements WebChatStorage {
             yml.set(p + "messageId", pin.messageId);
             yml.set(p + "pinnedAt", pin.pinnedAt);
             yml.set(p + "sortOrder", pin.sortOrder);
+            yml.set(p + "pinnedByUuid", pin.pinnedByUuid);
+            yml.set(p + "pinnedByUsername", pin.pinnedByUsername);
+            yml.set(p + "pinnedByDisplayName", pin.pinnedByDisplayName);
             yml.set(p + "pinnedBy", pin.pinnedBy);
             yml.set(p + "time", pin.time);
             yml.set(p + "source", pin.source);
@@ -299,13 +317,13 @@ public class Storage implements WebChatStorage {
         }
     }
 
-    public synchronized PinnedMessage pinMessage(ChatMessage msg, String pinnedBy, int maxPins) {
+    public synchronized PinnedMessage pinMessage(ChatMessage msg, String pinnedByUuid, String pinnedByUsername, String pinnedByDisplayName, int maxPins) {
         if (msg == null || msg.id == null || msg.id.isBlank() || msg.hidden) return null;
         for (PinnedMessage existing : pinnedById.values()) {
             if (msg.id.equals(existing.messageId)) return existing;
         }
         if (maxPins > 0 && pinnedById.size() >= maxPins) return null;
-        PinnedMessage pin = PinnedMessage.fromMessage(msg, pinnedBy);
+        PinnedMessage pin = PinnedMessage.fromMessage(msg, pinnedByUuid, pinnedByUsername, pinnedByDisplayName);
         pinnedById.put(pin.pinId, pin);
         savePinnedMessages();
         return pin;

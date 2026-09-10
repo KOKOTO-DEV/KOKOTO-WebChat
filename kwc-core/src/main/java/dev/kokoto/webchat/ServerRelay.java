@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * ServerRelay는 서버간 Relay Protocol 2.x의 설정·호스트 계약·전송 데이터를 담당한다.
+ * ServerRelay participates in configuration, host contracts, or transport data for Relay Protocol 2.x.
+ *
+ * Relay payload는 서버 경계를 넘으므로 origin/target/sender 식별과 capability negotiation을 신뢰 경계 안에서 다시 검증해야 한다.
+ * Relay payloads cross a server trust boundary, so origin/target/sender identity and capability negotiation must be revalidated inside the trust boundary.
+ */
 import com.sun.net.httpserver.HttpExchange;
 
 import javax.crypto.Cipher;
@@ -30,7 +38,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * KOKOTO WebChat relay protocol 2.x (current revision 2.1).
+ * KOKOTO WebChat relay protocol 2.x (current revision 2.2).
  *
  * Trust is group-scoped: every group owns one shared secret and a peer list. Peer
  * entries never carry a second secret, which prevents group/peer secret drift.
@@ -39,14 +47,19 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * use hop-by-hop AES-256-GCM authenticated encryption. Relay participants are trusted
  * endpoints, not end-to-end opaque forwarders.
  */
+/**
+ * KWC 유지보수 안내: 여러 KWC 서버 사이의 Relay Protocol 2.x(현재 revision 2.2)를 구현한다. peer 요청은 shared secret 기반 인증과 AES-256-GCM hop-by-hop 암호화를 사용하며, public/DM/read/reaction/typing/delete/game/profile capability를 명시적으로 분리한다. DM delete는 지정한 target server에만 전달하고 sender identity + relay id를 검증해야 한다.
+ *
+ * KWC maintenance note: Implements KWC Relay Protocol 2.x (current revision 2.2) between servers. Peer requests use shared-secret authentication and hop-by-hop AES-256-GCM encryption, with explicit public/DM/read/reaction/typing/delete/game/profile capabilities. DM delete is targeted to one server and must validate sender identity plus relay ID.
+ */
 public final class ServerRelay implements AutoCloseable {
     /** Major wire compatibility. Keep this at 2 for all backward-compatible 2.x revisions. */
     private static final String PROTOCOL_MAJOR = "2";
-    /** Human/diagnostic protocol revision. 2.1 adds optional reaction/typing capabilities, including origin-authoritative reaction requests/commits. */
-    private static final String PROTOCOL_REVISION = "2.1";
+    /** Human/diagnostic protocol revision. KWC 5.3.0 stays on 2.2; optional delete/game/profile features are capability-negotiated within that revision. */
+    private static final String PROTOCOL_REVISION = "2.2";
     /** Existing 2.0 probe canonical embedded the then-current product version. Accept it only as a compatibility fallback. */
     private static final String LEGACY_V20_HANDSHAKE_PRODUCT_VERSION = "5.2.0";
-    private static final String CAPABILITIES_CSV = "public,dm,read,reaction,reaction-authority,typing";
+    private static final String CAPABILITIES_CSV = "public,dm,read,delete,reaction,reaction-authority,typing,game,profile";
     private static final String HEADER_VERSION = "X-KWC-Relay-Version";
     private static final String HEADER_PROTOCOL = "X-KWC-Relay-Protocol";
     private static final String HEADER_CAPABILITIES = "X-KWC-Relay-Capabilities";
@@ -119,7 +132,7 @@ public final class ServerRelay implements AutoCloseable {
                     if (safe(peer.url).isBlank()) { diagnostics.add("group " + gid + " peer " + pid + " has no URL and was ignored"); continue; }
                     try { relayBaseUri(peer.url); }
                     catch (IllegalArgumentException ex) { diagnostics.add("group " + gid + " peer " + pid + " has an invalid URL and was ignored: " + ex.getMessage()); continue; }
-                    PeerRef pref = new PeerRef(ref, new RelaySettings.Peer(pid, peer.url, true));
+                    PeerRef pref = new PeerRef(ref, new RelaySettings.Peer(pid, peer.url, true, peer.send, peer.receive));
                     ref.peers.put(pid, pref);
                     peerCounts.merge(pid, 1, Integer::sum);
                 }
@@ -195,12 +208,34 @@ public final class ServerRelay implements AutoCloseable {
     public String serverId() { return serverId; }
     public String serverName() { return serverName; }
 
-    public boolean canRouteDirectMessage(String targetServerId) {
+    /** Targeted Relay 2.2 `game` capability event request. It is point-to-point and never broadcast to unrelated peers. */
+    public CompletableFuture<ChatGameRelayResponse> requestChatGame(String targetServerId, String payloadJson) {
+        String target = normalizeId(targetServerId);
+        if (!canRoute(target, TrafficClass.EVENT)) return CompletableFuture.completedFuture(ChatGameRelayResponse.failed("remote_server_unavailable", 503));
+        ChatGameRequestEnvelope envelope = ChatGameRequestEnvelope.create(serverId, target, payloadJson);
+        if (!envelope.valid()) return CompletableFuture.completedFuture(ChatGameRelayResponse.failed("invalid_envelope", 400));
+        return sendChatGameRequestToPeers(envelope, "", null);
+    }
+
+    /** Targeted Relay 2.2 `profile` capability public profile/presence request. It follows the same deterministic point-to-point routing rule as DM/event requests. */
+    public CompletableFuture<ProfileRelayResponse> requestUserProfile(String targetServerId, String payloadJson) {
+        String target = normalizeId(targetServerId);
+        if (!canRoute(target, TrafficClass.PROFILE)) return CompletableFuture.completedFuture(ProfileRelayResponse.failed("remote_server_unavailable", 503));
+        ProfileRequestEnvelope envelope = ProfileRequestEnvelope.create(serverId, target, payloadJson);
+        if (!envelope.valid()) return CompletableFuture.completedFuture(ProfileRelayResponse.failed("invalid_envelope", 400));
+        return sendProfileRequestToPeers(envelope, "", null);
+    }
+
+    public boolean canRouteDirectMessage(String targetServerId) { return canRoute(targetServerId, TrafficClass.DM); }
+    public boolean canRouteChatGame(String targetServerId) { return canRoute(targetServerId, TrafficClass.EVENT); }
+    public boolean canRouteProfile(String targetServerId) { return canRoute(targetServerId, TrafficClass.PROFILE); }
+
+    private boolean canRoute(String targetServerId, TrafficClass trafficClass) {
         String target = normalizeId(targetServerId);
         if (!isEnabled() || target.isBlank() || target.equals(serverId)) return false;
         PeerRef direct = peersById.get(target);
-        if (direct != null) return !isBackedOff(direct.id());
-        return uniqueForwardingNextHop(null, "", target) != null;
+        if (direct != null) return isPeerUsable(direct, false, trafficClass);
+        return uniqueForwardingNextHop(null, "", target, trafficClass) != null;
     }
 
     public String createDirectMessageRelayId() { return "dmrelay-" + SecurityUtil.randomToken(16); }
@@ -243,6 +278,16 @@ public final class ServerRelay implements AutoCloseable {
         return sendDirectReadWithRetry(envelope, 0);
     }
 
+    // DM sender-authoritative delete를 지정한 target server 하나에만 전송한다. broadcast를 사용하지 않아 관계없는 peer가 private delete metadata를 보지 않게 한다.
+    // Sends sender-authoritative DM delete to exactly one target server. It deliberately avoids broadcast so unrelated peers never receive private delete metadata.
+    public CompletableFuture<Boolean> publishDirectMessageDelete(String targetServerId, String senderUuid, String messageRelayId) {
+        String target = normalizeId(targetServerId);
+        if (!canRouteDirectMessage(target)) return CompletableFuture.completedFuture(false);
+        DirectMessageDeleteEnvelope envelope = DirectMessageDeleteEnvelope.create(serverId, target, senderUuid, messageRelayId);
+        if (!envelope.valid()) return CompletableFuture.completedFuture(false);
+        return sendDirectDeleteWithRetry(envelope, 0);
+    }
+
     public CompletableFuture<Boolean> publishDirectTyping(String targetServerId, String senderUuid, String senderUsername,
                                                            String senderDisplayName, String targetUuid, long expiresAt) {
         String target = normalizeId(targetServerId);
@@ -263,6 +308,15 @@ public final class ServerRelay implements AutoCloseable {
         });
     }
 
+    private CompletableFuture<Boolean> sendDirectDeleteWithRetry(DirectMessageDeleteEnvelope envelope, int attempt) {
+        return sendDirectDeleteToPeers(envelope, "", null).thenCompose(ok -> {
+            if (ok || attempt >= 2 || closed.get()) return CompletableFuture.completedFuture(ok);
+            long delayMs = attempt == 0 ? 500L : 1500L;
+            return CompletableFuture.supplyAsync(() -> Boolean.TRUE, CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS))
+                    .thenCompose(ignored -> sendDirectDeleteWithRetry(envelope, attempt + 1));
+        });
+    }
+
     public boolean shouldRelay(ChatMessage msg) {
         if (!isEnabled() || msg == null) return false;
         String source = safe(msg.source).toLowerCase(Locale.ROOT);
@@ -270,7 +324,8 @@ public final class ServerRelay implements AutoCloseable {
         if (source.equals("web")) return config.webChat;
         if (source.equals("guest")) return config.guestChat;
         if (source.equals("discord")) return config.discordChat;
-        return config.systemEvents && (source.equals("event") || source.equals("system") || source.equals("server"));
+        if (source.equals("event")) return config.eventAnnouncements;
+        return config.systemEvents && (source.equals("system") || source.equals("server"));
     }
 
     public void prepareLocal(ChatMessage msg) {
@@ -358,6 +413,8 @@ public final class ServerRelay implements AutoCloseable {
         sendJson(exchange, 426, protocolErrorJson("relay_protocol_upgrade_required"));
     }
 
+    // peer 설정/secret/protocol 호환을 확인하는 진단 endpoint다. 실제 message 인증 상태를 세션처럼 저장하지 않으며 각 relay message는 독립적으로 다시 인증된다.
+    // Diagnostic endpoint checking peer configuration, secret, and protocol compatibility. It does not create authenticated session state; every relay message is independently authenticated again.
     public void handleHandshake(HttpExchange exchange) throws IOException {
         if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) { sendJson(exchange, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
         if (!isEnabled()) { sendJson(exchange, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}"); return; }
@@ -385,12 +442,14 @@ public final class ServerRelay implements AutoCloseable {
         // Stateless probe only. Relay traffic itself uses 5.0.0-style request-by-request
         // authentication/encryption; this diagnostic endpoint never creates routing state.
         String body = "{\"ok\":true,\"protocolMajor\":2,\"protocol\":" + JsonUtil.quote(PROTOCOL_REVISION)
-                + ",\"capabilities\":[\"public\",\"dm\",\"read\",\"reaction\",\"reaction-authority\",\"typing\"]"
+                + ",\"capabilities\":[\"public\",\"dm\",\"read\",\"delete\",\"reaction\",\"reaction-authority\",\"typing\",\"game\",\"profile\"]"
                 + ",\"serverVersion\":" + JsonUtil.quote(safe(host.productVersion())) + ",\"serverId\":" + JsonUtil.quote(serverId)
                 + ",\"groupId\":" + JsonUtil.quote(peer.group.id) + ",\"nonce\":" + JsonUtil.quote(meta.nonce) + "}";
         signedResponse(exchange, 200, body, peer, meta.nonce);
     }
 
+    // 암호화된 relay envelope의 header/signature/timestamp/replay 조건을 검증하고 복호화한 뒤 kind별 handler로 분배한다. 검증 전에 payload 내용을 신뢰하지 않는다.
+    // Validates headers, signature, timestamp, and replay conditions on an encrypted relay envelope, decrypts it, then dispatches by kind. Payload contents are never trusted before envelope validation.
     public void handleMessage(HttpExchange exchange) throws IOException {
         if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) { sendJson(exchange, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
         if (!isEnabled()) { sendJson(exchange, 404, "{\"ok\":false,\"error\":\"relay_disabled\"}"); return; }
@@ -413,13 +472,21 @@ public final class ServerRelay implements AutoCloseable {
         if (split <= 0) { signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_message\"}", peer, meta.nonce); return; }
         String kind = plaintext.substring(0, split);
         String payload = plaintext.substring(split + 1);
+        TrafficClass trafficClass = trafficClass(kind, payload);
+        if (!peerAllowsReceive(peer, trafficClass)) {
+            signedResponse(exchange, 403, "{\"ok\":false,\"error\":\"peer_receive_disabled\"}", peer, meta.nonce);
+            return;
+        }
         switch (kind) {
             case "public" -> handlePublicPayload(exchange, peer, meta, payload);
             case "reaction-request" -> handleReactionRequestPayload(exchange, peer, meta, payload);
             case "reaction" -> handleReactionPayload(exchange, peer, meta, payload);
             case "dm" -> handleDirectPayload(exchange, peer, meta, payload);
             case "read" -> handleReadPayload(exchange, peer, meta, payload);
+            case "delete" -> handleDeletePayload(exchange, peer, meta, payload);
             case "typing" -> handleTypingPayload(exchange, peer, meta, payload);
+            case "game-request" -> handleChatGameRequestPayload(exchange, peer, meta, payload);
+            case "profile-request" -> handleProfileRequestPayload(exchange, peer, meta, payload);
             default -> signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"unknown_message_kind\"}", peer, meta.nonce);
         }
     }
@@ -510,6 +577,61 @@ public final class ServerRelay implements AutoCloseable {
         }
     }
 
+    private void handleChatGameRequestPayload(HttpExchange exchange, PeerRef peer, RequestMeta meta, String payload) throws IOException {
+        ChatGameRequestEnvelope envelope = ChatGameRequestEnvelope.fromMap(JsonUtil.parseFlatObject(payload));
+        if (!envelope.valid() || !peer.id().equals(envelope.fromServerId) || envelope.hop < 0 || envelope.hop >= config.maxHops) {
+            signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_game_request\"}", peer, meta.nonce); return;
+        }
+        if (envelope.targetServerId.equals(serverId)) {
+            String requestJson = envelope.decodePayload();
+            if (requestJson.isBlank()) { signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_game_request\"}", peer, meta.nonce); return; }
+            String response = host.handleChatGameRelayRequest(envelope.originServerId, requestJson);
+            if (safe(response).isBlank()) response = "{\"ok\":false,\"error\":\"game_relay_unavailable\"}";
+            signedResponse(exchange, 200, response, peer, meta.nonce);
+            return;
+        }
+        if (!peer.group.forwardingEnabled || !isHttpsPeer(peer)) {
+            signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"forwarding_disabled_or_http_hop\"}", peer, meta.nonce); return;
+        }
+        if (envelope.hop + 1 >= config.maxHops) {
+            signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"max_hops\"}", peer, meta.nonce); return;
+        }
+        envelope.hop++; envelope.fromServerId = serverId;
+        ChatGameRelayResponse forwarded;
+        try { forwarded = sendChatGameRequestToPeers(envelope, peer.id(), peer.group).get(Math.max(2, config.requestTimeoutSeconds + 2L), TimeUnit.SECONDS); }
+        catch (Exception ex) { signedResponse(exchange, 504, "{\"ok\":false,\"error\":\"game_forward_timeout\"}", peer, meta.nonce); return; }
+        if (forwarded == null) { signedResponse(exchange, 502, "{\"ok\":false,\"error\":\"game_route_unavailable\"}", peer, meta.nonce); return; }
+        signedResponse(exchange, forwarded.status, safe(forwarded.body).isBlank() ? "{\"ok\":false,\"error\":\"game_route_unavailable\"}" : forwarded.body, peer, meta.nonce);
+    }
+
+
+    private void handleProfileRequestPayload(HttpExchange exchange, PeerRef peer, RequestMeta meta, String payload) throws IOException {
+        ProfileRequestEnvelope envelope = ProfileRequestEnvelope.fromMap(JsonUtil.parseFlatObject(payload));
+        if (!envelope.valid() || !peer.id().equals(envelope.fromServerId) || envelope.hop < 0 || envelope.hop >= config.maxHops) {
+            signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_profile_request\"}", peer, meta.nonce); return;
+        }
+        if (envelope.targetServerId.equals(serverId)) {
+            String requestJson = envelope.decodePayload();
+            if (requestJson.isBlank()) { signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_profile_request\"}", peer, meta.nonce); return; }
+            String response = host.handleProfileRelayRequest(envelope.originServerId, requestJson);
+            if (safe(response).isBlank()) response = "{\"ok\":false,\"error\":\"profile_relay_unavailable\"}";
+            signedResponse(exchange, 200, response, peer, meta.nonce);
+            return;
+        }
+        if (!peer.group.forwardingEnabled || !isHttpsPeer(peer)) {
+            signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"forwarding_disabled_or_http_hop\"}", peer, meta.nonce); return;
+        }
+        if (envelope.hop + 1 >= config.maxHops) {
+            signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"max_hops\"}", peer, meta.nonce); return;
+        }
+        envelope.hop++; envelope.fromServerId = serverId;
+        ProfileRelayResponse forwarded;
+        try { forwarded = sendProfileRequestToPeers(envelope, peer.id(), peer.group).get(Math.max(2, config.requestTimeoutSeconds + 2L), TimeUnit.SECONDS); }
+        catch (Exception ex) { signedResponse(exchange, 504, "{\"ok\":false,\"error\":\"profile_forward_timeout\"}", peer, meta.nonce); return; }
+        if (forwarded == null) { signedResponse(exchange, 502, "{\"ok\":false,\"error\":\"profile_route_unavailable\"}", peer, meta.nonce); return; }
+        signedResponse(exchange, forwarded.status, safe(forwarded.body).isBlank() ? "{\"ok\":false,\"error\":\"profile_route_unavailable\"}" : forwarded.body, peer, meta.nonce);
+    }
+
     private void handleDirectPayload(HttpExchange exchange, PeerRef peer, RequestMeta meta, String payload) throws IOException {
         DirectMessageEnvelope envelope = DirectMessageEnvelope.fromMap(JsonUtil.parseFlatObject(payload));
         if (!envelope.valid() || !peer.id().equals(envelope.fromServerId) || envelope.hop < 0 || envelope.hop >= config.maxHops) {
@@ -571,6 +693,28 @@ public final class ServerRelay implements AutoCloseable {
         catch (Exception ex) { signedResponse(exchange, 504, "{\"ok\":false,\"error\":\"dm_read_forward_timeout\"}", peer, meta.nonce); return; }
         if (!forwarded) { signedResponse(exchange, 502, "{\"ok\":false,\"error\":\"dm_read_route_unavailable\"}", peer, meta.nonce); return; }
         signedResponse(exchange, 200, "{\"ok\":true,\"read\":true,\"forwarded\":true}", peer, meta.nonce);
+    }
+
+    private void handleDeletePayload(HttpExchange exchange, PeerRef peer, RequestMeta meta, String payload) throws IOException {
+        DirectMessageDeleteEnvelope envelope = DirectMessageDeleteEnvelope.fromMap(JsonUtil.parseFlatObject(payload));
+        if (!envelope.valid() || !peer.id().equals(envelope.fromServerId) || envelope.hop < 0 || envelope.hop >= config.maxHops) {
+            signedResponse(exchange, 400, "{\"ok\":false,\"error\":\"invalid_envelope\"}", peer, meta.nonce); return;
+        }
+        if (envelope.targetServerId.equals(serverId)) {
+            boolean applied = host.applyDirectMessageDelete(envelope.originServerId, envelope.senderUuid, envelope.messageRelayId);
+            if (!applied) { signedResponse(exchange, 404, "{\"ok\":false,\"error\":\"message_not_found\"}", peer, meta.nonce); return; }
+            signedResponse(exchange, 200, "{\"ok\":true,\"deleted\":true}", peer, meta.nonce); return;
+        }
+        if (!peer.group.forwardingEnabled || !isHttpsPeer(peer)) {
+            signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"forwarding_disabled_or_http_hop\"}", peer, meta.nonce); return;
+        }
+        if (envelope.hop + 1 >= config.maxHops) { signedResponse(exchange, 409, "{\"ok\":false,\"error\":\"max_hops\"}", peer, meta.nonce); return; }
+        envelope.hop++; envelope.fromServerId = serverId;
+        boolean forwarded;
+        try { forwarded = sendDirectDeleteToPeers(envelope, peer.id(), peer.group).get(Math.max(2, config.requestTimeoutSeconds + 2L), TimeUnit.SECONDS); }
+        catch (Exception ex) { signedResponse(exchange, 504, "{\"ok\":false,\"error\":\"dm_delete_forward_timeout\"}", peer, meta.nonce); return; }
+        if (!forwarded) { signedResponse(exchange, 502, "{\"ok\":false,\"error\":\"dm_delete_route_unavailable\"}", peer, meta.nonce); return; }
+        signedResponse(exchange, 200, "{\"ok\":true,\"deleted\":true,\"forwarded\":true}", peer, meta.nonce);
     }
 
     private void handleTypingPayload(HttpExchange exchange, PeerRef peer, RequestMeta meta, String payload) throws IOException {
@@ -638,9 +782,10 @@ public final class ServerRelay implements AutoCloseable {
         if (!isEnabled() || envelope == null || group == null) return;
         if (forwarding && !group.forwardingEnabled) return;
         String payload = envelope.toJson();
+        TrafficClass trafficClass = "event".equalsIgnoreCase(safe(envelope.source)) ? TrafficClass.EVENT : TrafficClass.PUBLIC_CHAT;
         for (PeerRef peer : group.peers.values()) {
             if (peer.id().equals(excludePeerId) || peer.id().equals(envelope.originServerId)) continue;
-            if (!isPeerUsable(peer, forwarding)) continue;
+            if (!isPeerUsable(peer, forwarding, trafficClass)) continue;
             sendMessage(peer, "public", payload).thenAccept(x -> {});
         }
     }
@@ -651,7 +796,7 @@ public final class ServerRelay implements AutoCloseable {
         String payload = envelope.toJson();
         for (PeerRef peer : group.peers.values()) {
             if (peer.id().equals(excludePeerId) || peer.id().equals(envelope.originServerId)) continue;
-            if (!isPeerUsable(peer, forwarding)) continue;
+            if (!isPeerUsable(peer, forwarding, TrafficClass.PUBLIC_CHAT)) continue;
             sendMessage(peer, "reaction", payload).thenAccept(x -> {});
         }
     }
@@ -660,14 +805,39 @@ public final class ServerRelay implements AutoCloseable {
                                                                                  String excludePeerId,
                                                                                  GroupRef groupConstraint) {
         if (!isEnabled() || envelope == null) return CompletableFuture.completedFuture(ReactionRequestResult.retryable("relay_disabled", 503));
+        TrafficClass trafficClass = "dm".equals(envelope.scope) ? TrafficClass.DM : TrafficClass.PUBLIC_CHAT;
         PeerRef direct = peersById.get(envelope.targetServerId);
         if (direct != null && (groupConstraint == null || direct.group == groupConstraint) && !direct.id().equals(excludePeerId)) {
             boolean forwarding = !safe(excludePeerId).isBlank() || envelope.hop > 0;
-            if (isPeerUsable(direct, forwarding)) return sendReactionRequest(direct, envelope.toJson());
+            if (isPeerUsable(direct, forwarding, trafficClass)) return sendReactionRequest(direct, envelope.toJson());
         }
-        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId);
+        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId, trafficClass);
         if (next == null) return CompletableFuture.completedFuture(ReactionRequestResult.retryable("reaction_route_unavailable", 502));
         return sendReactionRequest(next, envelope.toJson());
+    }
+
+    private CompletableFuture<ChatGameRelayResponse> sendChatGameRequestToPeers(ChatGameRequestEnvelope envelope, String excludePeerId, GroupRef groupConstraint) {
+        if (!isEnabled() || envelope == null) return CompletableFuture.completedFuture(ChatGameRelayResponse.failed("relay_disabled", 503));
+        PeerRef direct = peersById.get(envelope.targetServerId);
+        if (direct != null && (groupConstraint == null || direct.group == groupConstraint) && !direct.id().equals(excludePeerId)) {
+            boolean forwarding = !safe(excludePeerId).isBlank() || envelope.hop > 0;
+            if (isPeerUsable(direct, forwarding, TrafficClass.EVENT)) return sendChatGameRequest(direct, envelope.toJson());
+        }
+        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId, TrafficClass.EVENT);
+        if (next == null) return CompletableFuture.completedFuture(ChatGameRelayResponse.failed("game_route_unavailable", 502));
+        return sendChatGameRequest(next, envelope.toJson());
+    }
+
+    private CompletableFuture<ProfileRelayResponse> sendProfileRequestToPeers(ProfileRequestEnvelope envelope, String excludePeerId, GroupRef groupConstraint) {
+        if (!isEnabled() || envelope == null) return CompletableFuture.completedFuture(ProfileRelayResponse.failed("relay_disabled", 503));
+        PeerRef direct = peersById.get(envelope.targetServerId);
+        if (direct != null && (groupConstraint == null || direct.group == groupConstraint) && !direct.id().equals(excludePeerId)) {
+            boolean forwarding = !safe(excludePeerId).isBlank() || envelope.hop > 0;
+            if (isPeerUsable(direct, forwarding, TrafficClass.PROFILE)) return sendProfileRequest(direct, envelope.toJson());
+        }
+        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId, TrafficClass.PROFILE);
+        if (next == null) return CompletableFuture.completedFuture(ProfileRelayResponse.failed("profile_route_unavailable", 502));
+        return sendProfileRequest(next, envelope.toJson());
     }
 
     private CompletableFuture<DirectMessageDelivery> sendDirectToPeers(DirectMessageEnvelope envelope, String excludePeerId, GroupRef groupConstraint) {
@@ -675,9 +845,9 @@ public final class ServerRelay implements AutoCloseable {
         PeerRef direct = peersById.get(envelope.targetServerId);
         if (direct != null && (groupConstraint == null || direct.group == groupConstraint) && !direct.id().equals(excludePeerId)) {
             boolean forwarding = !safe(excludePeerId).isBlank() || envelope.hop > 0;
-            if (isPeerUsable(direct, forwarding)) return sendDirect(direct, envelope.toJson());
+            if (isPeerUsable(direct, forwarding, TrafficClass.DM)) return sendDirect(direct, envelope.toJson());
         }
-        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId);
+        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId, TrafficClass.DM);
         if (next == null) return CompletableFuture.completedFuture(DirectMessageDelivery.failed("dm_route_unavailable", 404));
         return sendDirect(next, envelope.toJson());
     }
@@ -687,10 +857,21 @@ public final class ServerRelay implements AutoCloseable {
         PeerRef direct = peersById.get(envelope.targetServerId);
         if (direct != null && (groupConstraint == null || direct.group == groupConstraint) && !direct.id().equals(excludePeerId)) {
             boolean forwarding = !safe(excludePeerId).isBlank() || envelope.hop > 0;
-            if (isPeerUsable(direct, forwarding)) return sendRead(direct, envelope.toJson());
+            if (isPeerUsable(direct, forwarding, TrafficClass.DM)) return sendRead(direct, envelope.toJson());
         }
-        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId);
+        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId, TrafficClass.DM);
         return next == null ? CompletableFuture.completedFuture(false) : sendRead(next, envelope.toJson());
+    }
+
+    private CompletableFuture<Boolean> sendDirectDeleteToPeers(DirectMessageDeleteEnvelope envelope, String excludePeerId, GroupRef groupConstraint) {
+        if (!isEnabled() || envelope == null) return CompletableFuture.completedFuture(false);
+        PeerRef direct = peersById.get(envelope.targetServerId);
+        if (direct != null && (groupConstraint == null || direct.group == groupConstraint) && !direct.id().equals(excludePeerId)) {
+            boolean forwarding = !safe(excludePeerId).isBlank() || envelope.hop > 0;
+            if (isPeerUsable(direct, forwarding, TrafficClass.DM)) return sendDelete(direct, envelope.toJson());
+        }
+        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId, TrafficClass.DM);
+        return next == null ? CompletableFuture.completedFuture(false) : sendDelete(next, envelope.toJson());
     }
 
     private void sendPublicTypingToGroup(PublicTypingEnvelope envelope, GroupRef group, String excludePeerId, boolean forwarding) {
@@ -699,7 +880,7 @@ public final class ServerRelay implements AutoCloseable {
         String payload = envelope.toJson();
         for (PeerRef peer : group.peers.values()) {
             if (peer.id().equals(excludePeerId) || peer.id().equals(envelope.originServerId)) continue;
-            if (!isPeerUsable(peer, forwarding)) continue;
+            if (!isPeerUsable(peer, forwarding, TrafficClass.PUBLIC_CHAT)) continue;
             sendTyping(peer, payload).thenAccept(x -> {});
         }
     }
@@ -709,20 +890,20 @@ public final class ServerRelay implements AutoCloseable {
         PeerRef direct = peersById.get(envelope.targetServerId);
         if (direct != null && (groupConstraint == null || direct.group == groupConstraint) && !direct.id().equals(excludePeerId)) {
             boolean forwarding = !safe(excludePeerId).isBlank() || envelope.hop > 0;
-            if (isPeerUsable(direct, forwarding)) return sendTyping(direct, envelope.toJson());
+            if (isPeerUsable(direct, forwarding, TrafficClass.DM)) return sendTyping(direct, envelope.toJson());
         }
-        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId);
+        PeerRef next = uniqueForwardingNextHop(groupConstraint, excludePeerId, envelope.targetServerId, TrafficClass.DM);
         return next == null ? CompletableFuture.completedFuture(false) : sendTyping(next, envelope.toJson());
     }
 
-    private PeerRef uniqueForwardingNextHop(GroupRef groupConstraint, String excludePeerId, String targetServerId) {
+    private PeerRef uniqueForwardingNextHop(GroupRef groupConstraint, String excludePeerId, String targetServerId, TrafficClass trafficClass) {
         PeerRef found = null;
         for (GroupRef group : groupsById.values()) {
             if (groupConstraint != null && group != groupConstraint) continue;
             if (!group.forwardingEnabled) continue;
             for (PeerRef peer : group.peers.values()) {
                 if (peer.id().equals(excludePeerId) || peer.id().equals(serverId) || peer.id().equals(targetServerId)) continue;
-                if (!isPeerUsable(peer, true)) continue;
+                if (!isPeerUsable(peer, true, trafficClass)) continue;
                 if (found != null) return null; // deterministic routing only; avoid accidental fan-out.
                 found = peer;
             }
@@ -757,13 +938,35 @@ public final class ServerRelay implements AutoCloseable {
         });
     }
 
+    private CompletableFuture<ChatGameRelayResponse> sendChatGameRequest(PeerRef peer, String json) {
+        return sendMessage(peer, "game-request", json).thenApply(result -> {
+            if (result == null) return ChatGameRelayResponse.failed("game_transport_error", 502);
+            return new ChatGameRelayResponse(result.status, result.body, result.status >= 200 && result.status < 300 ? "" : "remote_http_" + result.status);
+        });
+    }
+
+    private CompletableFuture<ProfileRelayResponse> sendProfileRequest(PeerRef peer, String json) {
+        return sendMessage(peer, "profile-request", json).thenApply(result -> {
+            if (result == null) return ProfileRelayResponse.failed("profile_transport_error", 502);
+            return new ProfileRelayResponse(result.status, result.body, result.status >= 200 && result.status < 300 ? "" : "remote_http_" + result.status);
+        });
+    }
+
     private CompletableFuture<Boolean> sendRead(PeerRef peer, String json) {
         return sendMessage(peer, "read", json).thenApply(result -> result != null && result.status >= 200 && result.status < 300
                 && Boolean.parseBoolean(safe(JsonUtil.parseFlatObject(result.body).get("read"))));
     }
 
+    private CompletableFuture<Boolean> sendDelete(PeerRef peer, String json) {
+        return sendMessage(peer, "delete", json).thenApply(result -> result != null && result.status >= 200 && result.status < 300
+                && Boolean.parseBoolean(safe(JsonUtil.parseFlatObject(result.body).get("deleted"))));
+    }
+
     private CompletableFuture<SignedResult> sendMessage(PeerRef peer, String kind, String json) {
         if (peer == null || isBackedOff(peer.id())) return CompletableFuture.completedFuture(null);
+        if (!peerAllowsSend(peer, trafficClass(kind, json))) {
+            return CompletableFuture.completedFuture(new SignedResult(403, "{\"ok\":false,\"error\":\"peer_send_disabled\"}"));
+        }
         try {
             long timestamp = System.currentTimeMillis();
             String nonce = SecurityUtil.randomToken(18);
@@ -914,6 +1117,48 @@ public final class ServerRelay implements AutoCloseable {
         return peer != null && peersById.get(peerId) == peer ? peer : null;
     }
 
+    private enum TrafficClass { PUBLIC_CHAT, EVENT, DM, PROFILE }
+
+    private static TrafficClass trafficClass(String kind, String payload) {
+        String normalizedKind = safe(kind).trim().toLowerCase(Locale.ROOT);
+        if (normalizedKind.equals("game-request")) return TrafficClass.EVENT;
+        if (normalizedKind.equals("profile-request")) return TrafficClass.PROFILE;
+        if (normalizedKind.equals("dm") || normalizedKind.equals("read") || normalizedKind.equals("delete")) return TrafficClass.DM;
+        if (normalizedKind.equals("reaction-request")) {
+            return "dm".equalsIgnoreCase(safe(JsonUtil.parseFlatObject(payload).get("scope"))) ? TrafficClass.DM : TrafficClass.PUBLIC_CHAT;
+        }
+        if (normalizedKind.equals("typing")) {
+            return "public".equalsIgnoreCase(safe(JsonUtil.parseFlatObject(payload).get("scope"))) ? TrafficClass.PUBLIC_CHAT : TrafficClass.DM;
+        }
+        if (normalizedKind.equals("public")) {
+            String source = safe(JsonUtil.parseFlatObject(payload).get("source")).trim().toLowerCase(Locale.ROOT);
+            return source.equals("event") ? TrafficClass.EVENT : TrafficClass.PUBLIC_CHAT;
+        }
+        return TrafficClass.PUBLIC_CHAT;
+    }
+
+    private static boolean policyAllows(RelaySettings.DirectionPolicy policy, TrafficClass trafficClass) {
+        if (policy == null || !policy.enabled) return false;
+        return switch (trafficClass) {
+            case EVENT -> policy.event;
+            case DM -> policy.dm;
+            case PROFILE -> policy.profile;
+            case PUBLIC_CHAT -> policy.publicChat;
+        };
+    }
+
+    private static boolean peerAllowsSend(PeerRef peer, TrafficClass trafficClass) {
+        return peer != null && policyAllows(peer.peer.send, trafficClass);
+    }
+
+    private static boolean peerAllowsReceive(PeerRef peer, TrafficClass trafficClass) {
+        return peer != null && policyAllows(peer.peer.receive, trafficClass);
+    }
+
+    private boolean isPeerUsable(PeerRef peer, boolean forwarding, TrafficClass trafficClass) {
+        return isPeerUsable(peer, forwarding) && peerAllowsSend(peer, trafficClass);
+    }
+
     private boolean isPeerUsable(PeerRef peer, boolean forwarding) {
         if (peer == null || isBackedOff(peer.id())) return false;
         if (!forwarding) return true;
@@ -1023,6 +1268,29 @@ public final class ServerRelay implements AutoCloseable {
     private record SignedResult(int status,String body){}
     private record RequestMeta(String groupId,String fromId,String toId,long timestamp,String nonce,String iv,int status,String error){}
 
+    public static final class ChatGameRelayResponse {
+        public final int status;
+        public final String body;
+        public final String error;
+        private ChatGameRelayResponse(int status, String body, String error) { this.status = status; this.body = body == null ? "" : body; this.error = error == null ? "" : error; }
+        public static ChatGameRelayResponse failed(String error, int status) {
+            String e = safe(error).isBlank() ? "game_relay_failed" : safe(error);
+            return new ChatGameRelayResponse(status, "{\"ok\":false,\"error\":" + JsonUtil.quote(e) + "}", e);
+        }
+    }
+
+
+    public static final class ProfileRelayResponse {
+        public final int status;
+        public final String body;
+        public final String error;
+        private ProfileRelayResponse(int status, String body, String error) { this.status = status; this.body = body == null ? "" : body; this.error = error == null ? "" : error; }
+        public static ProfileRelayResponse failed(String error, int status) {
+            String e = safe(error).isBlank() ? "profile_relay_failed" : safe(error);
+            return new ProfileRelayResponse(status, "{\"ok\":false,\"error\":" + JsonUtil.quote(e) + "}", e);
+        }
+    }
+
     public static final class DirectMessageDelivery {
         public final boolean delivered;
         public final String error;
@@ -1040,6 +1308,157 @@ public final class ServerRelay implements AutoCloseable {
 
         public static DirectMessageDelivery failed(String error, int httpStatus) {
             return new DirectMessageDelivery(false, error == null || error.isBlank() ? "delivery_failed" : error, httpStatus);
+        }
+    }
+
+    private static final class ChatGameRequestEnvelope {
+        String requestId;
+        String originServerId;
+        String fromServerId;
+        String targetServerId;
+        String payloadB64;
+        int hop;
+
+        static ChatGameRequestEnvelope create(String originServerId, String targetServerId, String payloadJson) {
+            ChatGameRequestEnvelope e = new ChatGameRequestEnvelope();
+            e.requestId = "game-" + SecurityUtil.randomToken(12);
+            e.originServerId = normalizeId(originServerId);
+            e.fromServerId = e.originServerId;
+            e.targetServerId = normalizeId(targetServerId);
+            e.payloadB64 = Base64.getUrlEncoder().withoutPadding().encodeToString(safe(payloadJson).getBytes(StandardCharsets.UTF_8));
+            e.hop = 0;
+            return e;
+        }
+
+        static ChatGameRequestEnvelope fromMap(Map<String,String> map) {
+            ChatGameRequestEnvelope e = new ChatGameRequestEnvelope();
+            e.requestId = limit(safe(map.get("requestId")), 180);
+            e.originServerId = normalizeId(map.get("originServerId"));
+            e.fromServerId = normalizeId(map.get("fromServerId"));
+            e.targetServerId = normalizeId(map.get("targetServerId"));
+            e.payloadB64 = limit(safe(map.get("payloadB64")), MAX_BODY_BYTES);
+            try { e.hop = Integer.parseInt(safe(map.get("hop"))); } catch (Exception ex) { e.hop = -1; }
+            return e;
+        }
+
+        String decodePayload() {
+            try { return new String(Base64.getUrlDecoder().decode(payloadB64), StandardCharsets.UTF_8); } catch (Exception ignored) { return ""; }
+        }
+
+        String toJson() {
+            return JsonUtil.obj(Map.of("requestId", requestId, "originServerId", originServerId, "fromServerId", fromServerId,
+                    "targetServerId", targetServerId, "payloadB64", payloadB64, "hop", hop));
+        }
+
+        boolean valid() {
+            return requestId.matches("[A-Za-z0-9._:-]{8,180}") && !originServerId.isBlank() && !fromServerId.isBlank()
+                    && !targetServerId.isBlank() && !payloadB64.isBlank() && payloadB64.length() <= MAX_BODY_BYTES;
+        }
+
+        private static String limit(String value, int max) { return value.length() <= max ? value : value.substring(0, max); }
+    }
+
+    private static final class ProfileRequestEnvelope {
+        String requestId;
+        String originServerId;
+        String fromServerId;
+        String targetServerId;
+        String payloadB64;
+        int hop;
+
+        static ProfileRequestEnvelope create(String originServerId, String targetServerId, String payloadJson) {
+            ProfileRequestEnvelope e = new ProfileRequestEnvelope();
+            e.requestId = "profile-" + SecurityUtil.randomToken(12);
+            e.originServerId = normalizeId(originServerId);
+            e.fromServerId = e.originServerId;
+            e.targetServerId = normalizeId(targetServerId);
+            e.payloadB64 = Base64.getUrlEncoder().withoutPadding().encodeToString(safe(payloadJson).getBytes(StandardCharsets.UTF_8));
+            e.hop = 0;
+            return e;
+        }
+
+        static ProfileRequestEnvelope fromMap(Map<String,String> map) {
+            ProfileRequestEnvelope e = new ProfileRequestEnvelope();
+            e.requestId = limit(safe(map.get("requestId")), 180);
+            e.originServerId = normalizeId(map.get("originServerId"));
+            e.fromServerId = normalizeId(map.get("fromServerId"));
+            e.targetServerId = normalizeId(map.get("targetServerId"));
+            e.payloadB64 = limit(safe(map.get("payloadB64")), MAX_BODY_BYTES);
+            try { e.hop = Integer.parseInt(safe(map.get("hop"))); } catch (Exception ex) { e.hop = -1; }
+            return e;
+        }
+
+        String decodePayload() {
+            try { return new String(Base64.getUrlDecoder().decode(payloadB64), StandardCharsets.UTF_8); } catch (Exception ignored) { return ""; }
+        }
+
+        String toJson() {
+            return JsonUtil.obj(Map.of("requestId", requestId, "originServerId", originServerId, "fromServerId", fromServerId,
+                    "targetServerId", targetServerId, "payloadB64", payloadB64, "hop", hop));
+        }
+
+        boolean valid() {
+            return requestId.matches("[A-Za-z0-9._:-]{8,180}") && !originServerId.isBlank() && !fromServerId.isBlank()
+                    && !targetServerId.isBlank() && !payloadB64.isBlank() && payloadB64.length() <= MAX_BODY_BYTES;
+        }
+
+        private static String limit(String value, int max) { return value.length() <= max ? value : value.substring(0, max); }
+    }
+
+    private static final class DirectMessageDeleteEnvelope {
+        String deleteId;
+        String originServerId;
+        String fromServerId;
+        String targetServerId;
+        String senderUuid;
+        String messageRelayId;
+        int hop;
+
+        static DirectMessageDeleteEnvelope create(String originServerId, String targetServerId, String senderUuid, String messageRelayId) {
+            DirectMessageDeleteEnvelope e = new DirectMessageDeleteEnvelope();
+            e.deleteId = "dmdelete-" + SecurityUtil.randomToken(12);
+            e.originServerId = normalizeId(originServerId);
+            e.fromServerId = e.originServerId;
+            e.targetServerId = normalizeId(targetServerId);
+            e.senderUuid = RemotePlayerRef.normalizePlayerUuid(senderUuid);
+            e.messageRelayId = limitDelete(safe(messageRelayId), 180);
+            e.hop = 0;
+            return e;
+        }
+
+        static DirectMessageDeleteEnvelope fromMap(Map<String, String> map) {
+            DirectMessageDeleteEnvelope e = new DirectMessageDeleteEnvelope();
+            e.deleteId = limitDelete(safe(map.get("deleteId")), 180);
+            e.originServerId = normalizeId(map.get("originServerId"));
+            e.fromServerId = normalizeId(map.get("fromServerId"));
+            e.targetServerId = normalizeId(map.get("targetServerId"));
+            e.senderUuid = RemotePlayerRef.normalizePlayerUuid(map.get("senderUuid"));
+            e.messageRelayId = limitDelete(safe(map.get("messageRelayId")), 180);
+            try { e.hop = Integer.parseInt(safe(map.get("hop"))); } catch (Exception ex) { e.hop = -1; }
+            return e;
+        }
+
+        private static String limitDelete(String value, int max) {
+            String text = safe(value);
+            return text.length() <= max ? text : text.substring(0, max);
+        }
+
+        boolean valid() {
+            return deleteId.matches("[A-Za-z0-9._:-]{8,180}") && !originServerId.isBlank() && !fromServerId.isBlank()
+                    && !targetServerId.isBlank() && !senderUuid.isBlank()
+                    && messageRelayId.matches("[A-Za-z0-9._:-]{8,180}");
+        }
+
+        String toJson() {
+            Map<String,Object> m = new LinkedHashMap<>();
+            m.put("deleteId", deleteId);
+            m.put("originServerId", originServerId);
+            m.put("fromServerId", fromServerId);
+            m.put("targetServerId", targetServerId);
+            m.put("senderUuid", senderUuid);
+            m.put("messageRelayId", messageRelayId);
+            m.put("hop", hop);
+            return JsonUtil.obj(m);
         }
     }
 

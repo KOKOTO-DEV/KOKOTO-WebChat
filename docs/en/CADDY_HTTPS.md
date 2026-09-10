@@ -246,4 +246,4 @@ If you use nginx instead of Caddy, see `docs/en/NGINX_HTTPS.md` and `examples/ng
 - [Caddy reverse-proxy quick start](https://caddyserver.com/docs/quick-starts/reverse-proxy)
 - [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
 
-KWC-specific path-prefix, trusted-proxy, SSE, upload and authentication behavior is defined by the KWC 5.2.0 source/configuration rather than by these external references.
+KWC-specific path-prefix, trusted-proxy, SSE, upload and authentication behavior is defined by the KWC 5.3.0 source/configuration rather than by these external references.

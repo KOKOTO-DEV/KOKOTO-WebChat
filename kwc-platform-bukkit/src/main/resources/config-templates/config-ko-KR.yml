@@ -2,14 +2,14 @@
 # 핵심 설정
 # =============================================================================
 
-# KOKOTO WebChat 5.2.0
+# KOKOTO WebChat 5.3.0
 # KWC config-comment-language: ko-KR
 
 
 # 설정 버전입니다. 이전 버전은 가능한 한 기존 설정값을 보존해 마이그레이션합니다.
 # <version>_auto_migration 상태에서는 같은 버전의 템플릿 보완을 계속 적용합니다.
 # ui.language 변경 시 설정값은 유지하고 주석/레이아웃 언어만 다시 구성할 수 있습니다.
-config-version: "5.2.0"
+config-version: "5.3.0"
 
 # 전체 기능 스위치입니다. false여도 /kchat reload는 사용할 수 있습니다.
 # 새 설정 파일은 검토 후 활성화할 수 있도록 false로 생성됩니다.
@@ -512,8 +512,8 @@ direct-message:
   notify-on-message: true
   # 웹 UI에 미확인 DM 개수/badge를 표시합니다.
   web-unread-badge: true
-  # 현재 사용자의 대화 목록에서 DM 대화를 숨길 때 확인을 요구합니다.
-  confirm-hide: true
+  # 내가 보낸 DM 메시지를 양쪽 대화에서 삭제하기 전에 확인을 요구합니다.
+  confirm-delete: true
   # jsonl backend 선택 시 사용하는 legacy DM JSONL 저장 파일입니다.
   jsonl-file: "direct-messages.jsonl"
   # Reply metadata를 포함한 영구 DM 저장에 사용하는 SQLite DB 파일입니다.
@@ -531,8 +531,8 @@ group-chat:
   allow-room-passwords: true
   # 현재 사용자가 그룹 방을 나가기 전에 확인을 요구합니다.
   confirm-leave: true
-  # 현재 사용자의 대화 목록에서 그룹 방을 숨기기 전에 확인을 요구합니다.
-  confirm-hide: true
+  # 그룹 메시지를 방 전체에서 삭제하기 전에 확인을 요구합니다.
+  confirm-delete: true
   admin-audit:
     # 권한 있는 관리자의 그룹 방 기록 감사 조회를 허용하며 일반 사용자에게는 기존 방
     # 멤버십 검사를 유지합니다.
@@ -589,6 +589,8 @@ server-relay:
     discord: false
     # 로컬 system/announcement 메시지도 Relay합니다.
     system: false
+    # 채팅 이벤트는 일반 system 공지와 별도의 source gate를 사용하므로, 다른 system 공지를 Relay하지 않고 이벤트만 Relay할 수 있습니다.
+    event: true
 
   # 받은 공개 Relay 메시지를 표시할 위치입니다. DM은 별도로 처리됩니다.
   delivery:
@@ -615,6 +617,18 @@ server-relay:
   #       - id: "server-2"
   #         url: "https://server2.example.com/api"
   #         enabled: true
+  #         # send/receive는 서로 독립적이며, 생략한 항목은 true가 기본값입니다.
+  #         # `send: false` 또는 `receive: false`를 한 줄로 쓰면 해당 방향 전체를 비활성화합니다.
+  #         send:
+  #           public-chat: true
+  #           event: true
+  #           dm: true
+  #           profile: true
+  #         receive:
+  #           public-chat: true
+  #           event: true
+  #           dm: true
+  #           profile: true
   groups: []
 player-display:
   # KWC가 표시할 플레이어 이름 기준입니다.
@@ -659,10 +673,10 @@ guest:
     - "moderator"
     - "owner"
 captcha:
-  # 게스트 captcha 방식입니다.
-  # 내장 산술 captcha는 math일 때만 활성화되며 off를 포함한 non-math 값은 captcha 검사를
-  # 끕니다.
+  # 게스트 CAPTCHA 방식입니다. math=산술 문제, text=6자리 문자 코드, mixed=산술/문자 무작위, off=사용 안 함.
   mode: "math"
+  # 산술 CAPTCHA 난이도입니다. easy=한 자리 +/- , normal=+/-/×, hard=+/-/×/÷(정수로 나누어떨어짐).
+  math-complexity: "normal"
   # 발급한 captcha 문제의 유효시간(초)입니다.
   # 이 값은 clamp하지 않으므로 0/음수는 새 문제를 즉시 또는 사실상 즉시 만료시킵니다.
   expire-seconds: 120
@@ -773,6 +787,10 @@ moderation:
   # MODERATOR 역할 사용자가 moderation 제어로 guest/IP mute/unmute를 수행할 수 있게 합니다.
   # 이 정책 스위치는 config 전용입니다.
   allow-moderator-guest-mute: true
+  # Allow ordinary users to delete their own messages in open chat, DM, and group chat.
+  allow-user-self-message-delete: false
+  # 0 = always; otherwise deletion is allowed only this many minutes after sending.
+  self-message-delete-window-minutes: 0
   # 기간을 생략한 mute의 기본 시간(분)입니다.
   # 0 이하는 영구 mute이며 config 전용 설정입니다.
   default-mute-minutes: 60

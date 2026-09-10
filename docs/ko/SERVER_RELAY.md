@@ -1,4 +1,4 @@
-# 서버 릴레이 — Protocol 2.1
+# 서버 릴레이 — Protocol 2.2
 
 반응 authority, 직결/다단 전달, 원문 서버 단절 outbox, 작성자 알림 그림은 [REACTIONS.md](REACTIONS.md)를 참고하세요.
 
@@ -13,7 +13,7 @@
 
 > **보안 경계:** Relay v2는 종단간 암호화가 아니라 **hop-by-hop authenticated encryption**입니다. 전달에 참여하는 KWC 서버는 신뢰 경계 안의 참가자입니다.
 
-KOKOTO WebChat 5.2.0은 5.1.0에서 도입한 Relay v2 신뢰/암호화 모델 위에 **Relay Protocol 2.1** capability revision을 사용합니다. Protocol major `2`가 wire compatibility 경계이고, 2.1은 `public`, `dm`, `read`, `reaction`, `reaction-authority`, `typing` capability를 알립니다. KWC 제품 버전은 진단 정보일 뿐 호환성 키가 아닙니다. 공개채팅과 타 서버 1:1 DM/읽음 확인은 같은 group 기반 인증 전송을 사용하고, 공개 reaction, 참가자 서버로만 전달되는 타 서버 DM reaction, 원격 DM typing은 2.1 확장을 사용하며, 그룹채팅 방 자체는 로컬 기능입니다.
+KOKOTO WebChat 5.3.0 전체는 **Relay Protocol 2.2**를 고정 revision으로 사용합니다. Protocol major `2`가 wire compatibility 경계이며, 2.2는 `public`, `dm`, `read`, `delete`, `reaction`, `reaction-authority`, `typing`, `game`, `profile` capability를 광고합니다. 제품 버전은 진단 정보일 뿐 호환성 기준이 아닙니다. reaction/reaction-authority/typing은 2.1 기능 집합과 호환되고, 5.3.0의 `delete`, `game`, `profile`은 revision을 올리지 않고 2.2 안에서 capability negotiation으로 사용합니다. 그룹채팅 방은 로컬로 유지됩니다.
 
 
 ## 보안상 우선 업그레이드 대상
@@ -31,7 +31,7 @@ Relay **group이 보안 경계**입니다. 각 group에는 다음만 둡니다.
 - group `id`
 - 해당 group의 모든 관계가 공통으로 사용하는 `shared-secret`
 - group별 `forwarding.enabled`
-- `id`, `url`, `enabled`만 갖는 peer 목록
+- `id`, `url`, `enabled`와 선택적인 `send` / `receive` 정책을 갖는 peer 목록. shared secret은 계속 group 단위이며 peer별로 저장하지 않습니다.
 
 v2에는 `peers[].secret`이 없습니다. 따라서 peer에 다른 group의 secret을 잘못 연결하는 설정 자체를 만들지 못합니다.
 
@@ -58,6 +58,7 @@ server-relay:
     guest: true
     discord: false
     system: false
+    event: true
 
   delivery:
     web: true
@@ -74,6 +75,16 @@ server-relay:
         - id: "server-2"
           url: "https://server2.example.com/api"
           enabled: true
+          send:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
+          receive:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
 ```
 
 먼저 `server-1`을 빈 값으로 한 번 시작/리로드하고 `config.yml`을 다시 열어 생성된 secret을 확인합니다. 그 값을 `server-2`에 그대로 복사해 같은 `main` group에서 `server-1`을 역방향 peer로 등록합니다.
@@ -94,11 +105,20 @@ server-relay:
           enabled: true
 ```
 
+
+### peer별 송신/수신 정책
+
+각 peer의 `enabled`는 전체 master switch로 유지되고, 그 아래에서 `send`와 `receive`를 서로 독립적으로 제한할 수 있습니다. 항목을 생략하면 양방향과 모든 traffic class가 `true`이므로 기존 5.2.x/이전 5.3.0 peer 설정은 그대로 동작합니다. `send: false` 또는 `receive: false`로 해당 방향 전체를 끌 수도 있습니다. map 형식에서는 `public-chat`, `event`, `dm`, `profile`을 각각 제어합니다. 공개 reaction/typing은 `public-chat`, DM reaction/typing/read/delete는 `dm`, 타 서버 이벤트 조회/참가는 `event`, 원격 프로필 조회는 `profile` 정책을 따릅니다.
+
+기존 config는 런타임 기본값에만 의존하지 않습니다. 마이그레이션 시 누락된 `send` / `receive` map과 그 안의 `public-chat`, `event`, `dm`, `profile` 항목을 `true`로 실제 config에 보강합니다. 기존에 명시한 값과 scalar `send: false` / `receive: false`는 그대로 보존하며, 같은 마이그레이션을 다시 실행해도 추가 변경이 생기지 않습니다.
+
+`sources.event`는 `sources.system`과 분리됩니다. 따라서 이벤트 알림은 Relay하면서 일반 시스템 공지는 로컬에만 둘 수 있습니다. 이벤트 생성 시 고르는 **알림 범위**는 해당 이벤트의 생성/결과 알림을 로컬 전용으로 할지 Relay 대상에 포함할지 결정하며, peer의 `send.event` / `receive.event`가 그보다 상위의 라우팅 제한으로 동작합니다.
+
 ## 요청별 인증과 선택적 identity/health probe
 
 direct relay는 5.0.0과 같은 동작 방식으로 각 `/relay/v2/message` 요청을 독립적으로 인증합니다. 수신 서버는 송신 서버를 같은 group에 같은 shared secret으로 등록해야 하며, 이 정보로 요청을 인증/복호화합니다. 반대 방향은 독립적입니다. `/relay/v2/handshake`는 상태를 저장하지 않는 진단용 identity/health probe일 뿐이며 direct route를 생성·유지·활성화·비활성화하지 않습니다. 선택적 probe 요청에는 다음이 포함됩니다.
 
-- protocol `2`, 제품 버전 `5.1.0`
+- protocol major `2`와 protocol revision `2.2` (KWC 제품 버전은 진단 정보)
 - `group-id`
 - 송신 server ID
 - 대상 server ID
@@ -115,7 +135,11 @@ Endpoint는 다음 두 개입니다.
 /relay/v2/message
 ```
 
-구형 v1 endpoint (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, `/relay/dm/read`)는 **HTTP 426**과 protocol major `2` / revision `2.1` 요구를 반환합니다.
+구형 v1 endpoint (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, `/relay/dm/read`)는 **HTTP 426**과 protocol major `2` / revision `2.2` 요구를 반환합니다.
+
+## Protocol revision과 capability
+
+Relay 호환성은 KWC 제품 버전에 묶이지 않습니다. `X-KWC-Relay-Version: 2`는 major wire family이고, `X-KWC-Relay-Protocol: 2.2`와 `X-KWC-Relay-Capabilities`는 현재 revision과 선택 기능을 나타냅니다. KWC 5.3.0은 RC와 관계없이 revision 2.2를 유지하며 `delete`, `game`, `profile`을 capability로 구분합니다. 필요한 capability를 상대 peer가 지원하지 않으면 해당 extension만 안전하게 실패하며 peer 전체가 비호환이 되는 것은 아닙니다. handshake의 `serverVersion`은 진단용입니다.
 
 ## 암호화와 인증
 
@@ -207,3 +231,7 @@ Relay v2는 **hop-by-hop authenticated encryption**이며 end-to-end encryption�
 - [RFC 5869 — HKDF](https://www.rfc-editor.org/info/rfc5869/)
 - [NIST SP 800-38D — GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)
 - [RFC 9110 — HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
+
+### 이벤트 Relay 라우팅 (2.2)
+
+`game` capability는 이벤트 동작을 모든 peer에 broadcast하지 않습니다. 이벤트 공지는 event ID와 원본 server ID를 포함하며, 릴레이된 이벤트를 열거나 참가할 때는 해당 원본 서버 방향으로만 targeted `game-request`를 보냅니다(필요하면 허용된 forwarding route 사용). 원본 이벤트에 접근할 수 없을 때 수신 서버의 로컬 이벤트로 대체해서는 안 되며, 구형/미지원 peer는 안전하게 실패하거나 공지에 포함된 snapshot만 표시합니다.

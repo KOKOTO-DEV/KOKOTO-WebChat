@@ -1,5 +1,13 @@
 package dev.kokoto.webchat.fabric;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * KwcFabricMod는 Minecraft/loader 버전 차이를 흡수하는 Fabric compatibility shim이다.
+ * KwcFabricMod is a Fabric compatibility shim absorbing Minecraft/loader API differences across target versions.
+ *
+ * reflection/method signature 분기는 정확한 target 범위에만 적용하고, 공통 runtime 코드가 버전별 API를 직접 참조하지 않게 한다.
+ * Restrict reflection/signature branches to their exact target range and keep version-specific APIs out of common runtime code.
+ */
 import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.kokoto.webchat.*;
 import net.fabricmc.api.ModInitializer;
@@ -16,7 +24,7 @@ import java.util.Map;
 
 public final class KwcFabricMod implements ModInitializer {
     public static final String MOD_ID = "kokoto_webchat";
-    public static final String VERSION = "5.2.1";
+    public static final String VERSION = "5.3.0";
     public static final Logger LOGGER = LoggerFactory.getLogger("KOKOTO WebChat");
     private static final KwcFabricRuntime RUNTIME = new KwcFabricRuntime();
     private static final FabricWebChatHost COMMAND_HOST = new FabricWebChatHost(RUNTIME);
@@ -55,6 +63,7 @@ public final class KwcFabricMod implements ModInitializer {
                             .executes(ctx -> commandShared(ctx.getSource(), StringArgumentType.getString(ctx, "arguments"))));
             var kchat = dispatcher.register(root);
             dispatcher.register(Commands.literal("kc").redirect(kchat));
+            dispatcher.register(Commands.literal("kwc").redirect(kchat));
         });
     }
 

@@ -2,14 +2,14 @@
 # コア設定
 # =============================================================================
 
-# KOKOTO WebChat 5.2.0
+# KOKOTO WebChat 5.3.0
 # KWC config-comment-language: ja-JP
 
 
 # 設定バージョンです。旧バージョンは可能な限り既存設定値を保持して移行します。
 # <version>_auto_migration 中は同一バージョンのテンプレート補完を継続します。
 # ui.language 変更時は設定値を保持したままコメント/レイアウト言語だけ再構成できます。
-config-version: "5.2.0"
+config-version: "5.3.0"
 
 # 全機能のスイッチです。false でも /kchat reload は使用できます。
 # 新規設定ファイルは確認後に有効化できるよう false で生成されます。
@@ -509,8 +509,8 @@ direct-message:
   notify-on-message: true
   # Web UI に未読 DM 件数/badge を表示します。
   web-unread-badge: true
-  # 現在ユーザーの会話一覧から DM 会話を非表示にする際に確認を要求します。
-  confirm-hide: true
+  # 自分が送信した DM メッセージを両参加者の会話から削除する前に確認を要求します。
+  confirm-delete: true
   # jsonl backend 選択時に使う legacy DM JSONL 保存ファイルです。
   jsonl-file: "direct-messages.jsonl"
   # Reply metadata を含む永続 DM 保存に使う SQLite DB ファイルです。
@@ -529,8 +529,8 @@ group-chat:
   allow-room-passwords: true
   # 現在ユーザーがグループルームを退出する前に確認を要求します。
   confirm-leave: true
-  # 現在ユーザーの会話一覧からグループルームを隠す前に確認を要求します。
-  confirm-hide: true
+  # グループメッセージをルーム全体から削除する前に確認を要求します。
+  confirm-delete: true
   admin-audit:
     # 権限のある管理者によるグループルーム記録の監査閲覧を許可し、
     # 通常ユーザーには既存のルームメンバー確認を維持します。
@@ -588,6 +588,8 @@ server-relay:
     discord: false
     # ローカル system/announcement メッセージも Relay します。
     system: false
+    # チャットイベントは通常の system 通知とは別の source gate を使うため、他の system 通知を Relay せずイベントだけを Relay できます。
+    event: true
 
   # 受信した公開 Relay メッセージの配信先です。DM は別処理です。
   delivery:
@@ -613,6 +615,18 @@ server-relay:
   #       - id: "server-2"
   #         url: "https://server2.example.com/api"
   #         enabled: true
+  #         # send/receive は互いに独立しており、省略した項目は true が既定値です。
+  #         # `send: false` または `receive: false` とスカラー指定すると、その方向全体を無効化します。
+  #         send:
+  #           public-chat: true
+  #           event: true
+  #           dm: true
+  #           profile: true
+  #         receive:
+  #           public-chat: true
+  #           event: true
+  #           dm: true
+  #           profile: true
   groups: []
 player-display:
   # KWC が表示するプレイヤー名の基準です。
@@ -655,10 +669,10 @@ guest:
     - "moderator"
     - "owner"
 captcha:
-  # ゲスト captcha モードです。
-  # 内蔵算数 captcha は math の時だけ有効で、off を含む non-math 値は captcha
-  # 検査を無効にします。
+  # ゲスト CAPTCHA 方式です。math=計算問題、text=6文字コード、mixed=計算/文字をランダム選択、off=無効。
   mode: "math"
+  # 計算 CAPTCHA の難易度です。easy=1桁の+/-、normal=+/-/×、hard=+/-/×/÷（整数で割り切れる問題）。
+  math-complexity: "normal"
   # 発行した captcha 問題の有効時間(秒)です。
   # この値は clamp されないため、0/負数は新規問題を即時または実質即時に失効させます
   # 。
@@ -770,6 +784,10 @@ moderation:
   # MODERATOR ロールが moderation 制御で guest/IP mute/unmute を実行できるようにします。
   # このポリシースイッチは config 専用です。
   allow-moderator-guest-mute: true
+  # Allow ordinary users to delete their own messages in open chat, DM, and group chat.
+  allow-user-self-message-delete: false
+  # 0 = always; otherwise deletion is allowed only this many minutes after sending.
+  self-message-delete-window-minutes: 0
   # 期間省略時の mute 既定時間(分)です。
   # 0 以下は永久 mute で、config 専用設定です。
   default-mute-minutes: 60

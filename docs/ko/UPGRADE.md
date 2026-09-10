@@ -1,6 +1,6 @@
 # KOKOTO WebChat 업그레이드 가이드
 
-이 문서는 4.5.5부터 5.2.0까지의 업그레이드 안내를 하나로 통합합니다. 여러 버전을 건너뛰는 경우 버전 순서대로 각 절을 확인하세요.
+이 문서는 4.5.5부터 5.3.0까지의 업그레이드 안내를 하나로 통합합니다. 여러 버전을 건너뛰는 경우 버전 순서대로 각 절을 확인하세요.
 
 ## 4.5.5에서 4.6.0으로 업그레이드
 
@@ -192,7 +192,7 @@ group-chat:
     enabled: true
 ```
 
-일반 ADMIN/MODERATOR 역할만으로는 본문을 볼 수 없습니다. 감사 화면은 읽기 전용이고 방 멤버십이 없어도 열 수 있지만 실제로 방에 참여하지 않으며, 읽음/미확인 수를 변경하지 않고 메시지 전송·업로드·숨김·멤버 변경도 제공하지 않습니다. 각 페이지 열람은 본문을 감사 로그에 복사하지 않은 채 `admin.group-audit-read`로 기록됩니다.
+일반 ADMIN/MODERATOR 역할만으로는 본문을 볼 수 없습니다. 감사 화면은 읽기 전용이고 방 멤버십이 없어도 열 수 있지만 실제로 방에 참여하지 않으며, 읽음/미확인 수를 변경하지 않고 메시지 전송·업로드·삭제·멤버 변경도 제공하지 않습니다. 각 페이지 열람은 본문을 감사 로그에 복사하지 않은 채 `admin.group-audit-read`로 기록됩니다.
 
 ### 설정 주석
 
@@ -268,7 +268,7 @@ GitHub는 저장소를 `KOKOTO-WebChat`으로 rename하는 방식을 우선 사�
 
 ### 4.7.0 → 5.0.0 주요 변경사항
 
-- 공식 이름/식별자를 **KOKOTO WebChat**으로 통일: `/kchat`(`/kc`), `kwc.*`, `plugins/KOKOTO-WebChat` 또는 `config/KOKOTO-WebChat`, `dev.kokoto.webchat`, `kwc-*` 모듈.
+- 공식 이름/식별자를 **KOKOTO WebChat**으로 통일: `/kchat`(`/kchat`), `kwc.*`, `plugins/KOKOTO-WebChat` 또는 `config/KOKOTO-WebChat`, `dev.kokoto.webchat`, `kwc-*` 모듈.
 - Bukkit/Paper/Spigot, Fabric 16개 exact-target, NeoForge 12개 exact-target, Forge 16개 exact-target이 공용 코어를 사용하도록 멀티플랫폼 구조 완성.
 - BlueMap, squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD, Minecraft Overviewer 어댑터 구조 추가/정리.
 - standalone 기본 활성화, 공개 기본 prefix `/chat`, API `/chat/api` 구조 확정.
@@ -320,7 +320,7 @@ config-version: "5.0.0_auto_migration"
 ### 최종 릴리스 판정
 
 
-> `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source archive에 포함되어 있습니다. 별도의 `KWC-5.2.0-validation-tools.zip`에는 개발용 브라우저 회귀검증 도구만 들어 있으며 릴리스 빌드 실행에는 필요하지 않습니다.
+> `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source archive에 포함되어 있습니다. 개발용 회귀검증 하네스는 source archive의 `validation/`에 포함되며, 일반/릴리스 빌드에 별도 validation-tools archive가 필요하지 않습니다.
 
 최종 후보는 `validate-release-windows.bat`가 `FINAL RELEASE BUILD PASS`로 끝나고 배포 JAR이 정확히 45개 수집되며, static/config/i18n/document 검증과 로그인·공개채팅·업로드/클립보드·DM/그룹·relay·사용 중인 지도/Discord 연동 smoke test가 통과해야 배포 확정합니다.
 
@@ -403,7 +403,7 @@ Emoji catalog reload도 복구성이 강화되었습니다. `/emojis` 일시 실
 
 ## KOKOTO WebChat 5.1.0에서 5.2.0으로 업그레이드
 
-업그레이드 전에 KWC 데이터 디렉터리를 백업하세요. 일반 5.1.0 → 5.2.0 migration은 지원되는 운영자 값과 기존 Relay v2 group/secret/peer를 보존합니다. relay trust reset은 과거 pre-5.1.0 → 5.1.0 migration에만 해당합니다. 현재 reference는 `config-reference-5.2.0.yml`이며 자동 검토 상태는 관리자가 정확한 `config-version: "5.2.0"`을 선택하기 전까지 `5.2.0_auto_migration`을 사용합니다.
+업그레이드 전에 KWC 데이터 디렉터리를 백업하세요. 일반 5.1.0 → 5.2.0 migration은 지원되는 운영자 값과 기존 Relay v2 group/secret/peer를 보존합니다. relay trust reset은 과거 pre-5.1.0 → 5.1.0 migration에만 해당합니다. 해당 5.2.0 migration의 reference는 `config-reference-5.2.0.yml`이며 자동 검토 상태는 관리자가 정확한 `config-version: "5.2.0"`을 선택하기 전까지 `5.2.0_auto_migration`을 사용합니다.
 
 5.2.0은 Relay Protocol 2.1을 기존 2.x와 호환되는 capability revision으로 도입합니다. Protocol major `2`가 호환성 경계이고 KWC 제품 버전은 진단용입니다. 공개 reaction, 참가자 서버로만 전달되는 타 서버 DM reaction, 타 서버 DM typing은 2.1 확장을 사용하며 공통 v2 public/DM/read 동작은 2.x 호환 범위에 남습니다.
 
@@ -411,3 +411,16 @@ Emoji catalog reload도 복구성이 강화되었습니다. `/emojis` 일시 실
 
 업그레이드 후 공개/DM/그룹 reaction, DM/그룹 `입력 중...`, 대화 저장과 PDF/인쇄, 비공개 방 Settings/Invite/Leave 권한, 공개/DM/그룹 32px bottom-follow를 확인하세요. 여러 relay 서버가 있으면 reaction/typing 확장을 일관되게 사용하려면 모두 5.2.0/Relay 2.1로 올리는 것을 권장합니다.
 
+## KOKOTO WebChat 5.2.x에서 5.3.0으로 업그레이드
+
+먼저 KWC 데이터 디렉터리를 백업하세요. 5.3.0은 자동 검토가 활성화된 동안 `config-version: "5.3.0_auto_migration"`을 사용하며 `config-reference-5.3.0.yml` / `config-migration-5.3.0.yml`을 생성합니다. 기존 5.2.x 운영 설정값은 보존합니다. 폐기된 `direct-message.confirm-hide`, `group-chat.confirm-hide`는 기존 boolean 값을 유지한 채 `confirm-delete`로 자동 승계합니다.
+
+이 마이그레이션에서는 기존 Relay `groups[].peers[]`에도 누락된 `send` / `receive` 정책 map과 `public-chat`, `event`, `dm`, `profile` 항목을 호환 기본값 `true`로 실제 보강합니다. 기존에 명시한 map 값과 scalar `send: false` / `receive: false`는 그대로 보존합니다.
+
+KWC 5.3.0 전체는 Relay Protocol 2.2를 유지합니다. 같은 revision 안에서 capability negotiation으로 발신자 소유 서버 간 DM 삭제(`delete`), 원본 서버 대상 이벤트 요청(`game`), 공개 프로필/presence 조회(`profile`)를 지원합니다. public/DM/read/reaction/typing은 기존 Relay v2 신뢰/암호화 경계를 그대로 사용하며, 선택 capability 미지원 시 해당 기능만 안전하게 실패하고 protocol revision은 바뀌지 않습니다.
+
+DM에는 메시지 단위 ‘나에게만 숨김’이 더 이상 없고 발신자만 자신의 메시지를 삭제할 수 있습니다. 그룹 메시지 삭제는 방 전체에 적용되며 일반 멤버는 자신의 일반 메시지만 삭제하고 room-local owner/admin은 방 메시지를 관리할 수 있습니다. 그룹 핀은 방별로 저장되고 모든 멤버가 볼 수 있으며 pin/순서 변경/unpin은 owner/admin만 가능합니다. DM/그룹 저장 기록 검색은 공개채팅 검색 UI 패턴을 사용합니다.
+
+Presence는 Game과 Web 접속을 구분합니다. compact 목록은 Game > Web > Offline 순서로 하나의 대표 상태를 표시하고, 프로필은 Game/Web을 따로 보여줍니다. 계정별 오프라인 상태는 다른 사용자에게 두 상태를 서버 단계에서 모두 숨깁니다(기존 `invisible` 설정 데이터는 오프라인으로 승계됩니다).
+
+업그레이드 후 BlueMap 새로고침 복구, DM/그룹 검색·삭제, 그룹 핀/역할, Game/Web presence, 오프라인 개인정보 보호, 그리고 관련 relay peer를 모두 올린 뒤 서버 간 DM 삭제를 확인하세요.

@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * DefaultFilterListInstaller는 메시지 moderation/content-filter 파이프라인의 일부다.
+ * DefaultFilterListInstaller is part of the message moderation/content-filter pipeline.
+ *
+ * 필터 결과는 공개/DM/그룹 등 호출 위치에 따라 정책이 달라질 수 있으므로 parsing, matching, enforcement를 한 단계로 섞지 않는다.
+ * Filter policy can vary by public/DM/group context, so parsing, matching, and enforcement should remain separate stages.
+ */
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;

@@ -1,0 +1,12 @@
+// KWC 파일 안내 / KWC file guide
+// Minecraft 26.3 NeoForge 준비 타깃의 plugin repository와 비활성 안전장치를 정의한다. 정식 지원 목록에는 포함되지 않는다.
+// Defines plugin repositories and the disabled safety gate for the Minecraft 26.3 NeoForge preparation target. It is not part of the supported release matrix.
+// exact NeoForge pin 검증 전에는 Gradle 구성 단계에서 중단해 우발적인 산출물 생성을 방지한다.
+// Configuration stops before build plugin resolution is used for a release, preventing accidental artifacts before the exact NeoForge pin is validated.
+
+pluginManagement { repositories { maven { url='https://maven.neoforged.net/releases' }; gradlePluginPortal(); mavenCentral() } }
+def prepEnabled = providers.gradleProperty('kwc.prep.enabled').orElse('false').get().toBoolean()
+if (!prepEnabled) {
+    throw new GradleException('KWC NeoForge 26.3 PREP target is disabled. Finalize the exact NeoForge pin, validate the target, then set kwc.prep.enabled=true.')
+}
+rootProject.name='kwc-neoforge-26-3-prep'

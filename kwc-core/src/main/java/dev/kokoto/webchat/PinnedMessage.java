@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * 공개 채팅의 고정 메시지 snapshot과 순서를 표현한다.
+ * Represents a public-chat pinned-message snapshot and order.
+ *
+ * 이 타입은 가능한 한 데이터 의미만 담고, 인증·권한·영속화 같은 정책은 Store/Server 계층에서 처리한다.
+ * This type should primarily carry data; authentication, authorization, and persistence policy belong in Store/Server layers.
+ */
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -8,6 +16,9 @@ public class PinnedMessage {
     public String messageId;
     public long pinnedAt;
     public long sortOrder;
+    public String pinnedByUuid;
+    public String pinnedByUsername;
+    public String pinnedByDisplayName;
     public String pinnedBy;
     public long time;
     public String source;
@@ -20,13 +31,17 @@ public class PinnedMessage {
     public String i18nArgs;
     public boolean hidden;
 
-    public static PinnedMessage fromMessage(ChatMessage msg, String pinnedBy) {
+    public static PinnedMessage fromMessage(ChatMessage msg, String pinnedByUuid, String pinnedByUsername, String pinnedByDisplayName) {
         PinnedMessage pin = new PinnedMessage();
         pin.pinId = "pin-" + SecurityUtil.randomToken(10);
         pin.messageId = msg == null ? "" : value(msg.id, "");
         pin.pinnedAt = System.currentTimeMillis();
         pin.sortOrder = pin.pinnedAt;
-        pin.pinnedBy = value(pinnedBy, "");
+        pin.pinnedByUuid = value(pinnedByUuid, "");
+        pin.pinnedByUsername = value(pinnedByUsername, "");
+        pin.pinnedByDisplayName = value(pinnedByDisplayName, "");
+        pin.pinnedBy = !pin.pinnedByDisplayName.isBlank() ? pin.pinnedByDisplayName
+                : !pin.pinnedByUsername.isBlank() ? pin.pinnedByUsername : pin.pinnedByUuid;
         pin.time = msg == null ? pin.pinnedAt : msg.time;
         pin.source = msg == null ? "web" : value(msg.source, "web");
         pin.sender = msg == null ? "Unknown" : value(msg.sender, "Unknown");
@@ -46,6 +61,9 @@ public class PinnedMessage {
         m.put("messageId", value(messageId, ""));
         m.put("pinnedAt", pinnedAt);
         m.put("sortOrder", sortOrder);
+        m.put("pinnedByUuid", value(pinnedByUuid, ""));
+        m.put("pinnedByUsername", value(pinnedByUsername, ""));
+        m.put("pinnedByDisplayName", value(pinnedByDisplayName, ""));
         m.put("pinnedBy", value(pinnedBy, ""));
         m.put("time", time);
         m.put("source", value(source, "web"));

@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * 공개/개인 알림에서 @mention과 team mention을 사용자 식별자 기준으로 판정하는 matcher다.
+ * Matcher resolving @mentions and team mentions for public/private notification decisions.
+ *
+ * 단순 substring 매칭으로 다른 이름 일부가 오탐되지 않도록 token boundary와 display/username 정규화 규칙을 유지한다.
+ * Preserve token-boundary and display/username normalization rules so simple substring matches do not create false positives.
+ */
 import java.text.Normalizer;
 import java.util.Collection;
 import java.util.LinkedHashMap;

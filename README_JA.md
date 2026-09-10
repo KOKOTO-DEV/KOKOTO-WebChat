@@ -2,15 +2,17 @@
 
 
 
-![アーキテクチャ概要](docs/assets/architecture-5.2.0.svg)
+![アーキテクチャ概要](docs/assets/architecture-5.3.0.svg)
 
-[PNG](docs/assets/architecture-5.2.0.png) · [SVG](docs/assets/architecture-5.2.0.svg)
+[PNG](docs/assets/architecture-5.3.0.png) · [SVG](docs/assets/architecture-5.3.0.svg)
 
 > ビジュアル資料、アニメーションフロー、編集可能な図の source、参照規格一覧は `docs/assets/`、`docs/en/VISUAL_DOCUMENTATION.md`、`docs/en/REFERENCES.md` に含まれています。
 
-## 5.2.1 hotfix
+## 5.3.0 リリース
 
-5.2.1 は 5.2.0 向けの frontend hotfix です。BlueMap の再読み込み時に addon `config.js` が遅れても誤った site-root `/api` を固定せず自動復旧し、通知設定の mention 表示は常に `@` 接頭辞付きになり、custom emoji の横 category scrollbar は高さ 12px を維持しつつ縦 settings scrollbar と同じ theme-aware thumb/hover 表示を使用します。config schema は 5.2.0、Relay Protocol は 2.1 のままです。
+5.3.0 は 5.2.1 を基準に、DM/group の保存済み全履歴検索と送信者所有メッセージ削除、room-local の group role/pin/delete policy、複数同時運用できる First come/Lottery Chat Event、user profile と Game/Web presence・Offline privacy、personal block、moderator ごとの委任権限、拡張 built-in CAPTCHA、Web `@` autocomplete、画像 metadata 除去を追加します。Relay Protocol **2.2** は protocol major 2 互換性を維持し、DM delete、event routing、remote profile lookup と peer ごとの `public-chat` / `event` / `dm` / `profile` send/receive policy を capability で制御します。desktop の public/DM/group window は drag/resize/maximize 動作を統一し、8 種類の adapter/standalone は同じ frontend fragment と CSS から生成され、responsive header と最小化 frame も同期されます。
+
+
 
 - **5.2.0 制御:** `notifications.notify-reactions` は browser notification と Web Push で共用する reaction 選択 1 個を提供し、`chat.conversation-archive.enabled: false` は既存 archive data を残したまま保存済み会話の DOM/API/DB 起動をすべて無効化し、archive の 3 つの `max-*` key でアカウント当たり snapshot 数・snapshot 当たり message 数・アカウント合計保存 message 数を調整できます。`chat.typing-indicator.open-chat.enabled`、`.dm.enabled`、`.group-chat.enabled` はサーバー共通の入力中表示ポリシーで、既定値は OFF/ON/ON、Web Admin Settings からも変更できます。`chat.typing-indicator.user-display-control`（既定 OFF）を有効にすると、ログインユーザーはアカウント単位の **入力中表示** を無効にできます。この個人設定は自分の画面の表示だけを制御し、自分の typing 送信は停止しません。`emoji.favorites.enabled`、`storage`、`max-per-account` は custom emoji Favorites の有効/無効、browser/account 保存方式、最大保持数を制御します。
 
@@ -45,7 +47,7 @@ Bukkit/Paper/Spigot では BlueMap、squaremap、Dynmap、Pl3xMap、LiveAtlas、
 - `upload.filename-mode: original` で新規アップロードの安全な Unicode 元ファイル名を保持し、同名を上書きせず番号付け
 - BlueMap / squaremap / Dynmap / Pl3xMap / LiveAtlas / uNmINeD / Overviewer 内チャットパネル、または standalone Web チャットページ
 - ゲーム ↔ Web チャット双方向連携
-- group 単位の公開チャットとサーバー間 DM/既読 receipt を扱う Relay Protocol 2.1：Relay v2 の trust/暗号化モデルを維持しながら reaction/typing capability を拡張し、request 単位 peer 認証、HKDF-SHA256/AES-256-GCM の hop-by-hop 認証付き暗号化、replay 防御、HTTPS 専用 forwarding に対応
+- group 単位の公開チャットとサーバー間 DM/既読 receipt を扱う Relay Protocol 2.2：Relay v2 の trust/暗号化モデルを維持しながら reaction/typing と sender-authoritative DM delete capability をサポートし、request 単位 peer 認証、HKDF-SHA256/AES-256-GCM の hop-by-hop 認証付き暗号化、replay 防御、HTTPS 専用 forwarding に対応
 - 公開/DM/group の範囲を保存するアカウント単位の保存済み会話 snapshot、管理者の削除/ロック方針優先、ブラウザー PDF export
 - polling/永続化なしの 5 秒 window を使うイベント駆動 public/DM/group typing indicator
 - ログインユーザー向け公開/DM/group メッセージ reaction：Unicode/KWC custom emoji、空状態では `+` button の高さだけを最小限確保し実 reaction が付くと通常行へ拡張する message 下部 UI、位置を維持して外側 click で閉じる category/search picker、reactor 表示名 hover list、**Admin > Emojis > Reaction icons** の機能 ON/OFF と catalog 管理に対応。公開 reaction は origin authority で Relay 同期し、cross-server DM reaction は相手 participant server のみに送信、group reaction は local のまま
@@ -53,7 +55,7 @@ Bukkit/Paper/Spigot では BlueMap、squaremap、Dynmap、Pl3xMap、LiveAtlas、
 - ゲーム `/w`/`/msg`/`/tell` 系 whisper の両ユーザー Web DM への任意複製
 - ゲストチャット、計算 captcha、クールダウン、分間制限
 - `/kchat auth <code>` によるアカウント連携、Web パスワードログイン、ローカル管理者
-- Web 管理/モデレーターパネル、メッセージ非表示、ゲスト/IP ミュート、セッション revoke
+- Web 管理/モデレーターパネル、メッセージ削除、ゲスト/IP ミュート、セッション revoke
 - 管理者向けカスタム絵文字管理: フォルダー/ファイルの作成、複数アップロード、名前変更、移動、削除
 - ImageEmojis-Bero 1.9.x の token・ゲーム返信・サーバーリレー互換
 - ファイル/クリップボードアップロード、画像/動画/音声/YouTube/Shorts プレビュー、任意の TikTok / X(Twitter) 埋め込み
@@ -75,7 +77,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.1-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.0-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target
@@ -86,7 +88,7 @@ Fabric は Minecraft version 別の 16 exact-target JAR として build しま�
 kwc-platform-fabric\build-all.bat
 ```
 
-Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-Fabric-<Minecraft>.jar` です。
+Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-Fabric-<Minecraft>.jar` です。
 
 ### NeoForge exact-target
 
@@ -96,7 +98,7 @@ NeoForge は 12 exact-target JAR として build します。1.20.2〜1.20.6 は
 kwc-platform-neoforge\build-all.bat
 ```
 
-Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-NeoForge-<Minecraft>.jar` です。
+Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-NeoForge-<Minecraft>.jar` です。
 
 ### Forge exact-target
 
@@ -106,13 +108,13 @@ Forge は単一の広域 JAR ではなく、16 個の Minecraft version 別 exac
 kwc-platform-forge\build-all.bat
 ```
 
-script が target ごとに JDK 17/21/25 を選択し、各 target の `build/libs/` に `KOKOTO-WebChat-5.2.1-Forge-<Minecraft>.jar` を生成します。
+script が target ごとに JDK 17/21/25 を選択し、各 target の `build/libs/` に `KOKOTO-WebChat-5.3.0-Forge-<Minecraft>.jar` を生成します。
 
 ### Windows 最終 release 検証
 
-> **release build/validation workflow は source package に含まれています。** `validate-release-windows.bat` と、それが必要とする PowerShell helper は source に同梱されています。別の `KWC-5.2.1-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、通常 build / release build には不要です。
+> **release build/validation workflow は source package に含まれています。** `validate-release-windows.bat` と、それが必要とする PowerShell helper は source に同梱されています。別の `KWC-5.3.0-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、通常 build / release build には不要です。
 
-source root で `validate-release-windows.bat` を実行すると、Bukkit、Fabric 16 target、NeoForge 12 target、Forge 16 target を連続 build します。`FINAL RELEASE BUILD PASS` が表示され、`release-5.2.1/` に配布用 JAR が正確に 45 個集まり、`SHA256SUMS.txt` が生成された場合のみ実 build まで最終検証済みと判定します。
+source root で `validate-release-windows.bat` を実行すると、Bukkit、Fabric 16 target、NeoForge 12 target、Forge 16 target を連続 build します。`FINAL RELEASE BUILD PASS` が表示され、`release-5.3.0/` に配布用 JAR が正確に 45 個集まり、`SHA256SUMS.txt` が生成された場合のみ実 build まで最終検証済みと判定します。
 
 Windows の反復 build では、同じ script で platform 選択、incremental cache、platform 並列 build、live progress を使用できます。
 
@@ -125,7 +127,7 @@ validate-release-windows.bat --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-platform option は組み合わせ可能です。`--bukkit` は Bukkit/Paper artifact と必要な Maven reactor dependency だけを build します。`--fast` は `clean` を省略し、既存の Maven/Gradle 出力と dependency cache を再利用して Gradle build cache を有効化します。`--parallel` は選択した build mode を維持し、Bukkit が選択されている場合は Bukkit を先に build し、PASS 後に Fabric/NeoForge/Forge をそれぞれ別の live build window で並列実行します。そのため `validate-release-windows.bat --parallel` は clean 45-target 最終検証として扱われ、成功時は `FINAL RELEASE BUILD PASS` を表示します。main console には経過時間、全体完了 target 数、platform 別完了数と現在の Minecraft target が表示され、各 worker window には実際の build log が表示されます。詳細 log は `validation-logs/` に残ります。部分 build または `--fast` build は `build-5.2.1/` に出力され、最終 release validation にはなりません。source root の `mvn clean package` は引き続き Bukkit 専用 Maven build です。
+platform option は組み合わせ可能です。`--bukkit` は Bukkit/Paper artifact と必要な Maven reactor dependency だけを build します。`--fast` は `clean` を省略し、既存の Maven/Gradle 出力と dependency cache を再利用して Gradle build cache を有効化します。`--parallel` は選択した build mode を維持し、Bukkit が選択されている場合は Bukkit を先に build し、PASS 後に Fabric/NeoForge/Forge をそれぞれ別の live build window で並列実行します。そのため `validate-release-windows.bat --parallel` は clean 45-target 最終検証として扱われ、成功時は `FINAL RELEASE BUILD PASS` を表示します。main console には経過時間、全体完了 target 数、platform 別完了数と現在の Minecraft target が表示され、各 worker window には実際の build log が表示されます。詳細 log は `validation-logs/` に残ります。部分 build または `--fast` build は `build-5.3.0/` に出力され、最終 release validation にはなりません。source root の `mvn clean package` は引き続き Bukkit 専用 Maven build です。
 Loader worker が Gradle cache/workspace の破損または cache lock と明確に判定できるエラー（例: `caches/<Gradle>/transforms/.../metadata.bin` の読み取り失敗）で終了した場合、検証 runner は lock されている可能性がある既存 cache を自動削除しません。代わりに `.build-cache/gradle-recovery/` 配下の新しい分離 cache を使って、その platform を 1 回だけ再試行します。ソースのコンパイルエラーや通常の dependency/build failure は自動再試行しません。復旧ビルドが成功しても元の cache は変更しないため、Explorer・antivirus・他プロセスの lock が解除された後に必要に応じて手動で整理できます。
 
 
@@ -145,7 +147,7 @@ Loader worker が Gradle cache/workspace の破損または cache lock と明確
 12. サーバーを再起動するか `/kchat reload` を実行します。BlueMap は `bluemap reload light` を自動要求し、squaremap/Dynmap/Pl3xMap/LiveAtlas/uNmINeD/Overviewer は KWC が Web file を直接再確認します。map/site generator が Web file を再生成した場合は `/kchat reload` を再実行します。
 
 
-既存の解析済み operator 設定値は保持し、migration 時の comment/layout は `ui.language` が選ぶ bundled presentation template から再構成します。`en-US` は `config.yml`、`ko-KR`・`ja-JP`・`zh-CN` は各 localized template を使用し、未対応/custom UI 言語は英語 config 表示を使用します。`<KWC data dir>/config-reference-5.2.0.yml` は同じ built-in 言語で描画された管理者向けの現在 default であり、migration input には使用しません。固定された旧 version config は実際の version migration 前に backup します。migration 後は `config-version: "5.2.0_auto_migration"` となり、この marker がある間は startup/reload ごとに選択中の current template を再構成して既存の解析値を overlay し、新規設定と最新 comment/layout を維持します。正確な `config-version: "5.2.0"` は通常の same-version 自動設定再構成を停止しますが、`ui.language` を変更した場合は全解析値を保持したまま comment/layout の表示言語だけを再構成できます。`config-migration-5.2.0.yml` の Difference は comment・空白・quote・行位置・key 順序ではなく、解析済み YAML path/value の意味を比較します。旧 version の生成済み reference/migration/upgrade file は自動削除されます。同梱の UTF-8 starter filter list `filter-lists/ko-KR.txt`、`en-US.txt`、`ja-JP.txt`、`zh-CN.txt` は starter-list 初期化 marker がない場合に一度だけ初期化されるため、この機能より前から存在する data directory にも作成されます。既存または無効化済みの list file は上書きせず、初期化後に管理者が削除した starter list は再起動しても再作成しません。
+既存の解析済み operator 設定値は保持し、migration 時の comment/layout は `ui.language` が選ぶ bundled presentation template から再構成します。`en-US` は `config.yml`、`ko-KR`・`ja-JP`・`zh-CN` は各 localized template を使用し、未対応/custom UI 言語は英語 config 表示を使用します。`<KWC data dir>/config-reference-5.3.0.yml` は同じ built-in 言語で描画された管理者向けの現在 default であり、migration input には使用しません。固定された旧 version config は実際の version migration 前に backup します。migration 後は `config-version: "5.3.0_auto_migration"` となり、この marker がある間は startup/reload ごとに選択中の current template を再構成して既存の解析値を overlay し、新規設定と最新 comment/layout を維持します。正確な `config-version: "5.3.0"` は通常の same-version 自動設定再構成を停止しますが、`ui.language` を変更した場合は全解析値を保持したまま comment/layout の表示言語だけを再構成できます。`config-migration-5.3.0.yml` の Difference は comment・空白・quote・行位置・key 順序ではなく、解析済み YAML path/value の意味を比較します。旧 version の生成済み reference/migration/upgrade file は自動削除されます。同梱の UTF-8 starter filter list `filter-lists/ko-KR.txt`、`en-US.txt`、`ja-JP.txt`、`zh-CN.txt` は starter-list 初期化 marker がない場合に一度だけ初期化されるため、この機能より前から存在する data directory にも作成されます。既存または無効化済みの list file は上書きせず、初期化後に管理者が削除した starter list は再起動しても再作成しません。
 
 ### 5.0.0 KOKOTO WebChat の構成と名称移行
 
@@ -168,7 +170,7 @@ Bukkit/Spigot API baseline を 1.21 から 1.18 に下げ、Java 17 は維持し
 
 ## 4.6.3 管理者グループチャット監査
 
-4.6.3 ではグループチャット本文を確認できる任意の read-only 管理者監査を追加しました。5.2.0 でも DM と group-chat の本文監査を独立して制御します。DM は `direct-message.admin-audit.enabled`、group は `group-chat.admin-audit.enabled` を使い、どちらも `private-chat-super-admins` に明示した account だけが利用できます。監査 view は read-only で、送信、Reply、hide、既読更新や room 参加は行わず、各 page read は audit log に記録されます。
+4.6.3 ではグループチャット本文を確認できる任意の read-only 管理者監査を追加しました。5.2.0 でも DM と group-chat の本文監査を独立して制御します。DM は `direct-message.admin-audit.enabled`、group は `group-chat.admin-audit.enabled` を使い、どちらも `private-chat-super-admins` に明示した account だけが利用できます。監査 view は read-only で、送信、Reply、delete、既読更新や room 参加は行わず、各 page read は audit log に記録されます。
 
 ```yaml
 private-chat-super-admins:
@@ -255,7 +257,7 @@ emoji:
 
 `direct-message.enabled` を有効にすると、1:1 会話スレッド型のメッセージボックスを使用できます。送信先には、UUID/名前が保存済みの連携済み・参加履歴プレイヤーに加えて、リレーメッセージに player UUID が含まれる別サーバーの送信者も含まれます。受信した表示名と実 Minecraft 名は Web DM の新規宛先検索に反映されるため、専用 DM ボタンなしで通常の検索から会話を開始できます。UUID のない guest/Discord 送信者は対象外です。A→B と B→A は同じスレッドを使い、保存は UUID 基準、UI 表示は可能な場合 `表示名 (実アカウント名)` 形式になります。
 
-DM は公開チャット履歴とは別の専用ストアを使います。`direct-message.storage: auto` は、公開チャットが `jsonl` 保存方式のとき DM も JSONL を使い、それ以外では SQLite を使います。必要に応じて `direct-message.storage` を `sqlite` または `jsonl` に固定し、`direct-message.sqlite-file` または `direct-message.jsonl-file` を指定できます。`direct-message.retention-days: 0` は保持期限なしです。それ以外の値は DM 画面のタイトル横に保持期間として表示され、その日数を過ぎた DM 本文は物理削除されます。`direct-message.max-messages-per-thread: 0` はスレッドごとの件数削除なしです。`direct-message.confirm-hide` は Web UI で自分の表示から DM を隠す前に確認するかを制御します。個人メッセージがサーバーに保存されるため既定では無効です。サーバーポリシーに合わせて保持期間を決めてから有効化してください。
+DM は公開チャット履歴とは別の専用ストアを使います。`direct-message.storage: auto` は、公開チャットが `jsonl` 保存方式のとき DM も JSONL を使い、それ以外では SQLite を使います。必要に応じて `direct-message.storage` を `sqlite` または `jsonl` に固定し、`direct-message.sqlite-file` または `direct-message.jsonl-file` を指定できます。`direct-message.retention-days: 0` は保持期限なしです。それ以外の値は DM 画面のタイトル横に保持期間として表示され、その日数を過ぎた DM 本文は物理削除されます。`direct-message.max-messages-per-thread: 0` はスレッドごとの件数削除なしです。`direct-message.confirm-delete` は Web UI で自分が送信した DM を両方の参加者の会話から削除する前に確認するかを制御します。受信した DM を受信者側で非表示または削除することはできません。個人メッセージがサーバーに保存されるため既定では無効です。サーバーポリシーに合わせて保持期間を決めてから有効化してください。
 
 
 `direct-message.capture-game-whispers` でゲームの `/w`, `/msg`, `/tell` 系を同じ Web DM に複製できます。同じサーバーのゲーム送信者名は `/w <実名> `、Web 送信者は `/kchat dm <実名> `、別サーバーのゲーム送信者名は `/kchat dm <実名>@<server-id> ` が候補になります。また `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` で `名前@server-id` を指定すると、同じ cross-server KWC DM relay で送信されます。
@@ -343,7 +345,7 @@ kwc.update.notify
 - `docs/ja/USER_MANUAL.md` - 全機能のユーザー・運用総合マニュアル
 - `docs/ja/CONFIGURATION.md`
 - `docs/ja/SERVER_RELAY.md` - Relay Protocol v2 公開チャット・サーバー間 DM/既読 receipt・trust/forwarding 規則
-- `docs/ja/UPGRADE.md` - 5.2.0 までの統合アップグレード / 移行ガイド
+- `docs/ja/UPGRADE.md` - 5.3.0 までの統合アップグレード / 移行ガイド
 - `docs/ja/CADDY_HTTPS.md`
 - `docs/ja/I18N.md`
 - `docs/ja/INSTALL_TROUBLESHOOTING.md`
@@ -394,3 +396,5 @@ Forge は Minecraft 1.18.2〜26.2 を単一の広域 JAR ではなく、Minecraf
 ## 生成AI利用の開示
 
 本プロジェクトでは、コードレビュー、実装およびパッチ作成の補助、ドキュメント作成、多言語翻訳に生成AIを補助ツールとして使用しています。要件定義、アーキテクチャおよび設計判断、ソース統合、テスト、互換性検証、リリース検証、最終承認は人間のメンテナーが主導・確認します。AI支援による出力は、レビューと検証を経たものだけを採用します。詳細は `AI_USAGE.md` を参照してください。
+
+> Relay 2.2 は targeted event (`game`) routing を追加します。relay event link は local event に置き換えず、origin server の対象 event を開く/参加します。

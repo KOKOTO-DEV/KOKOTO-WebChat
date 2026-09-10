@@ -1,4 +1,4 @@
-# Server Relay — Protocol 2.1
+# Server Relay — Protocol 2.2
 
 反应 authority、直连/多跳传递、origin 断开时的 outbox 与作者通知图请参阅 [REACTIONS.md](REACTIONS.md)。
 
@@ -12,7 +12,7 @@
 
 > **安全边界：** Relay v2 不是端到端加密，而是**逐跳认证加密（hop-by-hop authenticated encryption）**。参与转发的 KWC 服务器属于信任边界内的参与者。
 
-KOKOTO WebChat 5.2.0 使用 **Relay Protocol 2.1**，它是在 5.1.0 引入的 Relay v2 信任/加密模型之上的向后兼容 2.x capability revision。Protocol major `2` 仍是 wire compatibility 边界；2.1 公告 `public`、`dm`、`read`、`reaction`、`reaction-authority`、`typing` capability，KWC 产品版本仅用于诊断而不是兼容性判断。公共聊天与跨服务器 1:1 DM/已读回执继续使用同一 group-scoped 认证传输，公共 reaction、仅发送到参与者服务器的跨服务器 DM reaction 与远程 DM typing 使用 2.1 扩展，群聊房间仍保持本地。
+KOKOTO WebChat 5.3.0 整个版本线固定使用 **Relay Protocol 2.2**。Protocol major `2` 仍是 wire compatibility 边界；2.2 公告 `public`、`dm`、`read`、`delete`、`reaction`、`reaction-authority`、`typing`、`game`、`profile` capability，KWC 产品版本仅用于诊断而不是兼容性判断。reaction/reaction-authority/typing 与 2.1 功能集兼容；5.3.0 的 `delete`、`game`、`profile` 在 revision 2.2 内通过 capability negotiation 使用，不再提升 revision。群聊房间仍保持本地。
 
 
 ## 安全升级优先范围
@@ -30,7 +30,7 @@ Relay 的**组就是安全边界**。每个组包含：
 - 一个组 `id`；
 - 一个 `shared-secret`，供该组内所有成员关系共同使用；
 - 该组自己的 `forwarding.enabled` 开关；
-- peer 列表，其中每个 peer 只包含 `id`、`url`、`enabled`。
+- peer 列表，其中每个 peer 包含 `id`、`url`、`enabled` 以及可选的 `send` / `receive` 策略控制。shared secret 仍属于 group 级，不会按 peer 保存。
 
 Protocol v2 不存在 `peers[].secret`。这样可以避免某个 peer 项被错误地与另一个组的共享密钥配对。
 
@@ -57,6 +57,7 @@ server-relay:
     guest: true
     discord: false
     system: false
+    event: true
 
   delivery:
     web: true
@@ -73,6 +74,16 @@ server-relay:
         - id: "server-2"
           url: "https://server2.example.com/api"
           enabled: true
+          send:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
+          receive:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
 ```
 
 先让 `server-1` 以空值启动/重载一次，再重新打开其 `config.yml` 取得自动生成的 secret。把该值原样复制到 `server-2`，并在相同 `main` group 中把 `server-1` 登记为反向 peer：
@@ -93,11 +104,20 @@ server-relay:
           enabled: true
 ```
 
+
+### 按 peer 分离发送/接收策略
+
+每个 peer 的 `enabled` 继续作为总开关，同时可以独立限制 `send` 与 `receive`。省略这些项目时，两种方向和全部 traffic class 都默认为 `true`，因此既有 5.2.x / 早期 5.3.0 peer 配置保持原有行为。也可以用 `send: false` 或 `receive: false` 关闭整个方向。使用 map 形式时，可分别控制 `public-chat`、`event`、`dm`、`profile`。公共 reaction/typing 跟随 `public-chat`；DM reaction/typing/read/delete 跟随 `dm`；远程活动查询/参加跟随 `event`；远程 profile 查询跟随 `profile`。
+
+既有 config 不只依赖运行时默认值。迁移时会把缺失的 `send` / `receive` map，以及其中缺失的 `public-chat`、`event`、`dm`、`profile` 项以 `true` 实际补写到配置中。已有显式值和标量 `send: false` / `receive: false` 会原样保留，重复执行迁移也不会继续产生变化。
+
+`sources.event` 与 `sources.system` 已分离，因此可以转发活动通知而让普通系统通知保持本地。创建活动时选择的**通知范围**仍决定该活动的创建/结果通知是仅限本机还是可进入 Relay，而 peer 的 `send.event` / `receive.event` 是更上层的路由限制。
+
 ## 逐请求认证与可选 identity/health probe
 
 direct relay 采用与 5.0.0 相同的运行方式：每个 `/relay/v2/message` request 都独立完成认证。接收端仍必须在同一 group 中以相同 shared secret 配置发送端，并使用这些信息认证/解密请求；反向连接彼此独立。`/relay/v2/handshake` 只是无状态的诊断 identity/health probe，不会创建、保留、启用或禁用 direct route。可选 probe request 会绑定：
 
-- protocol `2` 与产品版本 `5.1.0`；
+- protocol major `2` 与 protocol revision `2.2`（产品版本仅用于诊断）；
 - `group-id`；
 - 发送服务器 ID；
 - 目标服务器 ID；
@@ -114,12 +134,17 @@ Endpoint：
 /relay/v2/message
 ```
 
-旧 v1 endpoint（`/relay/handshake`、`/relay/receive`、`/relay/dm/receive`、`/relay/dm/read`）会返回 **HTTP 426**，并声明 protocol major `2` / revision `2.1`。
+旧 v1 endpoint（`/relay/handshake`、`/relay/receive`、`/relay/dm/receive`、`/relay/dm/read`）会返回 **HTTP 426**，并声明 protocol major `2` / revision `2.2`。
 
 
 ## Protocol revision 与 capability
 
-Relay 兼容性不再绑定 KWC 产品版本。`X-KWC-Relay-Version: 2` 表示兼容的 major wire family，`X-KWC-Relay-Protocol: 2.1` 与 `X-KWC-Relay-Capabilities` 描述当前 revision 和可选扩展。2.0 peer 与 2.1 peer 仍可交换共同的 v2 public/DM/read 流量。reaction 与 typing 属于 2.1 扩展；不支持某个扩展不应使整个 peer 被判定为不兼容。handshake 中的 `serverVersion` 仅用于诊断。
+Relay 兼容性不再绑定 KWC 产品版本。`X-KWC-Relay-Version: 2` 表示兼容的 major wire family，`X-KWC-Relay-Protocol: 2.2` 与 `X-KWC-Relay-Capabilities` 描述当前 revision 和可选扩展。KWC 5.3.0 不论 RC 都保持 revision 2.2，并用 capability 区分 `delete`、`game`、`profile`。目标 peer 不支持所需 capability 时，仅该扩展安全失败，不会把整个 peer 判定为不兼容。handshake 中的 `serverVersion` 仅用于诊断。
+
+
+### Event Relay 路由（2.2）
+
+`game` capability 不会把事件操作 broadcast 给所有 peer。事件公告携带 event ID 和 origin server ID；打开或参加 relay 事件时，只向该 origin server 发送 targeted `game-request`（必要时通过允许的 forwarding route）。如果无法访问来源事件，接收端不得用自己的本地事件替代；旧版/不支持该 capability 的 peer 应安全失败，或只显示公告内的 snapshot。
 
 ## 消息加密与认证
 
@@ -211,3 +236,7 @@ Relay v2 使用**逐跳认证加密（hop-by-hop authenticated encryption）**�
 - [RFC 5869 — HKDF](https://www.rfc-editor.org/info/rfc5869/)
 - [NIST SP 800-38D — GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)
 - [RFC 9110 — HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
+
+### 远程用户资料查询 (2.2)
+
+`profile` capability 仅通过定向 `profile-request` 向来源服务器查询其他服务器用户的公开资料与 Presence，不传输会话、限制或管理员专用信息。

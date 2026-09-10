@@ -1,9 +1,22 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * GroupChatStore는 KWC 상태를 메모리/JSONL/SQLite 같은 영속 매체에 저장하고 조회하는 계층이다.
+ * GroupChatStore is a persistence layer storing and reading KWC state from memory, JSONL, SQLite, or another backing store.
+ *
+ * 조회 visibility와 mutation 권한을 분리하고, transaction/atomic rewrite가 필요한 작업은 중간 실패로 데이터가 반쯤 적용되지 않게 해야 한다.
+ * Keep read visibility separate from mutation authorization, and use transactions/atomic rewrites where partial failure could leave inconsistent data.
+ */
 import java.io.File;
 import java.sql.*;
 import java.util.*;
 
+/**
+ * KWC 유지보수 안내: 그룹방, 멤버십, room-local role, 메시지, 읽음 상태, pin, ban/hidden-room 상태를 SQLite에 저장한다. owner/admin/member 권한은 전역 KWC role과 독립이며, 모든 mutation 메서드는 caller UUID와 room membership/role을 저장소에서 다시 검증한다.
+ *
+ * KWC maintenance note: SQLite persistence for group rooms, membership, room-local roles, messages, read state, pins, bans, and hidden-room state. owner/admin/member authority is independent of global KWC roles, and every mutation method revalidates caller UUID plus room membership/role in storage.
+ */
 public class GroupChatStore {
     private final ConversationStoreHost host;
     private Connection connection;
@@ -65,12 +78,18 @@ public class GroupChatStore {
                     "archived INTEGER NOT NULL DEFAULT 0," +
                     "locked INTEGER NOT NULL DEFAULT 0," +
                     "retention_exempt INTEGER NOT NULL DEFAULT 0," +
-                    "membership_events_enabled INTEGER NOT NULL DEFAULT 1" +
+                    "membership_events_enabled INTEGER NOT NULL DEFAULT 1," +
+                    "pins_enabled INTEGER NOT NULL DEFAULT 1," +
+                    "message_delete_enabled INTEGER NOT NULL DEFAULT 1," +
+                    "member_self_delete_enabled INTEGER NOT NULL DEFAULT 1" +
                     ")");
             st.execute("CREATE INDEX IF NOT EXISTS idx_group_rooms_visibility ON group_rooms(visibility, updated_at)");
             addColumnIfMissing(st, "group_rooms", "locked", "INTEGER NOT NULL DEFAULT 0");
             addColumnIfMissing(st, "group_rooms", "retention_exempt", "INTEGER NOT NULL DEFAULT 0");
             addColumnIfMissing(st, "group_rooms", "membership_events_enabled", "INTEGER NOT NULL DEFAULT 1");
+            addColumnIfMissing(st, "group_rooms", "pins_enabled", "INTEGER NOT NULL DEFAULT 1");
+            addColumnIfMissing(st, "group_rooms", "message_delete_enabled", "INTEGER NOT NULL DEFAULT 1");
+            addColumnIfMissing(st, "group_rooms", "member_self_delete_enabled", "INTEGER NOT NULL DEFAULT 1");
             st.execute("CREATE TABLE IF NOT EXISTS group_members (" +
                     "room_id TEXT NOT NULL," +
                     "user_uuid TEXT NOT NULL," +
@@ -128,6 +147,26 @@ public class GroupChatStore {
                     "hidden INTEGER NOT NULL DEFAULT 0," +
                     "PRIMARY KEY(message_id, user_uuid)" +
                     ")");
+            st.execute("CREATE TABLE IF NOT EXISTS group_pins (" +
+                    "pin_id TEXT PRIMARY KEY," +
+                    "room_id TEXT NOT NULL," +
+                    "message_id INTEGER NOT NULL," +
+                    "pinned_at INTEGER NOT NULL," +
+                    "sort_order INTEGER NOT NULL," +
+                    "pinned_by_uuid TEXT NOT NULL DEFAULT ''," +
+                    "pinned_by_username TEXT NOT NULL DEFAULT ''," +
+                    "pinned_by_display_name TEXT NOT NULL DEFAULT ''," +
+                    "message_time INTEGER NOT NULL," +
+                    "sender_uuid TEXT NOT NULL DEFAULT ''," +
+                    "sender_username TEXT NOT NULL DEFAULT ''," +
+                    "sender_display_name TEXT NOT NULL DEFAULT ''," +
+                    "body TEXT NOT NULL DEFAULT ''," +
+                    "event_type TEXT NOT NULL DEFAULT ''" +
+                    ")");
+            addColumnIfMissing(st, "group_pins", "pinned_by_username", "TEXT NOT NULL DEFAULT ''");
+            addColumnIfMissing(st, "group_pins", "pinned_by_display_name", "TEXT NOT NULL DEFAULT ''");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_group_pins_room ON group_pins(room_id, sort_order, pinned_at)");
+            st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_group_pins_message ON group_pins(room_id, message_id)");
         }
     }
 
@@ -187,7 +226,9 @@ public class GroupChatStore {
         }
     }
 
-    public synchronized CreateResult createRoom(String ownerUuid, String name, String visibility, String password, boolean membershipEventsEnabled) {
+    // 새 room과 owner membership을 하나의 저장 흐름으로 만든다. owner는 첫 멤버이자 유일한 초기 owner이며, visibility/password/membership-event 설정을 함께 canonicalize한다.
+    // Creates a new room and its owner membership in one persistence flow. The owner is the first and sole initial owner, while visibility/password/membership-event settings are canonicalized together.
+    public synchronized CreateResult createRoom(String ownerUuid, String name, String visibility, String password, boolean membershipEventsEnabled, boolean pinsEnabled, boolean messageDeleteEnabled, boolean memberSelfDeleteEnabled) {
         CreateResult r = new CreateResult();
         if (connection == null) { r.error = "store_unavailable"; return r; }
         GroupChatSettings c = host.groupChatSettings();
@@ -204,7 +245,7 @@ public class GroupChatStore {
         String passwordHash = hashPassword(password);
         try {
             connection.setAutoCommit(false);
-            try (PreparedStatement ps = connection.prepareStatement("INSERT INTO group_rooms(id,name,owner_uuid,visibility,password_hash,created_at,updated_at,archived,locked,retention_exempt,membership_events_enabled) VALUES(?,?,?,?,?,?,?,0,0,0,?)")) {
+            try (PreparedStatement ps = connection.prepareStatement("INSERT INTO group_rooms(id,name,owner_uuid,visibility,password_hash,created_at,updated_at,archived,locked,retention_exempt,membership_events_enabled,pins_enabled,message_delete_enabled,member_self_delete_enabled) VALUES(?,?,?,?,?,?,?,0,0,0,?,?,?,?)")) {
                 ps.setString(1, id);
                 ps.setString(2, roomName);
                 ps.setString(3, owner);
@@ -213,6 +254,9 @@ public class GroupChatStore {
                 ps.setLong(6, now);
                 ps.setLong(7, now);
                 ps.setInt(8, membershipEventsEnabled ? 1 : 0);
+                ps.setInt(9, pinsEnabled ? 1 : 0);
+                ps.setInt(10, messageDeleteEnabled ? 1 : 0);
+                ps.setInt(11, memberSelfDeleteEnabled ? 1 : 0);
                 ps.executeUpdate();
             }
             try (PreparedStatement ps = connection.prepareStatement("INSERT INTO group_members(room_id,user_uuid,role,joined_at,last_read_message_id,hidden) VALUES(?,?,?,?,0,0)")) {
@@ -445,7 +489,7 @@ public class GroupChatStore {
         } catch (SQLException ex) { return false; }
     }
 
-    public synchronized ActionResult updateSettings(String userUuid, String roomId, String name, String visibility, String password, boolean passwordSet, Boolean membershipEventsEnabled) {
+    public synchronized ActionResult updateSettings(String userUuid, String roomId, String name, String visibility, String password, boolean passwordSet, Boolean membershipEventsEnabled, Boolean pinsEnabled, Boolean messageDeleteEnabled, Boolean memberSelfDeleteEnabled) {
         ActionResult r = new ActionResult();
         String user = normalizeUuid(userUuid);
         String id = cleanId(roomId);
@@ -461,13 +505,19 @@ public class GroupChatStore {
         if (passwordSet) newHash = hashPassword(password);
         long now = System.currentTimeMillis();
         boolean newMembershipEventsEnabled = membershipEventsEnabled == null ? roomMembershipEventsEnabled(id) : membershipEventsEnabled.booleanValue();
-        try (PreparedStatement ps = connection.prepareStatement("UPDATE group_rooms SET name=?, visibility=?, password_hash=?, membership_events_enabled=?, updated_at=? WHERE id=?")) {
+        boolean newPinsEnabled = pinsEnabled == null ? roomPinsEnabled(id) : pinsEnabled.booleanValue();
+        boolean newMessageDeleteEnabled = messageDeleteEnabled == null ? roomMessageDeleteEnabled(id) : messageDeleteEnabled.booleanValue();
+        boolean newMemberSelfDeleteEnabled = memberSelfDeleteEnabled == null ? roomMemberSelfDeleteEnabled(id) : memberSelfDeleteEnabled.booleanValue();
+        try (PreparedStatement ps = connection.prepareStatement("UPDATE group_rooms SET name=?, visibility=?, password_hash=?, membership_events_enabled=?, pins_enabled=?, message_delete_enabled=?, member_self_delete_enabled=?, updated_at=? WHERE id=?")) {
             ps.setString(1, newName);
             ps.setString(2, newVis);
             ps.setString(3, newHash);
             ps.setInt(4, newMembershipEventsEnabled ? 1 : 0);
-            ps.setLong(5, now);
-            ps.setString(6, id);
+            ps.setInt(5, newPinsEnabled ? 1 : 0);
+            ps.setInt(6, newMessageDeleteEnabled ? 1 : 0);
+            ps.setInt(7, newMemberSelfDeleteEnabled ? 1 : 0);
+            ps.setLong(8, now);
+            ps.setString(9, id);
             ps.executeUpdate();
         } catch (SQLException ex) { r.error = "settings_failed"; return r; }
         r.ok = true;
@@ -542,6 +592,8 @@ public class GroupChatStore {
         String user = normalizeUuid(userUuid);
         String id = cleanId(roomId);
         List<GroupMessage> out = new ArrayList<>();
+        // 고정 기능은 메시지 조회와 독립적이다. pin을 끄더라도 방의 기존 메시지와 입력 기능은 그대로 유지되어야 한다.
+        // Pinning is independent from message retrieval. Disabling pins must never hide room history or disable composing.
         if (connection == null || !isMember(user, id)) return out;
         int max = limit <= 0 ? 100 : Math.min(limit, 300);
         String sql = before > 0
@@ -570,6 +622,63 @@ public class GroupChatStore {
         for (GroupMessage message : out) message.unreadMemberCount = unreadMemberCountForMessage(message);
         return out;
     }
+
+    /** Searches a member's complete retained room history without changing read state. */
+    public synchronized List<GroupMessage> searchMessages(String userUuid, String roomId, String query,
+                                                           long from, long to, String senderFilter,
+                                                           boolean includeEvents, int limit) {
+        String user = normalizeUuid(userUuid);
+        String id = cleanId(roomId);
+        String needle = String.valueOf(query == null ? "" : query).trim().toLowerCase(Locale.ROOT);
+        String senderNeedle = String.valueOf(senderFilter == null ? "" : senderFilter).trim().toLowerCase(Locale.ROOT);
+        int max = Math.max(1, limit <= 0 ? 50 : limit);
+        List<GroupMessage> out = new ArrayList<>();
+        if (connection == null || user.isBlank() || id.isBlank() || !isMember(user, id)) return out;
+        if (from != Long.MIN_VALUE && to != Long.MAX_VALUE && from > to) {
+            long swap = from; from = to; to = swap;
+        }
+
+        StringBuilder sql = new StringBuilder(
+                "SELECT id,room_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,event_type " +
+                "FROM group_messages WHERE room_id=? AND hidden=0 " +
+                "AND id NOT IN (SELECT message_id FROM group_message_state WHERE user_uuid=? AND hidden=1) ");
+        if (from != Long.MIN_VALUE) sql.append("AND created_at>=? ");
+        if (to != Long.MAX_VALUE) sql.append("AND created_at<=? ");
+        sql.append("ORDER BY id DESC");
+        try (PreparedStatement ps = connection.prepareStatement(sql.toString())) {
+            int index = 1;
+            ps.setString(index++, id);
+            ps.setString(index++, user);
+            if (from != Long.MIN_VALUE) ps.setLong(index++, from);
+            if (to != Long.MAX_VALUE) ps.setLong(index++, to);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    GroupMessage msg = messageFromResult(rs);
+                    if (!includeEvents && msg.eventType != null && !msg.eventType.isBlank()) continue;
+                    if (!matchesGroupMessageSearch(msg, needle, senderNeedle)) continue;
+                    out.add(msg);
+                    if (out.size() >= max) break;
+                }
+            }
+            for (GroupMessage msg : out) msg.unreadMemberCount = unreadMemberCountForMessage(msg);
+        } catch (SQLException ex) {
+            host.warn("Failed to search group messages: " + ex.getMessage());
+        }
+        return out;
+    }
+
+    private boolean matchesGroupMessageSearch(GroupMessage msg, String needle, String senderNeedle) {
+        if (msg == null) return false;
+        String sender = (String.valueOf(msg.senderUuid == null ? "" : msg.senderUuid) + "\n"
+                + String.valueOf(msg.senderUsername == null ? "" : msg.senderUsername) + "\n"
+                + String.valueOf(msg.senderDisplayName == null ? "" : msg.senderDisplayName)).toLowerCase(Locale.ROOT);
+        if (senderNeedle != null && !senderNeedle.isBlank() && !sender.contains(senderNeedle)) return false;
+        if (needle == null || needle.isBlank()) return true;
+        String haystack = (String.valueOf(msg.body == null ? "" : msg.body) + "\n"
+                + String.valueOf(msg.eventType == null ? "" : msg.eventType) + "\n" + sender).toLowerCase(Locale.ROOT);
+        return haystack.contains(needle);
+    }
+
 
     /** Returns a member's inclusive visible group range without changing read state. */
     public synchronized List<GroupMessage> archiveRange(String userUuid, String roomId, long firstId, long lastId, int limit) {
@@ -633,15 +742,195 @@ public class GroupChatStore {
         } catch (SQLException ex) { return ""; }
     }
 
-    public synchronized boolean hideMessage(String userUuid, long messageId) {
-        String user = normalizeUuid(userUuid);
-        String roomId = roomIdForMessage(user, messageId);
-        if (roomId.isBlank()) return false;
-        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO group_message_state(message_id,user_uuid,hidden) VALUES(?,?,1) ON CONFLICT(message_id,user_uuid) DO UPDATE SET hidden=1")) {
+    /** Delete a group message for the whole room. Members may delete their own normal messages; room owner/admin may delete any room message. */
+    // 그룹 메시지를 “나에게만 숨김”이 아니라 room 전체에서 실제 삭제한다. 일반 member는 자기 메시지만, owner/admin은 관리 정책에 따라 삭제할 수 있고 관련 reply snapshot을 함께 정리하되 pin snapshot은 명시적 고정 해제 전까지 유지한다.
+    // Deletes a group message for the entire room rather than hiding it locally. Ordinary members can delete only their own messages; owner/admin follow management policy, and related Reply snapshots are cleaned up while pin snapshots remain until explicit unpin.
+    public synchronized DeleteResult deleteMessage(String requesterUuid, long messageId) {
+        return deleteMessage(requesterUuid, messageId, false, true, 0);
+    }
+
+    public synchronized DeleteResult deleteMessage(String requesterUuid, long messageId, boolean moderatorDelete,
+                                                     boolean selfDeleteEnabled, int selfDeleteWindowMinutes) {
+        DeleteResult out = new DeleteResult();
+        String requester = normalizeUuid(requesterUuid);
+        if (connection == null) { out.error = "store_unavailable"; return out; }
+        if (requester.isBlank() || messageId <= 0) { out.error = "invalid_message"; return out; }
+        String roomId; String senderUuid; String eventType; long createdAt;
+        try (PreparedStatement ps = connection.prepareStatement("SELECT room_id,sender_uuid,COALESCE(event_type,''),created_at FROM group_messages WHERE id=? AND hidden=0")) {
             ps.setLong(1, messageId);
-            ps.setString(2, user);
-            return ps.executeUpdate() > 0;
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) { out.error = "message_not_found"; return out; }
+                roomId = rs.getString(1); senderUuid = normalizeUuid(rs.getString(2)); eventType = String.valueOf(rs.getString(3) == null ? "" : rs.getString(3)); createdAt = rs.getLong(4);
+            }
+        } catch (SQLException ex) { out.error = "store_error"; return out; }
+        if (!isMember(requester, roomId)) { out.error = "not_member"; return out; }
+        if (!roomMessageDeleteEnabled(roomId)) { out.error = "delete_disabled"; return out; }
+        boolean manager = moderatorDelete || canManage(requester, roomId);
+        boolean ownNormalMessage = requester.equals(senderUuid) && eventType.isBlank();
+        if (!manager && (!ownNormalMessage || !roomMemberSelfDeleteEnabled(roomId) || !selfDeleteEnabled)) { out.error = "permission_denied"; return out; }
+        int windowMinutes = Math.max(0, selfDeleteWindowMinutes);
+        if (!manager && windowMinutes > 0 && (createdAt <= 0L || System.currentTimeMillis() - createdAt > windowMinutes * 60_000L)) {
+            out.error = "self_delete_window_expired"; return out;
+        }
+        try {
+            connection.setAutoCommit(false);
+            int changed;
+            try (PreparedStatement ps = connection.prepareStatement("UPDATE group_messages SET hidden=1 WHERE id=? AND hidden=0")) {
+                ps.setLong(1, messageId); changed = ps.executeUpdate();
+            }
+            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM group_message_state WHERE message_id=?")) {
+                ps.setLong(1, messageId); ps.executeUpdate();
+            }
+            // pin은 body/sender/time snapshot을 보존한다. 원문 삭제와 함께 pin을 지우지 않고,
+            // 관리자가 명시적으로 고정 해제하거나 방을 삭제할 때까지 독립 보존한다.
+            // A pin stores a body/sender/time snapshot. Keep it after source-message deletion
+            // until a manager explicitly unpins it or the room itself is deleted.
+            out.pinRemoved = false;
+            try (PreparedStatement ps = connection.prepareStatement("UPDATE group_messages SET reply_to_id=0,reply_to_sender='',reply_to_preview='' WHERE room_id=? AND hidden=0 AND reply_to_id=?")) {
+                ps.setString(1, roomId); ps.setLong(2, messageId); ps.executeUpdate();
+            }
+            try (PreparedStatement ps = connection.prepareStatement("UPDATE group_rooms SET updated_at=? WHERE id=?")) {
+                ps.setLong(1, System.currentTimeMillis()); ps.setString(2, roomId); ps.executeUpdate();
+            }
+            connection.commit();
+            out.ok = changed > 0; out.roomId = roomId; out.messageId = messageId; out.managerDelete = manager && !ownNormalMessage;
+            if (!out.ok) out.error = "message_not_found";
+        } catch (SQLException ex) {
+            rollbackQuietly(); out.error = "store_error"; host.warn("Failed to delete group message: " + ex.getMessage());
+        } finally { autoCommitQuietly(); }
+        return out;
+    }
+
+    // room membership을 확인한 뒤 retention과 독립적으로 저장된 pin snapshot을 정렬 순서대로 반환한다. 원본 메시지가 일반 retention으로 없어져도 pin은 명시적 삭제 전까지 남을 수 있다.
+    // After verifying room membership, returns retained pin snapshots in explicit order. A pin can outlive normal message retention and source-message deletion; it remains until explicit unpin or room deletion.
+    public synchronized List<GroupPinnedMessage> listPins(String userUuid, String roomId) {
+        List<GroupPinnedMessage> out = new ArrayList<>();
+        String user = normalizeUuid(userUuid), id = cleanId(roomId);
+        if (connection == null || !isMember(user, id)) return out;
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT pin_id,room_id,message_id,pinned_at,sort_order,pinned_by_uuid,pinned_by_username,pinned_by_display_name,message_time,sender_uuid,sender_username,sender_display_name,body,event_type " +
+                        "FROM group_pins WHERE room_id=? ORDER BY sort_order ASC,pinned_at ASC,pin_id ASC")) {
+            ps.setString(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(groupPinFromResult(rs));
+            }
+        } catch (SQLException ex) { host.warn("Failed to list group pins: " + ex.getMessage()); }
+        return out;
+    }
+
+    // owner/admin만 현재 room의 메시지를 pin snapshot으로 고정한다. maxPins와 중복 pin을 transaction 안에서 확인해 경쟁 요청에도 제한을 넘지 않게 한다.
+    // Allows only owner/admin to pin a current-room message as a snapshot. maxPins and duplicates are checked within the transaction so concurrent requests cannot exceed the limit.
+    public synchronized GroupPinnedMessage pinMessage(String managerUuid, String managerUsername, String managerDisplayName, String roomId, long messageId, int maxPins) {
+        String manager = normalizeUuid(managerUuid), id = cleanId(roomId);
+        if (connection == null || !canManage(manager, id) || !roomPinsEnabled(id) || messageId <= 0) return null;
+        try {
+            try (PreparedStatement existing = connection.prepareStatement(
+                    "SELECT pin_id,room_id,message_id,pinned_at,sort_order,pinned_by_uuid,pinned_by_username,pinned_by_display_name,message_time,sender_uuid,sender_username,sender_display_name,body,event_type FROM group_pins WHERE room_id=? AND message_id=?")) {
+                existing.setString(1, id); existing.setLong(2, messageId);
+                try (ResultSet rs = existing.executeQuery()) { if (rs.next()) return groupPinFromResult(rs); }
+            }
+            if (maxPins > 0) {
+                try (PreparedStatement count = connection.prepareStatement("SELECT COUNT(*) FROM group_pins WHERE room_id=?")) {
+                    count.setString(1, id); try (ResultSet rs = count.executeQuery()) { if (rs.next() && rs.getInt(1) >= maxPins) return null; }
+                }
+            }
+            GroupMessage msg = rawMessageForRoom(id, messageId);
+            if (msg == null) return null;
+            long now = System.currentTimeMillis(), order = 1L;
+            try (PreparedStatement ps = connection.prepareStatement("SELECT COALESCE(MAX(sort_order),0)+1 FROM group_pins WHERE room_id=?")) {
+                ps.setString(1, id); try (ResultSet rs = ps.executeQuery()) { if (rs.next()) order = Math.max(1L, rs.getLong(1)); }
+            }
+            String pinId = "gpin-" + SecurityUtil.randomToken(10);
+            PlayerIdentity sender = identity(msg.senderUuid);
+            String senderUsername = sender == null ? msg.senderUsername : String.valueOf(sender.username == null ? "" : sender.username);
+            String senderDisplay = sender == null ? msg.senderDisplayName : String.valueOf(sender.displayName == null ? "" : sender.displayName);
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "INSERT INTO group_pins(pin_id,room_id,message_id,pinned_at,sort_order,pinned_by_uuid,pinned_by_username,pinned_by_display_name,message_time,sender_uuid,sender_username,sender_display_name,body,event_type) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                String pinnerUsername = cleanIdentitySnapshot(managerUsername);
+                String pinnerDisplay = cleanIdentitySnapshot(managerDisplayName);
+                ps.setString(1, pinId); ps.setString(2, id); ps.setLong(3, messageId); ps.setLong(4, now); ps.setLong(5, order);
+                ps.setString(6, manager); ps.setString(7, pinnerUsername); ps.setString(8, pinnerDisplay); ps.setLong(9, msg.createdAt);
+                ps.setString(10, msg.senderUuid); ps.setString(11, senderUsername); ps.setString(12, senderDisplay); ps.setString(13, msg.body);
+                ps.setString(14, msg.eventType == null ? "" : msg.eventType); ps.executeUpdate();
+            }
+            for (GroupPinnedMessage pin : listPins(manager, id)) if (pinId.equals(pin.pinId)) return pin;
+        } catch (SQLException ex) { host.warn("Failed to pin group message: " + ex.getMessage()); }
+        return null;
+    }
+
+    public synchronized boolean unpinMessage(String managerUuid, String roomId, String pinId) {
+        String manager = normalizeUuid(managerUuid), id = cleanId(roomId), pin = cleanId(pinId);
+        if (connection == null || !canManage(manager, id) || !roomPinsEnabled(id) || pin.isBlank()) return false;
+        try (PreparedStatement ps = connection.prepareStatement("DELETE FROM group_pins WHERE room_id=? AND pin_id=?")) {
+            ps.setString(1, id); ps.setString(2, pin); return ps.executeUpdate() > 0;
         } catch (SQLException ex) { return false; }
+    }
+
+    public synchronized boolean movePin(String managerUuid, String roomId, String pinId, String direction) {
+        String manager = normalizeUuid(managerUuid), id = cleanId(roomId), pin = cleanId(pinId);
+        String dir = String.valueOf(direction == null ? "" : direction).trim().toLowerCase(Locale.ROOT);
+        if (connection == null || !canManage(manager, id) || !roomPinsEnabled(id) || pin.isBlank() || !("up".equals(dir) || "down".equals(dir))) return false;
+        try {
+            List<GroupPinnedMessage> pins = listPins(manager, id);
+            int index = -1; for (int i=0;i<pins.size();i++) if (pin.equals(pins.get(i).pinId)) { index=i; break; }
+            int other = "up".equals(dir) ? index - 1 : index + 1;
+            if (index < 0 || other < 0 || other >= pins.size()) return false;
+            GroupPinnedMessage a = pins.get(index), b = pins.get(other);
+            connection.setAutoCommit(false);
+            try (PreparedStatement ps = connection.prepareStatement("UPDATE group_pins SET sort_order=? WHERE room_id=? AND pin_id=?")) {
+                ps.setLong(1, b.sortOrder); ps.setString(2, id); ps.setString(3, a.pinId); ps.executeUpdate();
+                ps.setLong(1, a.sortOrder); ps.setString(2, id); ps.setString(3, b.pinId); ps.executeUpdate();
+            }
+            connection.commit(); return true;
+        } catch (SQLException ex) { rollbackQuietly(); return false; }
+        finally { autoCommitQuietly(); }
+    }
+
+    /** Owner-only room-local admin promotion/demotion. */
+    // room owner만 member↔admin 역할을 변경한다. owner 자신을 일반 role로 내리는 동작이나 두 번째 owner 생성은 허용하지 않아 ownership 불변식을 지킨다.
+    // Only the room owner can switch member↔admin roles. Demoting the owner or creating a second owner is disallowed to preserve ownership invariants.
+    public synchronized ActionResult setMemberRole(String ownerUuid, String roomId, String targetUuid, String newRole) {
+        ActionResult r = new ActionResult();
+        String owner = normalizeUuid(ownerUuid), target = normalizeUuid(targetUuid), id = cleanId(roomId);
+        String role = String.valueOf(newRole == null ? "" : newRole).trim().toLowerCase(Locale.ROOT);
+        if (connection == null) { r.error = "store_unavailable"; return r; }
+        if (!"owner".equals(roleOf(owner, id))) { r.error = "permission_denied"; return r; }
+        if (!("admin".equals(role) || "member".equals(role)) || target.isBlank() || target.equals(owner) || !isMember(target, id) || "owner".equals(roleOf(target, id))) {
+            r.error = "invalid_target"; return r;
+        }
+        try (PreparedStatement ps = connection.prepareStatement("UPDATE group_members SET role=? WHERE room_id=? AND user_uuid=?")) {
+            ps.setString(1, role); ps.setString(2, id); ps.setString(3, target); r.ok = ps.executeUpdate() > 0;
+            if (!r.ok) r.error = "not_member"; else r.room = roomForUser(owner, id);
+        } catch (SQLException ex) { r.error = "role_update_failed"; }
+        return r;
+    }
+
+    private GroupMessage rawMessageForRoom(String roomId, long messageId) {
+        if (connection == null) return null;
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT id,room_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,event_type FROM group_messages WHERE room_id=? AND id=? AND hidden=0")) {
+            ps.setString(1, roomId); ps.setLong(2, messageId);
+            try (ResultSet rs = ps.executeQuery()) { if (rs.next()) { GroupMessage m = messageFromResult(rs); fillIdentity(m); return m; } }
+        } catch (SQLException ignored) {}
+        return null;
+    }
+
+    private GroupPinnedMessage groupPinFromResult(ResultSet rs) throws SQLException {
+        GroupPinnedMessage pin = new GroupPinnedMessage();
+        pin.pinId = rs.getString(1); pin.roomId = rs.getString(2); pin.messageId = rs.getLong(3); pin.pinnedAt = rs.getLong(4); pin.sortOrder = rs.getLong(5);
+        pin.pinnedByUuid = rs.getString(6); pin.pinnedByUsername = rs.getString(7); pin.pinnedByDisplayName = rs.getString(8);
+        pin.time = rs.getLong(9); pin.senderUuid = rs.getString(10); pin.senderUsername = rs.getString(11); pin.senderDisplayName = rs.getString(12);
+        pin.body = rs.getString(13); pin.eventType = rs.getString(14);
+        PlayerIdentity pinner = identity(pin.pinnedByUuid);
+        if (pinner != null) {
+            pin.pinnedByUsername = pinner.username;
+            pin.pinnedByDisplayName = pinner.outputDisplayName();
+        }
+        String visibleName = pin.pinnedByDisplayName == null || pin.pinnedByDisplayName.isBlank() ? pin.pinnedByUsername : pin.pinnedByDisplayName;
+        visibleName = LegacyText.stripColor(String.valueOf(visibleName == null ? "" : visibleName));
+        pin.pinnedBy = String.valueOf(visibleName == null ? "" : visibleName).replace("**", "").trim();
+        if (pin.pinnedBy.isBlank()) pin.pinnedBy = pin.pinnedByUuid;
+        return pin;
     }
 
     public synchronized int unreadCount(String userUuid) {
@@ -683,9 +972,9 @@ public class GroupChatStore {
         return r;
     }
 
-    public synchronized List<String> listHiddenRoomsJson(String userUuid, int limit) {
+    public synchronized List<GroupRoom> listHiddenRooms(String userUuid, int limit) {
         String user = normalizeUuid(userUuid);
-        List<String> out = new ArrayList<>();
+        List<GroupRoom> out = new ArrayList<>();
         if (connection == null || user.isBlank()) return out;
         int max = limit <= 0 ? 100 : Math.min(limit, 500);
         String sql = "SELECT r.id FROM group_rooms r JOIN group_members m ON m.room_id=r.id AND m.user_uuid=? " +
@@ -699,12 +988,18 @@ public class GroupChatStore {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     GroupRoom room = roomForUser(user, rs.getString(1));
-                    if (room != null) out.add(room.toJson());
+                    if (room != null) out.add(room);
                 }
             }
         } catch (SQLException ex) {
             host.warn("Failed to list hidden group rooms: " + ex.getMessage());
         }
+        return out;
+    }
+
+    public synchronized List<String> listHiddenRoomsJson(String userUuid, int limit) {
+        List<String> out = new ArrayList<>();
+        for (GroupRoom room : listHiddenRooms(userUuid, limit)) out.add(room.toJson());
         return out;
     }
 
@@ -728,6 +1023,10 @@ public class GroupChatStore {
         if (connection == null || id.isBlank()) return false;
         try {
             connection.setAutoCommit(false);
+            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM group_pins WHERE room_id=?")) {
+                ps.setString(1, id);
+                ps.executeUpdate();
+            }
             try (PreparedStatement ps = connection.prepareStatement("DELETE FROM group_message_state WHERE message_id IN (SELECT id FROM group_messages WHERE room_id=?)")) {
                 ps.setString(1, id);
                 ps.executeUpdate();
@@ -860,10 +1159,12 @@ public class GroupChatStore {
         return r;
     }
 
-    public synchronized List<String> listMembersJson(String requesterUuid, String roomId) {
+    // room 멤버 목록을 구조화 데이터로 반환해 WebChatServer가 viewer별 presence privacy를 적용할 수 있게 한다. 저장소 단계에서 최종 JSON을 굳히지 않는 이유가 이것이다.
+    // Returns structured member data so WebChatServer can apply viewer-specific presence privacy. This is why the store does not permanently bake presence into final JSON.
+    public synchronized List<Map<String,Object>> listMembers(String requesterUuid, String roomId) {
         String requester = normalizeUuid(requesterUuid);
         String id = cleanId(roomId);
-        List<String> out = new ArrayList<>();
+        List<Map<String,Object>> out = new ArrayList<>();
         if (connection == null || !isMember(requester, id)) return out;
         try (PreparedStatement ps = connection.prepareStatement("SELECT user_uuid,role,joined_at FROM group_members WHERE room_id=? ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, joined_at ASC")) {
             ps.setString(1, id);
@@ -877,12 +1178,17 @@ public class GroupChatStore {
                     m.put("displayName", ident.displayName);
                     m.put("label", labelForIdentity(ident));
                     m.put("role", rs.getString(2));
-                    m.put("online", isOnlineUuid(uuid));
                     m.put("joinedAt", rs.getLong(3));
-                    out.add(JsonUtil.obj(m));
+                    out.add(m);
                 }
             }
         } catch (SQLException ex) { host.warn("Failed to list group members: " + ex.getMessage()); }
+        return out;
+    }
+
+    public synchronized List<String> listMembersJson(String requesterUuid, String roomId) {
+        List<String> out = new ArrayList<>();
+        for (Map<String,Object> member : listMembers(requesterUuid, roomId)) out.add(JsonUtil.obj(member));
         return out;
     }
 
@@ -1068,7 +1374,7 @@ public class GroupChatStore {
     private GroupRoom roomForUser(String userUuid, String roomId) {
         String user = normalizeUuid(userUuid);
         String id = cleanId(roomId);
-        String sql = "SELECT r.id,r.name,r.owner_uuid,r.visibility,r.password_hash,r.updated_at,r.membership_events_enabled," +
+        String sql = "SELECT r.id,r.name,r.owner_uuid,r.visibility,r.password_hash,r.updated_at,r.membership_events_enabled,r.pins_enabled,r.message_delete_enabled,r.member_self_delete_enabled," +
                 "COALESCE(m.role,''), COALESCE(m.last_read_message_id,0)," +
                 "(SELECT COUNT(*) FROM group_members gm WHERE gm.room_id=r.id)," +
                 "(SELECT id FROM group_messages lm WHERE lm.room_id=r.id ORDER BY id DESC LIMIT 1)," +
@@ -1088,14 +1394,17 @@ public class GroupChatStore {
                 room.passwordProtected = rs.getString(5) != null && !rs.getString(5).isBlank();
                 room.updatedAt = rs.getLong(6);
                 room.membershipEventsEnabled = rs.getInt(7) != 0;
-                room.role = rs.getString(8) == null ? "" : rs.getString(8);
-                long lastRead = rs.getLong(9);
+                room.pinsEnabled = rs.getInt(8) != 0;
+                room.messageDeleteEnabled = rs.getInt(9) != 0;
+                room.memberSelfDeleteEnabled = rs.getInt(10) != 0;
+                room.role = rs.getString(11) == null ? "" : rs.getString(11);
+                long lastRead = rs.getLong(12);
                 room.member = room.role != null && !room.role.isBlank();
-                room.memberCount = rs.getInt(10);
+                room.memberCount = rs.getInt(13);
                 room.onlineMemberCount = onlineMemberCount(room.id);
-                room.lastMessageId = rs.getLong(11);
-                room.lastMessage = rs.getString(12) == null ? "" : rs.getString(12);
-                room.lastSenderUuid = normalizeUuid(rs.getString(13));
+                room.lastMessageId = rs.getLong(14);
+                room.lastMessage = rs.getString(15) == null ? "" : rs.getString(15);
+                room.lastSenderUuid = normalizeUuid(rs.getString(16));
                 room.unread = room.member ? countUnread(room.id, lastRead, user) : 0;
                 return room;
             }
@@ -1255,6 +1564,11 @@ public class GroupChatStore {
         } catch (SQLException ex) { return false; }
     }
 
+    private String cleanIdentitySnapshot(String value) {
+        String out = String.valueOf(value == null ? "" : value).replace("\u0000", "").trim();
+        return out.length() > 256 ? out.substring(0, 256) : out;
+    }
+
     private String labelForIdentity(PlayerIdentity identity) {
         if (identity == null) return "";
         String label = identity.displayName == null || identity.displayName.isBlank() ? identity.username : identity.displayName;
@@ -1369,6 +1683,27 @@ public class GroupChatStore {
         } catch (SQLException ex) { return true; }
     }
 
+    private boolean roomPinsEnabled(String roomId) {
+        return roomBooleanSetting(roomId, "pins_enabled", false);
+    }
+
+    private boolean roomMessageDeleteEnabled(String roomId) {
+        return roomBooleanSetting(roomId, "message_delete_enabled", false);
+    }
+
+    private boolean roomMemberSelfDeleteEnabled(String roomId) {
+        return roomBooleanSetting(roomId, "member_self_delete_enabled", false);
+    }
+
+    private boolean roomBooleanSetting(String roomId, String column, boolean fallback) {
+        if (connection == null) return fallback;
+        if (!("pins_enabled".equals(column) || "message_delete_enabled".equals(column) || "member_self_delete_enabled".equals(column))) return fallback;
+        try (PreparedStatement ps = connection.prepareStatement("SELECT " + column + " FROM group_rooms WHERE id=? AND archived=0")) {
+            ps.setString(1, cleanId(roomId));
+            try (ResultSet rs = ps.executeQuery()) { return !rs.next() ? fallback : rs.getInt(1) != 0; }
+        } catch (SQLException ex) { return fallback; }
+    }
+
     private GroupMessage appendMembershipEvent(String roomId, String actorUuid, String eventType, long now) {
         String id = cleanId(roomId);
         String actor = normalizeUuid(actorUuid);
@@ -1441,6 +1776,15 @@ public class GroupChatStore {
         String visibility = "private";
         String passwordHash = "";
         boolean archived;
+    }
+
+    public static class DeleteResult {
+        public boolean ok;
+        public String error = "";
+        public String roomId = "";
+        public long messageId;
+        public boolean pinRemoved;
+        public boolean managerDelete;
     }
 
     public static class ActionResult {

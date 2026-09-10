@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.2.0 — User Guide
+# KOKOTO WebChat 5.3.0 — User Guide
 
 For reaction authority, direct/multi-hop delivery, offline outbox behavior and notification diagrams, see [REACTIONS.md](REACTIONS.md).
 

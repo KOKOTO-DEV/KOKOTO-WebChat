@@ -65,7 +65,7 @@ Web Admin에는 **Filter**와 **Settings** 탭이 추가됩니다. Filter에서�
 `config-version`이 없거나 다른 버전이면 기존 설정값을 읽은 뒤 새 번들 기본 `config.yml`을 만들고 그 위에 기존 사용자 값을 덮어씁니다. 이전 표식에 `*_auto_migration`이 없었다면 사용자가 한 번 고정한 설정으로 보고 재구성 전에 기존 `config.yml` 전체를 백업합니다. 기존 주석·순서·공백·들여쓰기는 가져오지 않고 최신 번들 주석/레이아웃을 사용하며, 사용자 설정값은 보존합니다. 제거된 설정은 다시 복사하지 않습니다. 결과는 `<plugin-version>_auto_migration`으로 표시합니다. 이 표식이 남아 있으면 startup/reload마다 같은 방식으로 최신 번들 기본 config를 다시 뼈대로 만들고 현재 값을 덮어써서 새 설정과 최신 주석/레이아웃을 자동 반영합니다. 정확한 `<plugin-version>`은 같은 버전의 자동 **설정** 재구성을 끕니다. 단, 고정 상태에서도 `ui.language` 표시 언어가 바뀌면 실제 설정값을 모두 overlay해 보존한 채 선택된 내장 템플릿으로 주석/레이아웃만 다시 구성할 수 있습니다.
 
 `config-migration-<plugin-version>.yml`은 검토/diff 보고서입니다. 이전 버전의 `config-reference-*`, `config-migration-*`, `config-upgrade-*` 생성 파일은 자동 삭제합니다. 실제 버전 업그레이드의 기본값 변경 판정에 필요한 JAR 내부 `config-baselines/*`만 유지합니다.
-5.2.0에서는 `ui.language`가 Web UI뿐 아니라 KWC가 `config.yml`을 재구성할 때 사용할 주석/표현 언어, `config-reference-5.2.0.yml`, migration/difference 보고서 언어도 선택합니다. 번들 template은 `en-US`, `ko-KR`, `ja-JP`, `zh-CN`이며 언어를 바꿔도 주석/레이아웃만 바뀌고 Relay group/secret/peer를 포함한 기존의 파싱된 운영 설정값은 그대로 overlay해 보존합니다. Difference 판정은 주석, 공백, 들여쓰기, 따옴표 방식, 줄번호, 키 순서가 아니라 파싱된 YAML setting path와 value만 비교합니다.
+5.3.0에서는 `ui.language`가 Web UI뿐 아니라 KWC가 `config.yml`을 재구성할 때 사용할 주석/표현 언어, `config-reference-5.3.0.yml`, migration/difference 보고서 언어도 선택합니다. 번들 template은 `en-US`, `ko-KR`, `ja-JP`, `zh-CN`이며 언어를 바꿔도 주석/레이아웃만 바뀌고 Relay group/secret/peer를 포함한 기존의 파싱된 운영 설정값은 그대로 overlay해 보존합니다. Difference 판정은 주석, 공백, 들여쓰기, 따옴표 방식, 줄번호, 키 순서가 아니라 파싱된 YAML setting path와 value만 비교합니다.
 
 ## 전체 활성화 스위치
 
@@ -222,7 +222,7 @@ direct-message:
 
 `group-chat.admin-audit.enabled`는 4.6.3에서 추가된 별도의 기본 OFF 그룹 본문 접근 스위치입니다. 이 값을 켜도 계정이 `private-chat-super-admins`에 함께 지정되어 있어야 합니다. 관리자 화면은 읽기 전용이며 방 참여 권한이 없어도 열 수 있지만 실제로 방에 참여하지 않고 읽음 상태도 변경하지 않습니다. 각 페이지 열람은 본문을 감사 로그에 복사하지 않은 채 `admin.group-audit-read`로 기록됩니다.
 
-`direct-message.admin-audit.enabled`는 별도의 기본 OFF DM 본문 감사 스위치입니다. 이 값을 켜도 `private-chat-super-admins`에 함께 정확히 지정된 계정만 DM 본문을 읽기 전용 감사 화면에서 열 수 있습니다. 감사 화면에서는 전송, 답글, 숨김, 읽음 처리를 할 수 없으며 각 페이지 열람은 본문을 복사하지 않고 감사 로그에 기록됩니다.
+`direct-message.admin-audit.enabled`는 별도의 기본 OFF DM 본문 감사 스위치입니다. 이 값을 켜도 `private-chat-super-admins`에 함께 정확히 지정된 계정만 DM 본문을 읽기 전용 감사 화면에서 열 수 있습니다. 감사 화면에서는 전송, 답글, 삭제, 읽음 처리를 할 수 없으며 각 페이지 열람은 본문을 복사하지 않고 감사 로그에 기록됩니다.
 
 `capture-game-whispers`는 취소되지 않은 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 명령을 송신자와 수신자의 KWC DM에 복제합니다. Minecraft 귓속말을 다시 보내거나 대체하지는 않습니다. Bukkit에서 모든 귓속말 플러그인의 최종 성공 여부를 공통으로 알 수 없으므로 정상 형식이며 알려진 플레이어를 대상으로 한 명령을 기록 기준으로 사용합니다.
 
@@ -232,7 +232,7 @@ direct-message:
 
 ## 중요한 0 값 의미
 
-`0`은 모든 설정에서 같은 뜻이 아닙니다. 아래 내용은 현재 5.2.0 loader/runtime 동작 기준이며, 실제 설명이 다른 설정을 임의로 “무제한”이라고 해석하면 안 됩니다.
+`0`은 모든 설정에서 같은 뜻이 아닙니다. 아래 내용은 현재 5.3.0 loader/runtime 동작 기준이며, 실제 설명이 다른 설정을 임의로 “무제한”이라고 해석하면 안 됩니다.
 
 - `chat.history-size`: 개수 기준으로 보존할 공개 채팅 기록 최대 행 수이며 기간 보존 정책과 함께 적용됩니다. 0은 개수 제한을 없앱니다.
 - `chat.history-retention-days`: 공개 채팅 기록의 기간 보존 일수입니다. 0은 기간 기반 만료를 끕니다.
@@ -268,6 +268,8 @@ direct-message:
 - `security.max-sse-connections-total`: KWC 서버 전체에서 허용할 동시 /stream SSE 연결 최대 개수입니다. 0은 이 제한 요소를 끕니다.
 - `admin.admin-session-expire-hours`: ADMIN 웹 세션의 만료 기간(시간)입니다. 0 이하는 관리자 세션에 expiry timestamp를 두지 않습니다.
 - `moderation.default-mute-minutes`: 기간을 생략한 mute의 기본 시간(분)입니다. 0 이하는 영구 mute이며 config 전용 설정입니다.
+- `moderation.allow-user-self-message-delete`: 일반 사용자가 공개채팅, DM, 그룹채팅에서 자신이 보낸 메시지를 삭제할 수 있게 합니다. 기본값은 `false`입니다. DM은 발신자 본인 메시지만 삭제할 수 있고, 그룹 일반 멤버의 삭제는 방별 일반 멤버 자기 메시지 삭제 정책과 방 메시지 삭제 기능도 함께 켜져 있어야 합니다.
+- `moderation.self-message-delete-window-minutes`: 일반 사용자의 자기 메시지 삭제 가능 시간입니다. `0`은 시간 제한 없음이며, 양수이면 전송 후 해당 분이 지나면 일반 사용자는 삭제할 수 없습니다. ADMIN/MODERATOR의 삭제에는 이 시간 제한을 적용하지 않습니다.
 - `commands.max-length`: 웹 command 실행에서 허용할 command text 최대 길이입니다. 0은 이 길이 제한을 없앱니다.
 - `ui.image-preview-max-per-message`: 한 메시지에서 렌더링할 inline 이미지 미리보기 최대 개수입니다. 0은 개수 제한을 없앱니다.
 - `ui.image-preview-max-height`: 이미지 미리보기에 설정할 높이 상한(px)입니다. 양수여도 채팅 viewport 안전 상한이 함께 적용되며, 0은 이 명시적 px 상한만 없애고 자동 viewport 상한을 사용하므로 완전 무제한이 아닙니다.
@@ -349,7 +351,7 @@ DM/그룹 메시지도 같은 게임 클릭 모델을 사용합니다. 대화 �
 
 ## 서버 릴레이 설정
 
-KOKOTO WebChat 5.2.0은 Relay v2 신뢰/암호화 모델을 유지하는 **Relay Protocol 2.1**을 사용합니다. relay group 자체가 보안 경계이며, 해당 group의 모든 peer 관계가 하나의 group `shared-secret`을 공통으로 사용합니다. peer 항목에는 `id`, `url`, `enabled`만 있으며 `peers[].secret`은 없습니다.
+KOKOTO WebChat 5.3.0은 Relay v2 신뢰/암호화 모델을 유지하는 **Relay Protocol 2.2**를 사용합니다. relay group 자체가 보안 경계이며 해당 group의 모든 peer가 하나의 `shared-secret`을 사용합니다. peer에는 기존 `id`, `url`, `enabled`와 함께 `send` / `receive` 방향별로 `public-chat`, `event`, `dm`, `profile` 정책을 선택적으로 둘 수 있습니다. 생략한 정책은 모두 활성으로 처리됩니다. `peers[].secret`은 없습니다.
 
 ```yaml
 server-relay:
@@ -367,6 +369,7 @@ server-relay:
     guest: true
     discord: false
     system: false
+    event: true
   delivery:
     web: true
     game: true
@@ -380,6 +383,16 @@ server-relay:
         - id: "server-2"
           url: "https://server2.example.com/api"
           enabled: true
+          send:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
+          receive:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
 ```
 
 최초 설정은 한 서버에서 `shared-secret: ""`로 두고 시작/리로드한 뒤 그 서버의 `config.yml`에 생성된 값을 같은 **group**의 다른 서버에 그대로 복사하세요. 서버마다 따로 빈 값에서 생성하면 서로 다른 secret이 생겨 연결되지 않습니다. 기존 non-empty secret은 보존되고, 수동 secret이 32자 미만이면 자동 교체하지 않고 invalid/fail-closed됩니다. 양쪽 서버는 같은 group 안에 서로를 peer로 등록하고 동일한 생성/복사 secret을 사용해야 합니다. 같은 peer ID를 여러 local group에 중복 등록할 수 없으며 중복 등록은 비활성화됩니다. direct relay는 각 `/relay/v2/message` 요청을 독립적으로 인증/암호화합니다. `/relay/v2/handshake`는 상태를 저장하지 않는 진단용 identity/health probe이며 routing을 제어하지 않습니다.
@@ -644,11 +657,11 @@ KWC는 HTTP 상태 코드마다 별도 로그 예외를 추가하는 대신 반�
 
 ## 메시지 검색
 
-저장된 기록을 사용할 때 채팅 패널 우측 상단 플로팅 영역의 돋보기 버튼과 `/history/search` API로 메시지 내용과 작성자를 검색할 수 있습니다. 검색 옵션에서 날짜/시간 범위, 작성자, 출처, 시스템/이벤트 포함 여부를 지정할 수 있습니다. 검색 결과는 스크롤 가능한 목록으로 표시되며, 채팅 테마와 폰트 설정을 따릅니다. 검색 결과를 클릭하면 기존 주변 기록 로드 방식으로 해당 메시지로 이동합니다. i18n 키가 있는 시스템/이벤트 메시지는 가능한 경우 요청된 웹 UI 언어 기준으로 검색되고 표시됩니다. 검색은 `search.enabled`로 끄거나 켤 수 있고, `search.result-limit` 하나가 웹 UI 결과 수와 `/history/search` API 제한을 모두 제어합니다. 별도 내부 최대치는 없어서 2000으로 설정하면 최대 2000개, 10으로 설정하면 최대 10개가 반환됩니다. 10000이나 100000처럼 매우 큰 값도 허용되지만, 검색 속도 저하, 응답 크기 증가, CPU/메모리/DB 부하 증가를 일으킬 수 있습니다. 기본값은 50이며 일반 사용은 50~200을 권장합니다. `config-version: "5.2.0_auto_migration"` 상태에서는 누락된 검색 설정이 startup/reload 때 자동 삽입됩니다. 정확한 `config-version: "5.2.0"`으로 같은 버전 자동 migration을 끈 경우에만 누락 키를 직접 추가하거나 `_auto_migration`을 다시 활성화해야 합니다.
+저장된 기록을 사용할 때 채팅 패널 우측 상단 플로팅 영역의 돋보기 버튼과 `/history/search` API로 메시지 내용과 작성자를 검색할 수 있습니다. 검색 옵션에서 날짜/시간 범위, 작성자, 출처, 시스템/이벤트 포함 여부를 지정할 수 있습니다. 검색 결과는 스크롤 가능한 목록으로 표시되며, 채팅 테마와 폰트 설정을 따릅니다. 검색 결과를 클릭하면 기존 주변 기록 로드 방식으로 해당 메시지로 이동합니다. i18n 키가 있는 시스템/이벤트 메시지는 가능한 경우 요청된 웹 UI 언어 기준으로 검색되고 표시됩니다. 검색은 `search.enabled`로 끄거나 켤 수 있고, `search.result-limit` 하나가 웹 UI 결과 수와 `/history/search` API 제한을 모두 제어합니다. 별도 내부 최대치는 없어서 2000으로 설정하면 최대 2000개, 10으로 설정하면 최대 10개가 반환됩니다. 10000이나 100000처럼 매우 큰 값도 허용되지만, 검색 속도 저하, 응답 크기 증가, CPU/메모리/DB 부하 증가를 일으킬 수 있습니다. 기본값은 50이며 일반 사용은 50~200을 권장합니다. `config-version: "5.3.0_auto_migration"` 상태에서는 누락된 검색 설정이 startup/reload 때 자동 삽입됩니다. 정확한 `config-version: "5.3.0"`으로 같은 버전 자동 migration을 끈 경우에만 누락 키를 직접 추가하거나 `_auto_migration`을 다시 활성화해야 합니다.
 
 ## 그룹 채팅
 
-`group-chat.enabled`는 웹 그룹 채팅 기능을 켭니다. 공개/비공개 방, 해시 저장되는 선택 비밀번호, 초대, 방 나가기, 방 숨김/다시 표시, 방 설정, 안 읽음 추적, 사용자별 메시지 숨김, 멤버 강퇴/차단/차단 해제, 방장 이전을 지원합니다. 그룹 메시지는 `group-chat.sqlite-file`(기본 `group-messages.db`)에 저장됩니다. `group-chat.retention-days: 0`은 기간 정리 없음이고, 양수 값은 오래된 그룹 메시지를 물리 삭제합니다.
+`group-chat.enabled`는 웹 그룹 채팅 기능을 켭니다. 공개/비공개 방, 해시 저장되는 선택 비밀번호, 초대, 방 나가기, 방 숨김/다시 표시, 방 설정, 안 읽음 추적, 방 내부 owner/admin/member 역할, 고정 메시지, 방 전체 메시지 삭제, 일반 멤버 자기 메시지 삭제 정책, 멤버 강퇴/차단/차단 해제, 방장 이전을 지원합니다. 그룹 메시지는 `group-chat.sqlite-file`(기본 `group-messages.db`)에 저장됩니다. `group-chat.retention-days: 0`은 기간 정리 없음이고, 양수 값은 오래된 그룹 메시지를 물리 삭제합니다.
 
 방 입장/퇴장 알림은 전역 `config.yml` 스위치가 아니라 **방별 DB 설정**입니다. 방 설정에서 켜거나 끌 수 있고 `group_rooms.membership_events_enabled`에 저장됩니다. 기존 DB에 컬럼을 추가할 때는 기본 ON으로 마이그레이션됩니다. 실제 멤버십이 변할 때만 이벤트가 저장되며 그룹채팅 창을 닫는 것은 방 나가기가 아닙니다.
 

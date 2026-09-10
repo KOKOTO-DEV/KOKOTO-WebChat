@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.2.0 — 安装与运维
+# KOKOTO WebChat 5.3.0 — 安装与运维
 
 ![KWC 部署模式](../assets/deployment-modes.svg)
 
@@ -13,7 +13,7 @@
 先启动一次以生成 KWC 数据和配置。可以使用 standalone 前端、受支持的地图适配器，或同时使用两者。对互联网公开时，应尽可能把内置 HTTP 服务绑定到 loopback，并由 Caddy/Nginx 负责 HTTPS 终止。若在非 loopback 地址上公开明文 HTTP，KWC 会明确发出警告。
 
 ## 配置生命周期
-修改当前 `config.yml` 后使用 `/kchat reload`。reload 会在替换运行中的服务前验证 YAML；如果 YAML 无效，则继续使用之前的运行配置。`config-reference-5.2.0.yml` 是按内置 `ui.language` 渲染的当前管理员默认参考；自定义/不支持的 UI 语言使用英文展示。5.2.0 升级会保留受支持的已解析管理员值。只有历史上的首次 5.0.0 → 5.1.0 relay 迁移会故意重置 Relay v1 信任设置；普通 5.1.0 → 5.2.0 升级会保留现有 Relay v2 group/secret/peer。`ui.language` 也用于 `config.yml` 注释模板、生成 reference 与 migration/difference 文本，Difference 按 YAML path/value 比较。
+修改当前 `config.yml` 后使用 `/kchat reload`。reload 会在替换运行中的服务前验证 YAML；如果 YAML 无效，则继续使用之前的运行配置。`config-reference-5.3.0.yml` 是按内置 `ui.language` 渲染的当前管理员默认参考；自定义/不支持的 UI 语言使用英文展示。升级到 5.3.0 时会在当前模板中保留受支持的已解析管理员值。只有历史上的首次 5.0.0 → 5.1.0 relay 迁移会故意重置 Relay v1 信任设置；普通 5.1.0 → 5.2.0 升级会保留现有 Relay v2 group/secret/peer。`ui.language` 也用于 `config.yml` 注释模板、生成 reference 与 migration/difference 文本，Difference 按 YAML path/value 比较。
 
 5.0.0 → 5.1.0 迁移会基于 5.1.0 模板重建配置，并保留受支持的管理员实际值，但 Relay v1 的信任设置会有意重置。5.1.0 中，`ui.language` 还决定 `config.yml` 注释模板、生成的 reference 以及 migration/Difference 文本所使用的语言。解析后的管理员值会原样覆盖保留，而 Difference 只比较 YAML 的 path/value，不比较注释或排版。
 

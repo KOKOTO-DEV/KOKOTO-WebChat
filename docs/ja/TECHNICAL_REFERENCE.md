@@ -1,16 +1,16 @@
-# KOKOTO WebChat 5.2.0 — 技術リファレンス
+# KOKOTO WebChat 5.3.0 — 技術リファレンス
 
 reaction authority、direct/multi-hop delivery、origin 障害時の outbox、作者通知の図は [REACTIONS.md](REACTIONS.md) を参照してください。
 
-![KOKOTO WebChat 5.2.0 アーキテクチャ概要](../assets/architecture-5.2.0.svg)
+![KOKOTO WebChat 5.3.0 アーキテクチャ概要](../assets/architecture-5.3.0.svg)
 
-[PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg)
+[PNG](../assets/architecture-5.3.0.png) · [SVG](../assets/architecture-5.3.0.svg)
 
 > **注記:** 図は理解を補助する資料です。KWC 固有の動作は実際のソースコードと本文の説明を基準にしてください。
 
 ## 構造と data flow の図
 
-![KWC 5.2.0 architecture](../assets/architecture-5.2.0.svg)
+![KWC 5.3.0 architecture](../assets/architecture-5.3.0.svg)
 
 ![Admin / HTTP security boundary](../assets/admin-security-boundary.svg)
 
@@ -36,10 +36,10 @@ reaction authority、direct/multi-hop delivery、origin 障害時の outbox、�
 ## プラットフォーム抽象化と完全一致ターゲット
 `PlatformAdapter` と関連ホスト interface がローダー API を core から分離します。配布構成は Bukkit 1 + Fabric 16 + NeoForge 12 + Forge 16 = **45 個の配布成果物**です。ビルド補助は Minecraft 世代に応じて Java 17/21/25 を選択します。Windows の release helper は Gradle/Maven 実行前にパス長 preflight を行い、完全一致ターゲットの作業ディレクトリが検証済みの Windows パス条件を超える問題を早期検出します。
 
-## Relay Protocol 2.1 compatibility と Relay v2 trust model
-Relay Protocol 2.1 は Relay v2 の明示的な `groups -> peers` 構造を使用します。1 つのグループは対称的な信頼ドメインであり、共有シークレットはグループごとに 1 個だけです。peer 個別のシークレットはありません。空の group secret は provisioning request として扱われ、startup/reload で暗号学的に安全な 32-byte URL-safe secret を生成して `config.yml` に保存します。既存の空でない値は自動再生成しません。32 文字未満の手動 group secret は拒否され、同じ peer ID を複数のローカルグループで使用することもできません。双方が同じグループ内で互いを peer として登録する必要があります。
+## Relay Protocol 2.2 compatibility と Relay v2 trust model
+Relay Protocol 2.2 は Relay v2 の明示的な `groups -> peers` 構造を使用し、Protocol major `2` を wire compatibility 境界として維持します。現在の capability は `public`, `dm`, `read`, `delete`, `reaction`, `reaction-authority`, `typing`, `game`, `profile` です。1 つのグループは対称的な信頼ドメインであり、共有シークレットはグループごとに 1 個だけです。peer 個別のシークレットはありません。空の group secret は provisioning request として扱われ、startup/reload で暗号学的に安全な 32-byte URL-safe secret を生成して `config.yml` に保存します。既存の空でない値は自動再生成しません。32 文字未満の手動 group secret は拒否され、同じ peer ID を複数のローカルグループで使用することもできません。双方が同じグループ内で互いを peer として登録する必要があります。各 peer は `public-chat`, `event`, `dm`, `profile` の送信/受信を独立して制限でき、省略した policy は互換性のため有効になります。
 
-`/relay/v2/handshake` は protocol version、product version、group、sender ID、target ID、timestamp、nonce、sender outbound transport を HMAC で認証します。受信側は group membership、target identity、clock skew、nonce replay を検証します。この endpoint は状態を保持しない診断用 identity/health probe で、route 状態を作りません。direct `/relay/v2/message` は request ごとに独立して認証されます。受信側は送信側を同じ group・同じ shared secret で相互登録する必要があります。旧 v1 endpoint は HTTP 426 を返します。
+`/relay/v2/handshake` は protocol major/revision、group、sender ID、target ID、timestamp、nonce、sender outbound transport を HMAC で認証します。product version は診断専用で、現在の 2.x signature/compatibility 判定には使用しません。受信側は group membership、target identity、clock skew、nonce replay を検証します。この endpoint は状態を保持しない診断用 identity/health probe で、route 状態を作りません。direct `/relay/v2/message` は request ごとに独立して認証されます。受信側は送信側を同じ group・同じ shared secret で相互登録する必要があります。旧 v1 endpoint は HTTP 426 を返します。
 
 ## Relay payload の暗号処理
 方向ごとに、グループ共有シークレットと方向コンテキストから HKDF-SHA256 で 256-bit key を導出します。`/relay/v2/message` はランダムな 12-byte IV と 128-bit tag を持つ AES-256-GCM を使用します。GCM AAD は `group`、`from`、`to`、`timestamp`、`nonce`、`IV` を結び付けます。応答も group/responder/requester/timestamp/request nonce/status/body の組に対して HMAC-SHA256 で独立して認証されるため、未認証の中継者は成功応答を偽造できません。timestamp、request nonce、relay ID/receipt ID、origin、hop-count の検査で replay/loop を防ぎます。
@@ -77,5 +77,5 @@ DM/グループ Reply は表示文字列から推測せず、メタデータと�
 通常 history/private retention は保存済み snapshot を削除しません。管理者 source-message delete、public history clear、管理者 DM thread/group room delete、private-room lock policy が personal archive より常に優先されます。
 
 ## Typing state
-public/DM/group typing は ephemeral state です。browser input event 1 回で 5 秒 window を作り、その間の追加 key input は client 側で抑制します。SQLite/JSONL へ保存せず、polling や常駐 typing worker もありません。local group state は既存 SSE で current room member のみに配布し、remote DM typing は Relay Protocol 2.1 を使用します。
+public/DM/group typing は ephemeral state です。browser input event 1 回で 5 秒 window を作り、その間の追加 key input は client 側で抑制します。SQLite/JSONL へ保存せず、polling や常駐 typing worker もありません。local group state は既存 SSE で current room member のみに配布し、remote DM typing は現在の Relay Protocol 2.2 の `typing` capability を使用します。
 

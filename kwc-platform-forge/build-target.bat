@@ -1,4 +1,10 @@
 @echo off
+REM KWC 파일 안내 / KWC file guide
+REM 이 배치 파일은 Windows 빌드/검증 진입점 또는 helper이며 PowerShell/Gradle/Maven 작업을 안정적으로 연결한다.
+REM This batch file is a Windows build/validation entry point or helper that coordinates PowerShell, Gradle, and Maven work.
+REM CMD label/call 동작을 위해 CRLF 줄바꿈을 반드시 유지한다.
+REM Keep CRLF line endings because CMD label/call behavior depends on the Windows batch format.
+
 setlocal EnableExtensions
 set "MC=%~1"
 if /I "%~2"=="--fast" (
@@ -44,10 +50,21 @@ if "%MC%"=="1.20.4" (set "GV=8.8"& set "JV=17")
 if "%MC%"=="1.20.6" (set "GV=8.8"& set "JV=21")
 if "%MC%"=="26.1.2" set "JV=25"
 if "%MC%"=="26.2" set "JV=25"
+if "%MC%"=="26.3" set "JV=25"
 
 if not exist "%~dp0targets\%MC%\build.gradle" (
   echo ERROR: Unknown Forge target: %MC% 1>&2
   exit /b 2
+)
+
+REM 준비 타깃은 디렉터리가 존재해도 명시적으로 활성화하기 전에는 빌드하지 않는다.
+REM Preparation targets remain unbuildable even when their directory exists until explicitly activated.
+set "KWC_PREP_ENABLED="
+for /f "tokens=2 delims==" %%A in ('findstr /b "kwc.prep.enabled=" "%~dp0targets\%MC%\gradle.properties" 2^>nul') do set "KWC_PREP_ENABLED=%%A"
+if /I "%KWC_PREP_ENABLED%"=="false" (
+  echo ERROR: Forge %MC% is a disabled PREP target and is not part of the release matrix. 1>&2
+  echo        Finalize exact pins and set kwc.prep.enabled=true before a manual compatibility build. 1>&2
+  exit /b 3
 )
 
 set "KWC_JAVA_RESULT=%TEMP%\kwc-java-%JV%-%RANDOM%-%RANDOM%.txt"

@@ -1,0 +1,48 @@
+// KWC 파일 안내 / KWC file guide
+// Minecraft 26.3 Forge 정식 지원 전에 mapping/userdev/source 호환성과 exact pin을 검증하기 위한 비활성 준비 빌드다.
+// Disabled preparation build used to validate mappings, userdev/source compatibility, and exact pins before official Minecraft 26.3 Forge support.
+// Forge 버전과 loader major, 다음 Minecraft 경계 중 하나라도 TBD이면 활성화 후에도 빌드를 거부한다.
+// The build is rejected after activation if the Forge version, loader major, or next Minecraft boundary is still TBD.
+
+plugins { id 'java'; id 'net.minecraftforge.gradle' version '[7.0.17,8)'; id 'net.minecraftforge.jarjar' version '0.2.3' }
+
+def requiredPin = { String key ->
+    def value = providers.gradleProperty(key).orNull?.trim()
+    if (!value || value.equalsIgnoreCase('TBD')) {
+        throw new GradleException("KWC Forge 26.3 PREP requires an exact ${key} value before activation.")
+    }
+    value
+}
+def minecraftVersion = providers.gradleProperty('kwc.minecraft').get()
+def minecraftNext = requiredPin('kwc.minecraft_next')
+def forgeVersion = requiredPin('kwc.forge')
+def loaderMajor = requiredPin('kwc.loader_major')
+def targetJava = providers.gradleProperty('kwc.java').get()
+
+group='dev.kokoto'
+version='5.3.0'
+java.toolchain.languageVersion=JavaLanguageVersion.of(Integer.parseInt(targetJava))
+jarJar.register()
+repositories { minecraft.mavenizer(it); maven fg.forgeMaven; maven fg.minecraftLibsMaven; mavenCentral(); maven { url 'https://repo.bluecolored.de/releases' } }
+minecraft { mappings channel:'official', version:minecraftVersion }
+// 26.2의 compat26 layer를 준비 기준으로 재사용하지만 최종 26.3 Forge mappings에서 컴파일/런타임 smoke를 통과해야 한다.
+// Reuse the 26.2 compat26 layer as the prep baseline, but require compile and runtime smoke against final 26.3 Forge mappings.
+sourceSets.main.java.srcDirs=['../../src/common/java','../../src/compat26/java','../../../kwc-core/src/main/java','../../../kwc-adapter-bluemap/src/main/java','../../../kwc-adapter-squaremap/src/main/java','../../../kwc-adapter-dynmap/src/main/java','../../../kwc-adapter-liveatlas/src/main/java','../../../kwc-adapter-unmined/src/main/java','../../../kwc-adapter-overviewer/src/main/java','../../../kwc-adapter-bluemap-api/src/main/java']
+sourceSets.main.resources.srcDirs=['../../../kwc-standalone-frontend/src/main/resources','../../../kwc-adapter-bluemap/src/main/resources','../../../kwc-adapter-squaremap/src/main/resources','../../../kwc-adapter-dynmap/src/main/resources','../../../kwc-adapter-liveatlas/src/main/resources','../../../kwc-adapter-unmined/src/main/resources','../../../kwc-adapter-overviewer/src/main/resources','../../../kwc-platform-bukkit/src/main/resources','build/generated/resources']
+dependencies {
+    implementation minecraft.dependency("net.minecraftforge:forge:${minecraftVersion}-${forgeVersion}")
+    compileOnly 'de.bluecolored:bluemap-api:2.8.0'
+    implementation 'org.xerial:sqlite-jdbc:3.53.2.0'
+    implementation 'org.yaml:snakeyaml:2.4'
+    jarJar 'org.xerial:sqlite-jdbc:3.53.2.0'
+    jarJar 'org.yaml:snakeyaml:2.4'
+}
+def metadata=tasks.register('generateModMetadata',Copy) { from('../../src/common/templates'); into(layout.buildDirectory.dir('generated/resources')); expand(minecraft_version:minecraftVersion,minecraft_next:minecraftNext,forge_version:forgeVersion,loader_major:loaderMajor) }
+processResources.dependsOn(metadata)
+tasks.withType(JavaCompile).configureEach { options.release=Integer.parseInt(targetJava); options.encoding='UTF-8' }
+tasks.named('jar', Jar).configure {
+    archiveFileName = 'KOKOTO-WebChat-5.3.0-Forge-26.3-slim.jar'
+    from('../../../LICENSE') { rename { 'LICENSE_KOKOTO-WebChat' } }
+}
+tasks.named('jarJar').configure { archiveFileName = 'KOKOTO-WebChat-5.3.0-Forge-26.3.jar' }
+tasks.named('build').configure { dependsOn tasks.named('jarJar') }

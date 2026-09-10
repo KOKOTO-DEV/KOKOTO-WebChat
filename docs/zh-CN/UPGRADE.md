@@ -1,6 +1,6 @@
 # KOKOTO WebChat 升级指南
 
-本文档整合了从 4.5.5 到 5.2.0 的升级说明。跨多个版本升级时，请按版本顺序依次检查各节。
+本文档整合了从 4.5.5 到 5.3.0 的升级说明。跨多个版本升级时，请按版本顺序依次检查各节。
 
 ## 从 4.5.5 升级到 4.6.0
 
@@ -190,7 +190,7 @@ group-chat:
     enabled: true
 ```
 
-普通 ADMIN/MODERATOR 角色本身不能查看正文。审计视图为只读，不要求或创建房间成员身份，不会更新已读/未读状态，也不能发送、上传、隐藏消息或修改成员关系。每次分页读取都会记录为 `admin.group-audit-read`，但不会把消息正文复制到审计日志。
+普通 ADMIN/MODERATOR 角色本身不能查看正文。审计视图为只读，不要求或创建房间成员身份，不会更新已读/未读状态，也不能发送、上传、删除消息或修改成员关系。每次分页读取都会记录为 `admin.group-audit-read`，但不会把消息正文复制到审计日志。
 
 ### 配置注释
 
@@ -260,7 +260,7 @@ KWC 5.0.0 会优先查询 Modrinth `kokoto-webchat`，如果尚未存在则回�
 
 ### 4.7.0 → 5.0.0 主要变化
 
-- 正式标识统一为 KOKOTO WebChat：`/kchat` (`/kc`)、`kwc.*`、KWC 数据目录、`dev.kokoto.webchat`、`kwc-*` 模块。
+- 正式标识统一为 KOKOTO WebChat：`/kchat` (`/kchat`)、`kwc.*`、KWC 数据目录、`dev.kokoto.webchat`、`kwc-*` 模块。
 - Bukkit/Paper/Spigot、Fabric 16 个 exact-target、NeoForge 12 个 exact-target、Forge 16 个 exact-target 使用 shared core。
 - 新增/整理 BlueMap、squaremap、Dynmap、Pl3xMap、LiveAtlas、uNmINeD、Overviewer adapter。
 - standalone 默认启用，公开前缀 `/chat`，API `/chat/api`。
@@ -293,7 +293,7 @@ Bukkit 上已有的 `plugins/BlueMapWebChat` 可在首次 KWC 启动时作为迁
 ### 最终发布判定
 
 
-> `validate-release-windows.bat` 及其所需的 PowerShell helper 已包含在 source archive 中。单独的 `KWC-5.2.0-validation-tools.zip` 只包含开发专用的浏览器回归测试工具，运行发布构建时不需要它。
+> `validate-release-windows.bat` 及其所需的 PowerShell helper 已包含在 source archive 中。开发回归测试工具也位于 source archive 的 `validation/`，无需单独的 validation-tools archive。
 
 只有 `validate-release-windows.bat` 输出 `FINAL RELEASE BUILD PASS`、收集到准确 45 个可发布 JAR，并通过 static/config/i18n/document validation 与主要功能 smoke test 的候选版本才作为正式发布版。
 
@@ -375,7 +375,7 @@ SSE 默认上限调整为**每个解析后的客户端 IP 10 个连接**、**服
 
 ## 从 KOKOTO WebChat 5.1.0 升级到 5.2.0
 
-升级前请备份 KWC 数据目录。普通 5.1.0 → 5.2.0 migration 会保留受支持的管理员值和现有 Relay v2 group/secret/peer；relay trust reset 只属于历史上的 pre-5.1.0 → 5.1.0 migration。当前 reference 为 `config-reference-5.2.0.yml`，自动审核状态在管理员选择精确 `config-version: "5.2.0"` 前使用 `5.2.0_auto_migration`。
+升级前请备份 KWC 数据目录。普通 5.1.0 → 5.2.0 migration 会保留受支持的管理员值和现有 Relay v2 group/secret/peer；relay trust reset 只属于历史上的 pre-5.1.0 → 5.1.0 migration。该 5.2.0 migration 的 reference 为 `config-reference-5.2.0.yml`，自动审核状态在管理员选择精确 `config-version: "5.2.0"` 前使用 `5.2.0_auto_migration`。
 
 5.2.0 将 Relay Protocol 2.1 作为向后兼容的 2.x capability revision。Protocol major `2` 是兼容边界，KWC 产品版本仅用于诊断。公共 reaction、仅发送到参与者服务器的跨服务器 DM reaction 与远程 DM typing 使用 2.1 扩展，共同的 v2 public/DM/read 行为仍属于 2.x compatibility baseline。
 
@@ -383,3 +383,16 @@ SSE 默认上限调整为**每个解析后的客户端 IP 10 个连接**、**服
 
 升级后请验证公共 reaction、DM/群聊“正在输入…”，对话存档与 PDF/打印、私聊房间 Settings/Invite/Leave 权限，以及公共/DM/群聊统一 32px bottom-follow。若使用多个 relay server，为一致使用 reaction/typing 扩展，建议所有 peer 升级到 5.2.0/Relay 2.1。
 
+## 从 KOKOTO WebChat 5.2.x 升级到 5.3.0
+
+首先备份 KWC 数据目录。5.3.0 在自动审核期间使用 `config-version: "5.3.0_auto_migration"`，并生成 `config-reference-5.3.0.yml` / `config-migration-5.3.0.yml`。现有 5.2.x 管理员设置值会保留。已废弃的 `direct-message.confirm-hide` 与 `group-chat.confirm-hide` 会在保留原 boolean 值的情况下迁移到 `confirm-delete`。
+
+此次迁移还会在既有 Relay `groups[].peers[]` 中实际补全缺失的 `send` / `receive` 策略 map，以及缺失的 `public-chat`、`event`、`dm`、`profile` 项，兼容默认值为 `true`。已有显式 map 值与标量 `send: false` / `receive: false` 会保持不变。
+
+KWC 5.3.0 整个版本线都保持 Relay Protocol 2.2。在同一 revision 内通过 capability negotiation 提供发送者拥有的跨服务器 DM 删除（`delete`）、定向事件请求（`game`）以及公开 profile/presence 查询（`profile`）。public/DM/read/reaction/typing 继续使用既有 Relay v2 信任与加密边界；可选 capability 不受支持时仅该功能安全失败，不提升 protocol revision。
+
+DM 不再提供消息级“仅对我隐藏”，只有发送者可以删除自己发送的消息。群聊消息删除对整个房间生效；普通 member 只能删除自己的普通消息，room-local owner/admin 可以管理房间消息。群组置顶按房间保存，所有成员可查看，pin/reorder/unpin 仅限 owner/admin。DM/群聊保存历史搜索采用公共聊天搜索的交互模式。
+
+Presence 区分 Game 与 Web。compact 列表按 Game > Web > Offline 只显示一个代表状态，用户资料中分别显示 Game/Web；账号级 Offline 状态会在服务器端向其他用户隐藏两种真实状态（旧 `invisible` preference 数据会迁移为 Offline）。
+
+升级后请检查 BlueMap 刷新恢复、DM/群聊搜索与删除、群组置顶/角色、Game/Web presence、Offline 隐私，以及所有相关 peer 升级后的跨服务器 DM 删除。

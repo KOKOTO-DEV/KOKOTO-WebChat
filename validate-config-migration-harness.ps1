@@ -1,3 +1,9 @@
+﻿# KWC 파일 안내 / KWC file guide
+# 실제 PortableConfigMigration을 여러 과거 설정 fixture에 적용해 값 보존과 5.3.0 canonical 결과를 회귀검증한다.
+# Regression-tests PortableConfigMigration against historical configuration fixtures for value preservation and canonical 5.3.0 output.
+# 실패 시 부분 산출물을 최종 릴리스로 오인하지 않도록 exit code와 검증 marker를 유지한다.
+# Preserve exit codes and validation markers so partial output cannot be mistaken for a final release.
+
 param([Parameter(Mandatory=$true)][string]$ProjectRoot)
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path -LiteralPath $ProjectRoot).Path

@@ -1,5 +1,13 @@
 package dev.kokoto.webchat.adapter.bluemap.api;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * BlueMapApiIntegration는 bluemap-api 웹맵/프런트엔드에 KWC asset과 설정을 설치·갱신·제거하는 adapter 계층이다.
+ * BlueMapApiIntegration is an adapter layer installing, updating, and removing KWC assets/configuration for the bluemap-api web map/frontend.
+ *
+ * adapter가 소유한 파일만 수정하고 사용자/맵 프로그램의 다른 파일을 덮어쓰지 않으며, 반복 실행해도 같은 결과가 되는 idempotency를 유지한다.
+ * Modify only adapter-owned files, never overwrite unrelated user/map files, and keep installation idempotent across repeated runs.
+ */
 import de.bluecolored.bluemap.api.BlueMapAPI;
 import de.bluecolored.bluemap.api.WebApp;
 import dev.kokoto.webchat.adapter.bluemap.BlueMapAdapter;

@@ -8,7 +8,7 @@ digraph G {
   service [label="DM / group service\nauthorize participant + validate reply", fillcolor="#DBEAFE", penwidth=2];
   store [label="Private message store\nSQLite / JSONL", fillcolor="#F1F5F9"];
   local [label="Local recipient\nSSE / game notice", fillcolor="#DCFCE7"];
-  relay [label="Remote DM\nRelay Protocol 2.1", fillcolor="#FCE7F3"];
+  relay [label="Remote DM\nRelay Protocol 2.2", fillcolor="#FCE7F3"];
   read [label="Read receipt\nidempotent acknowledgement", fillcolor="#FEF3C7"];
   typing [label="Typing state\n5-second ephemeral window\nnot persisted", fillcolor="#ECFEFF"];
   archive [label="Saved conversation\nserver-validated snapshot", fillcolor="#F3E8FF"];

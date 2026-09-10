@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * ConversationArchiveStore는 KWC 상태를 메모리/JSONL/SQLite 같은 영속 매체에 저장하고 조회하는 계층이다.
+ * ConversationArchiveStore is a persistence layer storing and reading KWC state from memory, JSONL, SQLite, or another backing store.
+ *
+ * 조회 visibility와 mutation 권한을 분리하고, transaction/atomic rewrite가 필요한 작업은 중간 실패로 데이터가 반쯤 적용되지 않게 해야 한다.
+ * Keep read visibility separate from mutation authorization, and use transactions/atomic rewrites where partial failure could leave inconsistent data.
+ */
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.*;
@@ -11,6 +19,11 @@ import java.util.*;
  * Attachments are deliberately not copied into this database. Snapshot bodies keep
  * the original KWC references/URLs; the browser resolves an image only if that
  * original is still available when the archive is viewed/exported.
+ */
+/**
+ * KWC 유지보수 안내: 사용자가 명시적으로 저장한 대화 archive snapshot을 SQLite에 보관한다. archive는 원본 history를 가리키는 단순 포인터가 아니라 메시지 snapshot이므로 일반 retention 후에도 읽을 수 있지만, 명시적 source/message 삭제 시 privacy를 위해 관련 snapshot을 제거할 수 있다.
+ *
+ * KWC maintenance note: Stores user-requested conversation archive snapshots in SQLite. Archives are message snapshots rather than simple pointers to live history, so they survive normal retention, while explicit source/message deletion can remove related snapshots for privacy.
  */
 public final class ConversationArchiveStore implements AutoCloseable {
     public static final int MAX_ARCHIVES_PER_USER = 100;
@@ -186,6 +199,8 @@ public final class ConversationArchiveStore implements AutoCloseable {
         }
     }
 
+    // 선택한 source range를 현재 시점의 snapshot으로 복사해 archive를 만든다. 사용자별 archive/message 상한을 transaction 전에 검사하고, 원본 visibility 권한 확인은 caller가 먼저 끝낸 상태여야 한다.
+    // Creates an archive by copying the selected source range into point-in-time snapshots. Per-user archive/message limits are checked before commit, and caller-side source visibility authorization must already be complete.
     public synchronized SaveResult save(String ownerUuid, String sourceType, String sourceId, String title,
                                         List<SnapshotMessage> messages) {
         SaveResult result = new SaveResult();
@@ -293,6 +308,8 @@ public final class ConversationArchiveStore implements AutoCloseable {
     }
 
     /** Administrator-forced source-message deletion cascades into every private snapshot. */
+    // 원본에서 명시적으로 삭제된 메시지의 archive snapshot도 제거한다. 일반 retention과 달리 사용자 의도가 있는 삭제는 archive에 영구 복제본을 남기지 않는 privacy 정책을 따른다.
+    // Removes archive snapshots of a message explicitly deleted from its source. Unlike normal retention, user-intentional deletion follows privacy policy that avoids keeping a permanent archived copy.
     public synchronized int removeSourceMessage(String sourceType, String sourceId, String sourceMessageId) {
         String type = normalizeType(sourceType), sid = clean(sourceId, 220), mid = clean(sourceMessageId, 240);
         if (connection == null || type.isBlank() || sid.isBlank() || mid.isBlank()) return 0;

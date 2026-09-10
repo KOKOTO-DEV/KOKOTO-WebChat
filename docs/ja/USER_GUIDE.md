@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.2.0 — ユーザーガイド
+# KOKOTO WebChat 5.3.0 — ユーザーガイド
 
 reaction authority、direct/multi-hop delivery、origin 障害時の outbox、作者通知の図は [REACTIONS.md](REACTIONS.md) を参照してください。
 

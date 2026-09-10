@@ -231,4 +231,4 @@ For public servers, serve both BlueMap and KOKOTO WebChat under the same HTTPS o
 - [NGINX `ngx_http_proxy_module`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html)
 - [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
 
-KWC-specific path-prefix, trusted-proxy, SSE, upload and authentication behavior is defined by the KWC 5.2.0 source/configuration rather than by these external references.
+KWC-specific path-prefix, trusted-proxy, SSE, upload and authentication behavior is defined by the KWC 5.3.0 source/configuration rather than by these external references.

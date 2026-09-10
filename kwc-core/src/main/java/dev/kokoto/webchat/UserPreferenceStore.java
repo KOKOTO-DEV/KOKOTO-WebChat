@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * UserPreferenceStore는 KWC 상태를 메모리/JSONL/SQLite 같은 영속 매체에 저장하고 조회하는 계층이다.
+ * UserPreferenceStore is a persistence layer storing and reading KWC state from memory, JSONL, SQLite, or another backing store.
+ *
+ * 조회 visibility와 mutation 권한을 분리하고, transaction/atomic rewrite가 필요한 작업은 중간 실패로 데이터가 반쯤 적용되지 않게 해야 한다.
+ * Keep read visibility separate from mutation authorization, and use transactions/atomic rewrites where partial failure could leave inconsistent data.
+ */
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
@@ -28,6 +36,11 @@ import java.util.regex.Pattern;
  * servers through a strict flat JSON export/import format, while notification choices, typing-indicator visibility, emoji Favorites,
  * and keyword alerts are account-global on each server.
  */
+/**
+ * KWC 유지보수 안내: 계정에 귀속되는 사용자 preference를 서버 데이터 디렉터리에 저장한다. 테마 profile, 알림 category, typing visibility, presence Invisible, emoji Favorites가 대상이며 window geometry·minimized·Push endpoint 같은 기기 로컬 상태는 의도적으로 저장하지 않는다.
+ *
+ * KWC maintenance note: Stores account-scoped user preferences in the server data directory: visual profiles, notification categories, typing visibility, Invisible presence, and emoji favorites. Device-local state such as window geometry, minimized state, and Push endpoints is intentionally excluded.
+ */
 public final class UserPreferenceStore {
     public static final int PROFILE_FORMAT_VERSION = 1;
     public static final int MAX_IMPORT_BYTES = 16 * 1024;
@@ -35,6 +48,10 @@ public final class UserPreferenceStore {
     private static final int MAX_FONT_FAMILY = 160;
     private static final int MAX_SHADOW = 120;
     private static final int MAX_KEYWORD_TEXT = 4096;
+    private static final int MAX_PROFILE_ABOUT = 280;
+    private static final Set<String> PROFILE_AVATAR_MODES = Set.of("none", "custom", "minecraft");
+    private static final int MAX_BLOCKED_USERS = 500;
+    private static final Set<String> PROFILE_AVATAR_EXTENSIONS = Set.of("png", "jpg", "jpeg", "webp");
 
     private static final List<String> PROFILE_FIELDS = List.of(
             "theme", "opacity", "fontSize", "fontFamily", "textColor", "uiTextColor",
@@ -209,6 +226,200 @@ public final class UserPreferenceStore {
         return id;
     }
 
+    // 계정의 수동 표시 상태(online/busy/offline)를 저장한다. 실제 Game/Web 접속 여부는 런타임 상태이고, offline은 기존 Invisible과 같은 privacy 의미로 동작한다.
+    // Stores the account's manual visible status (online/busy/offline). Actual Game/Web connectivity remains runtime state, while offline has the same privacy semantics as legacy Invisible.
+    public synchronized Map<String,Object> presencePreferences(Account account) {
+        Properties p = load(account);
+        String status = normalizePresenceStatus(p.getProperty("presence.status", ""));
+        if (status.isBlank()) status = bool(p, "presence.invisible", false) ? "offline" : "online";
+        LinkedHashMap<String,Object> out = new LinkedHashMap<>();
+        out.put("status", status);
+        out.put("invisible", "offline".equals(status));
+        return out;
+    }
+
+    public synchronized SaveResult savePresencePreferences(Account account, Map<String,String> raw) {
+        Properties p = load(account);
+        try {
+            String status = "";
+            if (raw.containsKey("status")) {
+                status = normalizePresenceStatus(raw.get("status"));
+                if (status.isBlank()) return SaveResult.error("invalid_presence_status");
+            } else if (raw.containsKey("invisible")) {
+                status = parseBoolean(raw.get("invisible")) ? "offline" : "online";
+            }
+            if (!status.isBlank()) {
+                p.setProperty("presence.status", status);
+                p.setProperty("presence.invisible", Boolean.toString("offline".equals(status)));
+            }
+        } catch (IllegalArgumentException ex) {
+            return SaveResult.error(ex.getMessage());
+        }
+        if (!save(account, p)) return SaveResult.error("presence_preferences_save_failed");
+        return new SaveResult(true, "", presencePreferences(account));
+    }
+
+    private String normalizePresenceStatus(String raw) {
+        String status = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(java.util.Locale.ROOT);
+        if ("online".equals(status) || "busy".equals(status) || "offline".equals(status)) return status;
+        return "";
+    }
+
+    // 프로필 카드에 표시할 공개 정보만 별도 preference로 저장한다. 비밀번호/세션/알림 설정 같은 비공개 값은 절대 이 결과에 섞지 않는다.
+    // Stores only public profile-card fields. Private account/session/notification preferences must never be exposed through this result.
+    public synchronized Map<String,Object> profileCardPreferences(Account account) {
+        Properties p = load(account);
+        String about = normalizeProfileAbout(p.getProperty("profile.card.about", ""));
+        String avatarMode = normalizeProfileAvatarMode(p.getProperty("profile.card.avatarMode", "minecraft"));
+        String avatarExt = normalizeProfileAvatarExtension(p.getProperty("profile.card.avatarExt", ""));
+        long avatarRevision = parseLong(p.getProperty("profile.card.avatarRevision", "0"), 0L);
+        if (avatarMode.isBlank() || "none".equals(avatarMode)) avatarMode = "minecraft";
+        if ("custom".equals(avatarMode) && avatarExt.isBlank()) avatarMode = "minecraft";
+        LinkedHashMap<String,Object> out = new LinkedHashMap<>();
+        out.put("about", about);
+        out.put("avatarMode", avatarMode);
+        out.put("avatarExtension", avatarExt);
+        out.put("avatarRevision", avatarRevision);
+        return out;
+    }
+
+    public synchronized SaveResult saveProfileCardPreferences(Account account, Map<String,String> raw) {
+        Properties p = load(account);
+        try {
+            if (raw.containsKey("about")) p.setProperty("profile.card.about", normalizeProfileAbout(raw.get("about")));
+            if (raw.containsKey("avatarMode")) {
+                String mode = normalizeProfileAvatarMode(raw.get("avatarMode"));
+                if (mode.isBlank()) return SaveResult.error("invalid_profile_avatar_mode");
+                if ("none".equals(mode)) mode = "minecraft";
+                if ("custom".equals(mode) && normalizeProfileAvatarExtension(p.getProperty("profile.card.avatarExt", "")).isBlank()) {
+                    mode = "minecraft";
+                }
+                p.setProperty("profile.card.avatarMode", mode);
+            }
+        } catch (IllegalArgumentException ex) {
+            return SaveResult.error(ex.getMessage());
+        }
+        if (!save(account, p)) return SaveResult.error("profile_card_save_failed");
+        return new SaveResult(true, "", profileCardPreferences(account));
+    }
+
+    public synchronized SaveResult saveProfileAvatar(Account account, String extension, byte[] data) {
+        String ext = normalizeProfileAvatarExtension(extension);
+        if (ext.isBlank() || data == null || data.length == 0) return SaveResult.error("invalid_profile_avatar");
+        try {
+            Files.createDirectories(profileAssetRoot());
+            String stem = profileAssetStem(account);
+            for (String oldExt : PROFILE_AVATAR_EXTENSIONS) Files.deleteIfExists(profileAssetRoot().resolve(stem + "." + oldExt));
+            Path target = profileAssetRoot().resolve(stem + "." + ext);
+            Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
+            Files.write(tmp, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            try { Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); }
+            catch (IOException atomicUnsupported) { Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING); }
+            Properties p = load(account);
+            p.setProperty("profile.card.avatarExt", ext);
+            p.setProperty("profile.card.avatarMode", "custom");
+            p.setProperty("profile.card.avatarRevision", Long.toString(System.currentTimeMillis()));
+            if (!save(account, p)) return SaveResult.error("profile_avatar_save_failed");
+            return new SaveResult(true, "", profileCardPreferences(account));
+        } catch (IOException ex) {
+            if (logger != null) logger.warn("Failed to save profile avatar: " + ex.getMessage());
+            return SaveResult.error("profile_avatar_save_failed");
+        }
+    }
+
+    public synchronized boolean deleteProfileAvatar(Account account) {
+        boolean deleted = false;
+        try {
+            String stem = profileAssetStem(account);
+            for (String ext : PROFILE_AVATAR_EXTENSIONS) deleted |= Files.deleteIfExists(profileAssetRoot().resolve(stem + "." + ext));
+        } catch (IOException ex) {
+            if (logger != null) logger.warn("Failed to delete profile avatar: " + ex.getMessage());
+        }
+        Properties p = load(account);
+        p.remove("profile.card.avatarExt");
+        if ("custom".equals(normalizeProfileAvatarMode(p.getProperty("profile.card.avatarMode", "minecraft")))) p.setProperty("profile.card.avatarMode", "minecraft");
+        p.setProperty("profile.card.avatarRevision", Long.toString(System.currentTimeMillis()));
+        save(account, p);
+        return deleted;
+    }
+
+    public synchronized Path profileAvatarFile(Account account) {
+        Map<String,Object> card = profileCardPreferences(account);
+        String ext = normalizeProfileAvatarExtension(String.valueOf(card.getOrDefault("avatarExtension", "")));
+        if (ext.isBlank()) return null;
+        Path file = profileAssetRoot().resolve(profileAssetStem(account) + "." + ext);
+        return Files.isRegularFile(file) ? file : null;
+    }
+
+    private Path profileAssetRoot() { return root.resolve("profile-assets"); }
+
+    private String profileAssetStem(Account account) {
+        String identity = account == null ? "unknown" : (account.uuid != null && !account.uuid.isBlank() ? account.uuid : account.id);
+        if (identity == null || identity.isBlank()) identity = account == null ? "unknown" : account.safeUsername();
+        return sha256(identity.toLowerCase(Locale.ROOT));
+    }
+
+    private String normalizeProfileAbout(String raw) {
+        String value = String.valueOf(raw == null ? "" : raw).replace("\r\n", "\n").replace('\r', '\n');
+        StringBuilder out = new StringBuilder(Math.min(value.length(), MAX_PROFILE_ABOUT));
+        for (int i = 0; i < value.length() && out.length() < MAX_PROFILE_ABOUT; i++) {
+            char c = value.charAt(i);
+            if (c == '\n' || c == '\t' || (c >= 0x20 && c != 0x7f)) out.append(c);
+        }
+        return out.toString().trim();
+    }
+
+    private String normalizeProfileAvatarMode(String raw) {
+        String value = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.ROOT);
+        return PROFILE_AVATAR_MODES.contains(value) ? value : "";
+    }
+
+    private String normalizeProfileAvatarExtension(String raw) {
+        String value = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.ROOT);
+        if ("jpeg".equals(value)) value = "jpg";
+        return PROFILE_AVATAR_EXTENSIONS.contains(value) ? value : "";
+    }
+
+    // 개인 사용자 차단은 계정별 preference다. 서버 moderation 제재와 달리 차단한 사용자 자신의 화면/DM 수신에만 영향을 준다.
+    // Personal user blocks are account preferences. Unlike server moderation restrictions, they affect only the blocker's view and DM receipt.
+    public synchronized List<String> blockedUsers(Account account) {
+        Properties p = load(account);
+        ArrayList<String> out = new ArrayList<>();
+        String raw = p.getProperty("privacy.blockedUsers", "");
+        for (String part : raw.split(",")) {
+            String id = normalizeBlockedUserId(part);
+            if (!id.isBlank() && !out.contains(id)) out.add(id);
+            if (out.size() >= MAX_BLOCKED_USERS) break;
+        }
+        return out;
+    }
+
+    public synchronized boolean isUserBlocked(Account account, String targetUuid) {
+        String id = normalizeBlockedUserId(targetUuid);
+        return !id.isBlank() && blockedUsers(account).contains(id);
+    }
+
+    public synchronized SaveResult setUserBlocked(Account account, String targetUuid, boolean blocked) {
+        String id = normalizeBlockedUserId(targetUuid);
+        if (id.isBlank()) return SaveResult.error("invalid_block_target");
+        String self = normalizeBlockedUserId(account == null ? "" : account.uuid);
+        if (!self.isBlank() && self.equals(id)) return SaveResult.error("cannot_block_self");
+        Properties p = load(account);
+        LinkedHashSet<String> ids = new LinkedHashSet<>(blockedUsers(account));
+        if (blocked) {
+            if (ids.size() >= MAX_BLOCKED_USERS && !ids.contains(id)) return SaveResult.error("blocked_user_limit");
+            ids.add(id);
+        } else ids.remove(id);
+        p.setProperty("privacy.blockedUsers", String.join(",", ids));
+        if (!save(account, p)) return SaveResult.error("blocked_users_save_failed");
+        return new SaveResult(true, "", Map.of("blockedUsers", new ArrayList<>(ids)));
+    }
+
+    private String normalizeBlockedUserId(String raw) {
+        return String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9._~:-]", "");
+    }
+
     public synchronized Map<String,Object> typingPreferences(Account account) {
         Properties p = load(account);
         return Map.of("displayEnabled", bool(p, "typing.displayEnabled", true));
@@ -247,6 +458,8 @@ public final class UserPreferenceStore {
         return out;
     }
 
+    // 허용된 notification category만 계정 properties에 저장하고 임의 field는 무시한다. UI에서 보내는 JSON을 그대로 properties key로 쓰지 않아 preference 파일 구조를 제한한다.
+    // Stores only allowlisted notification categories and ignores arbitrary fields. Incoming UI JSON is not used directly as property keys, keeping the preference-file schema constrained.
     public synchronized SaveResult saveNotificationPreferences(Account account, Map<String,String> raw, ConfigValues c) {
         Properties p = load(account);
         // Removed in 5.0.0 final notification UI: keep old profile files readable but

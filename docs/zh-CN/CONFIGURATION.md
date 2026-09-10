@@ -53,7 +53,7 @@ Web Admin 提供 **Filter** 和 **Settings** 页签。Filter 可管理适用范�
 如果 `config-version` 缺失或属于其他版本，KWC 会读取现有配置值，以最新内置 `config.yml` 创建新文件，再把现有用户值覆盖到新默认配置上。若旧 marker 不带 `*_auto_migration`，则视为管理员曾固定过该配置，并在重建前完整备份原 `config.yml`。旧注释、顺序、空白和缩进不会继承；以最新内置注释/布局为准，同时保留管理员设置值。已废弃设置不会重新写回。结果标记为 `<plugin-version>_auto_migration`。只要该 marker 保留，startup/reload 都会重复同样的“最新默认配置 + 当前值覆盖”过程，从而自动获得新增设置和最新注释/布局。精确的 `<plugin-version>` 表示当前版本配置已固定，同版本 startup/reload 不会重写 `config.yml`。
 
 `config-migration-<plugin-version>.yml` 是 review/diff 报告。旧版本生成的 `config-reference-*`、`config-migration-*`、`config-upgrade-*` 会自动清理；只有用于真实版本升级默认值比较的 JAR 内部 `config-baselines/*` 会保留。
-5.2.0 中，`ui.language` 不仅选择 Web UI 语言，也选择 KWC 重建 `config.yml` 时的注释/呈现语言、`config-reference-5.2.0.yml` 以及 migration/difference 报告语言。内置 template 为 `en-US`、`ko-KR`、`ja-JP`、`zh-CN`；切换语言只改变注释/布局，Relay group/secret/peer 等现有已解析管理员值会 overlay 回新模板并保持不变。Difference 判断比较的是已解析 YAML setting path + value，而不是注释、空白、缩进、引号样式、行号或 key 顺序。
+5.3.0 中，`ui.language` 不仅选择 Web UI 语言，也选择 KWC 重建 `config.yml` 时的注释/呈现语言、`config-reference-5.3.0.yml` 以及 migration/difference 报告语言。内置 template 为 `en-US`、`ko-KR`、`ja-JP`、`zh-CN`；切换语言只改变注释/布局，Relay group/secret/peer 等现有已解析管理员值会 overlay 回新模板并保持不变。Difference 判断比较的是已解析 YAML setting path + value，而不是注释、空白、缩进、引号样式、行号或 key 顺序。
 
 ## 总开关
 
@@ -201,13 +201,13 @@ direct-message:
 
 `group-chat.admin-audit.enabled` 是 4.6.3 新增的独立、默认关闭的群聊正文访问开关。即使启用，账号仍必须列在 `private-chat-super-admins` 中。管理员视图为只读，不要求房间成员身份，也不会加入房间或更新已读状态；每次分页读取都会记录为 `admin.group-audit-read`，且不会把消息正文复制到审计日志。
 
-`direct-message.admin-audit.enabled` 是独立且默认关闭的私信正文审计开关。即使启用，也只有同时明确列在 `private-chat-super-admins` 中的账号可以在只读审计视图中打开私信正文。审计视图不能发送、回复、隐藏消息或更新已读状态；每次分页读取都会写入审计日志，但不会把正文复制到日志中。
+`direct-message.admin-audit.enabled` 是独立且默认关闭的私信正文审计开关。即使启用，也只有同时明确列在 `private-chat-super-admins` 中的账号可以在只读审计视图中打开私信正文。审计视图不能发送、回复、删除消息或更新已读状态；每次分页读取都会写入审计日志，但不会把正文复制到日志中。
 
 `capture-game-whispers` 会把未取消的 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` 复制到发送者和接收者的 KWC DM 会话。它不会重新发送或替换 Minecraft 私聊。Bukkit 无法统一获得所有私聊插件的最终成功结果，因此以格式正确、目标为已知玩家的命令作为记录条件。
 
 ## 重要的 0 值语义
 
-`0` 在不同设置中并不具有统一含义。以下说明以当前 5.2.0 loader/runtime 的实际行为为准；实际说明不同的设置不得自行推断为“无限制”。
+`0` 在不同设置中并不具有统一含义。以下说明以当前 5.3.0 loader/runtime 的实际行为为准；实际说明不同的设置不得自行推断为“无限制”。
 
 - `chat.history-size`: 按数量保留的公开聊天历史最大行数，与按时间保留策略同时生效。 0 表示不限制数量。
 - `chat.history-retention-days`: 公开聊天历史的按时间保留天数。 0 表示不按时间过期。
@@ -243,6 +243,8 @@ direct-message:
 - `security.max-sse-connections-total`: 整个 KWC 服务器允许的并发 /stream SSE 连接最大数量。 0 表示关闭此限制项。
 - `admin.admin-session-expire-hours`: ADMIN Web 会话过期时间（小时）。<=0 时管理员会话不设置 expiry timestamp。
 - `moderation.default-mute-minutes`: 未指定时默认禁言时长（分钟）。<=0 表示永久禁言；此设置仅限 config。
+- `moderation.allow-user-self-message-delete`: 允许普通用户删除自己在公开聊天、DM 和群聊中发送的消息。默认值为 `false`。DM 仍只能由发送者删除自己的消息；普通群成员删除自己的消息还要求启用该房间的成员自删策略和房间消息删除功能。
+- `moderation.self-message-delete-window-minutes`: 普通用户删除自己消息的时间窗口。`0` 表示不限时间；正数表示发送后超过该分钟数，普通用户不能再删除。ADMIN/MODERATOR 删除不受此时间限制。
 - `commands.max-length`: Web 命令执行接受的命令文本最大长度。 0 表示不限制此长度。
 - `ui.image-preview-max-per-message`: 单条消息渲染的 inline 图片预览最大数量。 0 表示不限制数量。
 - `ui.image-preview-max-height`: 图片预览的配置高度上限（px）。即使为正数也仍受聊天 viewport 安全上限约束；0 只取消此明确 px 上限并改用自动 viewport 上限，因此并非真正无限。
@@ -319,7 +321,7 @@ DM/group 消息也使用相同的游戏点击模型：会话标签准备现有 `
 
 ## 服务器中继配置
 
-KOKOTO WebChat 5.2.0 使用保留 Relay v2 信任/加密模型的 **Relay Protocol 2.1**。relay group 本身就是信任边界；同一 group 内所有 peer 关系共享一个 group `shared-secret`。peer 项只包含 `id`、`url` 和 `enabled`，不存在 `peers[].secret`。
+KOKOTO WebChat 5.3.0 使用 Relay v2 信任/加密模型并保持 **Relay Protocol 2.2**。relay group 本身就是信任边界；同一 group 内所有 peer 共享一个 group `shared-secret`。peer 项保留 `id`、`url`、`enabled`，并可在 `send` / `receive` 下分别配置 `public-chat`、`event`、`dm`、`profile`。省略的策略默认启用。不存在 `peers[].secret`。
 
 ```yaml
 server-relay:
@@ -337,6 +339,7 @@ server-relay:
     guest: true
     discord: false
     system: false
+    event: true
   delivery:
     web: true
     game: true
@@ -350,6 +353,16 @@ server-relay:
         - id: "server-2"
           url: "https://server2.example.com/api"
           enabled: true
+          send:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
+          receive:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
 ```
 
 首次设置时，只在一台服务器上保留 `shared-secret: ""`，启动/重载后重新打开该服务器的 `config.yml`，再把自动生成的值原样复制到同一 **group** 的其他服务器。不要让每台服务器分别从空值生成，否则会得到不同 secret 而无法互相认证。已有 non-empty secret 会保留；手工 secret 不足 32 字符时不会自动替换，而会保持 invalid/fail-closed。双方必须在同一 group 中互相登记 peer，并使用完全相同的生成/复制 secret。同一个 peer ID 不能登记到多个本地 group，重复登记会被禁用。direct relay 会逐个独立认证/加密 `/relay/v2/message` 请求。`/relay/v2/handshake` 是无状态的诊断 identity/health probe，不控制 routing。
@@ -627,11 +640,11 @@ ui:
 
 ## 消息搜索
 
-启用存储历史记录时，可以通过聊天面板右上角的浮动区域的放大镜按钮和 `/history/search` API 搜索消息内容和发送者。搜索选项可按日期/时间范围、发送者、来源以及是否包含系统/事件消息进行筛选。搜索结果会显示在可滚动列表中，并遵循聊天主题和字体设置。点击搜索结果会使用现有的周边历史加载跳转到对应消息。带有 i18n 键的系统/事件消息会尽可能按请求的 Web UI 语言搜索和显示。 可通过 `search.enabled` 启用/禁用搜索，且仅用 `search.result-limit` 同时控制 Web UI 结果数量和 `/history/search` API 限制。没有单独的内部最大值：设置为 2000 时最多返回 2000 条，设置为 10 时最多返回 10 条。10000 或 100000 这类非常大的值也会被接受，但可能导致搜索变慢、响应体变大，并显著增加 CPU、内存和数据库负载。默认值为 50，普通使用建议 50-200。当 `config-version: "5.2.0_auto_migration"` 时，缺少的搜索设置会在 startup/reload 时自动插入。只有使用精确的 `config-version: "5.2.0"` 停止同版本自动 migration 后，才需要手动添加缺少的键或重新启用 `_auto_migration`。
+启用存储历史记录时，可以通过聊天面板右上角的浮动区域的放大镜按钮和 `/history/search` API 搜索消息内容和发送者。搜索选项可按日期/时间范围、发送者、来源以及是否包含系统/事件消息进行筛选。搜索结果会显示在可滚动列表中，并遵循聊天主题和字体设置。点击搜索结果会使用现有的周边历史加载跳转到对应消息。带有 i18n 键的系统/事件消息会尽可能按请求的 Web UI 语言搜索和显示。 可通过 `search.enabled` 启用/禁用搜索，且仅用 `search.result-limit` 同时控制 Web UI 结果数量和 `/history/search` API 限制。没有单独的内部最大值：设置为 2000 时最多返回 2000 条，设置为 10 时最多返回 10 条。10000 或 100000 这类非常大的值也会被接受，但可能导致搜索变慢、响应体变大，并显著增加 CPU、内存和数据库负载。默认值为 50，普通使用建议 50-200。当 `config-version: "5.3.0_auto_migration"` 时，缺少的搜索设置会在 startup/reload 时自动插入。只有使用精确的 `config-version: "5.3.0"` 停止同版本自动 migration 后，才需要手动添加缺少的键或重新启用 `_auto_migration`。
 
 ## 群组聊天
 
-`group-chat.enabled` 启用 Web 群组聊天功能。支持公开/私密房间、哈希保存的可选密码、邀请、退出房间、隐藏/恢复房间、房间设置、未读追踪、按用户隐藏消息、踢出/封禁/解除封禁成员以及转移房主。群组消息保存在 `group-chat.sqlite-file`（默认 `group-messages.db`）中。`group-chat.retention-days: 0` 表示不按时间清理；正数会物理删除更旧的群组消息。
+`group-chat.enabled` 启用 Web 群组聊天功能。支持公开/私密房间、哈希保存的可选密码、邀请、退出房间、隐藏/恢复房间、房间设置、未读追踪、room-local owner/admin/member 角色、置顶消息、全房间消息删除、普通成员自删策略、踢出/封禁/解除封禁成员以及转移房主。群组消息保存在 `group-chat.sqlite-file`（默认 `group-messages.db`）中。`group-chat.retention-days: 0` 表示不按时间清理；正数会物理删除更旧的群组消息。
 
 房间加入/退出通知不是全局 `config.yml` 开关，而是**每个房间单独保存的数据库设置**。可在房间设置中开启或关闭，并保存到 `group_rooms.membership_events_enabled`；旧数据库新增该列时默认启用。只有实际成员关系变化才会保存事件，关闭群聊窗口不等于退出房间。
 

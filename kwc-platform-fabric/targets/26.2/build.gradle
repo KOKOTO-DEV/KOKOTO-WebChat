@@ -1,8 +1,14 @@
+// KWC 파일 안내 / KWC file guide
+// 이 Gradle 파일은 kwc-platform-fabric/targets/26.2/build.gradle 빌드의 plugin/toolchain/dependency/산출물 이름을 정의한다.
+// This Gradle file defines plugins, toolchains, dependencies, and artifact naming for kwc-platform-fabric/targets/26.2/build.gradle.
+// exact-target JDK/loader pin은 릴리스 호환성 계약이므로 버전 변경 시 build-all 스크립트와 validation matrix를 함께 확인한다.
+// Exact-target JDK/loader pins are release compatibility contracts; update build-all scripts and validation matrices together when versions change.
+
 plugins { id 'net.fabricmc.fabric-loom' version '1.17-SNAPSHOT' }
 
 group='dev.kokoto.webchat'
-version='5.2.1'
-base { archivesName='KOKOTO-WebChat-5.2.1-Fabric-26.2' }
+version='5.3.0'
+base { archivesName='KOKOTO-WebChat-5.3.0-Fabric-26.2' }
 
 repositories { mavenCentral(); maven { url 'https://repo.bluecolored.de/releases' } }
 sourceSets.main.java.srcDirs=['../../src/common/java','../../src/compatV2/java','../../src/compatModern/java','../../../kwc-core/src/main/java','../../../kwc-adapter-bluemap/src/main/java','../../../kwc-adapter-squaremap/src/main/java','../../../kwc-adapter-dynmap/src/main/java','../../../kwc-adapter-pl3xmap/src/main/java','../../../kwc-adapter-liveatlas/src/main/java','../../../kwc-adapter-unmined/src/main/java','../../../kwc-adapter-overviewer/src/main/java','../../../kwc-adapter-bluemap-api/src/main/java']
@@ -20,11 +26,11 @@ dependencies {
 def metadata=tasks.register('generateModMetadata',Copy) {
     from('../../src/common/templates')
     into(layout.buildDirectory.dir('generated/resources'))
-    expand(version:'5.2.1',minecraft_version:'26.2',loader_version:'0.19.3',java_version:'25')
+    expand(version:'5.3.0',minecraft_version:'26.2',loader_version:'0.19.3',java_version:'25')
 }
 tasks.named('processResources').configure { dependsOn(metadata); from(layout.buildDirectory.dir('generated/resources')); from('../../../kwc-platform-bukkit/src/main/resources') { include 'config.yml'; include 'config-baselines/**'; include 'config-templates/**'; include 'lang/**'; include 'filter-lists-default/**' } }
 
 tasks.withType(JavaCompile).configureEach { options.release=25; options.encoding='UTF-8' }
 java { sourceCompatibility=JavaVersion.toVersion(25); targetCompatibility=JavaVersion.toVersion(25); withSourcesJar() }
-tasks.withType(AbstractArchiveTask).configureEach { archiveBaseName.set('KOKOTO-WebChat-5.2.1-Fabric-26.2'); archiveVersion.set('') }
+tasks.withType(AbstractArchiveTask).configureEach { archiveBaseName.set('KOKOTO-WebChat-5.3.0-Fabric-26.2'); archiveVersion.set('') }
 jar { from('../../../LICENSE') { rename { 'LICENSE_KOKOTO-WebChat' } } }

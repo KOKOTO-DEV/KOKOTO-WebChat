@@ -1,5 +1,13 @@
 package dev.kokoto.webchat.fabric;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * FabricLangManager는 여러 저수준 객체를 조합해 하나의 KWC 기능 흐름을 수행하는 서비스/관리 계층이다.
+ * FabricLangManager is a service/manager layer coordinating lower-level objects into one KWC feature flow.
+ *
+ * 상태 변경 순서와 실패 시 rollback/재시도 의미가 호출자에게 예측 가능하도록 side effect를 한곳에서 조정한다.
+ * Coordinate side effects so mutation order and rollback/retry behavior remain predictable to callers.
+ */
 import dev.kokoto.webchat.*;
 
 

@@ -1,4 +1,10 @@
 #!/bin/sh
+# KWC 파일 안내 / KWC file guide
+# Linux/Unix 환경에서 loader build 또는 smoke/adapter 검증을 자동화하는 스크립트다.
+# Automates loader builds or smoke/adapter validation in Linux/Unix environments.
+# set -e/pipefail, 임시 디렉터리 정리, 정확한 target 선택을 유지해 실패를 성공으로 숨기지 않도록 한다.
+# Preserve set -e/pipefail, temporary-directory cleanup, and exact target selection so failures cannot be hidden as success.
+
 set -eu
 major="${1:?usage: ./select-java.sh <17|21|25>}"
 case "$major" in 17|21|25) ;; *) echo "Unsupported JDK major: $major" >&2; exit 2;; esac

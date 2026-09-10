@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * BuiltinLanguageRevision는 다국어 문자열과 구버전 텍스트 호환을 처리한다.
+ * BuiltinLanguageRevision handles localized text and compatibility with legacy wording/data.
+ *
+ * 번역 key는 en-US/ko-KR/ja-JP/zh-CN parity 검증 대상이므로 새 key를 추가할 때 네 언어를 동시에 갱신한다.
+ * Localization keys are parity-checked across en-US/ko-KR/ja-JP/zh-CN, so add new keys to all four languages together.
+ */
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -26,6 +34,7 @@ public final class BuiltinLanguageRevision {
         if (current.equals(previous)) return true;
         if (isKnownReactionLegacyVariant(lang, key, current)) return true;
         if (isKnownArchiveLegacyVariant(lang, key, current)) return true;
+        if (isKnownCommandLegacyVariant(lang, key, current)) return true;
         if (!"preferences.note".equals(key)) return false;
         return switch (lang) {
             case "ko-KR" -> current.contains("이 설정은 이 브라우저에만 저장됩니다.");
@@ -34,6 +43,27 @@ public final class BuiltinLanguageRevision {
             case "zh-CN" -> current.contains("此设置仅保存在此浏览器中。");
             default -> current.contains("These settings are stored only in this browser.")
                     || current.contains("This setting is stored only in this browser.");
+        };
+    }
+
+    private static boolean isKnownCommandLegacyVariant(String lang, String key, String current) {
+        if ("link.commandHint".equals(key)) {
+            return current.equals("/kwc auth <code>") || current.equals("/kc auth <code>") || current.equals("/kchat auth <code>");
+        }
+        if (!"link.statusWaiting".equals(key)) return false;
+        return switch (lang) {
+            case "ko-KR" -> current.equals("게임에서 /kwc auth {code} 입력 대기 중...")
+                    || current.equals("게임에서 /kc auth {code} 입력 대기 중...")
+                    || current.equals("게임에서 /kchat auth {code} 입력 대기 중...");
+            case "ja-JP" -> current.equals("ゲーム内で /kwc auth {code} の入力待ち...")
+                    || current.equals("ゲーム内で /kc auth {code} の入力待ち...")
+                    || current.equals("ゲーム内で /kchat auth {code} の入力待ち...");
+            case "zh-CN" -> current.equals("等待在游戏内输入 /kwc auth {code} ...")
+                    || current.equals("等待在游戏内输入 /kc auth {code} ...")
+                    || current.equals("等待在游戏内输入 /kchat auth {code} ...");
+            default -> current.equals("Waiting for /kwc auth {code} in game...")
+                    || current.equals("Waiting for /kc auth {code} in game...")
+                    || current.equals("Waiting for /kchat auth {code} in game...");
         };
     }
 
@@ -79,6 +109,7 @@ public final class BuiltinLanguageRevision {
     private static Map<String, Map<String,String>> previousValues() {
         LinkedHashMap<String, Map<String,String>> all = new LinkedHashMap<>();
         all.put("en-US", values(
+                "alert.confirmDelete", "Hide this message?",
                 "button.clearHistory", "Clear web history",
                 "preferences.showTypingIndicator", "Show typing indicators",
                 "alert.confirmClearHistory", "Clear web chat history?",
@@ -97,10 +128,16 @@ public final class BuiltinLanguageRevision {
                 "reaction.gameNotice", "{user} reacted with {reaction}. Original: {message}",
                 "admin.reactionShowActorsHint", "When disabled, reactor display names are not included in reaction responses or shown in tooltips.",
                 "archive.accountButton", "Saved conversations",
-                "link.commandHint", "/kwc auth <code>",
-                "link.statusWaiting", "Waiting for /kwc auth {code} in game..."
+                "link.commandHint", "/kchat auth <code>",
+                "link.statusWaiting", "Waiting for /kchat auth {code} in game..."
         ));
         all.put("ko-KR", values(
+                "game.deletedNotice", "This event has been deleted and can no longer be opened.",
+                "game.deleted", "Deleted event",
+                "game.type.firstcome", "First come",
+                "game.type.lottery", "Lottery",
+                "alert.confirmDelete", "이 메시지를 숨길까요?",
+                "game.type", "Type",
                 "button.clearHistory", "웹 히스토리 비우기",
                 "preferences.showTypingIndicator", "입력 중 표시 보기",
                 "alert.confirmClearHistory", "웹 채팅창 히스토리를 비울까요?",
@@ -125,8 +162,8 @@ public final class BuiltinLanguageRevision {
                 "reaction.gameNotice", "{user}님이 {reaction} 반응을 남겼습니다. 원문: {message}",
                 "admin.reactionShowActorsHint", "끄면 반응 개수와 내 반응 여부는 유지하지만 반응한 사람의 표시이름 목록은 서버 응답과 툴팁에서 숨깁니다.",
                 "archive.accountButton", "저장한 대화",
-                "link.commandHint", "/kwc auth <code>",
-                "link.statusWaiting", "게임에서 /kwc auth {code} 입력 대기 중...",
+                "link.commandHint", "/kchat auth <code>",
+                "link.statusWaiting", "게임에서 /kchat auth {code} 입력 대기 중...",
                 "reaction.pending", "원문 서버가 다시 연결되면 리엑션을 적용합니다.",
                 "reaction.failed", "리엑션을 적용하지 못했습니다: {error}",
                 "reaction.expired", "원문 서버가 다시 연결되기 전에 리엑션 요청이 만료되었습니다.",
@@ -142,6 +179,12 @@ public final class BuiltinLanguageRevision {
                 "admin.reactionResetConfirm", "리엑션 아이콘 목록을 기본값으로 초기화할까요?"
         ));
         all.put("ja-JP", values(
+                "game.deletedNotice", "This event has been deleted and can no longer be opened.",
+                "game.deleted", "Deleted event",
+                "game.type.firstcome", "First come",
+                "game.type.lottery", "Lottery",
+                "alert.confirmDelete", "このメッセージを非表示にしますか？",
+                "game.type", "Type",
                 "button.clearHistory", "Web履歴を消去",
                 "preferences.showTypingIndicator", "入力中表示を表示",
                 "alert.confirmClearHistory", "Webチャット履歴を消去しますか？",
@@ -166,8 +209,8 @@ public final class BuiltinLanguageRevision {
                 "reaction.gameNotice", "{user}さんが {reaction} の反応をしました。元のメッセージ: {message}",
                 "admin.reactionShowActorsHint", "オフにすると反応数と自分の反応状態は維持しますが、反応したユーザーの表示名一覧をサーバー応答とツールチップから非表示にします。",
                 "archive.accountButton", "保存した会話",
-                "link.commandHint", "/kwc auth <code>",
-                "link.statusWaiting", "ゲーム内で /kwc auth {code} の入力待ち...",
+                "link.commandHint", "/kchat auth <code>",
+                "link.statusWaiting", "ゲーム内で /kchat auth {code} の入力待ち...",
                 "reaction.pending", "元メッセージのサーバーが再接続するとリアクションを適用します。",
                 "reaction.failed", "リアクションを適用できませんでした: {error}",
                 "reaction.expired", "元メッセージのサーバーが再接続する前にリアクション要求が期限切れになりました。",
@@ -183,6 +226,12 @@ public final class BuiltinLanguageRevision {
                 "admin.reactionResetConfirm", "リアクションアイコン一覧を初期値に戻しますか？"
         ));
         all.put("zh-CN", values(
+                "game.deletedNotice", "This event has been deleted and can no longer be opened.",
+                "game.deleted", "Deleted event",
+                "game.type.firstcome", "First come",
+                "game.type.lottery", "Lottery",
+                "alert.confirmDelete", "要隐藏这条消息吗？",
+                "game.type", "Type",
                 "button.clearHistory", "清空网页历史",
                 "preferences.showTypingIndicator", "显示输入中提示",
                 "alert.confirmClearHistory", "要清空网页聊天历史吗？",
@@ -206,8 +255,8 @@ public final class BuiltinLanguageRevision {
                 "reaction.gameNotice", "{user} 使用 {reaction} 作出了反应。原消息：{message}",
                 "admin.reactionShowActorsHint", "关闭后仍保留反应数量和自己的反应状态，但服务器响应和工具提示不会包含反应用户的显示名称列表。",
                 "archive.accountButton", "已保存的对话",
-                "link.commandHint", "/kwc auth <code>",
-                "link.statusWaiting", "等待在游戏内输入 /kwc auth {code} ...",
+                "link.commandHint", "/kchat auth <code>",
+                "link.statusWaiting", "等待在游戏内输入 /kchat auth {code} ...",
                 "reaction.pending", "原消息服务器重新连接后将应用该回应。",
                 "reaction.failed", "无法应用回应：{error}",
                 "reaction.expired", "原消息服务器重新连接前，回应请求已过期。",

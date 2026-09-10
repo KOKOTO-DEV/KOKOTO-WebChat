@@ -1,3 +1,10 @@
+/* KWC 파일 안내 / KWC file guide
+ * ReactionRelayHarness는 서버간 Relay Protocol 2.x의 설정·호스트 계약·전송 데이터를 담당한다.
+ * ReactionRelayHarness participates in configuration, host contracts, or transport data for Relay Protocol 2.x.
+ *
+ * Relay payload는 서버 경계를 넘으므로 origin/target/sender 식별과 capability negotiation을 신뢰 경계 안에서 다시 검증해야 한다.
+ * Relay payloads cross a server trust boundary, so origin/target/sender identity and capability negotiation must be revalidated inside the trust boundary.
+ */
 import com.sun.net.httpserver.HttpServer;
 import dev.kokoto.webchat.*;
 
@@ -15,12 +22,13 @@ public class ReactionRelayHarness {
         final List<RelayPublicReaction> reactions = new CopyOnWriteArrayList<>();
         final List<RelayDirectTyping> typings = new CopyOnWriteArrayList<>();
         final List<RelayPublicTyping> publicTypings = new CopyOnWriteArrayList<>();
+        final List<String> deletes = new CopyOnWriteArrayList<>();
         Host(String id, int selfPort, Map<String,Integer> peers) {
             this.id=id; this.name=id.toUpperCase(Locale.ROOT);
             List<RelaySettings.Peer> ps = new ArrayList<>();
             for (var e: peers.entrySet()) ps.add(new RelaySettings.Peer(e.getKey(), "http://127.0.0.1:"+e.getValue()+"/api", true));
             var g = new RelaySettings.Group("g1", "0123456789abcdef0123456789abcdef0123456789abcdef", true, ps);
-            settings = new RelaySettings(true,id,name,2,3,60,120,4,true,true,true,true,true,true,true,"",List.of(g));
+            settings = new RelaySettings(true,id,name,2,3,60,120,4,true,true,true,true,true,true,true,true,"",List.of(g));
         }
         public RelaySettings relaySettings(){return settings;}
         public String defaultServerName(){return name;}
@@ -35,6 +43,10 @@ public class ReactionRelayHarness {
         public boolean hasDirectRelayId(String id){return false;}
         public boolean acceptDirectMessage(RelayDirectMessage m){return false;}
         public RelayReadApplyResult applyDirectMessageRead(String id){return RelayReadApplyResult.failed("not_found");}
+        public boolean applyDirectMessageDelete(String originServerId,String senderUuid,String id){
+            deletes.add(originServerId + "|" + senderUuid + "|" + id);
+            return true;
+        }
         public void publishDirectMessageUpdate(String a,String b,String c){}
     }
 
@@ -84,6 +96,17 @@ public class ReactionRelayHarness {
                 check(hb.typings.get(0).senderUsername.equals("Alice"), "typing sender B");
                 check(hb.typings.get(0).expiresAt == expiry, "typing expiry B");
                 check(hc.typings.isEmpty(), "typing not leaked to C");
+
+                // Sender-authoritative DM delete is a targeted private relay operation.
+                // The target sees the origin server, original sender and stable relay ID;
+                // unrelated peers must not receive any delete metadata.
+                check(ra.publishDirectMessageDelete("b", "11111111-1111-1111-1111-111111111111",
+                        "dm-relay-delete-123456").get(), "dm delete delivery result");
+                waitFor(() -> hb.deletes.size()==1);
+                check(hb.deletes.get(0).equals("a|11111111-1111-1111-1111-111111111111|dm-relay-delete-123456"),
+                        "dm delete preserves sender authority and relay id");
+                check(ha.deletes.isEmpty(), "dm delete not reflected back to origin host");
+                check(hc.deletes.isEmpty(), "dm delete not leaked to unrelated peer");
 
                 long publicExpiry = System.currentTimeMillis() + 5000L;
                 ra.publishPublicTyping("web", "11111111-1111-1111-1111-111111111111", "Alice", "<gold>Alice Display</gold>",

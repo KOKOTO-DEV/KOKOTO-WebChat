@@ -1,16 +1,16 @@
-# KOKOTO WebChat 5.2.0 — 技术参考
+# KOKOTO WebChat 5.3.0 — 技术参考
 
 反应 authority、直连/多跳传递、origin 断开时的 outbox 与作者通知图请参阅 [REACTIONS.md](REACTIONS.md)。
 
-![KOKOTO WebChat 5.2.0 架构总览](../assets/architecture-5.2.0.svg)
+![KOKOTO WebChat 5.3.0 架构总览](../assets/architecture-5.3.0.svg)
 
-[PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg)
+[PNG](../assets/architecture-5.3.0.png) · [SVG](../assets/architecture-5.3.0.svg)
 
 > **说明：** 图示用于辅助理解。KWC 自身行为应以实际源代码与本文说明为准。
 
 ## 结构与数据流图
 
-![KWC 5.2.0 总体架构](../assets/architecture-5.2.0.svg)
+![KWC 5.3.0 总体架构](../assets/architecture-5.3.0.svg)
 
 ![管理与 HTTP 安全边界](../assets/admin-security-boundary.svg)
 
@@ -36,10 +36,10 @@
 ## 平台抽象与精确目标构建
 `PlatformAdapter` 及相关 host interface 将 Loader API 与核心代码隔离。发布矩阵为 Bukkit 1 + Fabric 16 + NeoForge 12 + Forge 16 = **45 个可部署构建产物**。构建辅助脚本按 Minecraft 世代选择 Java 17/21/25。Windows 发布脚本会在完整 Gradle/Maven 构建之前进行路径长度预检，以便在精确目标工作目录超出已验证 Windows 路径范围时尽早失败。
 
-## Relay Protocol 2.1 compatibility 与 Relay v2 信任模型
-Relay v2 使用显式 `groups -> peers` 结构。一个组就是一个对称信任域，仅拥有一个组共享密钥，peer 不再拥有独立密钥。空 group secret 会被视为 provisioning 请求，在 startup/reload 时生成密码学安全的 32-byte URL-safe secret 并保存到 `config.yml`；已有非空值不会自动重新生成。手工提供但少于 32 个字符的 group secret 会被拒绝；同一个 peer ID 也不能同时出现在多个本地组中。双方必须在同一组中互相登记对方。
+## Relay Protocol 2.2 compatibility 与 Relay v2 信任模型
+Relay Protocol 2.2 使用显式 `groups -> peers` 结构，并继续以 Protocol major `2` 作为 wire compatibility 边界。当前 capability 包括 `public`、`dm`、`read`、`delete`、`reaction`、`reaction-authority`、`typing`、`game`、`profile`。一个组就是一个对称信任域，仅拥有一个组共享密钥，peer 不再拥有独立密钥。空 group secret 会被视为 provisioning 请求，在 startup/reload 时生成密码学安全的 32-byte URL-safe secret 并保存到 `config.yml`；已有非空值不会自动重新生成。手工提供但少于 32 个字符的 group secret 会被拒绝；同一个 peer ID 也不能同时出现在多个本地组中。双方必须在同一组中互相登记对方。每个 peer 可以独立限制 `public-chat`、`event`、`dm`、`profile` 的发送和接收；省略的策略为保持兼容而默认启用。
 
-`/relay/v2/handshake` 使用 HMAC 认证 protocol version、product version、group、sender ID、target ID、timestamp、nonce 以及发送方 outbound transport。接收端会检查组成员关系、目标身份、时钟偏差与 nonce 重放。该 endpoint 只是无状态的诊断 identity/health probe，不会创建 route 状态；direct `/relay/v2/message` 会逐请求独立认证。但接收端仍必须在相同 group 中使用相同 shared secret 对等配置发送端。旧 v1 endpoint 返回 HTTP 426。
+`/relay/v2/handshake` 使用 HMAC 认证 protocol major/revision、group、sender ID、target ID、timestamp、nonce 以及发送方 outbound transport。product version 只用于诊断，不参与当前 2.x signature/compatibility 判定。接收端会检查组成员关系、目标身份、时钟偏差与 nonce 重放。该 endpoint 只是无状态的诊断 identity/health probe，不会创建 route 状态；direct `/relay/v2/message` 会逐请求独立认证。但接收端仍必须在相同 group 中使用相同 shared secret 对等配置发送端。旧 v1 endpoint 返回 HTTP 426。
 
 ## Relay 负载加密
 KWC 会针对每个方向，根据组共享密钥和方向上下文通过 HKDF-SHA256 派生 256-bit key。`/relay/v2/message` 使用 AES-256-GCM、随机 12-byte IV 和 128-bit tag。GCM AAD 绑定 `group`、`from`、`to`、`timestamp`、`nonce` 与 `IV`。响应还会对 group/responder/requester/timestamp/request nonce/status/body 组合使用 HMAC-SHA256 独立认证，从而防止未认证的中间方伪造成功响应。timestamp、request nonce、relay ID/receipt ID、origin、hop-count 检查共同提供重放/循环防护。
@@ -77,5 +77,5 @@ Relay v2 是**逐跳认证加密（hop-by-hop authenticated encryption），不�
 普通 history/private retention 不会删除已经保存的 snapshot。管理员删除源消息、清空公共历史、管理员删除 DM thread/group room，以及私聊房间 lock policy 始终优先于个人 archive。
 
 ## Typing state
-公共/DM/群聊 typing 是 ephemeral state。浏览器一次 input event 创建 5 秒窗口，窗口期间的后续按键由客户端抑制。状态不写入 SQLite/JSONL，也不存在 polling 或常驻 typing worker。本地群聊状态仅通过现有 SSE 发送给当前房间成员；跨服务器 DM typing 使用 Relay Protocol 2.1。
+公共/DM/群聊 typing 是 ephemeral state。浏览器一次 input event 创建 5 秒窗口，窗口期间的后续按键由客户端抑制。状态不写入 SQLite/JSONL，也不存在 polling 或常驻 typing worker。本地群聊状态仅通过现有 SSE 发送给当前房间成员；跨服务器 DM typing 使用当前 Relay Protocol 2.2 的 `typing` capability。
 

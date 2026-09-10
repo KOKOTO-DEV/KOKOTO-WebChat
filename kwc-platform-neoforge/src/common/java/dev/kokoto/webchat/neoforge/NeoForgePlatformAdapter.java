@@ -1,5 +1,13 @@
 package dev.kokoto.webchat.neoforge;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * NeoForgePlatformAdapter는 NeoForge API를 loader-neutral core/adapter 계약으로 변환하는 플랫폼 bridge다.
+ * NeoForgePlatformAdapter bridges NeoForge APIs into loader-neutral core/adapter contracts.
+ *
+ * 플랫폼 객체를 core에 노출하지 않고 UUID/중립 모델만 넘겨 다른 loader target의 classpath와 섞이지 않게 한다.
+ * Expose only UUID/neutral models to core rather than platform objects so loader target classpaths stay isolated.
+ */
 import dev.kokoto.webchat.*;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;

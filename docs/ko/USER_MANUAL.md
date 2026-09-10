@@ -1,11 +1,11 @@
-# KOKOTO WebChat 5.2.0 통합 사용·운영 매뉴얼
+# KOKOTO WebChat 5.3.0 통합 사용·운영 매뉴얼
 
 
 ## 시각 자료
 
 | 영역 | 도식 |
 | --- | --- |
-| 아키텍처 | [PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg) |
+| 아키텍처 | [PNG](../assets/architecture-5.3.0.png) · [SVG](../assets/architecture-5.3.0.svg) |
 | Relay Protocol v2 | [Animated GIF](../assets/relay-v2-flow.gif) · [PNG](../assets/relay-v2-flow.png) · [SVG](../assets/relay-v2-flow.svg) |
 | DM/그룹 Reply | [PNG](../assets/private-reply-flow.png) · [SVG](../assets/private-reply-flow.svg) |
 | 설정 migration | [Animated GIF](../assets/config-language-migration.gif) · [PNG](../assets/config-language-migration.png) · [SVG](../assets/config-language-migration.svg) |
@@ -15,11 +15,22 @@
 
 이 문서에서 사용하는 1차 표준과 공식 서드파티 문서는 [REFERENCES.md](REFERENCES.md)에 정리되어 있습니다.
 
-> **5.2.0 운영 기능:** Web Admin **Filter**에서 공개/그룹/선택형 DM의 차단·마스킹·치환 규칙과 전송 없는 테스트를 관리하고, **Settings**에서는 지원되는 실시간 안전 설정인 게스트/CAPTCHA, 세션, 사용자 프로필, 오픈채팅/DM/그룹채팅 입력 중 표시 정책, 관리자 알림, 업로드, 콘텐츠 필터 값만 관리합니다. moderation 정책 5종은 `config.yml` 전용이며 Web Admin에 노출하지 않습니다. 게임에서는 `/kchat filter`, `/kchat settings`를 사용합니다. 세션 기간 변경은 이미 만료된 세션을 부활시키지 않고 기존 대상 세션을 생성 시각 기준으로 재계산합니다. `upload.filename-mode: original`은 새 업로드의 안전한 Unicode 원본명을 보존하고 중복 접미사를 붙입니다.
+> **5.3.0 운영 기능:** Web Admin **Filter**에서 공개/그룹/선택형 DM의 차단·마스킹·치환 규칙과 전송 없는 테스트를 관리하고, **Settings**에서는 지원되는 실시간 안전 설정인 게스트/CAPTCHA, 세션, 사용자 프로필, 오픈채팅/DM/그룹채팅 입력 중 표시 정책, 관리자 알림, 업로드, 콘텐츠 필터 값만 관리합니다. moderation 정책 5종은 `config.yml` 전용이며 Web Admin에 노출하지 않습니다. 게임에서는 `/kchat filter`, `/kchat settings`를 사용합니다. 세션 기간 변경은 이미 만료된 세션을 부활시키지 않고 기존 대상 세션을 생성 시각 기준으로 재계산합니다. `upload.filename-mode: original`은 새 업로드의 안전한 Unicode 원본명을 보존하고 중복 접미사를 붙입니다.
 
 
-이 문서는 KOKOTO WebChat 5.2.0의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY.md`, HTTPS 구성은 `CADDY_HTTPS.md`와 `NGINX_HTTPS.md`를 함께 참고하세요.
+이 문서는 KOKOTO WebChat 5.3.0의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY.md`, HTTPS 구성은 `CADDY_HTTPS.md`와 `NGINX_HTTPS.md`를 함께 참고하세요.
 
+
+## 5.3.0 추가 기능
+
+- **비공개 채팅:** DM/그룹은 저장된 전체 기록을 검색할 수 있습니다. DM의 “나에게만 숨김”은 제거되었습니다. 일반 사용자 자기 메시지 삭제 기능을 켠 경우 발신자만 자신의 DM을 삭제할 수 있고 삭제 시 양쪽 대화에서 제거됩니다. 그룹에는 방 내부 `owner/admin/member` 역할, 고정 메시지 관리, 방 전체 삭제와 전역 자기 삭제 설정을 함께 따르는 방별 일반 멤버 자기 메시지 삭제 정책이 추가됩니다.
+- **Chat Event:** 웹 또는 `/kchat game`에서 선착순/추첨 이벤트를 여러 개 동시에 운영할 수 있습니다. 선착순은 당첨 인원이 유일한 정원이며 가득 차면 자동 완료되고, 추첨은 참가 인원과 당첨 인원을 따로 사용합니다. 이벤트 알림은 현재 서버만 또는 Relay 전송을 선택할 수 있습니다.
+- **프로필과 접속 상태:** 사용자 프로필에서 Minecraft Head/사용자 이미지, 280자 소개, 역할, 개인 차단 목록, Game/Web 접속 상태를 확인·관리합니다. 사용자는 온라인/바쁨/오프라인을 선택하며, 오프라인은 다른 사용자에게 실제 Game/Web 상태를 서버 단계에서 숨깁니다.
+- **관리 권한:** 관리자는 계정별 채팅/업로드 제한, 사용자 프로필 이미지 삭제, 로컬 역할 변경을 할 수 있고 모더레이터별로 일부 관리 권한을 위임할 수 있습니다.
+- **CAPTCHA와 멘션:** 게스트 CAPTCHA는 끄기/수학/문자/혼합 및 수학 난이도를 지원하고, 공개/DM/그룹 웹 입력창은 IME를 방해하지 않는 `@` 자동완성을 공유합니다.
+- **Relay 2.2:** protocol major 2 안에서 발신자 소유 DM 삭제, Chat Event 라우팅, 원격 공개 프로필 조회를 capability로 제어합니다. 각 peer는 `public-chat`, `event`, `dm`, `profile`의 송신/수신을 독립적으로 허용할 수 있습니다.
+- **창/UI와 어댑터:** 공개/DM/그룹 창의 이동·크기조절·최대화를 통일하고, 모든 어댑터/standalone wrapper를 같은 frontend fragment와 CSS에서 생성해 표시 차이를 방지합니다.
+- **이미지 개인정보:** 업로드/프로필 이미지의 지원 가능한 EXIF/IPTC/comment/XMP 메타데이터를 저장 전에 제거합니다.
 
 ## 5.2.0 추가 기능
 
@@ -32,7 +43,7 @@
 
 ## 1. 플러그인 개요
 
-KOKOTO WebChat은 Minecraft 서버의 게임 채팅을 웹 브라우저에 연결하는 서버측 웹 채팅입니다. 5.2.0은 Bukkit/Paper/Spigot과 Fabric 1.18.2~26.2, NeoForge 1.20.2~26.2, Forge 1.18.2~26.2 exact-target 빌드를 제공합니다.
+KOKOTO WebChat은 Minecraft 서버의 게임 채팅을 웹 브라우저에 연결하는 서버측 웹 채팅입니다. 5.3.0은 Bukkit/Paper/Spigot과 Fabric 1.18.2~26.2, NeoForge 1.20.2~26.2, Forge 1.18.2~26.2 exact-target 빌드를 제공합니다.
 
 지원 형태:
 
@@ -76,7 +87,7 @@ KOKOTO WebChat은 Minecraft 서버의 게임 채팅을 웹 브라우저에 연�
 기본 안전 설정:
 
 ```yaml
-config-version: "5.2.0"
+config-version: "5.3.0"
 enabled: false
 ```
 
@@ -89,7 +100,7 @@ enabled: false
 현재 버전의 전체 기준 파일은 항상 다음 위치에 생성됩니다.
 
 ```text
-<KWC data dir>/config-reference-5.2.0.yml
+<KWC data dir>/config-reference-5.3.0.yml
 ```
 
 이 파일은 `ui.language`가 선택한 내장 언어(`en-US`, `ko-KR`, `ja-JP`, `zh-CN`)와 같은 언어로 렌더링한 현재 기본 설정의 관리자 확인용 사본입니다. 지원하지 않는 사용자 정의 UI 언어는 영어 설정 표현을 사용합니다. reference 파일은 migration 입력으로 사용하지 않습니다. `/kchat reload`는 실제 서비스를 중지하기 전에 YAML을 검증하므로 잘못된 YAML이면 기존 실행 설정을 유지합니다.
@@ -101,12 +112,12 @@ enabled: false
 - 구버전 주석·순서·공백·들여쓰기는 가져오지 않습니다.
 - 이전 `config-version`에 `_auto_migration`이 없었다면 실제 버전 업그레이드 전에 기존 `config.yml`을 통째로 백업합니다.
 - 이미 존재하는 설정의 기본값이 새 버전에서 바뀐 경우에는 자동 덮어쓰지 않고 검토 대상으로 남깁니다.
-- 실제 파일의 표식을 `config-version: "5.2.0_auto_migration"`로 바꿉니다.
+- 실제 파일의 표식을 `config-version: "5.3.0_auto_migration"`로 바꿉니다.
 
 그 다음 다음 파일을 생성합니다.
 
 ```text
-<KWC data dir>/config-migration-5.2.0.yml
+<KWC data dir>/config-migration-5.3.0.yml
 ```
 
 이 파일은 더 이상 누락 설정을 복사해 넣는 fragment가 아니라 **검토 보고서**입니다. 이전 버전의 생성된 `config-reference-*`, `config-migration-*`, `config-upgrade-*` 파일은 자동 정리하고 현재 버전 파일만 유지합니다. 자동 삽입된 설정 수, 사용자가 판단해야 하는 기본값 변경, 최종 확인용 정확한 버전 표식, current-vs-reference **설정값 의미 diff**를 기록합니다. Difference는 파싱된 YAML path/value만 비교하며 주석, 빈 줄, 들여쓰기, 따옴표 스타일, 줄 위치, 키 순서는 무시합니다. 각 Difference 블록은 설명 주석을 반복 복사하지 않고 해당 설정의 실제 YAML 값 블록만 표시하며, list/map은 여러 줄 구조를 유지합니다. 누락 설정과 주석은 이미 실제 config의 적절한 위치에 들어가므로 diff 최상단에 거대한 reference-only 블록으로 몰리지 않습니다.
@@ -115,18 +126,18 @@ enabled: false
 
 | 실제 `config.yml` 상태 | 동작 |
 |---|---|
-| `config-version` 없음 또는 이전/다른 버전 | migration을 수행하고 `5.2.0_auto_migration`으로 표시한 뒤 migration/검토 보고서 생성 |
-| `config-version: "5.2.0_auto_migration"` | 자동 migration 사용. startup/reload마다 최신 같은 버전 번들 `config.yml`을 새 뼈대로 만들고 현재 값을 덮어쓴 뒤 migration report/diff 갱신 |
-| `config-version: "5.2.0"` | 현재 버전의 자동 migration 중지. 같은 버전 migration/backfill을 건너뛰고 오래된 migration 안내 제거 |
+| `config-version` 없음 또는 이전/다른 버전 | migration을 수행하고 `5.3.0_auto_migration`으로 표시한 뒤 migration/검토 보고서 생성 |
+| `config-version: "5.3.0_auto_migration"` | 자동 migration 사용. startup/reload마다 최신 같은 버전 번들 `config.yml`을 새 뼈대로 만들고 현재 값을 덮어쓴 뒤 migration report/diff 갱신 |
+| `config-version: "5.3.0"` | 현재 버전의 자동 migration 중지. 같은 버전 migration/backfill을 건너뛰고 오래된 migration 안내 제거 |
 
 이 표식은 **검토 여부가 아니라 자동 migration 사용 여부**를 뜻합니다.
 
 ```yaml
 # 설정을 이미 확인했더라도 자동 migration을 계속 사용
-config-version: "5.2.0_auto_migration"
+config-version: "5.3.0_auto_migration"
 
 # 같은 버전 자동 migration 중지
-config-version: "5.2.0"
+config-version: "5.3.0"
 ```
 
 이후 실제 플러그인 버전 업그레이드가 발생하면 새 버전의 `_auto_migration` 상태로 다시 들어갑니다.
@@ -355,6 +366,8 @@ http:
 
 5.0.0부터 로그인 사용자의 시각 UI 설정은 여러 개의 KWC 계정 프로필로 저장할 수 있고, 게스트만 브라우저 로컬 프리셋을 사용합니다. 창 위치·크기·최소화 상태, 마지막 선택 프로필 ID, Web Push 등록은 localStorage/기기 상태로 남습니다. 로그인 사용자의 알림 종류와 키워드 알림은 브라우저별이 아니라 계정 공통입니다. 브라우저 로컬 알림함에서는 최근 알림 대상 이벤트를 다시 확인할 수 있습니다.
 
+5.3.0의 **사용자 프로필 카드**는 공개채팅/DM/그룹/사용자 목록의 이름을 누르거나 계정/사용자 메뉴에서 내 프로필을 열어 사용합니다. 채팅 설정에 접속상태/차단 관리가 중복 노출되지 않으며, 본인 프로필에서 온라인 상태(온라인/바쁨/오프라인)와 차단 사용자 목록을 관리합니다. 프로필에는 표시이름↔실제이름 토글, Game/Web 접속 상태, 다른 사용자에게 DM 보내기, 280자 소개/한마디가 있습니다. 다른 사용자의 Game/Web 상태 표시는 직접 DM을 여는 바로가기이며 사용자 이름은 계속 프로필을 엽니다. ADMIN은 다른 로컬 계정 프로필에서 USER/MODERATOR/ADMIN 역할을 변경할 수 있고 역할은 메시지 접두사 대신 프로필에 표시됩니다. 프로필 이미지는 없음/Minecraft Head/사용자 이미지 중 선택할 수 있고, 사용자 이미지는 PNG/JPEG/WebP 최대 2 MiB이며 EXIF 등 이미지 메타데이터를 제거한 뒤 일반 채팅 업로드와 분리된 계정 전용 저장소에 보관합니다. **오프라인**은 다른 사용자에게 실제 Game/Web 상태를 숨기고 온라인 인원/기본 온라인 목록에서도 제외합니다. 관리자 온라인 목록에서는 `오프라인 사용자 표시`를 선택해 알려진 오프라인 계정을 함께 볼 수 있지만 실제 미접속과 오프라인 표시 사용자를 구분하지 않습니다.
+
 기본 UI 설정:
 
 ```yaml
@@ -426,7 +439,7 @@ chat:
 
 ### 8.5 메시지 토큰
 
-KOKOTO WebChat 5.2.0은 메시지를 저장하거나 릴레이하기 전에 관리자가 설정한 `:alias:` 토큰을 치환할 수 있습니다. 기본 alias는 영어만 제공하며 관리자가 원하는 언어의 alias로 바꾸거나 추가할 수 있습니다.
+KOKOTO WebChat은 메시지를 저장하거나 릴레이하기 전에 관리자가 설정한 `:alias:` 토큰을 치환할 수 있습니다. 기본 alias는 영어만 제공하며 관리자가 원하는 언어의 alias로 바꾸거나 추가할 수 있습니다.
 
 - `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 다음 줄
 - `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 빈 줄 1개
@@ -628,10 +641,13 @@ guest:
 ```yaml
 captcha:
   mode: "math"
+  math-complexity: "normal"
   expire-seconds: 120
   require-on-each-message: false
   pass-valid-minutes: 120
 ```
+
+`captcha.mode`는 `off` / `math` / `text` / `mixed`를 지원합니다. 산술 문제는 `Solve:` 같은 언어 문구 없이 `7 + 5 = ?` 형태의 식만 표시합니다. `captcha.math-complexity`는 `easy`(한 자리 덧셈/뺄셈), `normal`(덧셈/뺄셈/곱셈), `hard`(더 큰 수와 정수로 나누어떨어지는 나눗셈 포함)를 선택합니다. 문자형의 `코드 입력:` 안내는 KWC 선택 언어로 번역됩니다.
 
 `require-on-each-message: false`이면 한 번 통과한 뒤 설정 시간 동안 재사용할 수 있습니다.
 
@@ -701,7 +717,7 @@ reply:
 메시지의 URL이 아닌 본문을 클릭하면 다음 명령이 자동완성됩니다.
 
 ```text
-/kchat reply <messageId> 
+/kchat reply <messageId>
 ```
 
 전송:
@@ -721,6 +737,8 @@ kwc.reply
 URL 조각은 링크 열기 동작이 우선하며 나머지 본문만 댓글 명령을 제안합니다.
 
 ## 15. 1:1 DM 메시지함
+
+데스크톱 작업영역이 **900 × 480 이상**이면 메시지함은 대화 목록 부모 창으로 남고, 각 DM을 독립 자식 창으로 열 수 있습니다. 같은 DM을 다시 선택하면 새 창을 만들지 않고 기존 창을 활성화합니다. 자식창은 제목 드래그 이동, 어댑터와 같은 바깥쪽 투명 8방향 resize 영역, 제목 더블클릭 최대화/복원을 사용하며 닫기는 기존 **닫기** 버튼으로만 수행합니다. 메시지함 부모를 닫으면 열린 DM 자식창과 그 안의 검색/프로필/설정 등 종속 팝업도 같이 닫힙니다. 작업영역이 기준보다 좁아지면 열린 자식창을 정리하고 현재 대화 하나를 단일-pane 화면으로 되돌립니다.
 
 게임 내 DM 알림/기록은 클릭할 수 있습니다. DM 이름을 누르면 기존 `/kchat dm <player> ` 명령이 입력창에 올라오고, 메시지 본문을 누르면 `/kchat reply dm-<내부ID> `가 올라옵니다. 내부 ID는 사용자 권한을 대신하지 않으며 서버가 실제 DM 참여 여부를 다시 확인한 뒤 전송합니다. URL 부분은 기존 URL 열기 동작이 우선합니다. 저장된 DM이 Reply라면 실시간 수신/송신 echo와 과거내역 모두 공개채팅과 같은 `reply.game-preview` / `reply.game-prefix` 설정을 사용합니다. 웹에서 보낸 DM도 연동된 발신 플레이어가 게임에 접속 중이면 자기 Minecraft 채팅에 함께 표시됩니다.
 
@@ -742,10 +760,12 @@ direct-message:
   notify-on-login: true
   notify-on-message: true
   web-unread-badge: true
-  confirm-hide: true
+  confirm-delete: true
 ```
 
 대상은 서버가 UUID를 알고 있는 플레이어입니다. 로컬 접속·계정 연동 기록뿐 아니라 서버 릴레이로 받은 게임/연동 웹 메시지에 `playerUuid`가 있으면 해당 발신자의 표시 이름과 실제 Minecraft 이름을 DM의 새 대화 대상 검색에 등록합니다. 따라서 타 서버 메시지에서 본 이름을 DM 검색창에 입력해 기존 전송 경로로 대화를 시작할 수 있습니다. 최근 이름은 `known-display-names.yml`에 보존되며 재시작 후에도 검색됩니다. UUID가 없는 게스트·Discord 메시지는 DM 대상에 등록하지 않습니다. `storage: auto`는 공개 채팅 저장방식이 `jsonl`일 때 DM도 JSONL을 사용하고, 그 외에는 SQLite를 사용합니다. 필요하면 `sqlite` 또는 `jsonl`을 직접 지정할 수 있습니다.
+
+5.3.0의 DM에는 메시지 단위 **나에게만 숨김**이 없습니다. 사용자는 자신이 보낸 DM만 삭제할 수 있고, 삭제하면 양쪽 대화에서 제거되며 해당 메시지를 가리키던 Reply snapshot도 정리됩니다. `direct-message.confirm-delete`는 삭제 확인창 표시 여부를 제어합니다. 받은 DM은 수신자가 삭제할 수 없습니다. 서버 간 삭제는 대상 peer의 성공 응답을 받은 뒤 원본 서버에서도 제거합니다.
 
 게임 명령어:
 
@@ -759,7 +779,7 @@ direct-message:
 /kchat dm read <player> [pageSize]
 /kchat dm next
 /kchat dm prev
-/kchat dm hide <messageId>
+/kchat dm delete <messageId>
 ```
 
 필요 권한:
@@ -783,6 +803,8 @@ kwc.dm
 정상 전송 완료는 별도 문구를 표시하지 않습니다. 로컬 전송 요청을 처리 중일 때만 `전송중`, 전달을 확인할 수 없을 때만 `실패 · 재시도`가 시간 표시 옆에 짧게 표시됩니다. 읽음 상태는 DM의 모든 메시지에서 시간 표시 옆에 표시하며, 1:1 DM은 상대가 아직 읽지 않았으면 `미확인`, 읽으면 `✓`를 표시합니다. 그룹채팅은 기존처럼 미확인 수신자 수를 숫자로 표시합니다. 타 서버 DM은 수신 서버의 읽음 정보를 인증된 서버 릴레이로 돌려보내 원본 메시지 쪽에도 같은 상태를 반영합니다. 대화방을 다시 열 때 최신 읽음 ACK를 안전하게 재전송하므로 일시적인 릴레이 또는 HTTP 실패가 있었어도 이후 열람 시 체크표시를 복구할 수 있습니다.
 
 ## 16. 그룹 채팅
+
+그룹 채팅도 900 × 480 이상의 작업영역에서는 방 목록을 부모 창으로 두고 각 그룹방을 별도 자식 창으로 열 수 있습니다. 이동/투명 8방향 resize/제목 더블클릭 최대화 규칙은 DM과 같고, 그룹 목록 부모를 닫으면 모든 그룹 자식창과 방 만들기·방 설정·멤버 관리·고정 메시지 등 해당 창에 종속된 팝업이 함께 닫힙니다. 좁은 화면에서는 멀티윈도우를 자동으로 사용하지 않습니다.
 
 게임 내 그룹 메시지도 클릭할 수 있습니다. 그룹/이름 영역을 누르면 기존 `/kchat group <room> ` 명령이 입력창에 올라오고, 본문을 누르면 해당 그룹 메시지에 대한 reply 입력이 준비됩니다. 서버가 현재 그룹 멤버십을 다시 확인하며 URL 부분은 기존 URL 열기 동작이 우선합니다. Reply가 붙은 그룹 메시지는 실시간 수신/송신 echo와 과거내역 모두 공개채팅과 같은 `reply.game-preview` / `reply.game-prefix` 표시 형식을 사용합니다.
 
@@ -820,6 +842,9 @@ group-chat:
 - 멤버 강퇴·차단·차단 해제
 - 방장 이전
 - 안 읽음 수 추적
+- 방 내부 `owner/admin/member` 역할과 역할 변경
+- 방별 고정 메시지 보기·고정·순서 변경·고정 해제
+- 방 전체 메시지 삭제와 일반 멤버 자기 메시지 삭제 정책
 
 게임 명령어:
 
@@ -892,6 +917,7 @@ pinned:
 - 상단의 축약 바에서 열 수 있습니다.
 - `preserve-uploads: true`이면 고정 메시지가 참조하는 업로드 파일은 보관 정리에서 제외됩니다.
 - 관리자·모더레이터의 고정/삭제 버튼은 실수 방지를 위해 관리 패널 토글을 켰을 때만 표시됩니다.
+- 오픈채팅과 그룹채팅의 **고정한 사용자** 표시는 일반 사용자 이름과 동일하게 표시명 / 실제 이름 전환을 따릅니다. 구조화된 고정자 정보가 없던 이전 오픈채팅 고정 기록은 기존 저장 이름을 fallback으로 사용합니다.
 
 ## 19. 파일과 클립보드 업로드
 
@@ -925,6 +951,8 @@ upload:
 
 - `insert`: URL을 입력창에 삽입
 - `send`: 업로드 후 즉시 전송
+
+데스크톱 멀티윈도우에서는 분리된 개별 DM/그룹 대화창도 각각 독립적인 드래그 앤 드롭 업로드 대상입니다. 파일을 자식 창에 놓으면 해당 DM 스레드/그룹 방을 활성화한 뒤 그 대화의 입력창에 업로드 URL을 넣으며, 기존 DM/그룹 목록 부모 창으로 드롭하는 동작도 그대로 사용할 수 있습니다.
 
 `filename-mode: original`에서도 클립보드 업로드는 `clipboardData.files`에서 얻은 긴 파일명을 우선합니다. Windows/Chromium이 다른 클립보드 항목에서 `202608~1.JPG` 같은 DOS 8.3 별칭을 주더라도 긴 이름을 얻을 수 있으면 원래 긴 이름을 사용합니다. 브라우저가 8.3 별칭만 제공하는 경우에는 그 잘못된 별칭을 원본명으로 보존하지 않고 `clipboard-...` 형식의 이름으로 대체합니다.
 
@@ -1221,7 +1249,7 @@ discordsrv:
 
 ## 26. 여러 서버 릴레이
 
-KOKOTO WebChat 5.2.0은 public chat과 cross-server 1:1 DM/read receipt에 Relay v2 신뢰/암호화 모델을 유지하는 **Relay Protocol 2.1**를 사용합니다. group chat room은 서버 로컬 기능입니다.
+KOKOTO WebChat 5.3.0은 Relay v2 신뢰/암호화 모델을 유지하는 **Relay Protocol 2.2**를 사용합니다. public chat, cross-server 1:1 DM/read/delete/reaction/typing, 타 서버 이벤트 조회/참가, 원격 공개 프로필 조회를 2.x capability로 처리하며 group chat room은 서버 로컬 기능입니다. 각 peer는 `public-chat`, `event`, `dm`, `profile` 송신/수신을 독립적으로 허용하거나 차단할 수 있습니다.
 
 Relay v2 설정은 `groups -> peers` 구조입니다. 각 group은 shared secret 하나를 가지며 peer에는 server ID, API URL, enabled 상태만 둡니다. 최초 설정은 한 서버에서 `shared-secret: ""`로 시작/리로드한 뒤 그 서버의 `config.yml`에 생성된 값을 같은 group의 다른 서버에 복사합니다. 기존 비어 있지 않은 secret은 자동 재생성하지 않고, 수동 secret이 32자 미만이면 invalid 상태로 남습니다. 양쪽 서버는 같은 group에서 서로를 peer로 등록해야 하며 같은 peer ID를 여러 local group에 중복 등록할 수 없습니다.
 
@@ -1285,9 +1313,11 @@ commands:
 
 웹 관리 기능은 설정과 역할에 따라 다음을 제공합니다.
 
-- 메시지 숨김·삭제 표시
+- 메시지 삭제와 공개채팅 고정/삭제 동작 표시
 - 고정 메시지 관리
 - 게스트 및 IP 뮤트
+- 사용자별 채팅/업로드 제한 및 사용자 프로필 이미지 삭제
+- 모더레이터별 위임 권한 체크박스
 - 활성 세션 확인 및 폐기
 - 커스텀 이모지 폴더·파일 관리
 - 업로드와 저장 사용량 확인
@@ -1315,7 +1345,7 @@ private-chat-super-admins:
 
 메타데이터 화면에서는 DM/그룹방 제목·참여자, 메시지 수, 대략적인 저장 용량, 보관 정책 상태, 정리 미리보기, 잠금/자동삭제 제외 등 메타데이터 관리 기능을 확인할 수 있습니다.
 
-`direct-message.admin-audit.enabled`는 기본 OFF 읽기 전용 DM 본문 감사 스위치입니다. `private-chat-super-admins`에 정확히 지정된 계정만 접근할 수 있으며 감사 화면에서는 전송, 답글, 숨김, 읽음 처리를 할 수 없습니다. 각 페이지 열람은 `admin.dm-audit-read`로 기록됩니다. `group-chat.admin-audit.enabled`는 별도의 읽기 전용 그룹 본문 감사 스위치입니다.
+`direct-message.admin-audit.enabled`는 기본 OFF 읽기 전용 DM 본문 감사 스위치입니다. `private-chat-super-admins`에 정확히 지정된 계정만 접근할 수 있으며 감사 화면에서는 전송, 답글, 삭제, 읽음 처리를 할 수 없습니다. 각 페이지 열람은 `admin.dm-audit-read`로 기록됩니다. `group-chat.admin-audit.enabled`는 별도의 읽기 전용 그룹 본문 감사 스위치입니다.
 
 ### 28.2 감사 로그
 
@@ -1412,7 +1442,7 @@ ui:
 /kchat dm read <player> [pageSize]
 /kchat dm next
 /kchat dm prev
-/kchat dm hide <messageId>
+/kchat dm delete <messageId>
 /kchat reply <messageId> <message>
 /kchat group list
 /kchat group <room> <message>
@@ -1439,7 +1469,7 @@ ui:
 명령 별칭:
 
 ```text
-/kc
+/kchat
 ```
 
 그룹 별칭:
@@ -1611,7 +1641,7 @@ SQLite 파일은 서버를 정상 종료한 뒤 복사하는 것이 가장 안�
 
 ### 관리자 그룹채팅 본문 감사 (4.6.3)
 
-`group-chat.admin-audit.enabled: true`를 설정하고 정확한 마인크래프트 이름 또는 UUID를 `private-chat-super-admins`에 등록해야 하며 두 조건이 모두 필요합니다. 조건을 만족한 관리자는 해당 방의 멤버가 아니어도 관리자 그룹 메타데이터 목록에서 본문을 읽기 전용으로 열 수 있습니다. 감사 화면은 방에 참여하지 않고 읽음/미확인 수를 변경하지 않으며 메시지 전송·업로드·숨김·멤버 변경도 제공하지 않습니다. 각 페이지 열람은 `admin.group-audit-read`로 기록되고 메시지 본문은 감사 로그에 복사하지 않습니다.
+`group-chat.admin-audit.enabled: true`를 설정하고 정확한 마인크래프트 이름 또는 UUID를 `private-chat-super-admins`에 등록해야 하며 두 조건이 모두 필요합니다. 조건을 만족한 관리자는 해당 방의 멤버가 아니어도 관리자 그룹 메타데이터 목록에서 본문을 읽기 전용으로 열 수 있습니다. 감사 화면은 방에 참여하지 않고 읽음/미확인 수를 변경하지 않으며 메시지 전송·업로드·삭제·멤버 변경도 제공하지 않습니다. 각 페이지 열람은 `admin.group-audit-read`로 기록되고 메시지 본문은 감사 로그에 복사하지 않습니다.
 
 
 

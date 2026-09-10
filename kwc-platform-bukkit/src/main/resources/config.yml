@@ -2,14 +2,14 @@
 # Core
 # =============================================================================
 
-# KOKOTO WebChat 5.2.0 configuration
+# KOKOTO WebChat 5.3.0 configuration
 # KWC config-comment-language: en-US
 
 
 # Config schema version. KWC migrates older versions while preserving configured values where possible.
 # A <version>_auto_migration marker keeps same-version template updates active until the file is finalized.
 # Changing ui.language may rebuild comments/layout in that language without changing parsed setting values.
-config-version: "5.2.0"
+config-version: "5.3.0"
 
 # Master switch. false keeps /kchat reload available without starting web/chat services.
 # New generated configs default to false so settings can be reviewed before exposure.
@@ -554,7 +554,7 @@ direct-message:
   # Optional administrator DM content audit. Disabled by default because this grants
   # access to private message bodies. Access requires this switch and an exact account
   # entry in private-chat-super-admins. The audit view is read-only. It cannot send,
-  # reply, hide, or mark messages read. Each page read is recorded in the audit log
+  # reply, delete, or mark messages read. Each page read is recorded in the audit log
   # without copying message bodies into that log.
   admin-audit:
     enabled: false
@@ -565,8 +565,8 @@ direct-message:
   # Show unread DM count badge in the web UI.
   web-unread-badge: true
 
-  # Ask before hiding a DM message from the web message box.
-  confirm-hide: true
+  # Ask before deleting one of your own DM messages for both participants.
+  confirm-delete: true
 
   # JSONL file for private 1:1 message threads when storage is jsonl.
   # Relative paths are stored under the plugin data folder.
@@ -586,9 +586,9 @@ group-chat:
   # Allow room passwords. Passwords are stored as PBKDF2 hashes, never as plain text.
   allow-room-passwords: true
 
-  # Ask before leaving a room or hiding a group message in the web UI.
+  # Ask before leaving a room or deleting a group message in the web UI.
   confirm-leave: true
-  confirm-hide: true
+  confirm-delete: true
 
   # Optional administrator group-chat content audit. Disabled by default because this grants
   # access to group message bodies. Access requires both this switch and membership
@@ -645,6 +645,8 @@ server-relay:
     discord: false
     # Relay local system/announcement messages.
     system: false
+    # Chat events use their own source gate so event relay can be enabled without relaying unrelated system notices.
+    event: true
 
   # Destinations for received public relay messages. DMs are handled separately.
   delivery:
@@ -669,6 +671,18 @@ server-relay:
   #       - id: "server-2"
   #         url: "https://server2.example.com/api"
   #         enabled: true
+  #         # send/receive are independent. Missing entries default to true.
+  #         # A scalar `send: false` or `receive: false` disables the whole direction.
+  #         send:
+  #           public-chat: true
+  #           event: true
+  #           dm: true
+  #           profile: true
+  #         receive:
+  #           public-chat: true
+  #           event: true
+  #           dm: true
+  #           profile: true
   groups: []
 
 # =============================================================================
@@ -712,8 +726,10 @@ guest:
     - "owner"
 
 captcha:
-  # "math" enables a simple math challenge for guests. Use "off" to disable.
+  # CAPTCHA mode: "math" arithmetic, "text" six-character code, "mixed" randomly chooses math/text, or "off" to disable.
   mode: "math"
+  # Arithmetic CAPTCHA difficulty: easy (+/- single digits), normal (+/-/×), hard (+/-/×/÷ with exact integer division).
+  math-complexity: "normal"
   # Captcha challenge lifetime in seconds. This value is not clamped; 0 or negative values make a newly issued
   # challenge expire immediately/effectively immediately.
   expire-seconds: 120
@@ -804,6 +820,10 @@ moderation:
   allow-moderator-message-delete: true
   # Permit MODERATOR users to mute guests/IPs. This setting remains config.yml-only.
   allow-moderator-guest-mute: true
+  # Allow ordinary users to delete their own messages in open chat, DM, and group chat.
+  allow-user-self-message-delete: false
+  # 0 = always; otherwise deletion is allowed only this many minutes after sending.
+  self-message-delete-window-minutes: 0
   # Default mute duration in minutes when no duration is supplied.
   # <= 0 creates a permanent mute. This setting remains config.yml-only.
   default-mute-minutes: 60

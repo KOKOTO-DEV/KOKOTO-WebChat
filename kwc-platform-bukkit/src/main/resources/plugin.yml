@@ -1,5 +1,5 @@
 name: KOKOTO-WebChat
-version: 5.2.1
+version: 5.3.0
 main: dev.kokoto.webchat.KokotoWebChatPlugin
 api-version: '1.18'
 authors: [KOKOTO]
@@ -10,7 +10,7 @@ commands:
   kchat:
     description: KOKOTO WebChat command
     usage: /kchat <auth|password|status|dm|reply|group|reload|admin|guest|sessions|revoke|filter|settings>
-    aliases: [kc]
+    aliases: [kc, kwc]
 permissions:
   kwc.auth:
     description: Allows linking a web account to a Minecraft account.

@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * RuntimeSettingsController는 KWC 설정을 core가 사용할 수 있는 형태로 읽거나 보관하는 설정 계층이다.
+ * RuntimeSettingsController is part of the configuration layer that reads or carries KWC settings in a core-friendly form.
+ *
+ * 설정 키를 바꿀 때는 canonical config, 과거 baseline, migration, 다국어 template, 문서 reference가 함께 움직여야 한다.
+ * When changing a setting key, update canonical config, historical baselines, migration, localized templates, and documentation references together.
+ */
 import java.nio.file.Path;
 import java.util.*;
 
@@ -20,7 +28,7 @@ public final class RuntimeSettingsController {
 
     public static final List<String> SUPPORTED_PATHS = List.of(
             "guest.enabled", "guest.allow-custom-name", "guest.cooldown-seconds", "guest.max-messages-per-minute",
-            "captcha.mode", "captcha.require-on-each-message", "captcha.pass-valid-minutes",
+            "captcha.mode", "captcha.math-complexity", "captcha.require-on-each-message", "captcha.pass-valid-minutes",
             "auth.password-login", "auth.remember-session-days",
             "admin.admin-session-expire-hours",
             "chat.typing-indicator.user-display-control", "chat.typing-indicator.open-chat.enabled",
@@ -34,6 +42,7 @@ public final class RuntimeSettingsController {
             "upload.allow-moderator-upload", "upload.allow-admin-upload", "upload.cooldown-seconds",
             "upload.max-uploads-per-minute", "upload.max-file-size-mb", "upload.max-total-size-mb",
             "upload.max-files-per-message", "upload.retention-days", "upload.filename-mode",
+            "moderation.allow-user-self-message-delete", "moderation.self-message-delete-window-minutes",
             "content-filter.enabled", "content-filter.scopes.public", "content-filter.scopes.group",
             "content-filter.scopes.dm", "content-filter.block.show-matched-word", "content-filter.mask.text",
             "content-filter.anti-evasion.unicode-normalization", "content-filter.anti-evasion.compact-match",
@@ -386,6 +395,7 @@ public final class RuntimeSettingsController {
             case "guest.cooldown-seconds" -> c.guestCooldownSeconds;
             case "guest.max-messages-per-minute" -> c.guestMaxMessagesPerMinute;
             case "captcha.mode" -> c.captchaMode;
+            case "captcha.math-complexity" -> c.captchaMathComplexity;
             case "captcha.require-on-each-message" -> c.captchaRequireOnEachMessage;
             case "captcha.pass-valid-minutes" -> c.captchaPassValidMinutes;
             case "auth.password-login" -> c.passwordLogin;
@@ -419,6 +429,8 @@ public final class RuntimeSettingsController {
             case "upload.max-files-per-message" -> c.uploadMaxFilesPerMessage;
             case "upload.retention-days" -> c.uploadRetentionDays;
             case "upload.filename-mode" -> c.uploadFilenameMode;
+            case "moderation.allow-user-self-message-delete" -> c.selfMessageDeleteEnabled;
+            case "moderation.self-message-delete-window-minutes" -> c.selfMessageDeleteWindowMinutes;
             case "content-filter.enabled" -> c.contentFilterEnabled;
             case "content-filter.scopes.public" -> c.contentFilterPublic;
             case "content-filter.scopes.group" -> c.contentFilterGroup;
@@ -447,7 +459,7 @@ public final class RuntimeSettingsController {
                  "admin-alerts.discord.sources.relay-chat", "admin-alerts.discord.sources.dm",
                  "admin-alerts.discord.sources.group-chat", "admin-alerts.discord.case-sensitive",
                  "upload.enabled", "upload.allow-guest-upload", "upload.allow-user-upload",
-                 "upload.allow-moderator-upload", "upload.allow-admin-upload", "content-filter.enabled",
+                 "upload.allow-moderator-upload", "upload.allow-admin-upload", "moderation.allow-user-self-message-delete", "content-filter.enabled",
                  "content-filter.scopes.public", "content-filter.scopes.group", "content-filter.scopes.dm",
                  "content-filter.block.show-matched-word", "content-filter.anti-evasion.unicode-normalization",
                  "content-filter.anti-evasion.compact-match", "content-filter.anti-evasion.interleave-match",
@@ -455,13 +467,18 @@ public final class RuntimeSettingsController {
             case "guest.cooldown-seconds", "guest.max-messages-per-minute", "captcha.pass-valid-minutes",
                  "auth.remember-session-days", "upload.cooldown-seconds", "upload.max-uploads-per-minute",
                  "upload.max-file-size-mb", "upload.max-total-size-mb", "upload.max-files-per-message",
-                 "upload.retention-days", "content-filter.anti-evasion.interleave-max-gap" -> parseInt(v, 0, 1_000_000);
+                 "upload.retention-days", "moderation.self-message-delete-window-minutes", "content-filter.anti-evasion.interleave-max-gap" -> parseInt(v, 0, 1_000_000);
             case "admin.admin-session-expire-hours" -> parseInt(v, 0, 1_000_000);
             case "ui.user-profiles.max-profiles" -> parseInt(v, 0, 20);
             case "content-filter.anti-evasion.repeat-limit" -> parseInt(v, 1, 64);
             case "captcha.mode" -> {
                 String x = v.toLowerCase(Locale.ROOT);
-                if (!Set.of("off", "math").contains(x)) throw new IllegalArgumentException("invalid_value");
+                if (!Set.of("off", "math", "text", "mixed").contains(x)) throw new IllegalArgumentException("invalid_value");
+                yield x;
+            }
+            case "captcha.math-complexity" -> {
+                String x = v.toLowerCase(Locale.ROOT);
+                if (!Set.of("easy", "normal", "hard").contains(x)) throw new IllegalArgumentException("invalid_value");
                 yield x;
             }
             case "upload.filename-mode" -> {
@@ -497,6 +514,7 @@ public final class RuntimeSettingsController {
             case "guest.cooldown-seconds" -> c.guestCooldownSeconds = (Integer)value;
             case "guest.max-messages-per-minute" -> c.guestMaxMessagesPerMinute = (Integer)value;
             case "captcha.mode" -> c.captchaMode = (String)value;
+            case "captcha.math-complexity" -> c.captchaMathComplexity = (String)value;
             case "captcha.require-on-each-message" -> c.captchaRequireOnEachMessage = (Boolean)value;
             case "captcha.pass-valid-minutes" -> c.captchaPassValidMinutes = (Integer)value;
             case "auth.password-login" -> c.passwordLogin = (Boolean)value;
@@ -541,6 +559,8 @@ public final class RuntimeSettingsController {
             case "upload.max-files-per-message" -> c.uploadMaxFilesPerMessage = (Integer)value;
             case "upload.retention-days" -> c.uploadRetentionDays = (Integer)value;
             case "upload.filename-mode" -> c.uploadFilenameMode = (String)value;
+            case "moderation.allow-user-self-message-delete" -> c.selfMessageDeleteEnabled = (Boolean)value;
+            case "moderation.self-message-delete-window-minutes" -> c.selfMessageDeleteWindowMinutes = (Integer)value;
             case "content-filter.enabled" -> c.contentFilterEnabled = (Boolean)value;
             case "content-filter.scopes.public" -> c.contentFilterPublic = (Boolean)value;
             case "content-filter.scopes.group" -> c.contentFilterGroup = (Boolean)value;

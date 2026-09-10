@@ -1,17 +1,17 @@
-# KOKOTO WebChat 5.2.0 — Technical Reference
+# KOKOTO WebChat 5.3.0 — Technical Reference
 
 For reaction authority, direct/multi-hop delivery, offline outbox behavior and notification diagrams, see [REACTIONS.md](REACTIONS.md).
 
 
-![KOKOTO WebChat 5.2.0 architecture overview](../assets/architecture-5.2.0.svg)
+![KOKOTO WebChat 5.3.0 architecture overview](../assets/architecture-5.3.0.svg)
 
-[PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg)
+[PNG](../assets/architecture-5.3.0.png) · [SVG](../assets/architecture-5.3.0.svg)
 
 > **Note:** The diagrams are supplemental. KWC-specific behavior is defined by the source and the text in this manual.
 
 ## Visual architecture and data paths
 
-![KWC 5.2.0 architecture](../assets/architecture-5.2.0.svg)
+![KWC 5.3.0 architecture](../assets/architecture-5.3.0.svg)
 
 ![Administration and HTTP security boundary](../assets/admin-security-boundary.svg)
 
@@ -37,8 +37,8 @@ SQLite-backed history/private stores are used where configured, and saved conver
 ## Platform abstraction and exact-target builds
 `PlatformAdapter` and related host interfaces isolate loader APIs from core. The release matrix is 1 Bukkit artifact + 16 Fabric exact targets + 12 NeoForge exact targets + 16 Forge exact targets = **45 deployable artifacts**. Build helpers select Java 17/21/25 by Minecraft generation. Windows release helpers run a path-length preflight before Gradle/Maven because exact-target work directories can exceed the validated Windows path profile.
 
-## Relay Protocol 2.1 compatibility and Relay v2 trust model
-Relay Protocol 2.1 keeps the Relay v2 `groups -> peers` trust model. Protocol major `2` is the wire-compatibility boundary; revision `2.1` advertises `public`, `dm`, `read`, `reaction`, `reaction-authority`, and `typing`, while KWC product version is diagnostic only. A group is a symmetric trust domain with exactly one group shared secret; peers have no individual secret. Group secrets shorter than 32 characters are rejected. An empty group secret is a provisioning request: startup/reload generates a cryptographically secure 32-byte URL-safe secret and persists it to `config.yml`; non-empty values are never regenerated automatically. A peer ID cannot be used in multiple local groups. Both sides must list each other in the same group.
+## Relay Protocol 2.2 compatibility and Relay v2 trust model
+Relay Protocol 2.2 keeps the Relay v2 `groups -> peers` trust model. Protocol major `2` is the wire-compatibility boundary; the current revision advertises `public`, `dm`, `read`, `delete`, `reaction`, `reaction-authority`, `typing`, `game`, and `profile`, while KWC product version is diagnostic only. A group is a symmetric trust domain with exactly one group shared secret; peers have no individual secret. Group secrets shorter than 32 characters are rejected. An empty group secret is a provisioning request: startup/reload generates a cryptographically secure 32-byte URL-safe secret and persists it to `config.yml`; non-empty values are never regenerated automatically. A peer ID cannot be used in multiple local groups. Both sides must list each other in the same group. Each peer may independently gate outbound and inbound `public-chat`, `event`, `dm`, and `profile` traffic; omitted policies default to enabled for compatibility.
 
 `/relay/v2/handshake` HMAC-authenticates protocol major/revision, group, sender ID, target ID, timestamp, nonce and sender outbound transport. A legacy Relay 2.0 probe canonical is accepted as a compatibility fallback; product version is no longer part of modern relay compatibility. The receiver checks group membership, target identity, clock skew and nonce replay. This endpoint is a stateless diagnostic identity/health probe only; it creates no route state. Direct `/relay/v2/message` delivery authenticates every request independently. The receiver must still reciprocally configure the sender in the same group with the same shared secret. Legacy v1 endpoints return HTTP 426.
 
@@ -62,7 +62,7 @@ When `chat.conversation-archive.enabled` is true, `ConversationArchiveStore` kee
 Normal history/private retention does not delete an already-saved snapshot. Administrator source-message deletion, full public-history clear, administrator DM-thread/group-room deletion and private-room lock policy remain authoritative over personal archives.
 
 ## Typing state
-Public/DM/group typing state is ephemeral. A browser input event creates a five-second window; repeated keystrokes during that window are suppressed client-side. The state is not written to SQLite/JSONL and there is no polling or always-running typing worker. Local group state is distributed only to current room participants over existing SSE. Remote DM typing uses Relay Protocol 2.1.
+Public/DM/group typing state is ephemeral. A browser input event creates a five-second window; repeated keystrokes during that window are suppressed client-side. The state is not written to SQLite/JSONL and there is no polling or always-running typing worker. Local group state is distributed only to current room participants over existing SSE. Remote DM typing uses the typing capability carried by the current Relay Protocol 2.2.
 
 ## Configuration presentation localization
 `PortableConfigMigration` chooses a bundled EN/KO/JA/ZH config template from `ui.language`, overlays parsed operator values, and uses the same language for the generated reference and migration report. Semantic Difference output is built from parsed YAML paths/values, so comments/layout/quote/order changes do not create false differences.

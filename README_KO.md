@@ -2,15 +2,17 @@
 
 
 
-![아키텍처 개요](docs/assets/architecture-5.2.0.svg)
+![아키텍처 개요](docs/assets/architecture-5.3.0.svg)
 
-[PNG](docs/assets/architecture-5.2.0.png) · [SVG](docs/assets/architecture-5.2.0.svg)
+[PNG](docs/assets/architecture-5.3.0.png) · [SVG](docs/assets/architecture-5.3.0.svg)
 
 > 시각 매뉴얼, 움직이는 흐름도, 편집 가능한 다이어그램 원본, 참조 표준 목록은 `docs/assets/`, `docs/en/VISUAL_DOCUMENTATION.md`, `docs/en/REFERENCES.md`에 포함되어 있습니다.
 
-## 5.2.1 핫픽스
+## 5.3.0 릴리스
 
-5.2.1은 5.2.0 기반 프런트엔드 핫픽스입니다. BlueMap 새로고침에서 addon `config.js` 로딩이 늦어도 잘못된 사이트 루트 `/api`가 고정되지 않고 자동 복구하며, 사용자 알림 설정의 맨션 항목은 항상 `@` 접두어를 표시하고, 커스텀 이모지 가로 카테고리 스크롤바는 높이 12px을 유지하면서 세로 설정 스크롤바와 같은 테마 기반 thumb/hover 스타일을 사용합니다. config 스키마는 5.2.0, Relay Protocol은 2.1을 그대로 유지합니다.
+5.3.0은 5.2.1을 기준으로 DM/그룹 전체 저장기록 검색과 발신자 소유 메시지 삭제, 방 내부 그룹 역할·고정·삭제 정책, 여러 개를 동시에 운영할 수 있는 선착순/추첨 Chat Event, 사용자 프로필과 Game/Web 접속 상태·Offline 개인정보 보호, 개인 차단, 모더레이터별 위임 권한, 확장된 내장 CAPTCHA, 웹 `@` 자동완성, 이미지 메타데이터 제거를 추가합니다. Relay Protocol **2.2**는 protocol major 2 호환성을 유지하면서 DM 삭제, 이벤트 라우팅, 원격 프로필 조회와 peer별 `public-chat`/`event`/`dm`/`profile` 송신·수신 정책을 capability 기반으로 지원합니다. 데스크톱 공개/DM/그룹 창은 drag/resize/maximize 동작을 통일했고, 8개 어댑터/standalone은 같은 frontend fragment와 CSS에서 생성되어 responsive 헤더와 최소화 프레임도 동일하게 유지됩니다.
+
+
 
 - **5.2.0 제어 옵션:** `notifications.notify-reactions`는 브라우저 알림과 Web Push가 공통으로 쓰는 이모지 반응 선택 하나를 제공하고, `chat.conversation-archive.enabled: false`는 기존 archive 데이터는 유지하면서 대화 저장 DOM/API/DB 시작을 모두 비활성화하며, archive의 세 `max-*` 키로 계정당 저장 대화 수·snapshot당 메시지 수·계정당 총 저장 메시지 수를 조절합니다. `chat.typing-indicator.open-chat.enabled`, `.dm.enabled`, `.group-chat.enabled`는 서버 전체 입력 중 표시 정책이며 기본값은 OFF/ON/ON이고 Web Admin Settings에서도 조절할 수 있습니다. `chat.typing-indicator.user-display-control`(기본 OFF)을 켜면 로그인 사용자가 계정별 **입력 중 표시**를 끌 수 있으며, 이 개인 설정은 본인 화면의 표시만 제어하고 본인의 typing 전송은 막지 않습니다. `emoji.favorites.enabled`, `storage`, `max-per-account`는 커스텀 이모지 즐겨찾기 기능 사용 여부, 브라우저/계정 저장 방식, 최대 보관 개수를 제어합니다.
 
@@ -45,13 +47,13 @@ Bukkit/Paper/Spigot에서는 BlueMap, squaremap, Dynmap, Pl3xMap, LiveAtlas, uNm
 - `upload.filename-mode: original` 선택 시 새 업로드의 안전한 Unicode 원본 파일명을 보존하고 중복 이름은 덮어쓰지 않음
 - BlueMap/squaremap/Dynmap/Pl3xMap/LiveAtlas/uNmINeD/Overviewer 지도 안 채팅 패널 또는 standalone 페이지 제공
 - 게임 ↔ 웹 채팅 양방향 전달
-- group 기반 공개채팅과 서버 간 DM/읽음 확인을 지원하는 Relay Protocol 2.1: Relay v2 신뢰/암호화 모델을 유지하면서 reaction/typing capability를 확장하고, 요청별 peer 인증, HKDF-SHA256/AES-256-GCM 기반 hop-by-hop 인증 암호화, replay 방어, HTTPS 전용 forwarding 지원
+- group 기반 공개채팅과 서버 간 DM/읽음 확인을 지원하는 Relay Protocol 2.2: Relay v2 신뢰/암호화 모델을 유지하면서 reaction/typing과 sender-authoritative DM delete capability를 지원하고, 요청별 peer 인증, HKDF-SHA256/AES-256-GCM 기반 hop-by-hop 인증 암호화, replay 방어, HTTPS 전용 forwarding 지원
 - 로그인 사용자 공개/DM/그룹 메시지 반응: 일반 Unicode/KWC 커스텀 이모지, 빈 상태에서는 `+` 버튼 높이만 최소 확보하고 실제 반응이 생기면 정상 행으로 확장되는 하단 UI, 위치가 유지되고 바깥 클릭으로 닫히는 카테고리/검색 선택창, **관리자 > 이모지 > 반응 아이콘**의 전체 기능 ON/OFF 및 아이콘 관리. 공개 반응은 origin authority 기준으로 Relay 동기화하고, 타 서버 DM 반응은 상대 참가자 서버로만 전달하며, 그룹 반응은 로컬로 유지
 - Minecraft 메시지 클릭 댓글(`/kchat reply`)과 웹 발신자 클릭 KWC DM(`/kchat dm`)
 - 게임 `/w`/`/msg`/`/tell`류 귓속말을 양쪽 사용자의 웹 DM으로 선택적 복제
 - 게스트 채팅, 수학 캡차, 쿨다운/분당 제한
 - `/kchat auth <code>` 계정 연동, 웹 비밀번호 로그인, 로컬 관리자 계정
-- 관리자/모더레이터 웹 패널, 메시지 숨김, 고정/삭제 표시 토글, 게스트/IP 뮤트, 세션 revoke
+- 관리자/모더레이터 웹 패널, 메시지 삭제, 고정/삭제 표시 토글, 게스트/IP 뮤트, 세션 revoke
 - 관리자 커스텀 이모지 관리: 이모지 폴더/파일 생성, 다중 업로드, 이름 변경, 이동, 삭제
 - **ImageEmojis-Bero 1.9.x 연동**: Bukkit/Paper 계열에서 KWC 이모지 폴더 공유, 게임 glyph 변환, 토큰 기반 웹/릴레이 처리
 - **SimpleNicks-Bero 연동**: Bukkit display name 기반 닉네임 표시와 실제 연결 계정 identity 분리
@@ -81,7 +83,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.1-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.0-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target
@@ -92,7 +94,7 @@ Fabric은 16개 Minecraft 버전별 exact-target JAR로 빌드합니다. 스크�
 kwc-platform-fabric\build-all.bat
 ```
 
-대상: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-Fabric-<Minecraft>.jar`입니다.
+대상: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-Fabric-<Minecraft>.jar`입니다.
 
 ### NeoForge exact-target
 
@@ -102,7 +104,7 @@ NeoForge는 12개 Minecraft 버전별 exact-target JAR로 빌드합니다. 1.20.
 kwc-platform-neoforge\build-all.bat
 ```
 
-대상: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.2.1-NeoForge-<Minecraft>.jar`입니다.
+대상: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-NeoForge-<Minecraft>.jar`입니다.
 
 ### Forge exact-target
 
@@ -112,13 +114,13 @@ Forge는 범용 JAR 하나가 아니라 16개 Minecraft 버전별 exact-target J
 kwc-platform-forge\build-all.bat
 ```
 
-스크립트가 각 대상에 맞춰 JDK 17/21/25를 선택하고 `KOKOTO-WebChat-5.2.1-Forge-<Minecraft>.jar`을 각 target의 `build/libs/` 아래에 생성합니다.
+스크립트가 각 대상에 맞춰 JDK 17/21/25를 선택하고 `KOKOTO-WebChat-5.3.0-Forge-<Minecraft>.jar`을 각 target의 `build/libs/` 아래에 생성합니다.
 
 ### Windows 최종 릴리스 검증
 
-> **릴리스 빌드/검증 워크플로는 source 패키지에 포함되어 있습니다.** `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source에 함께 들어 있습니다. 별도의 `KWC-5.2.1-validation-tools.zip`에는 개발용 브라우저 회귀검증 도구만 들어 있으며 일반 빌드나 릴리스 빌드에는 필요하지 않습니다.
+> **릴리스 빌드/검증 워크플로는 source 패키지에 포함되어 있습니다.** `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source에 함께 들어 있습니다. 별도의 `KWC-5.3.0-validation-tools.zip`에는 개발용 브라우저 회귀검증 도구만 들어 있으며 일반 빌드나 릴리스 빌드에는 필요하지 않습니다.
 
-소스 루트에서 `validate-release-windows.bat`를 실행하면 Bukkit, Fabric 16개 target, NeoForge 12개 target, Forge 16개 target을 연속 빌드합니다. `FINAL RELEASE BUILD PASS`가 출력되고 `release-5.2.1/`에 배포용 JAR이 정확히 45개 모이며 `SHA256SUMS.txt`가 생성되어야 실제 빌드까지 최종 검증된 것으로 판정합니다.
+소스 루트에서 `validate-release-windows.bat`를 실행하면 Bukkit, Fabric 16개 target, NeoForge 12개 target, Forge 16개 target을 연속 빌드합니다. `FINAL RELEASE BUILD PASS`가 출력되고 `release-5.3.0/`에 배포용 JAR이 정확히 45개 모이며 `SHA256SUMS.txt`가 생성되어야 실제 빌드까지 최종 검증된 것으로 판정합니다.
 
 Windows 반복 빌드에서는 같은 스크립트로 플랫폼 선택, 증분 캐시, 플랫폼 병렬 빌드와 실시간 진행률을 사용할 수 있습니다.
 
@@ -129,7 +131,7 @@ validate-release-windows.bat --fabric --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-플랫폼 옵션은 조합할 수 있습니다. `--bukkit`은 Bukkit/Paper 산출물과 필요한 Maven reactor 의존 모듈만 빌드합니다. `--fast`는 `clean`을 생략하고 기존 Maven/Gradle 산출물과 dependency cache를 재사용하며 Gradle build cache를 활성화합니다. `--parallel`은 선택된 빌드 모드는 그대로 유지하면서 Bukkit이 선택되어 있으면 Bukkit을 먼저 빌드하고, Bukkit이 통과한 뒤 Fabric/NeoForge/Forge를 각각 별도 실시간 빌드 창으로 열어 병렬 실행합니다. 따라서 `validate-release-windows.bat --parallel`은 clean 45-target 최종 검증이며 성공하면 `FINAL RELEASE BUILD PASS`가 출력됩니다. 메인 콘솔에는 경과시간, 전체 완료 target 수, 플랫폼별 완료 수와 현재 Minecraft target이 계속 표시되고, 각 작업 창에는 실제 빌드 로그가 표시되며 전체 로그는 `validation-logs/`에 남습니다. 부분 빌드 또는 `--fast` 빌드는 `build-5.2.1/`에 저장되며 최종 릴리스 검증으로 취급하지 않습니다. 루트의 `mvn clean package`도 계속 Bukkit 전용 Maven 빌드입니다.
+플랫폼 옵션은 조합할 수 있습니다. `--bukkit`은 Bukkit/Paper 산출물과 필요한 Maven reactor 의존 모듈만 빌드합니다. `--fast`는 `clean`을 생략하고 기존 Maven/Gradle 산출물과 dependency cache를 재사용하며 Gradle build cache를 활성화합니다. `--parallel`은 선택된 빌드 모드는 그대로 유지하면서 Bukkit이 선택되어 있으면 Bukkit을 먼저 빌드하고, Bukkit이 통과한 뒤 Fabric/NeoForge/Forge를 각각 별도 실시간 빌드 창으로 열어 병렬 실행합니다. 따라서 `validate-release-windows.bat --parallel`은 clean 45-target 최종 검증이며 성공하면 `FINAL RELEASE BUILD PASS`가 출력됩니다. 메인 콘솔에는 경과시간, 전체 완료 target 수, 플랫폼별 완료 수와 현재 Minecraft target이 계속 표시되고, 각 작업 창에는 실제 빌드 로그가 표시되며 전체 로그는 `validation-logs/`에 남습니다. 부분 빌드 또는 `--fast` 빌드는 `build-5.3.0/`에 저장되며 최종 릴리스 검증으로 취급하지 않습니다. 루트의 `mvn clean package`도 계속 Bukkit 전용 Maven 빌드입니다.
 Loader 작업이 Gradle cache/workspace 손상 또는 cache 잠금으로 명확히 판별되는 오류(예: `caches/<Gradle>/transforms/.../metadata.bin` 읽기 실패)로 끝나면 검증 runner는 잠겨 있을 수 있는 기본 cache를 자동 삭제하지 않습니다. 대신 `.build-cache/gradle-recovery/` 아래의 새 격리 cache로 해당 플랫폼을 한 번만 다시 시도합니다. 소스 컴파일 오류나 일반적인 dependency/build 실패는 자동 재시도하지 않습니다. 복구 빌드가 성공해도 원래 cache는 그대로 두므로 탐색기, 백신 또는 다른 프로세스의 파일 잠금이 풀린 뒤 필요할 때 수동으로 정리할 수 있습니다.
 
 
@@ -149,7 +151,7 @@ Loader 작업이 Gradle cache/workspace 손상 또는 cache 잠금으로 명확�
 12. 서버 재시작 또는 `/kchat reload`를 실행합니다. BlueMap은 `bluemap reload light`를 자동 요청하고, squaremap/Dynmap/Pl3xMap/LiveAtlas/uNmINeD/Overviewer는 KWC가 웹 파일을 직접 다시 확인합니다. 지도/사이트 생성기가 웹 파일을 다시 만들었다면 `/kchat reload`를 다시 실행합니다.
 
 
-기존에 파싱된 운영 설정값은 그대로 보존하고, migration 시 주석과 레이아웃은 `ui.language`가 선택한 번들 표시 템플릿으로 다시 구성합니다. `en-US`는 `config.yml`, `ko-KR`·`ja-JP`·`zh-CN`은 각 언어의 번들 템플릿을 사용하며 지원하지 않는/custom UI 언어는 영문 config 표시를 사용합니다. `<KWC data dir>/config-reference-5.2.0.yml`은 같은 내장 언어로 렌더링한 관리자용 최신 기본 설정이며 migration 입력으로는 절대 사용하지 않습니다. 고정된 이전 버전 config는 실제 버전 migration 전에 백업합니다. migration 결과는 `config-version: "5.2.0_auto_migration"`이며 이 marker가 남아 있는 동안 startup/reload마다 선택된 최신 템플릿을 다시 만들고 기존 파싱 값을 overlay하여 새 설정과 현재 주석/레이아웃을 유지합니다. 정확한 `config-version: "5.2.0"`은 일반적인 same-version 자동 설정 재구성을 중지하지만, `ui.language`를 변경하면 모든 파싱 값을 보존한 채 주석/레이아웃 표시 언어만 다시 구성할 수 있습니다. `config-migration-5.2.0.yml`의 Difference는 주석·공백·따옴표·줄 위치·키 순서가 아니라 파싱된 YAML path/value 의미를 비교합니다. 이전 버전의 생성된 reference/migration/upgrade 파일은 자동 삭제합니다. 번들 UTF-8 기본 차단 목록 `filter-lists/ko-KR.txt`, `en-US.txt`, `ja-JP.txt`, `zh-CN.txt`는 기본 목록 초기화 마커가 없을 때 한 번 초기화되므로 이 기능이 추가되기 전부터 사용하던 데이터 폴더에서도 생성됩니다. 이미 존재하거나 비활성화된 목록 파일은 덮어쓰지 않으며, 초기화가 끝난 뒤 관리자가 삭제한 기본 목록은 재시작해도 다시 만들지 않습니다.
+기존에 파싱된 운영 설정값은 그대로 보존하고, migration 시 주석과 레이아웃은 `ui.language`가 선택한 번들 표시 템플릿으로 다시 구성합니다. `en-US`는 `config.yml`, `ko-KR`·`ja-JP`·`zh-CN`은 각 언어의 번들 템플릿을 사용하며 지원하지 않는/custom UI 언어는 영문 config 표시를 사용합니다. `<KWC data dir>/config-reference-5.3.0.yml`은 같은 내장 언어로 렌더링한 관리자용 최신 기본 설정이며 migration 입력으로는 절대 사용하지 않습니다. 고정된 이전 버전 config는 실제 버전 migration 전에 백업합니다. migration 결과는 `config-version: "5.3.0_auto_migration"`이며 이 marker가 남아 있는 동안 startup/reload마다 선택된 최신 템플릿을 다시 만들고 기존 파싱 값을 overlay하여 새 설정과 현재 주석/레이아웃을 유지합니다. 정확한 `config-version: "5.3.0"`은 일반적인 same-version 자동 설정 재구성을 중지하지만, `ui.language`를 변경하면 모든 파싱 값을 보존한 채 주석/레이아웃 표시 언어만 다시 구성할 수 있습니다. `config-migration-5.3.0.yml`의 Difference는 주석·공백·따옴표·줄 위치·키 순서가 아니라 파싱된 YAML path/value 의미를 비교합니다. 이전 버전의 생성된 reference/migration/upgrade 파일은 자동 삭제합니다. 번들 UTF-8 기본 차단 목록 `filter-lists/ko-KR.txt`, `en-US.txt`, `ja-JP.txt`, `zh-CN.txt`는 기본 목록 초기화 마커가 없을 때 한 번 초기화되므로 이 기능이 추가되기 전부터 사용하던 데이터 폴더에서도 생성됩니다. 이미 존재하거나 비활성화된 목록 파일은 덮어쓰지 않으며, 초기화가 끝난 뒤 관리자가 삭제한 기본 목록은 재시작해도 다시 만들지 않습니다.
 
 ## 5.0.0 KOKOTO WebChat 구조 및 이름 전환
 
@@ -172,7 +174,7 @@ Bukkit/Spigot API 기준을 1.21에서 1.18로 낮추고 Java 17은 그대로 �
 
 ## 4.6.3 관리자 그룹채팅 감사
 
-4.6.3은 그룹채팅 메시지 본문을 확인할 수 있는 선택적 읽기 전용 관리자 감사 기능을 추가했습니다. 현재 5.2.0에서도 DM과 그룹채팅 본문 감사를 독립적으로 제어합니다. DM은 `direct-message.admin-audit.enabled`, 그룹은 `group-chat.admin-audit.enabled`를 사용하며 둘 다 `private-chat-super-admins`에 정확히 지정된 계정만 접근할 수 있습니다. 감사 화면은 읽기 전용이고 전송·답글·숨김·읽음 처리나 방 참여를 수행하지 않으며 페이지 열람은 감사 로그에 기록됩니다.
+4.6.3은 그룹채팅 메시지 본문을 확인할 수 있는 선택적 읽기 전용 관리자 감사 기능을 추가했습니다. 현재 5.3.0에서도 DM과 그룹채팅 본문 감사를 독립적으로 제어합니다. DM은 `direct-message.admin-audit.enabled`, 그룹은 `group-chat.admin-audit.enabled`를 사용하며 둘 다 `private-chat-super-admins`에 정확히 지정된 계정만 접근할 수 있습니다. 감사 화면은 읽기 전용이고 전송·답글·삭제·읽음 처리나 방 참여를 수행하지 않으며 페이지 열람은 감사 로그에 기록됩니다.
 
 ```yaml
 private-chat-super-admins:
@@ -323,7 +325,7 @@ URL 설정 참고: `http.path-prefix`는 KWC 내부 API 경로이고 `http.publi
 
 `direct-message.enabled`를 켜면 1:1 대화 스레드형 메시지함을 사용할 수 있습니다. 대상은 UUID/이름이 저장된 연동·접속 기록 플레이어와, 서버 릴레이 메시지에서 UUID가 확인된 타 서버 플레이어입니다. 릴레이로 받은 표시 이름과 실제 Minecraft 이름도 웹 DM의 새 대화 대상 검색에 반영되므로 별도 DM 버튼 없이 이름을 검색해 대화를 시작할 수 있습니다. UUID가 없는 게스트·Discord 발신자는 대상에 포함되지 않습니다. A→B와 B→A는 같은 스레드를 사용하며, 저장은 UUID 기준으로 하고 UI는 가능하면 `표시명 (실제 계정명)` 형태로 표시합니다.
 
-DM은 공개 채팅 기록과 분리된 전용 저장소를 사용합니다. `direct-message.storage: auto`는 공개 채팅이 `jsonl` 저장방식일 때 DM도 JSONL을 사용하고, 그 외에는 SQLite를 사용합니다. 필요하면 `direct-message.storage`를 `sqlite` 또는 `jsonl`로 직접 지정하고 `direct-message.sqlite-file` 또는 `direct-message.jsonl-file`을 사용할 수 있습니다. `direct-message.retention-days: 0`은 보관 기한 없음이며, 그 외 값은 DM 메시지함 제목 옆에 보관 기간으로 표시되고 해당 일수가 지난 DM 원문은 물리 삭제됩니다. `direct-message.max-messages-per-thread: 0`은 스레드별 개수 정리 없음입니다. `direct-message.confirm-hide`는 웹 UI에서 DM을 내 화면에서 숨길 때 확인창을 띄울지 정합니다. 개인 메시지가 서버에 저장되는 기능이므로 기본값은 비활성화이며, 서버 정책에 맞게 보관 주기를 정한 뒤 켜는 것을 권장합니다.
+DM은 공개 채팅 기록과 분리된 전용 저장소를 사용합니다. `direct-message.storage: auto`는 공개 채팅이 `jsonl` 저장방식일 때 DM도 JSONL을 사용하고, 그 외에는 SQLite를 사용합니다. 필요하면 `direct-message.storage`를 `sqlite` 또는 `jsonl`로 직접 지정하고 `direct-message.sqlite-file` 또는 `direct-message.jsonl-file`을 사용할 수 있습니다. `direct-message.retention-days: 0`은 보관 기한 없음이며, 그 외 값은 DM 메시지함 제목 옆에 보관 기간으로 표시되고 해당 일수가 지난 DM 원문은 물리 삭제됩니다. `direct-message.max-messages-per-thread: 0`은 스레드별 개수 정리 없음입니다. `direct-message.confirm-delete`는 웹 UI에서 자신이 보낸 DM을 양쪽 대화에서 삭제하기 전에 확인창을 띄울지 정합니다. 받은 DM은 수신자가 숨기거나 삭제할 수 없습니다. 개인 메시지가 서버에 저장되는 기능이므로 기본값은 비활성화이며, 서버 정책에 맞게 보관 주기를 정한 뒤 켜는 것을 권장합니다.
 
 
 `direct-message.capture-game-whispers`를 켜면 게임의 `/w`, `/msg`, `/tell`류 명령을 같은 웹 DM 스레드에 복제할 수 있습니다. 같은 서버의 게임 발신자 이름을 클릭하면 `/w <실제이름> `, 웹 발신자는 `/kchat dm <실제이름> `, 다른 서버의 게임 발신자는 `/kchat dm <실제이름>@<server-id> `가 자동완성됩니다. 또한 `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t`에서 대상에 `이름@server-id`를 사용하면 같은 타 서버 KWC DM 릴레이로 전송됩니다. 서버를 붙이지 않은 `/kchat dm <이름>`은 항상 현재 서버 사용자만 찾으며, 타 서버 대상은 `@server-id`를 명시하거나 웹 UI에서 해당 서버 사용자를 직접 선택해야 합니다.
@@ -411,7 +413,7 @@ kwc.update.notify
 - `docs/ko/USER_MANUAL.md` - 전체 기능 사용자·운영자 통합 매뉴얼
 - `docs/ko/CONFIGURATION.md` - 설정 참고
 - `docs/ko/SERVER_RELAY.md` - Relay Protocol v2 공개채팅·서버 간 DM/읽음 확인·신뢰/forwarding 규칙
-- `docs/ko/UPGRADE.md` - 5.2.0까지의 통합 업그레이드 및 마이그레이션 가이드
+- `docs/ko/UPGRADE.md` - 5.3.0까지의 통합 업그레이드 및 마이그레이션 가이드
 - `docs/ko/CADDY_HTTPS.md` - HTTPS 리버스 프록시
 - `docs/ko/I18N.md` - 다국어 파일과 fallback
 - `docs/ko/INSTALL_TROUBLESHOOTING.md` - 설치/업그레이드/문제 해결
@@ -458,3 +460,5 @@ Forge는 Minecraft 1.18.2~26.2를 하나의 범용 JAR이 아니라 버전별 ex
 ## 생성형 AI 사용 안내
 
 이 프로젝트의 개발 과정에서 코드 리뷰, 구현 및 패치 작성 보조, 문서 작성, 다국어 번역에 생성형 AI를 보조 도구로 사용했습니다. 프로젝트 요구사항, 아키텍처 및 설계 결정, 소스 통합, 테스트, 호환성 검증, 릴리스 검증과 최종 승인은 사람이 직접 주도하고 검토합니다. AI 보조 결과물은 검토와 검증 후에만 프로젝트에 반영합니다. 자세한 내용은 `AI_USAGE.md`를 참고하세요.
+
+> Relay 2.2은 targeted 이벤트(`game`) 라우팅을 추가합니다. 릴레이된 이벤트 링크는 로컬 이벤트를 대신 열지 않고 원본 서버의 해당 이벤트를 조회/참가합니다.

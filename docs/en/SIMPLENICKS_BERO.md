@@ -1,6 +1,6 @@
 # SimpleNicks-Bero integration
 
-KOKOTO WebChat 5.2.0 can use nicknames from [SimpleNicks-Bero](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) on **Bukkit/Paper-family** servers through Bukkit's player display name. KWC does not require SimpleNicks as a hard dependency and does not parse the plugin's database directly.
+KOKOTO WebChat 5.3.0 can use nicknames from [SimpleNicks-Bero](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) on **Bukkit/Paper-family** servers through Bukkit's player display name. KWC does not require SimpleNicks as a hard dependency and does not parse the plugin's database directly.
 
 For normal installation, `/nick` commands, permissions, SQLite/MySQL setup, saved nicknames, nickname protection, PlaceholderAPI/MiniPlaceholders, and general plugin operation, use the [upstream SimpleNicks documentation](https://github.com/Simplexity-Development/SimpleNicks). This page covers only the KWC-facing settings.
 

@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * WebChatServer는 kwc-core 모듈의 KWC 구현 파일이다. 클래스 이름이 나타내는 책임을 이 파일 안에 한정해 다른 계층과의 결합을 줄인다.
+ * WebChatServer is a KWC implementation file in the kwc-core module. Keep the responsibility implied by the class name localized here to reduce cross-layer coupling.
+ *
+ * 변경 시 호출자와 반환값뿐 아니라 인증/권한, thread context, persistence, multi-loader 호환성에 미치는 영향을 함께 확인한다.
+ * When changing it, review not only callers/returns but also effects on authorization, thread context, persistence, and multi-loader compatibility.
+ */
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 
@@ -26,6 +34,11 @@ import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * KWC 유지보수 안내: KWC의 HTTP/SSE 경계와 대부분의 웹 API를 한곳에서 조정하는 서버 facade다. 인증·rate limit·권한 검사 후 저장소/Relay/WebPush로 작업을 위임하고, 브라우저에는 viewer 기준으로 마스킹된 JSON만 반환한다. 이 클래스가 크기 때문에 endpoint별 handler에서는 “입력 검증 → 권한 확인 → 저장소 호출 → event/relay 발행” 순서를 유지하는 것이 중요하다.
+ *
+ * KWC maintenance note: Server facade coordinating KWC HTTP/SSE boundaries and most web APIs. It validates authentication, rate limits, and authorization before delegating to stores/Relay/WebPush, and returns only viewer-filtered JSON. Because the class is large, endpoint handlers should preserve the order “validate input → authorize → mutate/read storage → publish event/relay”.
+ */
 public class WebChatServer {
     private final WebChatHost host;
     private final PlatformAdapter platform;
@@ -34,15 +47,19 @@ public class WebChatServer {
     private final CaptchaManager captcha;
     private final WebPushManager webPush;
     private final UserPreferenceStore userPreferences;
+    private final UserControlStore userControls;
     private final PublicReactionStore publicReactions;
     private final ReactionCatalogStore reactionCatalog;
     private final ConversationArchiveStore conversationArchives;
+    private final ChatGameManager chatGames;
     private final AdminDiscordAlertManager adminDiscordAlerts;
     private final RateLimiter rateLimiter = new RateLimiter();
     private final OperationalIssueTracker operationalIssues;
     private static final long STREAM_TICKET_TTL_MILLIS = 30_000L;
     private static final long ADMIN_FILTER_REQUEST_BODY_LIMIT_BYTES = 32L * 1024L * 1024L;
     private final ConcurrentHashMap<String, StreamTicket> streamTickets = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Boolean> presenceInvisibleCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> presenceStatusCache = new ConcurrentHashMap<>();
     // HttpExchange attributes are backed by the HttpContext attribute map in the
     // JDK HTTP server and can therefore survive into later requests on the same
     // context. Never cache request bodies with ex.setAttribute(). Keep a weak map
@@ -103,6 +120,7 @@ public class WebChatServer {
         this.captcha = java.util.Objects.requireNonNull(host.captcha(), "captcha");
         this.webPush = new WebPushManager(java.util.Objects.requireNonNull(host.webPushHost(), "webPushHost"));
         this.userPreferences = new UserPreferenceStore(host.dataDirectory(), host.logger());
+        this.userControls = new UserControlStore(host.dataDirectory(), host.logger());
         this.publicReactions = new PublicReactionStore(host.dataDirectory(), host.logger());
         this.reactionCatalog = new ReactionCatalogStore(host.dataDirectory(), host.logger());
         ConfigValues initialConfig = host.configValues();
@@ -113,8 +131,21 @@ public class WebChatServer {
                         ? ConversationArchiveStore.MAX_MESSAGES_PER_ARCHIVE : initialConfig.conversationArchiveMaxMessagesPerArchive,
                 initialConfig == null || initialConfig.conversationArchiveMaxMessagesPerUser <= 0
                         ? ConversationArchiveStore.MAX_MESSAGES_PER_USER : initialConfig.conversationArchiveMaxMessagesPerUser);
+        this.chatGames = new ChatGameManager(host.dataDirectory());
         this.adminDiscordAlerts = new AdminDiscordAlertManager(host);
         this.operationalIssues = new OperationalIssueTracker(host.logger()::info, host.logger()::warn);
+    }
+
+    public boolean userChatBanned(String uuid) { return userControls.chatBanned(uuid); }
+    public boolean userUploadBanned(String uuid) { return userControls.uploadBanned(uuid); }
+
+    public boolean directMessageBlocked(String senderUuid, String targetUuid) {
+        Account sender = accountByUuid(senderUuid);
+        if (sender != null && userPreferences.isUserBlocked(sender, targetUuid)) return true;
+        RemotePlayerRef remoteTarget = RemotePlayerRef.parse(targetUuid);
+        if (remoteTarget != null) return false;
+        Account target = accountByUuid(targetUuid);
+        return target != null && userPreferences.isUserBlocked(target, senderUuid);
     }
 
     public void start() throws IOException {
@@ -168,6 +199,8 @@ public class WebChatServer {
         TransportSecurityWarnings.logHttpServer(host.configValues(), host.language(), host.logger());
     }
 
+    // 모든 API endpoint를 정확한 context path에 등록한다. exact context를 사용해 /api/foo 뒤 임의 suffix가 다른 handler로 잘못 들어오는 것을 막고, private/admin endpoint는 각 handler에서 다시 인증·권한 검사를 수행한다.
+    // Registers every API endpoint on an exact context path. Exact matching prevents arbitrary suffixes from falling into the wrong handler; private/admin handlers still repeat authentication and authorization checks.
     private void createApiContexts(String p) {
         httpServer.createExactContext(p + "/config", this::handleConfig);
         httpServer.createExactContext(p + "/lang", this::handleLang);
@@ -200,6 +233,16 @@ public class WebChatServer {
         httpServer.createExactContext(p + "/preferences/profile/import", this::handleUserProfileImport);
         httpServer.createExactContext(p + "/preferences/notifications", this::handleUserNotificationPreferences);
         httpServer.createExactContext(p + "/preferences/typing", this::handleUserTypingPreferences);
+        httpServer.createExactContext(p + "/preferences/presence", this::handleUserPresencePreferences);
+        httpServer.createExactContext(p + "/preferences/profile-card", this::handleUserProfileCardPreferences);
+        httpServer.createExactContext(p + "/preferences/profile-avatar", this::handleUserProfileAvatar);
+        httpServer.createExactContext(p + "/preferences/blocked-users", this::handleBlockedUsers);
+        httpServer.createExactContext(p + "/profile/avatar", this::handleProfileAvatar);
+        httpServer.createExactContext(p + "/profile/default-head", this::handleDefaultProfileHead);
+        httpServer.createExactContext(p + "/presence", this::handlePresence);
+        httpServer.createExactContext(p + "/presence/summary", this::handlePresenceSummary);
+        httpServer.createExactContext(p + "/games", this::handleChatGames);
+        httpServer.createExactContext(p + "/mentions", this::handleMentionCandidates);
         ConfigValues routeConfig = host.configValues();
         if (routeConfig.emojiFavoritesEnabled && "account".equalsIgnoreCase(String.valueOf(routeConfig.emojiFavoritesStorage))) {
             httpServer.createExactContext(p + "/preferences/emoji-favorites", this::handleEmojiFavorites);
@@ -213,16 +256,18 @@ public class WebChatServer {
         }
         httpServer.createExactContext(p + "/dm/threads", this::handleDmThreads);
         httpServer.createExactContext(p + "/dm/messages", this::handleDmMessages);
+        httpServer.createExactContext(p + "/dm/search", this::handleDmSearch);
         httpServer.createExactContext(p + "/dm/players", this::handleDmPlayers);
         httpServer.createExactContext(p + "/dm/send", this::handleDmSend);
         httpServer.createExactContext(p + "/dm/retry", this::handleDmRetry);
         httpServer.createExactContext(p + "/dm/read", this::handleDmRead);
         httpServer.createExactContext(p + "/dm/typing", this::handleDmTyping);
-        httpServer.createExactContext(p + "/dm/hide-message", this::handleDmHideMessage);
+        httpServer.createExactContext(p + "/dm/delete-message", this::handleDmDeleteMessage);
         httpServer.createExactContext(p + "/admin/dm/messages", this::handleAdminDmMessages);
         httpServer.createExactContext(p + "/group/rooms", this::handleGroupRooms);
         httpServer.createExactContext(p + "/group/players", this::handleGroupPlayers);
         httpServer.createExactContext(p + "/group/messages", this::handleGroupMessages);
+        httpServer.createExactContext(p + "/group/search", this::handleGroupSearch);
         httpServer.createExactContext(p + "/admin/group/messages", this::handleAdminGroupMessages);
         httpServer.createExactContext(p + "/group/create", this::handleGroupCreate);
         httpServer.createExactContext(p + "/group/join", this::handleGroupJoin);
@@ -233,7 +278,11 @@ public class WebChatServer {
         httpServer.createExactContext(p + "/group/send", this::handleGroupSend);
         httpServer.createExactContext(p + "/group/read", this::handleGroupRead);
         httpServer.createExactContext(p + "/group/typing", this::handleGroupTyping);
-        httpServer.createExactContext(p + "/group/hide-message", this::handleGroupHideMessage);
+        httpServer.createExactContext(p + "/group/delete-message", this::handleGroupDeleteMessage);
+        httpServer.createExactContext(p + "/group/pins", this::handleGroupPins);
+        httpServer.createExactContext(p + "/group/pin-message", this::handleGroupPinMessage);
+        httpServer.createExactContext(p + "/group/unpin-message", this::handleGroupUnpinMessage);
+        httpServer.createExactContext(p + "/group/move-pin", this::handleGroupMovePin);
         httpServer.createExactContext(p + "/group/settings", this::handleGroupSettings);
         httpServer.createExactContext(p + "/group/members", this::handleGroupMembers);
         httpServer.createExactContext(p + "/group/kick", this::handleGroupKick);
@@ -242,6 +291,7 @@ public class WebChatServer {
         httpServer.createExactContext(p + "/group/hide-room", this::handleGroupHideRoom);
         httpServer.createExactContext(p + "/group/unhide-room", this::handleGroupUnhideRoom);
         httpServer.createExactContext(p + "/group/transfer-owner", this::handleGroupTransferOwner);
+        httpServer.createExactContext(p + "/group/set-role", this::handleGroupSetRole);
         httpServer.createExactContext(p + "/commands", this::handleCommands);
         httpServer.createExactContext(p + "/commands/run", this::handleCommandRun);
         httpServer.createExactContext(p + "/upload", this::handleUpload);
@@ -262,7 +312,11 @@ public class WebChatServer {
         httpServer.createExactContext(p + "/admin/online", this::handleAdminOnline);
         httpServer.createExactContext(p + "/admin/sessions", this::handleAdminSessions);
         httpServer.createExactContext(p + "/admin/accounts", this::handleAdminAccounts);
+        httpServer.createExactContext(p + "/admin/account-role", this::handleAdminAccountRole);
         httpServer.createExactContext(p + "/admin/revoke", this::handleAdminRevoke);
+        httpServer.createExactContext(p + "/admin/user-controls", this::handleAdminUserControls);
+        httpServer.createExactContext(p + "/admin/moderator-permissions", this::handleAdminModeratorPermissions);
+        httpServer.createExactContext(p + "/admin/profile-avatar/delete", this::handleAdminDeleteProfileAvatar);
         httpServer.createExactContext(p + "/admin/mutes", this::handleAdminMutes);
         httpServer.createExactContext(p + "/admin/mute", this::handleAdminMute);
         httpServer.createExactContext(p + "/admin/unmute", this::handleAdminUnmute);
@@ -531,12 +585,14 @@ public class WebChatServer {
                 self.addEventListener('install',function(event){self.skipWaiting();});
                 self.addEventListener('activate',function(event){event.waitUntil(clients.claim());});
                 function kwcPushTarget(data){
-                  var out={dmThreadId:'',groupRoomId:''};
+                  var out={dmThreadId:'',groupRoomId:'',publicChat:false};
                   try{
                     var u=new URL(data&&data.url?data.url:'/',self.location.origin);
                     out.dmThreadId=u.searchParams.get('kwcDmThread')||'';
                     out.groupRoomId=u.searchParams.get('kwcGroupRoom')||'';
                   }catch(e){}
+                  var type=String(data&&data.type?data.type:'').toLowerCase();
+                  out.publicChat=!out.dmThreadId&&!out.groupRoomId&&!!type&&type!=='test'&&type!=='dm'&&type!=='group'&&type!=='group-chat';
                   return out;
                 }
                 function kwcQueryClient(client,target){
@@ -551,13 +607,13 @@ public class WebChatServer {
                     var timer=setTimeout(function(){finish(false);},2000);
                     channel.port1.onmessage=function(event){clearTimeout(timer);finish(!!(event&&event.data&&event.data.suppress));};
                     try{
-                      client.postMessage({source:'KWC',type:'notificationSuppressionQuery',dmThreadId:target.dmThreadId,groupRoomId:target.groupRoomId},[channel.port2]);
+                      client.postMessage({source:'KWC',type:'notificationSuppressionQuery',dmThreadId:target.dmThreadId,groupRoomId:target.groupRoomId,publicChat:target.publicChat===true},[channel.port2]);
                     }catch(e){clearTimeout(timer);finish(false);}
                   });
                 }
                 function kwcShouldSuppress(data){
                   var target=kwcPushTarget(data);
-                  if(!target.dmThreadId&&!target.groupRoomId)return Promise.resolve(false);
+                  if(!target.dmThreadId&&!target.groupRoomId&&target.publicChat!==true)return Promise.resolve(false);
                   return clients.matchAll({type:'window',includeUncontrolled:true}).then(function(list){
                     if(!list||!list.length)return false;
                     return Promise.all(list.map(function(client){return kwcQueryClient(client,target);})).then(function(results){
@@ -762,6 +818,367 @@ public class WebChatServer {
         sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "preferences", result.value())));
     }
 
+    private void handleUserPresencePreferences(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            Map<String,Object> prefs = userPreferences.presencePreferences(ctx.account);
+            String uuid = normalizePresenceUuid(ctx.account.uuid);
+            String status = String.valueOf(prefs.getOrDefault("status", Boolean.TRUE.equals(prefs.get("invisible")) ? "offline" : "online"));
+            presenceStatusCache.put(uuid, status);
+            presenceInvisibleCache.put(uuid, "offline".equals(status));
+            sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "preferences", prefs)));
+            return;
+        }
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        UserPreferenceStore.SaveResult result = userPreferences.savePresencePreferences(ctx.account, parsedBody(ex));
+        if (!result.ok()) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error()) + "}"); return; }
+        String status = String.valueOf(result.value().getOrDefault("status", Boolean.TRUE.equals(result.value().get("invisible")) ? "offline" : "online"));
+        boolean invisible = "offline".equals(status);
+        String uuid = normalizePresenceUuid(ctx.account.uuid);
+        presenceStatusCache.put(uuid, status);
+        presenceInvisibleCache.put(uuid, invisible);
+        broadcastPresenceUpdate(uuid);
+        sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "preferences", result.value())));
+    }
+
+    // 프로필 카드의 공개 텍스트/아바타 모드는 계정 preference에 저장한다. 커스텀 이미지는 일반 채팅 upload retention과 분리된 전용 저장공간을 사용한다.
+    // Stores public profile-card text/avatar mode in account preferences. Custom images use dedicated storage separate from normal chat-upload retention.
+    private void handleUserProfileCardPreferences(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "profile", publicProfileCard(ex, ctx.account))));
+            return;
+        }
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        UserPreferenceStore.SaveResult result = userPreferences.saveProfileCardPreferences(ctx.account, parsedBody(ex));
+        if (!result.ok()) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error()) + "}"); return; }
+        sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "profile", publicProfileCard(ex, ctx.account))));
+    }
+
+    private void handleUserProfileAvatar(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        if ("DELETE".equalsIgnoreCase(ex.getRequestMethod())) {
+            userPreferences.deleteProfileAvatar(ctx.account);
+            sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "profile", publicProfileCard(ex, ctx.account))));
+            return;
+        }
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        if (userControls.uploadBanned(ctx.account.uuid)) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"upload_banned\"}"); return; }
+        final long maxBytes = 2L * 1024L * 1024L;
+        String boundary = multipartBoundary(ex.getRequestHeaders().getFirst("Content-Type"));
+        if (boundary == null || boundary.isBlank()) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"multipart_required\"}"); return; }
+        long contentLength = parseLong(ex.getRequestHeaders().getFirst("Content-Length"), -1);
+        if (contentLength > maxBytes + 256L * 1024L) { sendJson(ex, 413, "{\"ok\":false,\"error\":\"file_too_large\"}"); return; }
+        byte[] body;
+        try { body = readLimitedBytes(ex.getRequestBody(), maxBytes + 256L * 1024L); }
+        catch (UploadTooLargeException tooLarge) { sendJson(ex, 413, "{\"ok\":false,\"error\":\"file_too_large\"}"); return; }
+        UploadedPart file = parseMultipart(body, boundary).file;
+        if (file == null || file.data == null || file.data.length == 0) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"file_missing\"}"); return; }
+        if (file.data.length > maxBytes) { sendJson(ex, 413, "{\"ok\":false,\"error\":\"file_too_large\"}"); return; }
+        String ext = extension(sanitizeFileName(file.filename)).toLowerCase(Locale.ROOT);
+        if ("jpeg".equals(ext)) ext = "jpg";
+        if (!Set.of("png", "jpg", "webp").contains(ext)) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"profile_avatar_type_not_allowed\"}"); return; }
+        byte[] cleaned = ImageMetadataStripper.stripForUpload(file.data, ext);
+        if (cleaned.length == 0 || cleaned.length > maxBytes) { sendJson(ex, 413, "{\"ok\":false,\"error\":\"file_too_large\"}"); return; }
+        UserPreferenceStore.SaveResult result = userPreferences.saveProfileAvatar(ctx.account, ext, cleaned);
+        if (!result.ok()) { sendJson(ex, 500, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error()) + "}"); return; }
+        sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "profile", publicProfileCard(ex, ctx.account))));
+    }
+
+    private void handleProfileAvatar(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        boolean head = "HEAD".equalsIgnoreCase(ex.getRequestMethod());
+        if (!head && !"GET".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        String uuid = stripControl(JsonUtil.parseQuery(ex.getRequestURI().getRawQuery()).get("uuid"), 160).trim();
+        Account account = accountByUuid(uuid);
+        Path file = account == null ? null : userPreferences.profileAvatarFile(account);
+        if (file == null || !Files.isRegularFile(file)) { sendJson(ex, 404, "{\"ok\":false,\"error\":\"profile_avatar_not_found\"}"); return; }
+        long length = Files.size(file);
+        String ext = extension(file.getFileName().toString());
+        Headers headers = ex.getResponseHeaders();
+        headers.set("Content-Type", contentTypeForExtension(ext));
+        headers.set("Content-Length", Long.toString(length));
+        headers.set("Cache-Control", "public, max-age=3600");
+        headers.set("X-Content-Type-Options", "nosniff");
+        ex.sendResponseHeaders(200, head ? -1 : length);
+        if (!head) { try (OutputStream out = ex.getResponseBody()) { Files.copy(file, out); } }
+    }
+
+    private void handleDefaultProfileHead(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        boolean head = "HEAD".equalsIgnoreCase(ex.getRequestMethod());
+        if (!head && !"GET".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        // Local generic pixel head used when a Minecraft skin/head cannot be resolved.
+        String svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"128\" height=\"128\" viewBox=\"0 0 8 8\" shape-rendering=\"crispEdges\">"
+                + "<rect width=\"8\" height=\"8\" fill=\"#6f7d8c\"/><rect x=\"1\" y=\"1\" width=\"6\" height=\"6\" fill=\"#c89b73\"/>"
+                + "<rect x=\"1\" y=\"1\" width=\"6\" height=\"2\" fill=\"#5b4636\"/><rect x=\"2\" y=\"3\" width=\"1\" height=\"1\" fill=\"#263238\"/>"
+                + "<rect x=\"5\" y=\"3\" width=\"1\" height=\"1\" fill=\"#263238\"/><rect x=\"3\" y=\"5\" width=\"2\" height=\"1\" fill=\"#7a4f42\"/>"
+                + "</svg>";
+        byte[] data = svg.getBytes(StandardCharsets.UTF_8);
+        Headers headers = ex.getResponseHeaders();
+        headers.set("Content-Type", "image/svg+xml; charset=utf-8");
+        headers.set("Cache-Control", "public, max-age=86400");
+        headers.set("X-Content-Type-Options", "nosniff");
+        ex.sendResponseHeaders(200, head ? -1 : data.length);
+        if (!head) try (OutputStream out = ex.getResponseBody()) { out.write(data); }
+    }
+
+    private void handleBlockedUsers(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            List<Map<String,Object>> items = new ArrayList<>();
+            for (String uuid : userPreferences.blockedUsers(ctx.account)) {
+                PlayerIdentity identity = storage.findKnownPlayerByUuid(uuid);
+                Map<String,Object> item = new LinkedHashMap<>();
+                item.put("uuid", uuid);
+                item.put("username", identity == null ? "" : identity.username);
+                item.put("displayName", identity == null ? "" : identity.outputDisplayName());
+                item.put("label", identity == null ? uuid : identity.label());
+                items.add(item);
+            }
+            sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "blockedUsers", items)));
+            return;
+        }
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        Map<String,String> body = parsedBody(ex);
+        String uuid = stripControl(body.get("uuid"), 256).trim();
+        boolean blocked = Boolean.parseBoolean(String.valueOf(body.getOrDefault("blocked", "true")));
+        UserPreferenceStore.SaveResult result = userPreferences.setUserBlocked(ctx.account, uuid, blocked);
+        if (!result.ok()) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error()) + "}"); return; }
+        audit(ctx, blocked ? "preferences.user-block" : "preferences.user-unblock", Map.of("targetUuid", uuid));
+        sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "blocked", blocked, "uuid", uuid)));
+    }
+
+    private Map<String,Object> publicProfileCard(HttpExchange ex, Account account) {
+        LinkedHashMap<String,Object> out = new LinkedHashMap<>();
+        String defaultHead = publicApiBaseUrl(ex) + "/profile/default-head";
+        if (account == null) {
+            out.put("about", ""); out.put("avatarMode", "minecraft"); out.put("avatarUrl", ""); out.put("minecraftHeadUrl", "");
+            out.put("defaultHeadUrl", defaultHead); out.put("avatarUploadAllowed", false);
+            return out;
+        }
+        Map<String,Object> stored = userPreferences.profileCardPreferences(account);
+        String mode = String.valueOf(stored.getOrDefault("avatarMode", "minecraft"));
+        if ("none".equals(mode) || mode.isBlank()) mode = "minecraft";
+        long revision = 0L;
+        try { revision = Long.parseLong(String.valueOf(stored.getOrDefault("avatarRevision", "0"))); } catch (Exception ignored) {}
+        String uuid = normalizePresenceUuid(account.uuid);
+        Path avatarFile = userPreferences.profileAvatarFile(account);
+        String custom = "custom".equals(mode) && avatarFile != null
+                ? publicApiBaseUrl(ex) + "/profile/avatar?uuid=" + URLEncoder.encode(uuid, StandardCharsets.UTF_8) + "&v=" + revision : "";
+        if ("custom".equals(mode) && custom.isBlank()) mode = "minecraft";
+        RemotePlayerRef remote = RemotePlayerRef.parse(uuid);
+        String skinUuid = remote == null ? uuid : remote.playerUuid;
+        String minecraft = skinUuid.isBlank() ? "" : "https://mc-heads.net/avatar/" + urlPath(skinUuid) + "/128";
+        out.put("about", String.valueOf(stored.getOrDefault("about", "")));
+        out.put("avatarMode", mode);
+        out.put("avatarUrl", custom);
+        out.put("minecraftHeadUrl", minecraft);
+        out.put("defaultHeadUrl", defaultHead);
+        out.put("avatarRevision", revision);
+        out.put("avatarUploadAllowed", !userControls.uploadBanned(account.uuid));
+        return out;
+    }
+
+    private Map<String,Object> publicProfileCardForRelay(Account account) {
+        LinkedHashMap<String,Object> out = new LinkedHashMap<>();
+        ConfigValues config = host.configValues();
+        String apiBase = publicApiBaseUrlForGame(config);
+        String defaultHead = apiBase.isBlank() ? "" : apiBase + "/profile/default-head";
+        if (account == null) {
+            out.put("about", ""); out.put("avatarMode", "minecraft"); out.put("avatarUrl", ""); out.put("minecraftHeadUrl", "");
+            out.put("defaultHeadUrl", defaultHead); out.put("avatarRevision", 0L); out.put("avatarUploadAllowed", false);
+            return out;
+        }
+        Map<String,Object> stored = userPreferences.profileCardPreferences(account);
+        String mode = String.valueOf(stored.getOrDefault("avatarMode", "minecraft"));
+        if ("none".equals(mode) || mode.isBlank()) mode = "minecraft";
+        long revision = 0L;
+        try { revision = Long.parseLong(String.valueOf(stored.getOrDefault("avatarRevision", "0"))); } catch (Exception ignored) {}
+        String uuid = normalizePresenceUuid(account.uuid);
+        Path avatarFile = userPreferences.profileAvatarFile(account);
+        String custom = "custom".equals(mode) && avatarFile != null && !apiBase.isBlank()
+                ? apiBase + "/profile/avatar?uuid=" + URLEncoder.encode(uuid, StandardCharsets.UTF_8) + "&v=" + revision : "";
+        if ("custom".equals(mode) && custom.isBlank()) mode = "minecraft";
+        String minecraft = uuid.isBlank() ? "" : "https://mc-heads.net/avatar/" + urlPath(uuid) + "/128";
+        out.put("about", String.valueOf(stored.getOrDefault("about", "")));
+        out.put("avatarMode", mode);
+        out.put("avatarUrl", custom);
+        out.put("minecraftHeadUrl", minecraft);
+        out.put("defaultHeadUrl", defaultHead);
+        out.put("avatarRevision", revision);
+        out.put("avatarUploadAllowed", false);
+        return out;
+    }
+
+    /** Trusted Relay 2.2 `profile` capability target-side public profile snapshot. It never exposes private preferences, sessions, restrictions, or moderation controls. */
+    public String handleRelayedProfileRequest(String originServerId, String payloadJson) {
+        Map<String,String> body = JsonUtil.parseFlatObject(payloadJson);
+        String action = String.valueOf(body.getOrDefault("action", "profile")).trim().toLowerCase(Locale.ROOT);
+        if (!"profile".equals(action)) return "{\"ok\":false,\"error\":\"unsupported_profile_action\"}";
+        String playerUuid = RemotePlayerRef.normalizePlayerUuid(body.get("playerUuid"));
+        if (playerUuid.isBlank()) return "{\"ok\":false,\"error\":\"missing_user\"}";
+        PlayerIdentity identity = storage.findKnownPlayerByUuid(playerUuid);
+        Account account = accountByUuid(playerUuid);
+        if (identity == null && account != null) identity = new PlayerIdentity(account.uuid, account.safeUsername(), host.displayNameForAccount(account));
+        if (identity == null) return "{\"ok\":false,\"error\":\"player_not_found\"}";
+        PresencePolicy.Result presence = presenceSnapshot("", playerUuid); // remote viewers never receive the self-view Invisible exception.
+        Map<String,Object> profile = publicProfileCardForRelay(account);
+        LinkedHashMap<String,Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("playerUuid", playerUuid);
+        out.put("username", identity.username);
+        out.put("displayName", identity.outputDisplayName());
+        out.put("label", identity.label());
+        out.put("role", account == null || account.role == null ? "" : account.role.name());
+        out.put("gameOnline", presence.gameOnline());
+        out.put("webOnline", presence.webOnline());
+        out.put("online", presence.online());
+        out.put("presenceSource", presence.source());
+        out.put("presenceStatus", presence.status());
+        out.put("profileAbout", String.valueOf(profile.getOrDefault("about", "")));
+        out.put("profileAvatarMode", String.valueOf(profile.getOrDefault("avatarMode", "minecraft")));
+        out.put("profileAvatarUrl", String.valueOf(profile.getOrDefault("avatarUrl", "")));
+        out.put("profileMinecraftHeadUrl", String.valueOf(profile.getOrDefault("minecraftHeadUrl", "")));
+        out.put("profileDefaultHeadUrl", String.valueOf(profile.getOrDefault("defaultHeadUrl", "")));
+        out.put("profileAvatarRevision", String.valueOf(profile.getOrDefault("avatarRevision", "0")));
+        return JsonUtil.obj(out);
+    }
+
+    private Map<String,String> requestRemoteProfileSnapshot(RemotePlayerRef remote) {
+        if (remote == null) return Map.of();
+        ServerRelay relay = host.serverRelay();
+        if (relay == null || !relay.isEnabled() || !relay.canRouteProfile(remote.serverId)) return Map.of();
+        ServerRelay.ProfileRelayResponse response;
+        try {
+            ConfigValues c = host.configValues();
+            long timeout = Math.max(2, (c == null ? 4 : c.serverRelayRequestTimeoutSeconds) + 2L);
+            response = relay.requestUserProfile(remote.serverId, JsonUtil.obj(Map.of("action", "profile", "playerUuid", remote.playerUuid)))
+                    .get(timeout, TimeUnit.SECONDS);
+        } catch (Exception ignored) { return Map.of(); }
+        if (response == null || response.status < 200 || response.status >= 300 || response.body == null || response.body.isBlank()) return Map.of();
+        Map<String,String> parsed = JsonUtil.parseFlatObject(response.body);
+        return Boolean.parseBoolean(String.valueOf(parsed.getOrDefault("ok", "false"))) ? parsed : Map.of();
+    }
+
+    private static long parseRelayLong(String value, long fallback) {
+        try { return Long.parseLong(String.valueOf(value == null ? "" : value).trim()); } catch (Exception ignored) { return fallback; }
+    }
+
+    // 인증된 Web SSE 연결을 UUID 기준으로 중복 제거하되, Offline 표시를 선택한 계정은 본인 조회에서도 온라인 인원에서 제외한다.
+    // Counts unique authenticated Web SSE users while excluding accounts that chose Offline visibility, including the requesting account itself.
+    private void handlePresenceSummary(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        SessionContext ctx = sessionFromQuery(ex);
+        if (ctx == null || ctx.account == null || ctx.account.uuid == null || ctx.account.uuid.isBlank()) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}");
+            return;
+        }
+        Set<String> users = new LinkedHashSet<>();
+        String selfUuid = normalizePresenceUuid(ctx.account.uuid);
+        if (!selfUuid.isBlank() && presenceVisibleInLists(selfUuid)) users.add(selfUuid);
+        for (SseConnection client : sseHub.snapshot()) {
+            if (client == null || !client.isOpen()) continue;
+            String uuid = normalizePresenceUuid(client.accountUuid());
+            if (!uuid.isBlank() && presenceVisibleInLists(uuid)) users.add(uuid);
+        }
+        sendJson(ex, 200, "{\"ok\":true,\"loggedInCount\":" + users.size() + "}");
+    }
+
+    // viewer와 target UUID를 분리해 PresencePolicy를 적용한 결과만 반환한다. Invisible target의 실제 Game/Web 값이 다른 계정에게 JSON으로 새지 않도록 raw 상태를 직접 직렬화하지 않는다.
+    // Separates viewer and target UUIDs and returns only PresencePolicy output. Raw Game/Web state is never serialized directly, preventing an Invisible target’s true state from leaking to another account.
+    private void handlePresence(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        SessionContext ctx = sessionFromQuery(ex);
+        if (ctx == null || ctx.account == null || ctx.account.uuid == null || ctx.account.uuid.isBlank()) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}");
+            return;
+        }
+        Map<String,String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
+        String targetUuid = stripControl(q.get("uuid"), 160).trim();
+        if (targetUuid.isBlank()) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"missing_user\"}"); return; }
+        PlayerIdentity identity = storage.findKnownPlayerByUuid(targetUuid);
+        String viewerUuid = normalizePresenceUuid(ctx.account.uuid);
+        if (identity == null && viewerUuid.equals(normalizePresenceUuid(targetUuid))) {
+            identity = new PlayerIdentity(ctx.account.uuid, ctx.account.safeUsername(), host.displayNameForAccount(ctx.account));
+        }
+        if (identity == null) { sendJson(ex, 404, "{\"ok\":false,\"error\":\"player_not_found\"}"); return; }
+        boolean selfView = viewerUuid.equals(normalizePresenceUuid(identity.uuid));
+        Map<String,Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("uuid", identity.uuid);
+        out.put("username", identity.username);
+        out.put("displayName", identity.outputDisplayName());
+        out.put("label", identity.label());
+        RemotePlayerRef remote = RemotePlayerRef.parse(identity.uuid);
+        Map<String,String> remoteProfile = remote == null ? Map.of() : requestRemoteProfileSnapshot(remote);
+        if (remote != null) {
+            out.put("remote", true);
+            out.put("serverId", remote.serverId);
+            out.put("serverName", identity.remoteServerName());
+            out.put("playerUuid", remote.playerUuid);
+            if (!remoteProfile.isEmpty()) {
+                String username = stripControl(remoteProfile.get("username"), 64).trim();
+                String displayName = stripControl(remoteProfile.get("displayName"), 128).trim();
+                String label = stripControl(remoteProfile.get("label"), 192).trim();
+                if (!username.isBlank()) out.put("username", username);
+                if (!displayName.isBlank()) out.put("displayName", displayName);
+                if (!label.isBlank()) out.put("label", label);
+                LinkedHashMap<String,Object> presence = new LinkedHashMap<>();
+                presence.put("online", Boolean.parseBoolean(String.valueOf(remoteProfile.getOrDefault("online", "false"))));
+                presence.put("source", String.valueOf(remoteProfile.getOrDefault("presenceSource", "offline")));
+                presence.put("status", String.valueOf(remoteProfile.getOrDefault("presenceStatus", "offline")));
+                presence.put("gameOnline", Boolean.parseBoolean(String.valueOf(remoteProfile.getOrDefault("gameOnline", "false"))));
+                presence.put("webOnline", Boolean.parseBoolean(String.valueOf(remoteProfile.getOrDefault("webOnline", "false"))));
+                out.put("presence", presence);
+                LinkedHashMap<String,Object> profile = new LinkedHashMap<>();
+                profile.put("about", String.valueOf(remoteProfile.getOrDefault("profileAbout", "")));
+                profile.put("avatarMode", String.valueOf(remoteProfile.getOrDefault("profileAvatarMode", "minecraft")));
+                profile.put("avatarUrl", String.valueOf(remoteProfile.getOrDefault("profileAvatarUrl", "")));
+                profile.put("minecraftHeadUrl", String.valueOf(remoteProfile.getOrDefault("profileMinecraftHeadUrl", "")));
+                profile.put("defaultHeadUrl", String.valueOf(remoteProfile.getOrDefault("profileDefaultHeadUrl", "")));
+                profile.put("avatarRevision", parseRelayLong(remoteProfile.get("profileAvatarRevision"), 0L));
+                profile.put("avatarUploadAllowed", false);
+                out.put("profile", profile);
+                out.put("role", String.valueOf(remoteProfile.getOrDefault("role", "")));
+            } else {
+                out.put("presence", presenceSnapshot(viewerUuid, identity.uuid).toMap(false));
+                out.put("profile", publicProfileCard(ex, null));
+                out.put("role", "");
+            }
+        } else {
+            out.put("remote", false);
+            out.put("serverName", "");
+            out.put("playerUuid", identity.uuid);
+            out.put("presence", presenceSnapshot(viewerUuid, identity.uuid).toMap(selfView));
+        }
+        Account profileAccount = remote == null ? accountByUuid(identity.uuid) : null;
+        out.put("blockedByMe", userPreferences.isUserBlocked(ctx.account, identity.uuid));
+        if (remote == null) out.put("role", profileAccount == null || profileAccount.role == null ? "" : profileAccount.role.name());
+        boolean viewerAdmin = ctx.account.role.atLeast(Role.ADMIN);
+        boolean viewerCanRestrict = profileAccount != null && moderatorCapabilityAllowed(ctx, "user-restrictions")
+                && profileAccount.role != Role.ADMIN
+                && (viewerAdmin || !profileAccount.role.atLeast(Role.MODERATOR));
+        boolean viewerCanDeleteAvatar = profileAccount != null && moderatorCapabilityAllowed(ctx, "profile-avatar-delete")
+                && (viewerAdmin || !profileAccount.role.atLeast(Role.MODERATOR));
+        out.put("viewerCanChangeRole", profileAccount != null && viewerAdmin && !selfView);
+        out.put("viewerCanRestrict", viewerCanRestrict);
+        out.put("viewerCanDeleteAvatar", viewerCanDeleteAvatar);
+        out.put("restrictions", profileAccount == null ? Map.of("chatBanned", false, "uploadBanned", false) : userControls.restrictions(profileAccount.uuid));
+        if (remote == null) out.put("profile", publicProfileCard(ex, profileAccount));
+        sendJson(ex, 200, JsonUtil.obj(out));
+    }
+
     private void handleEmojiFavorites(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
         SessionContext ctx = requireUserSession(ex);
@@ -831,6 +1248,7 @@ public class WebChatServer {
             storage.updateLastDisplayName(playerUuid, realPlayerName, player);
         }
         ConfigValues config = host.configValues();
+        if (playerUuid != null && !playerUuid.isBlank() && userControls.chatBanned(playerUuid)) return null;
         String rawText = stripChatMessage(message, config);
         ContentFilterResult filtered = filterContent(rawText, ContentFilterEngine.Scope.PUBLIC);
         if (filtered.blocked) return null;
@@ -861,6 +1279,7 @@ public class WebChatServer {
                                             String replyToId, String message, String gameDisplayMessage) {
         if (displayName == null || displayName.isBlank()) return null;
         ConfigValues config = host.configValues();
+        if (playerUuid != null && !playerUuid.isBlank() && userControls.chatBanned(playerUuid)) return null;
         String rawText = stripChatMessage(message, config);
         ContentFilterResult filtered = filterContent(rawText, ContentFilterEngine.Scope.PUBLIC);
         if (filtered.blocked) return null;
@@ -919,18 +1338,30 @@ public class WebChatServer {
     }
 
     public void publishSystemEvent(String sender, String message, String i18nKey, String i18nArgsJson) {
+        publishSystemEvent(sender, message, i18nKey, i18nArgsJson, true);
+    }
+
+    public void publishSystemEvent(String sender, String message, String i18nKey, String i18nArgsJson, boolean relayAnnouncement) {
+        publishSystemMessage("system", sender, message, i18nKey, i18nArgsJson, relayAnnouncement);
+    }
+
+    private void publishChatGameEvent(String sender, String message, String i18nKey, String i18nArgsJson, boolean relayAnnouncement) {
+        publishSystemMessage("event", sender, message, i18nKey, i18nArgsJson, relayAnnouncement);
+    }
+
+    private void publishSystemMessage(String source, String sender, String message, String i18nKey, String i18nArgsJson, boolean relayAnnouncement) {
         String safeSender = stripControl(sender, 64);
         int eventMax = host.configValues().maxUrlMessageLength > 0 ? Math.max(256, host.configValues().maxUrlMessageLength) : 0;
         String text = stripControl(message, eventMax);
         if (safeSender.isBlank()) safeSender = "Server";
         if (text.isBlank()) return;
-        ChatMessage msg = new ChatMessage(System.currentTimeMillis(), "event", safeSender, "SYSTEM", text);
+        ChatMessage msg = new ChatMessage(System.currentTimeMillis(), source, safeSender, "SYSTEM", text);
         msg.withI18n(i18nKey, i18nArgsJson);
         prepareServerRelay(msg);
         addHistory(msg);
         broadcast(msg);
         dispatchWebPushChat(msg);
-        publishServerRelay(msg);
+        if (relayAnnouncement) publishServerRelay(msg);
     }
 
     private void handleRelayHandshake(HttpExchange ex) throws IOException {
@@ -954,7 +1385,7 @@ public class WebChatServer {
     private void handleRelayLegacyV1(HttpExchange ex) throws IOException {
         ServerRelay relay = host.serverRelay();
         if (relay == null) {
-            sendJson(ex, 426, "{\"ok\":false,\"error\":\"relay_protocol_upgrade_required\",\"protocol\":2,\"version\":\"5.2.0\"}");
+            sendJson(ex, 426, "{\"ok\":false,\"error\":\"relay_protocol_upgrade_required\",\"protocol\":2,\"version\":\"5.3.0\"}");
             return;
         }
         relay.handleLegacyV1(ex);
@@ -963,6 +1394,7 @@ public class WebChatServer {
     private void handleConfig(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
         ConfigValues c = host.configValues();
+        SessionContext configContext = sessionFromRequest(ex);
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("ok", true);
         m.put("serverVersion", host.version());
@@ -1055,13 +1487,16 @@ public class WebChatServer {
         m.put("directMessageMaxMessageLength", c.directMessageMaxMessageLength);
         m.put("directMessageRetentionDays", c.directMessageRetentionDays);
         m.put("directMessageWebUnreadBadge", c.directMessageWebUnreadBadge);
-        m.put("directMessageConfirmHide", c.directMessageConfirmHide);
+        m.put("directMessageConfirmDelete", c.directMessageConfirmDelete);
+        m.put("selfMessageDeleteEnabled", c.selfMessageDeleteEnabled);
+        m.put("selfMessageDeleteWindowMinutes", c.selfMessageDeleteWindowMinutes);
+        m.put("moderatorCapabilities", effectiveModeratorCapabilities(configContext));
         m.put("groupChatEnabled", c.groupChatEnabled);
         m.put("groupChatAllowWebSend", c.groupChatAllowWebSend);
         m.put("groupChatRetentionDays", c.groupChatRetentionDays);
         m.put("groupChatMaxMessageLength", c.groupChatMaxMessageLength);
         m.put("groupChatConfirmLeave", c.groupChatConfirmLeave);
-        m.put("groupChatConfirmHide", c.groupChatConfirmHide);
+        m.put("groupChatConfirmDelete", c.groupChatConfirmDelete);
         m.put("groupChatAllowPublicRooms", c.groupChatAllowPublicRooms);
         m.put("groupChatAllowRoomPasswords", c.groupChatAllowRoomPasswords);
         m.put("language", c.uiLanguage);
@@ -1346,11 +1781,11 @@ public class WebChatServer {
         List<String> items = new ArrayList<>();
         if (config.pinnedEnabled && visible) {
             for (PinnedMessage pin : storage.listPinnedMessages()) {
-                items.add(pin.toJson());
+                items.add(publicPinnedJson(pin));
             }
         }
 
-        boolean canPin = config.pinnedEnabled && config.allowWebAdminPanel && ctx != null && ctx.account.role.atLeast(Role.MODERATOR);
+        boolean canPin = config.pinnedEnabled && config.allowWebAdminPanel && ctx != null && ctx.account.role.atLeast(Role.MODERATOR) && moderatorCapabilityAllowed(ctx, "pin-manage");
 
         sendJson(ex, 200, "{\"ok\":true,\"enabled\":" + config.pinnedEnabled
                 + ",\"visible\":" + visible
@@ -1381,6 +1816,8 @@ public class WebChatServer {
         sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "ticket", ticket, "expiresAt", expiresAt)));
     }
 
+    // SSE 연결을 인증된 stream ticket으로 열고 장기 연결 client를 등록한다. ping과 disconnect 정리는 connection limit 누수 방지에 중요하며, ticket은 짧은 TTL·1회성으로 취급한다.
+    // Opens SSE using an authenticated stream ticket and registers the long-lived client. Ping/disconnect cleanup prevents connection-limit leaks, and tickets are short-lived single-use credentials.
     private void handleStream(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
         String ip = remoteIp(ex);
@@ -1429,6 +1866,7 @@ public class WebChatServer {
         ex.sendResponseHeaders(200, 0);
 
         SseConnection client = sseHub.add(ex.getResponseBody(), ip, streamAccountUuid, streamToken, streamPrivateChatSuperAdmin);
+        if (!streamAccountUuid.isBlank()) broadcastPresenceUpdate(streamAccountUuid);
         try {
             client.sendRaw("event: ready\ndata: {\"ok\":true}\n\n");
             if (!streamAccountUuid.isBlank()) sendNotificationViewState(client, streamAccountUuid);
@@ -1454,6 +1892,7 @@ public class WebChatServer {
         } finally {
             sseHub.remove(client);
             client.close();
+            if (!streamAccountUuid.isBlank()) broadcastPresenceUpdate(streamAccountUuid);
             ex.close();
         }
     }
@@ -2561,6 +3000,114 @@ public class WebChatServer {
         return hasFirst && hasLast ? out : new ArrayList<>();
     }
 
+    private String normalizePresenceUuid(String uuid) {
+        return String.valueOf(uuid == null ? "" : uuid).trim().toLowerCase(Locale.ROOT);
+    }
+
+    private Account accountByUuid(String uuid) {
+        String target = normalizePresenceUuid(uuid);
+        if (target.isBlank() || RemotePlayerRef.isRemote(target)) return null;
+        for (Account account : storage.listAccounts()) {
+            if (account != null && target.equals(normalizePresenceUuid(account.uuid))) return account;
+        }
+        return null;
+    }
+
+    private String presenceStatus(String uuid) {
+        String target = normalizePresenceUuid(uuid);
+        if (target.isBlank()) return "online";
+        String cached = presenceStatusCache.get(target);
+        if (cached != null && !cached.isBlank()) return cached;
+        Account account = accountByUuid(target);
+        Map<String,Object> prefs = account == null ? Map.of() : userPreferences.presencePreferences(account);
+        String status = String.valueOf(prefs.getOrDefault("status", Boolean.TRUE.equals(prefs.get("invisible")) ? "offline" : "online"));
+        if (!("online".equals(status) || "busy".equals(status) || "offline".equals(status))) status = "online";
+        presenceStatusCache.put(target, status);
+        presenceInvisibleCache.put(target, "offline".equals(status));
+        return status;
+    }
+
+    private boolean presenceInvisible(String uuid) {
+        return "offline".equals(presenceStatus(uuid));
+    }
+
+    private boolean presenceGameOnline(String uuid) {
+        String target = normalizePresenceUuid(uuid);
+        if (target.isBlank() || RemotePlayerRef.isRemote(target)) return false;
+        try { return platform.onlinePlayer(UUID.fromString(target)).isPresent(); }
+        catch (IllegalArgumentException ignored) { return false; }
+    }
+
+    private boolean presenceWebOnline(String uuid) {
+        String target = normalizePresenceUuid(uuid);
+        if (target.isBlank() || RemotePlayerRef.isRemote(target)) return false;
+        for (SseConnection client : sseHub.snapshot()) {
+            if (client != null && client.isOpen() && target.equals(normalizePresenceUuid(client.accountUuid()))) return true;
+        }
+        return false;
+    }
+
+    // Game 접속과 Web heartbeat를 모은 뒤 Invisible 정책을 viewer 기준으로 적용하는 단일 진입점이다. 목록/프로필/count가 서로 다른 privacy 규칙을 쓰지 않도록 모두 이 함수를 거친다.
+    // Single presence entry point combining Game connectivity and Web heartbeat before applying viewer-specific Invisible policy. Lists, profiles, and counts all use this function so privacy rules cannot drift.
+    private PresencePolicy.Result presenceSnapshot(String viewerUuid, String targetUuid) {
+        String viewer = normalizePresenceUuid(viewerUuid);
+        String target = normalizePresenceUuid(targetUuid);
+        boolean selfView = !viewer.isBlank() && viewer.equals(target);
+        String manualStatus = presenceStatus(target);
+        boolean game = presenceGameOnline(target);
+        boolean web = presenceWebOnline(target);
+        return PresencePolicy.resolve(game, web, manualStatus, selfView);
+    }
+
+    // 온라인 인원/목록은 self-view 예외를 적용하지 않는다. Offline 표시를 선택한 사용자는 자기 화면에서도 목록과 숫자에서 숨겨진다.
+    // Online lists/counts deliberately do not use the self-view exception: an account choosing Offline is hidden from visible lists/counts even on its own screen.
+    private PresencePolicy.Result presenceListSnapshot(String targetUuid) {
+        String target = normalizePresenceUuid(targetUuid);
+        return PresencePolicy.resolve(presenceGameOnline(target), presenceWebOnline(target), presenceStatus(target), false);
+    }
+
+    private boolean presenceVisibleInLists(String targetUuid) {
+        return presenceListSnapshot(targetUuid).online();
+    }
+
+    private String withPresenceJson(String json, String viewerUuid, String targetUuid) {
+        String base = String.valueOf(json == null ? "{}" : json).trim();
+        if (!base.endsWith("}")) return base;
+        boolean selfView = normalizePresenceUuid(viewerUuid).equals(normalizePresenceUuid(targetUuid));
+        String presence = JsonUtil.obj(presenceSnapshot(viewerUuid, targetUuid).toMap(selfView));
+        if (base.length() <= 2) return "{\"presence\":" + presence + "}";
+        return base.substring(0, base.length() - 1) + ",\"presence\":" + presence + "}";
+    }
+
+    private int visibleOnlineMemberCount(String viewerUuid, String roomId) {
+        int count = 0;
+        if (host.groupChats() == null) return 0;
+        for (String memberUuid : host.groupChats().memberUuids(roomId)) {
+            if (presenceListSnapshot(memberUuid).online()) count++;
+        }
+        return count;
+    }
+
+    private void broadcastPresenceUpdate(String uuid) {
+        String target = normalizePresenceUuid(uuid);
+        if (target.isBlank()) return;
+        boolean invisible = presenceInvisible(target);
+        for (SseConnection client : sseHub.snapshot()) {
+            if (client == null) continue;
+            String viewer = normalizePresenceUuid(client.accountUuid());
+            if (viewer.isBlank()) continue;
+            boolean selfView = viewer.equals(target);
+            // Do not reveal which invisible account changed its Game/Web state to
+            // another signed-in user. Other viewers receive only a generic
+            // refresh signal so stale Online UI is removed without exposing the
+            // hidden account UUID as presence metadata.
+            String visibleUuid = invisible && !selfView ? "" : target;
+            String data = "event: presence-update\ndata: {\"uuid\":" + JsonUtil.quote(visibleUuid) + "}\n\n";
+            try { client.sendRaw(data); }
+            catch (IOException ex) { sseHub.remove(client); client.close(); }
+        }
+    }
+
     private void handleDmThreads(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
         if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
@@ -2581,7 +3128,7 @@ public class WebChatServer {
         int limit = boundedInt(q.get("limit"), 200, 1, 0);
         List<String> items = new ArrayList<>();
         for (DirectMessageThread thread : host.directMessages().listThreads(ctx.account.uuid, limit)) {
-            items.add(thread.toJson());
+            items.add(withPresenceJson(thread.toJson(), ctx.account.uuid, thread.otherUuid));
         }
         boolean privateChatSuperAdmin = isPrivateChatSuperAdmin(ctx);
         boolean privateChatContentAccess = privateChatSuperAdmin && config.directMessageAdminAuditEnabled;
@@ -2646,6 +3193,51 @@ public class WebChatServer {
         sendJson(ex, 200, "{\"ok\":true,\"unread\":" + unread + ",\"messages\":[" + String.join(",", items) + "]}");
     }
 
+
+    private void handleDmSearch(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        ConfigValues config = host.configValues();
+        if (config == null || !config.searchEnabled || !config.directMessageEnabled
+                || host.directMessages() == null || !host.directMessages().available()) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"search_disabled\"}");
+            return;
+        }
+        SessionContext ctx = sessionFromQuery(ex);
+        if (!validDmUser(ctx)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}");
+            return;
+        }
+        Map<String, String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
+        String threadId = stripControl(q.get("threadId"), 160).trim();
+        if (threadId.isBlank()) {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"missing_thread\"}");
+            return;
+        }
+        String query = stripControl(q.get("q"), 120).trim();
+        String senderFilter = stripControl(q.get("sender"), 64).trim();
+        int limit = boundedInt(q.get("limit"), config.searchResultLimit, 1, config.searchResultLimit);
+        long from = searchTimeMillis(q.get("from"), Long.MIN_VALUE);
+        long to = searchTimeMillis(q.get("to"), Long.MAX_VALUE);
+        if (from != Long.MIN_VALUE && to != Long.MAX_VALUE && from > to) {
+            long swap = from; from = to; to = swap;
+        }
+        boolean hasFilter = from != Long.MIN_VALUE || to != Long.MAX_VALUE || !senderFilter.isBlank();
+        if (query.isBlank() && !hasFilter) {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"missing_query_or_filter\"}");
+            return;
+        }
+        List<String> items = new ArrayList<>();
+        for (DirectMessageMessage message : host.directMessages().searchMessages(
+                ctx.account.uuid, threadId, query, from, to, senderFilter, limit)) {
+            items.add(directMessageJson(message, ctx.account.uuid));
+        }
+        sendJson(ex, 200, "{\"ok\":true,\"messages\":[" + String.join(",", items) + "]}");
+    }
+
     private void handleAdminDmMessages(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
         if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
@@ -2684,6 +3276,99 @@ public class WebChatServer {
         sendJson(ex, 200, "{\"ok\":true,\"audit\":true,\"messages\":[" + String.join(",", items) + "]}");
     }
 
+    // 웹 composer의 @mention 자동완성 후보를 scope별로 제한해 반환한다. 실제 메시지에는 UUID를 노출하지 않고 안정적인 실제 username을 mentionText로 우선 제공한다.
+    // Returns scope-limited @mention autocomplete candidates for web composers. UUIDs are not inserted into messages; a stable real username is preferred as mentionText.
+    private void handleMentionCandidates(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        SessionContext ctx = sessionFromQuery(ex);
+        if (ctx == null || ctx.account == null || ctx.account.uuid == null || ctx.account.uuid.isBlank()) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}");
+            return;
+        }
+        Map<String,String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
+        String scope = stripControl(q.get("scope"), 16).trim().toLowerCase(Locale.ROOT);
+        if (!"dm".equals(scope) && !"group".equals(scope)) scope = "public";
+        String query = stripMinecraftFormatting(stripControl(q.get("q"), 80)).replaceAll("\\s+", " ").trim();
+        int limit = boundedInt(q.get("limit"), 12, 1, 20);
+        String viewerUuid = normalizePresenceUuid(ctx.account.uuid);
+        List<PlayerIdentity> candidates = new ArrayList<>();
+
+        if ("group".equals(scope)) {
+            ConfigValues config = host.configValues();
+            if (config == null || !config.groupChatEnabled || host.groupChats() == null || !host.groupChats().available()) {
+                sendJson(ex, 200, "{\"ok\":true,\"scope\":\"group\",\"players\":[]}");
+                return;
+            }
+            String roomId = stripControl(q.get("roomId"), 120).trim();
+            for (Map<String,Object> member : host.groupChats().listMembers(viewerUuid, roomId)) {
+                String uuid = String.valueOf(member.getOrDefault("uuid", ""));
+                String username = String.valueOf(member.getOrDefault("username", ""));
+                String displayName = String.valueOf(member.getOrDefault("displayName", ""));
+                candidates.add(new PlayerIdentity(uuid, username, displayName));
+            }
+        } else if ("dm".equals(scope)) {
+            String targetUuid = stripControl(q.get("targetUuid"), 256).trim();
+            if (!targetUuid.isBlank()) {
+                PlayerIdentity target = storage.findKnownPlayerByUuid(targetUuid);
+                if (target != null) candidates.add(target);
+            }
+        } else {
+            // Public autocomplete uses known local/relayed identities. Include the current account even if it has not yet appeared in known-player history.
+            candidates.add(new PlayerIdentity(ctx.account.uuid, ctx.account.safeUsername(), host.displayNameForAccount(ctx.account)));
+            candidates.addAll(storage.listKnownPlayers(query, Math.max(limit * 4, 24)));
+        }
+
+        List<String> items = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        String normalizedQuery = query.toLowerCase(Locale.ROOT);
+        for (PlayerIdentity player : candidates) {
+            if (player == null) continue;
+            String uuid = normalizePresenceUuid(player.uuid);
+            if (uuid.isBlank() || !seen.add(uuid)) continue;
+            // Manual Offline is a privacy mode: do not expose that account in another user's autocomplete list.
+            // The user may still see and mention their own identity while editing their own message.
+            if (!uuid.equals(viewerUuid) && "offline".equals(presenceStatus(uuid))) continue;
+            if (!uuid.equals(viewerUuid) && userPreferences.isUserBlocked(ctx.account, player.uuid)) continue;
+            String username = stripMinecraftFormatting(stripControl(player.username, 64)).replaceAll("\\s+", " ").trim();
+            String displayName = stripMinecraftFormatting(stripControl(player.outputDisplayName(), 128)).replaceAll("\\s+", " ").trim();
+            String label = stripMinecraftFormatting(stripControl(player.label(), 160)).replaceAll("\\s+", " ").trim();
+            if (!normalizedQuery.isBlank()) {
+                String haystack = (username + " " + displayName + " " + label).toLowerCase(Locale.ROOT);
+                if (!haystack.contains(normalizedQuery)) continue;
+            }
+            String mentionText = username.isBlank() ? displayName : username;
+            mentionText = mentionText.replace("@", "").replaceAll("[\\r\\n\\t]", " ").trim();
+            if (mentionText.isBlank()) continue;
+            Map<String,Object> out = new LinkedHashMap<>();
+            out.put("uuid", player.uuid);
+            out.put("username", username);
+            out.put("displayName", player.outputDisplayName());
+            out.put("label", player.label());
+            out.put("mentionText", mentionText);
+            RemotePlayerRef remote = RemotePlayerRef.parse(player.uuid);
+            if (remote != null) {
+                out.put("remote", true);
+                out.put("serverId", remote.serverId);
+                out.put("serverName", player.remoteServerName());
+                out.put("playerUuid", remote.playerUuid);
+            } else {
+                out.put("remote", false);
+                out.put("serverId", "");
+                out.put("serverName", "");
+                out.put("playerUuid", player.uuid);
+            }
+            boolean selfView = uuid.equals(viewerUuid);
+            out.put("presence", presenceSnapshot(viewerUuid, player.uuid).toMap(selfView));
+            items.add(JsonUtil.obj(out));
+            if (items.size() >= limit) break;
+        }
+        sendJson(ex, 200, "{\"ok\":true,\"scope\":" + JsonUtil.quote(scope) + ",\"players\":[" + String.join(",", items) + "]}");
+    }
+
     private void handleDmPlayers(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
         if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
@@ -2707,7 +3392,7 @@ public class WebChatServer {
         String self = ctx.account.uuid == null ? "" : ctx.account.uuid.trim().toLowerCase(Locale.ROOT);
         for (PlayerIdentity player : storage.listKnownPlayers(query, limit + 1)) {
             if (player.uuid.equalsIgnoreCase(self)) continue;
-            items.add(player.toJson());
+            items.add(withPresenceJson(player.toJson(), ctx.account.uuid, player.uuid));
             if (items.size() >= limit) break;
         }
         sendJson(ex, 200, "{\"ok\":true,\"enabled\":true,\"players\":[" + String.join(",", items) + "]}");
@@ -2732,6 +3417,10 @@ public class WebChatServer {
         SessionContext ctx = sessionForRequest(ex, body.get("token"));
         if (!validDmUser(ctx)) {
             sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}");
+            return;
+        }
+        if (userControls.chatBanned(ctx.account.uuid)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"chat_banned\"}");
             return;
         }
 
@@ -2774,6 +3463,17 @@ public class WebChatServer {
         if (target == null || target.uuid == null || target.uuid.isBlank()) {
             sendJson(ex, 404, "{\"ok\":false,\"error\":\"player_not_found\"}");
             return;
+        }
+        if (userPreferences.isUserBlocked(ctx.account, target.uuid)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"user_blocked\"}");
+            return;
+        }
+        if (remote == null) {
+            Account targetAccount = accountByUuid(target.uuid);
+            if (targetAccount != null && userPreferences.isUserBlocked(targetAccount, ctx.account.uuid)) {
+                sendJson(ex, 403, "{\"ok\":false,\"error\":\"dm_blocked\"}");
+                return;
+            }
         }
 
         String rawDmMessage = stripDirectMessage(body.get("message"), config.directMessageMaxMessageLength);
@@ -3047,7 +3747,9 @@ public class WebChatServer {
         sendJson(ex, 200, "{\"ok\":" + ok + ",\"unread\":" + host.directMessages().unreadCount(ctx.account.uuid) + "}");
     }
 
-    private void handleDmHideMessage(HttpExchange ex) throws IOException {
+    // DM 삭제 요청의 서버 권한 경계다. 저장소 deletePlan으로 발신자 소유권과 remote/local 위치를 확인하고, remote면 peer acknowledgement 후에만 local tombstone을 적용한다.
+    // Server authorization boundary for DM deletion. deletePlan verifies sender ownership and remote/local placement; remote messages receive a local tombstone only after peer acknowledgement.
+    private void handleDmDeleteMessage(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
         if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
@@ -3069,12 +3771,41 @@ public class WebChatServer {
             sendJson(ex, 400, "{\"ok\":false,\"error\":\"missing_message\"}");
             return;
         }
-        String threadId = host.directMessages().threadIdForMessage(ctx.account.uuid, messageId);
-        boolean ok = host.directMessages().hideMessage(ctx.account.uuid, messageId);
-        if (ok && !threadId.isBlank()) {
-            publishDirectMessageUpdate(ctx.account.uuid, ctx.account.uuid, threadId);
+        DirectMessageStore.DeletePlan plan = host.directMessages().deletePlan(ctx.account.uuid, messageId);
+        if (!plan.ok) {
+            sendJson(ex, 404, "{\"ok\":false,\"error\":" + JsonUtil.quote(plan.error == null || plan.error.isBlank() ? "message_not_found" : plan.error) + "}");
+            return;
         }
-        sendJson(ex, 200, "{\"ok\":" + ok + ",\"unread\":" + host.directMessages().unreadCount(ctx.account.uuid) + "}");
+        boolean moderatorDelete = config.moderationEnabled && moderatorCapabilityAllowed(ctx, "message-delete");
+        if (!plan.owner && !moderatorDelete) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"not_message_owner\"}");
+            return;
+        }
+        if (!moderatorDelete && (!config.selfMessageDeleteEnabled || !selfMessageDeleteWindowOpen(plan.createdAt, config))) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"self_delete_window_expired\"}");
+            return;
+        }
+        if (!plan.targetServerId.isBlank()) {
+            ServerRelay relay = host.serverRelay();
+            if (relay == null || plan.relayId.isBlank() || !relay.canRouteDirectMessage(plan.targetServerId)) {
+                sendJson(ex, 503, "{\"ok\":false,\"error\":\"remote_server_unavailable\"}");
+                return;
+            }
+            boolean remoteDeleted = false;
+            try {
+                int timeout = Math.max(2, config.serverRelayRequestTimeoutSeconds + 4);
+                remoteDeleted = relay.publishDirectMessageDelete(plan.targetServerId, plan.senderUuid, plan.relayId)
+                        .get(timeout, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception ignored) {}
+            if (!remoteDeleted) {
+                sendJson(ex, 502, "{\"ok\":false,\"error\":\"remote_delete_failed\"}");
+                return;
+            }
+        }
+        DirectMessageStore.DeleteApplyResult deleted = host.directMessages().deleteMessage(ctx.account.uuid, messageId, moderatorDelete);
+        boolean ok = deleted != null && deleted.ok;
+        if (ok) publishDirectMessageUpdate(ctx.account.uuid, plan.otherUuid, plan.threadId);
+        sendJson(ex, ok ? 200 : 404, "{\"ok\":" + ok + ",\"action\":\"deleted\",\"unread\":" + host.directMessages().unreadCount(ctx.account.uuid) + "}");
     }
 
 
@@ -3090,10 +3821,17 @@ public class WebChatServer {
         Map<String,String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
         int limit = boundedInt(q.get("limit"), 200, 1, 0);
         List<String> rooms = new ArrayList<>();
-        for (GroupRoom room : host.groupChats().listRooms(ctx.account.uuid, limit)) rooms.add(room.toJson());
+        for (GroupRoom room : host.groupChats().listRooms(ctx.account.uuid, limit)) {
+            room.onlineMemberCount = visibleOnlineMemberCount(ctx.account.uuid, room.id);
+            rooms.add(room.toJson());
+        }
         List<String> invites = new ArrayList<>();
         for (GroupInvite invite : host.groupChats().listInvites(ctx.account.uuid, 100)) invites.add(invite.toJson());
-        List<String> hiddenRooms = host.groupChats().listHiddenRoomsJson(ctx.account.uuid, limit);
+        List<String> hiddenRooms = new ArrayList<>();
+        for (GroupRoom room : host.groupChats().listHiddenRooms(ctx.account.uuid, limit)) {
+            room.onlineMemberCount = visibleOnlineMemberCount(ctx.account.uuid, room.id);
+            hiddenRooms.add(room.toJson());
+        }
         boolean privateChatSuperAdmin = isPrivateChatSuperAdmin(ctx);
         boolean groupChatContentAccess = privateChatSuperAdmin && config.groupChatAdminAuditEnabled;
         List<String> adminRooms = new ArrayList<>();
@@ -3136,7 +3874,7 @@ public class WebChatServer {
         String self = ctx.account.uuid == null ? "" : ctx.account.uuid.trim().toLowerCase(Locale.ROOT);
         for (PlayerIdentity player : storage.listKnownPlayers(query, limit + 1)) {
             if (player.uuid.equalsIgnoreCase(self) || RemotePlayerRef.isRemote(player.uuid)) continue;
-            items.add(player.toJson());
+            items.add(withPresenceJson(player.toJson(), ctx.account.uuid, player.uuid));
             if (items.size() >= limit) break;
         }
         sendJson(ex, 200, "{\"ok\":true,\"enabled\":true,\"players\":[" + String.join(",", items) + "]}");
@@ -3156,6 +3894,52 @@ public class WebChatServer {
         List<String> messages = new ArrayList<>();
         for (GroupMessage message : host.groupChats().listMessages(ctx.account.uuid, roomId, before, limit)) messages.add(groupMessageJson(message, ctx.account.uuid));
         sendJson(ex, 200, "{\"ok\":true,\"unread\":" + host.groupChats().unreadCount(ctx.account.uuid) + ",\"messages\":[" + String.join(",", messages) + "]}");
+    }
+
+
+    private void handleGroupSearch(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        ConfigValues config = host.configValues();
+        if (config == null || !config.searchEnabled || !config.groupChatEnabled
+                || host.groupChats() == null || !host.groupChats().available()) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"search_disabled\"}");
+            return;
+        }
+        SessionContext ctx = sessionFromQuery(ex);
+        if (!validGroupUser(ctx)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}");
+            return;
+        }
+        Map<String, String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
+        String roomId = stripControl(q.get("roomId"), 120).trim();
+        if (roomId.isBlank()) {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"missing_room\"}");
+            return;
+        }
+        String query = stripControl(q.get("q"), 120).trim();
+        String senderFilter = stripControl(q.get("sender"), 64).trim();
+        boolean includeEvents = !"false".equalsIgnoreCase(String.valueOf(q.get("includeSystem")));
+        int limit = boundedInt(q.get("limit"), config.searchResultLimit, 1, config.searchResultLimit);
+        long from = searchTimeMillis(q.get("from"), Long.MIN_VALUE);
+        long to = searchTimeMillis(q.get("to"), Long.MAX_VALUE);
+        if (from != Long.MIN_VALUE && to != Long.MAX_VALUE && from > to) {
+            long swap = from; from = to; to = swap;
+        }
+        boolean hasFilter = from != Long.MIN_VALUE || to != Long.MAX_VALUE || !senderFilter.isBlank() || !includeEvents;
+        if (query.isBlank() && !hasFilter) {
+            sendJson(ex, 400, "{\"ok\":false,\"error\":\"missing_query_or_filter\"}");
+            return;
+        }
+        List<String> items = new ArrayList<>();
+        for (GroupMessage message : host.groupChats().searchMessages(
+                ctx.account.uuid, roomId, query, from, to, senderFilter, includeEvents, limit)) {
+            items.add(groupMessageJson(message, ctx.account.uuid));
+        }
+        sendJson(ex, 200, "{\"ok\":true,\"messages\":[" + String.join(",", items) + "]}");
     }
 
     private void handleAdminGroupMessages(HttpExchange ex) throws IOException {
@@ -3205,7 +3989,10 @@ public class WebChatServer {
         SessionContext ctx = sessionForRequest(ex, body.get("token"));
         if (!validGroupUser(ctx)) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
         boolean membershipEventsEnabled = !body.containsKey("membershipEventsEnabled") || Boolean.parseBoolean(String.valueOf(body.get("membershipEventsEnabled")));
-        GroupChatStore.CreateResult result = host.groupChats().createRoom(ctx.account.uuid, body.get("name"), body.get("visibility"), body.get("password"), membershipEventsEnabled);
+        boolean pinsEnabled = !body.containsKey("pinsEnabled") || Boolean.parseBoolean(String.valueOf(body.get("pinsEnabled")));
+        boolean messageDeleteEnabled = !body.containsKey("messageDeleteEnabled") || Boolean.parseBoolean(String.valueOf(body.get("messageDeleteEnabled")));
+        boolean memberSelfDeleteEnabled = !body.containsKey("memberSelfDeleteEnabled") || Boolean.parseBoolean(String.valueOf(body.get("memberSelfDeleteEnabled")));
+        GroupChatStore.CreateResult result = host.groupChats().createRoom(ctx.account.uuid, body.get("name"), body.get("visibility"), body.get("password"), membershipEventsEnabled, pinsEnabled, messageDeleteEnabled, memberSelfDeleteEnabled);
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
         publishGroupChatUpdate(result.room == null ? "" : result.room.id);
         sendJson(ex, 200, "{\"ok\":true,\"room\":" + (result.room == null ? "null" : result.room.toJson()) + "}");
@@ -3291,6 +4078,7 @@ public class WebChatServer {
         if (config == null || !config.groupChatAllowWebSend) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"web_send_disabled\"}"); return; }
         GroupRequest req = groupRequest(ex);
         if (!req.ok) return;
+        if (userControls.chatBanned(req.ctx.account.uuid)) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"chat_banned\"}"); return; }
         String rawGroupMessage = String.valueOf(req.body.get("message") == null ? "" : req.body.get("message"));
         ContentFilterResult filtered = filterContent(rawGroupMessage, ContentFilterEngine.Scope.GROUP);
         if (filtered.blocked) {
@@ -3353,16 +4141,88 @@ public class WebChatServer {
         sendJson(ex, 200, "{\"ok\":true,\"expiresAt\":" + expiresAt + "}");
     }
 
-    private void handleGroupHideMessage(HttpExchange ex) throws IOException {
+    // 그룹 메시지 실제 삭제 endpoint다. room-local role/메시지 소유권은 GroupChatStore가 다시 확인하며, 성공 시 열린 클라이언트가 pin/message 상태를 재동기화할 수 있도록 event를 발행한다.
+    // Endpoint for real group-message deletion. GroupChatStore rechecks room-local role/message ownership, and success emits events so open clients can resynchronize message/pin state.
+    private void handleGroupDeleteMessage(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
         if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
         GroupRequest req = groupRequest(ex);
         if (!req.ok) return;
         long messageId = parseLong(req.body.get("messageId"), 0L);
-        String roomId = host.groupChats().roomIdForMessage(req.ctx.account.uuid, messageId);
-        boolean ok = host.groupChats().hideMessage(req.ctx.account.uuid, messageId);
+        ConfigValues config = host.configValues();
+        boolean moderatorDelete = config != null && config.moderationEnabled && moderatorCapabilityAllowed(req.ctx, "message-delete");
+        GroupChatStore.DeleteResult result = host.groupChats().deleteMessage(req.ctx.account.uuid, messageId, moderatorDelete,
+                config != null && config.selfMessageDeleteEnabled, config == null ? 0 : config.selfMessageDeleteWindowMinutes);
+        if (!result.ok) {
+            int status = "permission_denied".equals(result.error) || "not_member".equals(result.error)
+                    || "delete_disabled".equals(result.error) || "self_delete_window_expired".equals(result.error) ? 403 : 404;
+            sendJson(ex, status, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error == null || result.error.isBlank() ? "message_not_found" : result.error) + "}");
+            return;
+        }
+        publishGroupChatUpdate(result.roomId);
+        sendJson(ex, 200, "{\"ok\":true,\"pinRemoved\":" + result.pinRemoved + ",\"unread\":" + host.groupChats().unreadCount(req.ctx.account.uuid) + "}");
+    }
+
+    // 현재 room 멤버에게 pin snapshot 목록을 반환한다. 조회는 모든 멤버에게 허용하지만 canManage는 owner/admin 여부를 별도 계산해 mutation 권한과 분리한다.
+    // Returns pin snapshots to current room members. Reading is allowed for all members, while canManage is calculated separately for owner/admin so mutation permission stays distinct.
+    private void handleGroupPins(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        ConfigValues config = host.configValues();
+        if (config == null || !config.groupChatEnabled || host.groupChats() == null || !host.groupChats().available()) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"group_disabled\"}"); return; }
+        SessionContext ctx = sessionFromQuery(ex);
+        if (!validGroupUser(ctx)) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
+        Map<String,String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
+        String roomId = stripControl(q.get("roomId"), 120).trim();
+        GroupRoom room = host.groupChats().roomForMember(ctx.account.uuid, roomId);
+        if (room == null) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"not_member\"}"); return; }
+        boolean pinsEnabled = config.pinnedEnabled && room.pinsEnabled;
+        List<String> items = new ArrayList<>();
+        if (pinsEnabled) for (GroupPinnedMessage pin : host.groupChats().listPins(ctx.account.uuid, roomId)) items.add(pin.toJson());
+        boolean canPin = pinsEnabled && ("owner".equals(room.role) || "admin".equals(room.role));
+        sendJson(ex, 200, "{\"ok\":true,\"enabled\":" + pinsEnabled + ",\"canPin\":" + canPin + ",\"maxPins\":" + config.pinnedMaxPins + ",\"pins\":[" + String.join(",", items) + "]}");
+    }
+
+    private void handleGroupPinMessage(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        GroupRequest req = groupRequest(ex); if (!req.ok) return;
+        if (!host.configValues().pinnedEnabled) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"pinned_disabled\"}"); return; }
+        String roomId = stripControl(req.body.get("roomId"), 120).trim();
+        GroupRoom room = host.groupChats().roomForMember(req.ctx.account.uuid, roomId);
+        if (room == null || !room.pinsEnabled) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"pinned_disabled\"}"); return; }
+        long messageId = parseLong(req.body.get("messageId"), 0L);
+        GroupPinnedMessage pin = host.groupChats().pinMessage(req.ctx.account.uuid, req.ctx.account.safeUsername(), host.displayNameForAccount(req.ctx.account), roomId, messageId, host.configValues().pinnedMaxPins);
+        if (pin == null) { sendJson(ex, 409, "{\"ok\":false,\"error\":\"pin_failed_or_limit\"}"); return; }
+        publishGroupChatUpdate(roomId);
+        sendJson(ex, 200, "{\"ok\":true,\"pin\":" + pin.toJson() + "}");
+    }
+
+    private void handleGroupUnpinMessage(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        GroupRequest req = groupRequest(ex); if (!req.ok) return;
+        String roomId = stripControl(req.body.get("roomId"), 120).trim();
+        GroupRoom room = host.groupChats().roomForMember(req.ctx.account.uuid, roomId);
+        if (room == null || !host.configValues().pinnedEnabled || !room.pinsEnabled) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"pinned_disabled\"}"); return; }
+        String pinId = stripControl(req.body.get("pinId"), 160).trim();
+        boolean ok = host.groupChats().unpinMessage(req.ctx.account.uuid, roomId, pinId);
         if (ok) publishGroupChatUpdate(roomId);
-        sendJson(ex, 200, "{\"ok\":" + ok + ",\"unread\":" + host.groupChats().unreadCount(req.ctx.account.uuid) + "}");
+        sendJson(ex, ok ? 200 : 403, "{\"ok\":" + ok + (ok ? "" : ",\"error\":\"permission_denied\"") + "}");
+    }
+
+    private void handleGroupMovePin(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        GroupRequest req = groupRequest(ex); if (!req.ok) return;
+        String roomId = stripControl(req.body.get("roomId"), 120).trim();
+        GroupRoom room = host.groupChats().roomForMember(req.ctx.account.uuid, roomId);
+        if (room == null || !host.configValues().pinnedEnabled || !room.pinsEnabled) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"pinned_disabled\"}"); return; }
+        String pinId = stripControl(req.body.get("pinId"), 160).trim();
+        String direction = stripControl(req.body.get("direction"), 16).trim();
+        boolean ok = host.groupChats().movePin(req.ctx.account.uuid, roomId, pinId, direction);
+        if (ok) publishGroupChatUpdate(roomId);
+        sendJson(ex, ok ? 200 : 400, "{\"ok\":" + ok + "}");
     }
 
     private void handleGroupSettings(HttpExchange ex) throws IOException {
@@ -3373,7 +4233,13 @@ public class WebChatServer {
         boolean passwordSet = req.body.containsKey("password");
         Boolean membershipEventsEnabled = req.body.containsKey("membershipEventsEnabled")
                 ? Boolean.valueOf(Boolean.parseBoolean(String.valueOf(req.body.get("membershipEventsEnabled")))) : null;
-        GroupChatStore.ActionResult result = host.groupChats().updateSettings(req.ctx.account.uuid, req.body.get("roomId"), req.body.get("name"), req.body.get("visibility"), req.body.get("password"), passwordSet, membershipEventsEnabled);
+        Boolean pinsEnabled = req.body.containsKey("pinsEnabled")
+                ? Boolean.valueOf(Boolean.parseBoolean(String.valueOf(req.body.get("pinsEnabled")))) : null;
+        Boolean messageDeleteEnabled = req.body.containsKey("messageDeleteEnabled")
+                ? Boolean.valueOf(Boolean.parseBoolean(String.valueOf(req.body.get("messageDeleteEnabled")))) : null;
+        Boolean memberSelfDeleteEnabled = req.body.containsKey("memberSelfDeleteEnabled")
+                ? Boolean.valueOf(Boolean.parseBoolean(String.valueOf(req.body.get("memberSelfDeleteEnabled")))) : null;
+        GroupChatStore.ActionResult result = host.groupChats().updateSettings(req.ctx.account.uuid, req.body.get("roomId"), req.body.get("name"), req.body.get("visibility"), req.body.get("password"), passwordSet, membershipEventsEnabled, pinsEnabled, messageDeleteEnabled, memberSelfDeleteEnabled);
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
         publishGroupChatUpdate(result.room == null ? req.body.get("roomId") : result.room.id);
         sendJson(ex, 200, "{\"ok\":true,\"room\":" + (result.room == null ? "null" : result.room.toJson()) + "}");
@@ -3389,7 +4255,13 @@ public class WebChatServer {
         if (!validGroupUser(ctx)) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
         Map<String,String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
         String roomId = stripControl(q.get("roomId"), 120).trim();
-        List<String> members = host.groupChats().listMembersJson(ctx.account.uuid, roomId);
+        List<String> members = new ArrayList<>();
+        for (Map<String,Object> member : host.groupChats().listMembers(ctx.account.uuid, roomId)) {
+            String memberUuid = String.valueOf(member.getOrDefault("uuid", ""));
+            boolean selfView = normalizePresenceUuid(ctx.account.uuid).equals(normalizePresenceUuid(memberUuid));
+            member.put("presence", presenceSnapshot(ctx.account.uuid, memberUuid).toMap(selfView));
+            members.add(JsonUtil.obj(member));
+        }
         List<String> bans = host.groupChats().listBansJson(ctx.account.uuid, roomId);
         sendJson(ex, 200, "{\"ok\":true,\"members\":[" + String.join(",", members) + "],\"bans\":[" + String.join(",", bans) + "]}");
     }
@@ -3446,6 +4318,20 @@ public class WebChatServer {
         GroupChatStore.ActionResult result = host.groupChats().transferOwner(req.ctx.account.uuid, req.body.get("roomId"), targetUuid);
         if (!result.ok) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
         publishGroupChatUpdate(req.body.get("roomId"));
+        sendJson(ex, 200, "{\"ok\":true,\"room\":" + (result.room == null ? "null" : result.room.toJson()) + "}");
+    }
+
+    // owner가 특정 room 안에서만 member/admin 역할을 변경하는 endpoint다. 전역 Account.role을 변경하지 않으며 GroupChatStore가 요청자가 owner인지 다시 검증한다.
+    // Lets the owner change member/admin role only inside one room. It never changes global Account.role, and GroupChatStore revalidates that the requester is the room owner.
+    private void handleGroupSetRole(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        GroupRequest req = groupRequest(ex); if (!req.ok) return;
+        String targetUuid = stripControl(req.body.get("targetUuid"), 96).trim();
+        String role = stripControl(req.body.get("role"), 16).trim();
+        GroupChatStore.ActionResult result = host.groupChats().setMemberRole(req.ctx.account.uuid, req.body.get("roomId"), targetUuid, role);
+        if (!result.ok) { sendJson(ex, 403, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error) + "}"); return; }
+        publishGroupChatUpdate(req.body.get("roomId"), targetUuid);
         sendJson(ex, 200, "{\"ok\":true,\"room\":" + (result.room == null ? "null" : result.room.toJson()) + "}");
     }
 
@@ -3628,8 +4514,18 @@ public class WebChatServer {
                 "room", LegacyText.RESET + roomName + LegacyText.AQUA));
         Set<String> members = host.groupChats().memberUuids(roomId);
         if (members == null || members.isEmpty()) return;
+        String effectiveSenderUuid = message.senderUuid == null ? "" : message.senderUuid;
+        if (!effectiveSenderUuid.isBlank()) {
+            members = new LinkedHashSet<>(members);
+            members.removeIf(memberUuid -> {
+                Account member = accountByUuid(memberUuid);
+                return member != null && userPreferences.isUserBlocked(member, effectiveSenderUuid);
+            });
+            if (members.isEmpty()) return;
+        }
+        final Set<String> notificationMembers = members;
         platform.runMainThread(() -> {
-            for (String memberUuid : members) {
+            for (String memberUuid : notificationMembers) {
                 if (memberUuid == null || memberUuid.isBlank()) continue;
                 if (message.senderUuid != null && !message.senderUuid.isBlank() && memberUuid.equalsIgnoreCase(message.senderUuid)) continue;
                 try {
@@ -3798,6 +4694,10 @@ public class WebChatServer {
         }
         if (!ctx.account.role.atLeast(Role.USER)) {
             sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}");
+            return;
+        }
+        if (userControls.chatBanned(ctx.account.uuid)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"chat_banned\"}");
             return;
         }
         prewarmExternalMediaCache(message);
@@ -4113,6 +5013,10 @@ public class WebChatServer {
         }
 
         SessionContext ctx = sessionForRequest(ex, multipart.fields.get("token"));
+        if (ctx != null && userControls.uploadBanned(ctx.account.uuid)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"upload_banned\"}");
+            return;
+        }
         if (!canUpload(ctx, config)) {
             if (ctx == null && config.uploadAllowGuest && !config.guestEnabled) {
                 sendJson(ex, 403, "{\"ok\":false,\"error\":\"guest_disabled\"}");
@@ -4129,18 +5033,20 @@ public class WebChatServer {
             return;
         }
 
+        byte[] uploadData = ImageMetadataStripper.stripForUpload(file.data, ext);
+
         cleanupOldUploads();
 
         Path dir = uploadDir();
         Files.createDirectories(dir);
         Path target;
         synchronized (uploadQuotaLock) {
-            if (!ensureUploadQuotaAvailable(dir, file.data.length, config)) {
+            if (!ensureUploadQuotaAvailable(dir, uploadData.length, config)) {
                 sendJson(ex, 507, "{\"ok\":false,\"error\":\"upload_storage_quota_exceeded\"}");
                 return;
             }
             try {
-                target = writeUploadWithNamePolicy(dir, original, ext, file.data, config);
+                target = writeUploadWithNamePolicy(dir, original, ext, uploadData, config);
             } catch (IOException io) {
                 sendJson(ex, 500, "{\"ok\":false,\"error\":" + JsonUtil.quote(io.getMessage()) + "}");
                 return;
@@ -4153,7 +5059,7 @@ public class WebChatServer {
         res.put("url", url);
         res.put("filename", original);
         res.put("storedName", stored);
-        res.put("size", file.data.length);
+        res.put("size", uploadData.length);
         res.put("extension", ext);
         res.put("mediaType", uploadMediaType(ext));
         sendJson(ex, 200, JsonUtil.obj(res));
@@ -6443,11 +7349,12 @@ public class WebChatServer {
             sendJson(ex, 200, "{\"ok\":true,\"enabled\":true,\"passed\":true}");
             return;
         }
-        CaptchaManager.Captcha c = captcha.issueMath(config.captchaExpireSeconds);
+        CaptchaManager.Captcha c = captcha.issue(config.captchaMode, config.captchaExpireSeconds, config.captchaMathComplexity);
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("ok", true);
         m.put("enabled", true);
         m.put("id", c.id);
+        m.put("type", c.type);
         m.put("question", c.question);
         sendJson(ex, 200, JsonUtil.obj(m));
     }
@@ -6539,31 +7446,364 @@ public class WebChatServer {
     }
 
 
+    private void handleChatGames(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            SessionContext ctx = requireUserSession(ex);
+            if (ctx == null) return;
+            Map<String,String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
+            String targetServerId = stripControl(q.get("targetServerId"), 64).trim();
+            String gameId = stripControl(q.get("gameId"), 80).trim();
+            if (!targetServerId.isBlank() && !isLocalChatGameServer(targetServerId)) {
+                relayChatGameHttp(ex, targetServerId, JsonUtil.obj(Map.of(
+                        "action", gameId.isBlank() ? "list" : "snapshot",
+                        "gameId", gameId,
+                        "actorUuid", String.valueOf(ctx.account.uuid == null ? "" : ctx.account.uuid),
+                        "actorLabel", host.displayNameForAccount(ctx.account))));
+                return;
+            }
+            ChatGameManager.Result selected = gameId.isBlank() ? chatGames.snapshot(ctx.account.uuid) : chatGames.snapshot(gameId, ctx.account.uuid);
+            // A deleted/expired event referenced by an older chat announcement is a normal
+            // application state, not a broken HTTP resource. Return a logical game_not_found
+            // response so the client can tombstone the old Open button without surfacing 404.
+            int selectedStatus = selected.ok() || "game_not_found".equals(selected.error()) ? 200 : 400;
+            sendChatGameJson(ex, selectedStatus, selected, canManageChatGame(ctx.account.uuid), chatGames.list(ctx.account.uuid));
+            return;
+        }
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        Map<String,String> body = JsonUtil.parseFlatObject(JsonUtil.readBody(ex.getRequestBody()));
+        SessionContext ctx = sessionForRequest(ex, body.get("token"));
+        if (ctx == null || ctx.account == null || !ctx.account.role.atLeast(Role.USER)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"not_logged_in\"}");
+            return;
+        }
+        String action = String.valueOf(body.getOrDefault("action", "status")).trim().toLowerCase(Locale.ROOT);
+        String gameId = stripControl(body.get("gameId"), 80).trim();
+        String targetServerId = stripControl(body.get("targetServerId"), 64).trim();
+        if (!targetServerId.isBlank() && !isLocalChatGameServer(targetServerId)) {
+            if (!"join".equals(action) && !"status".equals(action) && !"snapshot".equals(action)) {
+                sendJson(ex, 403, "{\"ok\":false,\"error\":\"remote_game_manage_not_allowed\"}"); return;
+            }
+            relayChatGameHttp(ex, targetServerId, JsonUtil.obj(Map.of(
+                    "action", "join".equals(action) ? "join" : "snapshot",
+                    "gameId", gameId,
+                    "actorUuid", String.valueOf(ctx.account.uuid == null ? "" : ctx.account.uuid),
+                    "actorLabel", host.displayNameForAccount(ctx.account))));
+            return;
+        }
+        boolean canManage = canManageChatGame(ctx.account.uuid);
+        ChatGameManager.Result result;
+        if ("join".equals(action)) {
+            result = joinChatGame(gameId, ctx.account.uuid, host.displayNameForAccount(ctx.account));
+        } else if ("create".equals(action)) {
+            if (!canManage) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
+            boolean relayAnnouncements = !"local".equalsIgnoreCase(String.valueOf(body.getOrDefault("notificationScope", "relay")))
+                    && Boolean.parseBoolean(String.valueOf(body.getOrDefault("relayAnnouncements", "true")));
+            result = createChatGame(body.get("type"), stripControl(body.get("title"), 80), parsePositiveInt(body.get("maxParticipants")), parsePositiveInt(body.get("winnerCount")), host.displayNameForAccount(ctx.account), relayAnnouncements);
+        } else if ("draw".equals(action)) {
+            if (!canManage) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
+            result = drawChatGame(gameId);
+        } else if ("finish".equals(action)) {
+            if (!canManage) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
+            result = finishChatGame(gameId);
+        } else if ("close".equals(action)) {
+            if (!canManage) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
+            result = closeChatGame(gameId);
+        } else if ("delete".equals(action)) {
+            if (!canManage) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
+            result = deleteChatGame(gameId);
+        } else {
+            result = gameId.isBlank() ? chatGames.snapshot(ctx.account.uuid) : chatGames.snapshot(gameId, ctx.account.uuid);
+        }
+        sendChatGameJson(ex, result.ok() ? 200 : 400, result, canManage, chatGames.list(ctx.account.uuid));
+    }
+
+    private void relayChatGameHttp(HttpExchange ex, String targetServerId, String payloadJson) throws IOException {
+        ServerRelay relay = host.serverRelay();
+        if (relay == null || !relay.isEnabled() || !relay.canRouteChatGame(targetServerId)) {
+            sendJson(ex, 503, "{\"ok\":false,\"error\":\"remote_server_unavailable\"}"); return;
+        }
+        ServerRelay.ChatGameRelayResponse response;
+        try {
+            ConfigValues c = host.configValues();
+            long timeout = Math.max(2, (c == null ? 4 : c.serverRelayRequestTimeoutSeconds) + 2L);
+            response = relay.requestChatGame(targetServerId, payloadJson).get(timeout, TimeUnit.SECONDS);
+        } catch (Exception ignored) { response = null; }
+        if (response == null || response.body == null || response.body.isBlank()) {
+            sendJson(ex, 503, "{\"ok\":false,\"error\":\"game_relay_unavailable\"}"); return;
+        }
+        int status = response.status >= 200 && response.status < 600 ? response.status : 502;
+        sendJson(ex, status, response.body);
+    }
+
+    private void sendChatGameJson(HttpExchange ex, int status, ChatGameManager.Result result, boolean canManage, List<Map<String,Object>> games) throws IOException {
+        LinkedHashMap<String,Object> out = new LinkedHashMap<>();
+        out.put("ok", result.ok());
+        if (!result.error().isBlank()) out.put("error", result.error());
+        out.put("canManage", canManage);
+        out.put("remote", false);
+        out.put("serverId", localChatGameServerId());
+        out.put("serverName", localChatGameServerName());
+        out.put("games", games == null ? List.of() : games);
+        out.put("game", result.game());
+        sendJson(ex, status, JsonUtil.obj(out));
+    }
+
+    private static int parsePositiveInt(String value) {
+        try { return Integer.parseInt(String.valueOf(value).trim()); }
+        catch (Exception ignored) { return -1; }
+    }
+
+    private String localChatGameServerId() {
+        ServerRelay relay = host.serverRelay();
+        if (relay != null && relay.serverId() != null && !relay.serverId().isBlank()) return relay.serverId().trim();
+        ConfigValues c = host.configValues();
+        return stripControl(c == null ? "" : c.serverRelayServerId, 64).trim();
+    }
+
+    private String localChatGameServerName() {
+        ServerRelay relay = host.serverRelay();
+        if (relay != null && relay.serverName() != null && !relay.serverName().isBlank()) return relay.serverName().trim();
+        ConfigValues c = host.configValues();
+        String configured = stripControl(c == null ? "" : c.serverRelayServerName, 96).trim();
+        return configured.isBlank() ? localChatGameServerId() : configured;
+    }
+
+    private boolean isLocalChatGameServer(String serverId) {
+        String target = RemotePlayerRef.normalizeServerId(serverId);
+        String local = RemotePlayerRef.normalizeServerId(localChatGameServerId());
+        return target.isBlank() || (!local.isBlank() && local.equals(target));
+    }
+
+    /** Trusted Relay endpoint for event list/snapshot/join. Remote management is intentionally not exposed. */
+    public String handleRelayedChatGameRequest(String originServerId, String payloadJson) {
+        Map<String,String> body = JsonUtil.parseFlatObject(payloadJson);
+        String action = String.valueOf(body.getOrDefault("action", "snapshot")).trim().toLowerCase(Locale.ROOT);
+        String gameId = stripControl(body.get("gameId"), 80).trim();
+        String actorUuid = RemotePlayerRef.normalizePlayerUuid(body.get("actorUuid"));
+        String actorLabel = stripControl(body.get("actorLabel"), 96).trim();
+        String remoteViewer = RemotePlayerRef.key(originServerId, actorUuid);
+        ChatGameManager.Result result;
+        if ("join".equals(action)) {
+            if (gameId.isBlank() || remoteViewer.isBlank()) result = new ChatGameManager.Result(false, "invalid_user", null, false);
+            else result = joinChatGame(gameId, remoteViewer, actorLabel);
+        } else if ("list".equals(action)) {
+            result = chatGames.snapshot(remoteViewer);
+        } else {
+            result = gameId.isBlank() ? chatGames.snapshot(remoteViewer) : chatGames.snapshot(gameId, remoteViewer);
+        }
+        LinkedHashMap<String,Object> out = new LinkedHashMap<>();
+        out.put("ok", result.ok());
+        if (!result.error().isBlank()) out.put("error", result.error());
+        out.put("canManage", false);
+        out.put("remote", true);
+        out.put("serverId", localChatGameServerId());
+        out.put("serverName", localChatGameServerName());
+        out.put("games", "list".equals(action) ? chatGames.list(remoteViewer) : List.of());
+        out.put("game", result.game());
+        return JsonUtil.obj(out);
+    }
+
+    private void publishChatGameUpdate(String action, ChatGameManager.Result result) {
+        broadcastEvent("game", JsonUtil.obj(Map.of(
+                "action", String.valueOf(action),
+                "serverId", localChatGameServerId(),
+                "game", result.game() == null ? Map.of() : result.game())));
+    }
+
+    public ChatGameManager.Result chatGameSnapshot(String viewerUuid) { return chatGames.snapshot(viewerUuid); }
+    public ChatGameManager.Result chatGameSnapshot(String gameId, String viewerUuid) { return chatGames.snapshot(gameId, viewerUuid); }
+    public List<Map<String,Object>> chatGameList(String viewerUuid) { return chatGames.list(viewerUuid); }
+    public boolean canManageChatGame(String uuid) {
+        String id = String.valueOf(uuid == null ? "" : uuid).trim();
+        for (Account account : storage.listAccounts()) {
+            if (account == null || account.uuid == null || !account.uuid.equalsIgnoreCase(id)) continue;
+            return account.role.atLeast(Role.ADMIN) || (account.role == Role.MODERATOR && userControls.moderatorAllowed(account.uuid, "game-manage"));
+        }
+        return false;
+    }
+    public ChatGameManager.Result createChatGame(String type, String title, int maxParticipants, int winnerCount, String createdBy) {
+        return createChatGame(type, title, maxParticipants, winnerCount, createdBy, true);
+    }
+    public ChatGameManager.Result createChatGame(String type, String title, int maxParticipants, int winnerCount, String createdBy, boolean relayAnnouncements) {
+        ChatGameManager.Result result = chatGames.create(type, title, maxParticipants, winnerCount, createdBy, relayAnnouncements);
+        if (result.changed()) {
+            publishChatGameUpdate("create", result);
+            announceChatGameCreated(result.game());
+        }
+        return result;
+    }
+    public ChatGameManager.Result joinChatGame(String uuid, String label) {
+        ChatGameManager.Result result = chatGames.join(uuid, label);
+        if (result.changed()) {
+            publishChatGameUpdate("join", result);
+            if (result.game() != null && "completed".equals(String.valueOf(result.game().get("status")))) announceChatGameResult(result.game());
+        }
+        return result;
+    }
+    public ChatGameManager.Result joinChatGame(String gameId, String uuid, String label) {
+        ChatGameManager.Result result = chatGames.join(gameId, uuid, label);
+        if (result.changed()) {
+            publishChatGameUpdate("join", result);
+            if (result.game() != null && "completed".equals(String.valueOf(result.game().get("status")))) announceChatGameResult(result.game());
+        }
+        return result;
+    }
+    public ChatGameManager.Result drawChatGame() { return drawChatGame(""); }
+    public ChatGameManager.Result drawChatGame(String gameId) {
+        ChatGameManager.Result result = gameId == null || gameId.isBlank() ? chatGames.draw() : chatGames.draw(gameId);
+        if (result.changed()) {
+            publishChatGameUpdate("draw", result);
+            announceChatGameResult(result.game());
+        }
+        return result;
+    }
+    public ChatGameManager.Result finishChatGame() { return finishChatGame(""); }
+    public ChatGameManager.Result finishChatGame(String gameId) {
+        ChatGameManager.Result result = gameId == null || gameId.isBlank() ? chatGames.finish() : chatGames.finish(gameId);
+        if (result.changed()) {
+            publishChatGameUpdate("finish", result);
+            announceChatGameResult(result.game());
+        }
+        return result;
+    }
+    public ChatGameManager.Result closeChatGame() { return closeChatGame(""); }
+    public ChatGameManager.Result closeChatGame(String gameId) {
+        ChatGameManager.Result result = gameId == null || gameId.isBlank() ? chatGames.close() : chatGames.close(gameId);
+        if (result.changed()) publishChatGameUpdate("close", result);
+        return result;
+    }
+    public ChatGameManager.Result deleteChatGame(String gameId) {
+        ChatGameManager.Result result = chatGames.delete(gameId);
+        if (result.changed()) publishChatGameUpdate("delete", result);
+        return result;
+    }
+
+    private void announceChatGameCreated(Map<String,Object> game) {
+        if (game == null) return;
+        String title = LegacyText.stripColor(String.valueOf(game.getOrDefault("title", "")));
+        String type = String.valueOf(game.getOrDefault("type", "lottery"));
+        String localizedType = host.language().text("game.type." + type, type.equals("firstcome") ? "First come" : "Lottery");
+        String max = String.valueOf(game.getOrDefault("maxParticipants", 0));
+        String winners = String.valueOf(game.getOrDefault("winnerCount", 0));
+        String eventId = String.valueOf(game.getOrDefault("id", ""));
+        String serverId = localChatGameServerId();
+        String serverName = localChatGameServerName();
+        boolean relayAnnouncements = !Boolean.FALSE.equals(game.get("relayAnnouncements"));
+        Map<String,String> vars = Map.of("title", title, "type", type, "participants", max, "winners", winners,
+                "eventId", eventId, "serverId", serverId, "serverName", serverName, "status", String.valueOf(game.getOrDefault("status", "open")));
+        Map<String,String> localVars = Map.of("title", title, "type", localizedType, "participants", max, "winners", winners);
+        String fallback = "Event opened: " + title + " (" + localizedType + ", " + max + " participants, " + winners + " winners)";
+        String text = host.language().text("game.chat.created", fallback, localVars);
+        publishChatGameEvent("Game", text, "game.chat.created", JsonUtil.obj(vars), relayAnnouncements);
+
+        String join = "[Join]";
+        String line = LegacyText.AQUA + "[KWC Event] " + LegacyText.RESET + title + LegacyText.GRAY
+                + " (" + localizedType + ", " + max + "/" + winners + ") " + LegacyText.AQUA + join;
+        host.platformAdapter().broadcastInteractiveMessage(new PlatformGameMessage(line, false, "", "", "", join,
+                "Click to enter /kchat game join " + eventId, "/kchat game join " + eventId));
+    }
+
+    private void announceChatGameResult(Map<String,Object> game) {
+        if (game == null) return;
+        String title = LegacyText.stripColor(String.valueOf(game.getOrDefault("title", "")));
+        List<String> names = new ArrayList<>();
+        if (game.get("winners") instanceof List<?> winners) for (Object value : winners) {
+            if (value instanceof Map<?,?> item) {
+                String name = LegacyText.stripColor(String.valueOf(item.get("label")));
+                if (name != null && !name.isBlank()) names.add(name);
+            }
+        }
+        String winnerNames = names.isEmpty() ? "none" : String.join(", ", names);
+        String eventId = String.valueOf(game.getOrDefault("id", ""));
+        String serverId = localChatGameServerId();
+        String serverName = localChatGameServerName();
+        Map<String,String> vars = Map.of("title", title, "winners", winnerNames, "eventId", eventId,
+                "serverId", serverId, "serverName", serverName, "type", String.valueOf(game.getOrDefault("type", "lottery")),
+                "participants", String.valueOf(game.getOrDefault("maxParticipants", 0)), "status", String.valueOf(game.getOrDefault("status", "completed")));
+        String fallback = "Event result: " + title + " - Winners: " + winnerNames;
+        String text = host.language().text("game.chat.results", fallback, vars);
+        boolean relayAnnouncements = !Boolean.FALSE.equals(game.get("relayAnnouncements"));
+        publishChatGameEvent("Game", text, "game.chat.results", JsonUtil.obj(vars), relayAnnouncements);
+        String view = "[View event]";
+        String line = LegacyText.AQUA + "[KWC Event] " + LegacyText.RESET + title + LegacyText.GRAY
+                + " - Winners: " + LegacyText.AQUA + winnerNames + " " + view;
+        host.platformAdapter().broadcastInteractiveMessage(new PlatformGameMessage(line, false, "", "", "", view,
+                "Click to enter /kchat game status " + eventId, "/kchat game status " + eventId));
+    }
+
     private void handleAdminSummary(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
         SessionContext ctx = requireRole(ex, Role.MODERATOR);
         if (ctx == null) return;
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("ok", true);
-        m.put("onlineCount", platform.onlinePlayers().size());
+        Map<String,Boolean> capabilities = effectiveModeratorCapabilities(ctx);
+        m.put("capabilities", capabilities);
+        m.put("onlineCount", Boolean.TRUE.equals(capabilities.get("view-online")) ? visiblePresenceUsers(ctx.account.uuid).size() : 0);
         m.put("accountCount", storage.listAccounts().size());
         m.put("sessionCount", storage.listSessions().size());
         m.put("muteCount", host.moderation().list().size());
         sendJson(ex, 200, JsonUtil.obj(m));
     }
 
-    private void handleAdminOnline(HttpExchange ex) throws IOException {
-        if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.MODERATOR);
-        if (ctx == null) return;
-        List<String> items = new ArrayList<>();
+    private List<Map<String,Object>> visiblePresenceUsers(String viewerUuid) {
+        LinkedHashMap<String,Map<String,Object>> users = new LinkedHashMap<>();
         for (PlatformPlayer p : platform.onlinePlayers()) {
-            Map<String, Object> m = new LinkedHashMap<>();
+            String uuid = normalizePresenceUuid(p.uuid().toString());
+            PresencePolicy.Result presence = presenceListSnapshot(uuid);
+            if (!presence.online()) continue;
+            Map<String,Object> m = new LinkedHashMap<>();
             m.put("name", p.name());
             m.put("displayName", p.displayName());
             m.put("uuid", p.uuid().toString());
-            items.add(JsonUtil.obj(m));
+            m.put("presence", presence.toMap(normalizePresenceUuid(viewerUuid).equals(uuid)));
+            users.put(uuid, m);
         }
+        for (SseConnection client : sseHub.snapshot()) {
+            String uuid = normalizePresenceUuid(client.accountUuid());
+            if (uuid.isBlank() || users.containsKey(uuid)) continue;
+            PresencePolicy.Result presence = presenceListSnapshot(uuid);
+            if (!presence.online()) continue;
+            Account account = accountByUuid(uuid);
+            PlayerIdentity identity = storage.findKnownPlayerByUuid(uuid);
+            Map<String,Object> m = new LinkedHashMap<>();
+            m.put("name", identity != null && !identity.username.isBlank() ? identity.username : account == null ? uuid : account.safeUsername());
+            m.put("displayName", identity != null && !identity.outputDisplayName().isBlank() ? identity.outputDisplayName() : account == null ? uuid : host.displayNameForAccount(account));
+            m.put("uuid", uuid);
+            m.put("presence", presence.toMap(normalizePresenceUuid(viewerUuid).equals(uuid)));
+            users.put(uuid, m);
+        }
+        return new ArrayList<>(users.values());
+    }
+
+    private void handleAdminOnline(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        SessionContext ctx = requireUserSession(ex);
+        if (ctx == null) return;
+        Map<String,String> q = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
+        boolean includeOffline = "1".equals(q.get("includeOffline")) || "true".equalsIgnoreCase(String.valueOf(q.get("includeOffline")));
+        LinkedHashMap<String,Map<String,Object>> merged = new LinkedHashMap<>();
+        for (Map<String,Object> item : visiblePresenceUsers(ctx.account.uuid)) merged.put(normalizePresenceUuid(String.valueOf(item.get("uuid"))), item);
+        if (includeOffline) {
+            for (Account account : storage.listAccounts()) {
+                if (account == null || account.uuid == null || account.uuid.isBlank()) continue;
+                String uuid = normalizePresenceUuid(account.uuid);
+                if (merged.containsKey(uuid)) continue;
+                PlayerIdentity identity = storage.findKnownPlayerByUuid(uuid);
+                Map<String,Object> item = new LinkedHashMap<>();
+                item.put("name", identity != null && !identity.username.isBlank() ? identity.username : account.safeUsername());
+                item.put("displayName", identity != null && !identity.outputDisplayName().isBlank() ? identity.outputDisplayName() : host.displayNameForAccount(account));
+                item.put("uuid", uuid);
+                item.put("presence", PresencePolicy.resolve(false, false, "offline", false).toMap(false));
+                merged.put(uuid, item);
+            }
+        }
+        List<String> items = new ArrayList<>();
+        for (Map<String,Object> item : merged.values()) items.add(JsonUtil.obj(item));
         sendJson(ex, 200, "{\"ok\":true,\"players\":[" + String.join(",", items) + "]}");
     }
 
@@ -6607,6 +7847,116 @@ public class WebChatServer {
         sendJson(ex, 200, "{\"ok\":true,\"accounts\":[" + String.join(",", items) + "]}");
     }
 
+    private void handleAdminAccountRole(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        if (ctx == null) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        Map<String,String> body = parsedBody(ex);
+        String uuid = stripControl(body.get("uuid"), 160).trim();
+        Account target = accountByUuid(uuid);
+        if (target == null) { sendJson(ex, 404, "{\"ok\":false,\"error\":\"account_not_found\"}"); return; }
+        if (normalizePresenceUuid(target.uuid).equals(normalizePresenceUuid(ctx.account.uuid))) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"cannot_change_own_role\"}"); return;
+        }
+        Role role = Role.fromString(stripControl(body.get("role"), 32), null);
+        if (role == null || role == Role.GUEST) { sendJson(ex, 400, "{\"ok\":false,\"error\":\"invalid_role\"}"); return; }
+        storage.setRole(target, role);
+        audit(ctx, "admin.account-role", Map.of("targetUuid", target.uuid, "role", role.name()));
+        sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "uuid", target.uuid, "role", role.name())));
+    }
+
+    private void handleAdminUserControls(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        SessionContext ctx = requireRole(ex, Role.MODERATOR);
+        if (ctx == null) return;
+        boolean canRestrictions = moderatorCapabilityAllowed(ctx, "user-restrictions");
+        boolean canAvatarDelete = moderatorCapabilityAllowed(ctx, "profile-avatar-delete");
+        if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            if (!canRestrictions && !canAvatarDelete) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
+            List<Map<String,Object>> items = new ArrayList<>();
+            for (Account account : storage.listAccounts()) {
+                if (account == null || account.uuid == null || account.uuid.isBlank()) continue;
+                Map<String,Object> item = new LinkedHashMap<>();
+                item.put("uuid", account.uuid);
+                item.put("username", account.safeUsername());
+                item.put("displayName", host.displayNameForAccount(account));
+                item.put("role", account.role.name());
+                item.putAll(userControls.restrictions(account.uuid));
+                item.put("hasCustomAvatar", userPreferences.profileAvatarFile(account) != null);
+                items.add(item);
+            }
+            sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "users", items)));
+            return;
+        }
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        if (!canRestrictions) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
+        Map<String,String> body = parsedBody(ex);
+        String uuid = stripControl(body.get("uuid"), 160).trim();
+        Account target = accountByUuid(uuid);
+        if (target == null) { sendJson(ex, 404, "{\"ok\":false,\"error\":\"account_not_found\"}"); return; }
+        if (!ctx.account.role.atLeast(Role.ADMIN) && target.role.atLeast(Role.MODERATOR)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return;
+        }
+        if (target.role == Role.ADMIN) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"cannot_restrict_admin\"}"); return;
+        }
+        boolean chatBanned = Boolean.parseBoolean(String.valueOf(body.getOrDefault("chatBanned", "false")));
+        boolean uploadBanned = Boolean.parseBoolean(String.valueOf(body.getOrDefault("uploadBanned", "false")));
+        if (!userControls.setRestrictions(target.uuid, chatBanned, uploadBanned)) {
+            sendJson(ex, 500, "{\"ok\":false,\"error\":\"user_controls_save_failed\"}"); return;
+        }
+        audit(ctx, "admin.user-restrictions", Map.of("targetUuid", target.uuid, "chatBanned", chatBanned, "uploadBanned", uploadBanned));
+        Map<String,Object> out = new LinkedHashMap<>(); out.put("ok", true); out.put("uuid", target.uuid); out.putAll(userControls.restrictions(target.uuid));
+        sendJson(ex, 200, JsonUtil.obj(out));
+    }
+
+    private void handleAdminModeratorPermissions(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        if (ctx == null) return;
+        if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
+            List<Map<String,Object>> items = new ArrayList<>();
+            for (Account account : storage.listAccounts()) {
+                if (account == null || account.role != Role.MODERATOR || account.uuid == null || account.uuid.isBlank()) continue;
+                Map<String,Object> item = new LinkedHashMap<>();
+                item.put("uuid", account.uuid); item.put("username", account.safeUsername()); item.put("displayName", host.displayNameForAccount(account));
+                item.put("permissions", userControls.moderatorCapabilities(account.uuid));
+                items.add(item);
+            }
+            sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "capabilities", UserControlStore.MODERATOR_CAPABILITIES, "moderators", items)));
+            return;
+        }
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        Map<String,String> body = parsedBody(ex);
+        String uuid = stripControl(body.get("uuid"), 160).trim();
+        Account target = accountByUuid(uuid);
+        if (target == null || target.role != Role.MODERATOR) { sendJson(ex, 404, "{\"ok\":false,\"error\":\"moderator_not_found\"}"); return; }
+        LinkedHashMap<String,Boolean> values = new LinkedHashMap<>();
+        for (String capability : UserControlStore.MODERATOR_CAPABILITIES) {
+            String raw = body.get(capability);
+            if (raw != null) values.put(capability, Boolean.parseBoolean(raw));
+        }
+        if (!userControls.setModeratorCapabilities(target.uuid, values)) { sendJson(ex, 500, "{\"ok\":false,\"error\":\"moderator_permissions_save_failed\"}"); return; }
+        audit(ctx, "admin.moderator-permissions", Map.of("targetUuid", target.uuid));
+        sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "uuid", target.uuid, "permissions", userControls.moderatorCapabilities(target.uuid))));
+    }
+
+    private void handleAdminDeleteProfileAvatar(HttpExchange ex) throws IOException {
+        if (preflight(ex)) return;
+        SessionContext ctx = requireModeratorCapability(ex, "profile-avatar-delete");
+        if (ctx == null) return;
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod()) && !"DELETE".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
+        Map<String,String> body = parsedBody(ex);
+        String uuid = stripControl(body.get("uuid"), 160).trim();
+        Account target = accountByUuid(uuid);
+        if (target == null) { sendJson(ex, 404, "{\"ok\":false,\"error\":\"account_not_found\"}"); return; }
+        if (!ctx.account.role.atLeast(Role.ADMIN) && target.role.atLeast(Role.MODERATOR)) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
+        userPreferences.deleteProfileAvatar(target);
+        audit(ctx, "admin.profile-avatar-delete", Map.of("targetUuid", target.uuid));
+        sendJson(ex, 200, "{\"ok\":true}");
+    }
+
     private void handleAdminRevoke(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
         SessionContext ctx = requireRole(ex, Role.ADMIN);
@@ -6623,7 +7973,7 @@ public class WebChatServer {
 
     private void handleAdminMutes(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.MODERATOR);
+        SessionContext ctx = requireModeratorCapability(ex, "guest-mute");
         if (ctx == null) return;
         if (!host.configValues().moderationEnabled) {
             sendJson(ex, 200, "{\"ok\":true,\"mutes\":[]}");
@@ -6664,7 +8014,7 @@ public class WebChatServer {
 
     private void handleAdminUnmute(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.MODERATOR);
+        SessionContext ctx = requireModeratorCapability(ex, "guest-mute");
         if (ctx == null) return;
         if (!host.configValues().moderationEnabled) {
             sendJson(ex, 403, "{\"ok\":false,\"error\":\"moderation_disabled\"}");
@@ -6684,18 +8034,27 @@ public class WebChatServer {
 
     private void handleAdminDeleteMessage(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.MODERATOR);
+        SessionContext ctx = requireUserSession(ex);
         if (ctx == null) return;
-        if (!host.configValues().moderationEnabled) {
-            sendJson(ex, 403, "{\"ok\":false,\"error\":\"moderation_disabled\"}");
-            return;
-        }
-        if (!host.configValues().allowModeratorMessageDelete && !ctx.account.role.atLeast(Role.ADMIN)) {
-            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}");
-            return;
-        }
         Map<String, String> body = parsedBody(ex);
         String id = body.get("id");
+        ChatMessage target = null;
+        synchronized (history) {
+            for (ChatMessage message : history) {
+                if (message != null && message.id != null && message.id.equals(id)) { target = message; break; }
+            }
+        }
+        if (target == null && sqliteHistoryEnabled()) target = sqliteHistory.find(id);
+        if (target == null || target.hidden) { sendJson(ex, 404, "{\"ok\":false,\"error\":\"message_not_found\"}"); return; }
+        ConfigValues deleteConfig = host.configValues();
+        boolean moderatorDelete = deleteConfig.moderationEnabled && moderatorCapabilityAllowed(ctx, "message-delete");
+        boolean owner = ctx.account.uuid != null && target.playerUuid != null && ctx.account.uuid.equalsIgnoreCase(target.playerUuid);
+        if (!moderatorDelete && (!owner || !deleteConfig.selfMessageDeleteEnabled)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return;
+        }
+        if (!moderatorDelete && !selfMessageDeleteWindowOpen(target.time, deleteConfig)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"self_delete_window_expired\"}"); return;
+        }
         boolean ok = false;
         String reactionKey = "";
         synchronized (history) {
@@ -6719,7 +8078,7 @@ public class WebChatServer {
             conversationArchives.removeSourceMessage("public", "public", id);
             if (legacyJsonlHistoryEnabled()) savePersistedHistory();
             broadcastEvent("delete", "{\"id\":" + JsonUtil.quote(id) + "}");
-            audit(ctx, "admin.delete-message", Map.of("messageId", id == null ? "" : id));
+            audit(ctx, moderatorDelete ? "admin.delete-message" : "user.delete-own-message", Map.of("messageId", id == null ? "" : id));
         }
         sendJson(ex, 200, "{\"ok\":" + ok + "}");
     }
@@ -6819,7 +8178,7 @@ public class WebChatServer {
 
     private void handleAdminPinMessage(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.MODERATOR);
+        SessionContext ctx = requireModeratorCapability(ex, "pin-manage");
         if (ctx == null) return;
         ConfigValues config = host.configValues();
         if (!config.pinnedEnabled) {
@@ -6845,7 +8204,11 @@ public class WebChatServer {
             sendJson(ex, 404, "{\"ok\":false,\"error\":\"message_not_found\"}");
             return;
         }
-        PinnedMessage pin = storage.pinMessage(found, ctx.account.safeUsername(), config.pinnedMaxPins);
+        String pinnerUuid = ctx.account.uuid == null ? "" : ctx.account.uuid;
+        String pinnerUsername = ctx.account.safeUsername();
+        String pinnerDisplayName = host.displayNameForAccount(ctx.account);
+        if (pinnerDisplayName == null || pinnerDisplayName.isBlank()) pinnerDisplayName = pinnerUsername;
+        PinnedMessage pin = storage.pinMessage(found, pinnerUuid, pinnerUsername, pinnerDisplayName, config.pinnedMaxPins);
         if (pin == null) {
             sendJson(ex, 409, "{\"ok\":false,\"error\":\"pin_limit_reached\"}");
             return;
@@ -6857,7 +8220,7 @@ public class WebChatServer {
 
     private void handleAdminUnpinMessage(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.MODERATOR);
+        SessionContext ctx = requireModeratorCapability(ex, "pin-manage");
         if (ctx == null) return;
         Map<String, String> body = parsedBody(ex);
         String pinId = body.get("pinId");
@@ -6872,7 +8235,7 @@ public class WebChatServer {
 
     private void handleAdminMovePin(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.MODERATOR);
+        SessionContext ctx = requireModeratorCapability(ex, "pin-manage");
         if (ctx == null) return;
         if (!host.configValues().pinnedEnabled) {
             sendJson(ex, 403, "{\"ok\":false,\"error\":\"pinned_disabled\"}");
@@ -6892,7 +8255,7 @@ public class WebChatServer {
 
     private void handleAdminEmojis(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        SessionContext ctx = requireModeratorCapability(ex, "emoji-manage");
         if (ctx == null) return;
         if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
@@ -6956,7 +8319,7 @@ public class WebChatServer {
 
     private void handleAdminEmojiCreatePack(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        SessionContext ctx = requireModeratorCapability(ex, "emoji-manage");
         if (ctx == null) return;
         if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
@@ -6991,7 +8354,7 @@ public class WebChatServer {
 
     private void handleAdminEmojiUpload(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        SessionContext ctx = requireModeratorCapability(ex, "emoji-manage");
         if (ctx == null) return;
         if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
@@ -7097,7 +8460,7 @@ public class WebChatServer {
 
     private void handleAdminEmojiRename(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        SessionContext ctx = requireModeratorCapability(ex, "emoji-manage");
         if (ctx == null) return;
         if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
@@ -7211,7 +8574,7 @@ public class WebChatServer {
 
     private void handleAdminEmojiMove(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        SessionContext ctx = requireModeratorCapability(ex, "emoji-manage");
         if (ctx == null) return;
         if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
@@ -7297,7 +8660,7 @@ public class WebChatServer {
 
     private void handleAdminEmojiDelete(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        SessionContext ctx = requireModeratorCapability(ex, "emoji-manage");
         if (ctx == null) return;
         if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
@@ -7389,7 +8752,7 @@ public class WebChatServer {
 
     private void handleAdminReactions(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        SessionContext ctx = requireModeratorCapability(ex, "emoji-manage");
         if (ctx == null) return;
         if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 200, "{\"ok\":true,\"catalog\":" + reactionCatalog.snapshot().toJson() + "}");
@@ -7423,8 +8786,11 @@ public class WebChatServer {
 
     private void handleAdminSettings(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        SessionContext ctx = requireRole(ex, Role.MODERATOR);
         if (ctx == null) return;
+        if (ctx.account.role != Role.ADMIN && !moderatorCapabilityAllowed(ctx, "content-filter-manage")) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\",\"capability\":\"content-filter-manage\"}"); return;
+        }
         if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
             RuntimeSettingsController.SnapshotResult snapshot = RuntimeSettingsController.snapshotFromDisk(host);
             if (!snapshot.ok()) {
@@ -7435,8 +8801,10 @@ public class WebChatServer {
             res.put("ok", true);
             res.put("writeProtocol", 5);
             res.put("requestId", adminRequestId(ex, null));
-            res.put("settings", snapshot.values());
-            res.put("discordAlertChannels", adminDiscordAlertChannelChoices());
+            Map<String,Object> visibleSettings = new LinkedHashMap<>(snapshot.values());
+            if (ctx.account.role != Role.ADMIN) visibleSettings.keySet().removeIf(key -> !key.startsWith("content-filter."));
+            res.put("settings", visibleSettings);
+            res.put("discordAlertChannels", ctx.account.role == Role.ADMIN ? adminDiscordAlertChannelChoices() : List.of());
             sendJson(ex, 200, JsonUtil.obj(res));
             return;
         }
@@ -7445,6 +8813,9 @@ public class WebChatServer {
             return;
         }
         Map<String,String> body = parsedBody(ex);
+        if (ctx.account.role != Role.ADMIN && body.keySet().stream().anyMatch(key -> !key.startsWith("content-filter.") && !key.startsWith("_"))) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return;
+        }
         Map<String,Object> res = new LinkedHashMap<>();
         boolean typingConfigChanged = false;
         if (body.containsKey("path")) {
@@ -7515,7 +8886,7 @@ public class WebChatServer {
 
     private void handleAdminFilter(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        SessionContext ctx = requireModeratorCapability(ex, "content-filter-manage");
         if (ctx == null) return;
         if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
@@ -7557,7 +8928,7 @@ public class WebChatServer {
 
     private void handleAdminFilterRules(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        SessionContext ctx = requireModeratorCapability(ex, "content-filter-manage");
         if (ctx == null) return;
         if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
@@ -7616,7 +8987,7 @@ public class WebChatServer {
 
     private void handleAdminFilterLists(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        SessionContext ctx = requireModeratorCapability(ex, "content-filter-manage");
         if (ctx == null) return;
         if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
             Map<String,String> query = JsonUtil.parseQuery(ex.getRequestURI().getRawQuery());
@@ -7705,7 +9076,7 @@ public class WebChatServer {
 
     private void handleAdminFilterTest(HttpExchange ex) throws IOException {
         if (preflight(ex)) return;
-        SessionContext ctx = requireRole(ex, Role.ADMIN);
+        SessionContext ctx = requireModeratorCapability(ex, "content-filter-manage");
         if (ctx == null) return;
         if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
             sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}");
@@ -7923,6 +9294,47 @@ public class WebChatServer {
             return null;
         }
         return ctx;
+    }
+
+    private boolean moderatorCapabilityAllowed(SessionContext ctx, String capability) {
+        if (ctx == null || ctx.account == null) return false;
+        if (ctx.account.role.atLeast(Role.ADMIN)) return true;
+        if (ctx.account.role != Role.MODERATOR) return false;
+        ConfigValues c = host.configValues();
+        if (c != null && "message-delete".equals(capability) && !c.allowModeratorMessageDelete) return false;
+        if (c != null && "guest-mute".equals(capability) && !c.allowModeratorGuestMute) return false;
+        return userControls.moderatorAllowed(ctx.account.uuid, capability);
+    }
+
+    private boolean selfMessageDeleteWindowOpen(long createdAt, ConfigValues config) {
+        if (config == null || !config.selfMessageDeleteEnabled) return false;
+        int minutes = Math.max(0, config.selfMessageDeleteWindowMinutes);
+        if (minutes == 0) return true;
+        if (createdAt <= 0L) return false;
+        return System.currentTimeMillis() - createdAt <= minutes * 60_000L;
+    }
+
+    private SessionContext requireModeratorCapability(HttpExchange ex, String capability) throws IOException {
+        SessionContext ctx = requireRole(ex, Role.MODERATOR);
+        if (ctx == null) return null;
+        if (!moderatorCapabilityAllowed(ctx, capability)) {
+            sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\",\"capability\":" + JsonUtil.quote(capability) + "}");
+            return null;
+        }
+        return ctx;
+    }
+
+    private Map<String,Boolean> effectiveModeratorCapabilities(SessionContext ctx) {
+        LinkedHashMap<String,Boolean> out = new LinkedHashMap<>();
+        for (String capability : UserControlStore.MODERATOR_CAPABILITIES) {
+            out.put(capability, ctx != null && ctx.account != null && (ctx.account.role.atLeast(Role.ADMIN) || userControls.moderatorAllowed(ctx.account.uuid, capability)));
+        }
+        ConfigValues c = host.configValues();
+        if (c != null && ctx != null && ctx.account != null && ctx.account.role == Role.MODERATOR) {
+            if (!c.allowModeratorMessageDelete) out.put("message-delete", false);
+            if (!c.allowModeratorGuestMute) out.put("guest-mute", false);
+        }
+        return out;
     }
 
     private long parseLong(String value, long fallback) {
@@ -8427,6 +9839,8 @@ public class WebChatServer {
 
         String remoteSenderKey = RemotePlayerRef.key(originId, senderRealUuid);
         if (remoteSenderKey.isBlank()) return false;
+        Account targetAccount = accountByUuid(targetRealUuid);
+        if (targetAccount != null && userPreferences.isUserBlocked(targetAccount, remoteSenderKey)) return false;
         String safeSenderUsername = stripControl(senderUsername, 64).trim();
         String safeSenderDisplay = stripControl(senderDisplayName, 96).trim();
         String remoteSenderDisplay = RemotePlayerRef.decorateDisplayName(
@@ -9266,7 +10680,11 @@ public class WebChatServer {
         String key = String.valueOf(msg.i18nKey == null ? "" : msg.i18nKey).trim();
         if (key.isBlank()) return fallback;
         String value = stringValue(strings, key, fallback);
-        Map<String, String> vars = JsonUtil.parseFlatObject(msg.i18nArgs);
+        Map<String, String> vars = new LinkedHashMap<>(JsonUtil.parseFlatObject(msg.i18nArgs));
+        if ("game.chat.created".equals(key) && vars.containsKey("type")) {
+            String rawType = String.valueOf(vars.get("type"));
+            vars.put("type", stringValue(strings, "game.type." + rawType, rawType));
+        }
         for (Map.Entry<String, String> entry : vars.entrySet()) {
             value = value.replace("{" + entry.getKey() + "}", entry.getValue() == null ? "" : entry.getValue());
         }
@@ -9602,11 +11020,48 @@ public class WebChatServer {
         }
     }
 
+    private String publicPinnedJson(PinnedMessage pin) {
+        if (pin == null) return "{}";
+        String pinnerUuid = normalizePresenceUuid(pin.pinnedByUuid);
+        // RC34: older pinned.yml entries stored only the visible pinnedBy label.
+        // Resolve that legacy label through the local identity index when possible so
+        // existing pins can participate in Display name / Real name switching too.
+        if (pinnerUuid.isBlank() && pin.pinnedBy != null && !pin.pinnedBy.isBlank()) {
+            String legacyPinner = String.valueOf(LegacyText.stripColor(pin.pinnedBy)).replace("**", "").trim();
+            PlayerIdentity legacyIdentity = storage.findKnownLocalPlayer(legacyPinner);
+            if (legacyIdentity != null && legacyIdentity.uuid != null && !legacyIdentity.uuid.isBlank()) {
+                pinnerUuid = normalizePresenceUuid(legacyIdentity.uuid);
+                pin.pinnedByUuid = pinnerUuid;
+                pin.pinnedByUsername = legacyIdentity.username;
+                pin.pinnedByDisplayName = legacyIdentity.outputDisplayName();
+            }
+        }
+        if (!pinnerUuid.isBlank()) {
+            Account account = accountByUuid(pinnerUuid);
+            if (account != null) {
+                pin.pinnedByUsername = account.safeUsername();
+                String displayName = host.displayNameForAccount(account);
+                pin.pinnedByDisplayName = displayName == null || displayName.isBlank() ? pin.pinnedByUsername : displayName;
+            } else {
+                PlayerIdentity identity = storage.findKnownPlayerByUuid(pinnerUuid);
+                if (identity != null) {
+                    if (pin.pinnedByUsername == null || pin.pinnedByUsername.isBlank()) pin.pinnedByUsername = identity.username;
+                    if (pin.pinnedByDisplayName == null || pin.pinnedByDisplayName.isBlank()) pin.pinnedByDisplayName = identity.outputDisplayName();
+                }
+            }
+            String visible = pin.pinnedByDisplayName == null || pin.pinnedByDisplayName.isBlank() ? pin.pinnedByUsername : pin.pinnedByDisplayName;
+            String legacy = LegacyText.stripColor(visible);
+            legacy = stripControl(String.valueOf(legacy == null ? "" : legacy).replace("**", ""), 256).trim();
+            if (!legacy.isBlank()) pin.pinnedBy = legacy;
+        }
+        return pin.toJson();
+    }
+
     private void broadcastPinsChanged() {
         List<String> items = new ArrayList<>();
         if (host.configValues().pinnedEnabled) {
             for (PinnedMessage pin : storage.listPinnedMessages()) {
-                items.add(pin.toJson());
+                items.add(publicPinnedJson(pin));
             }
         }
         broadcastEvent("pins", "{\"ok\":true,\"pins\":[" + String.join(",", items) + "]}");
@@ -9616,6 +11071,8 @@ public class WebChatServer {
         if (msg == null) return;
         for (SseConnection client : sseHub.snapshot()) {
             try {
+                Account viewer = accountByUuid(client.accountUuid());
+                if (viewer != null && msg.playerUuid != null && !msg.playerUuid.isBlank() && userPreferences.isUserBlocked(viewer, msg.playerUuid)) continue;
                 client.sendRaw("event: chat\ndata: " + publicMessageJson(msg, client.accountUuid()) + "\n\n");
             } catch (IOException ignored) {
                 sseHub.remove(client);
@@ -9642,7 +11099,17 @@ public class WebChatServer {
         String replyTargetUuid = replyTargetUuidFor(msg);
         p.replyTargetUuid = replyTargetUuid;
         p.mentionTargetUuids = system ? Set.of() : mentionTargetUuids(msg.message);
-        webPush.sendToAll(p);
+        if (system || msg.playerUuid == null || msg.playerUuid.isBlank()) {
+            webPush.sendToAll(p);
+        } else {
+            Set<String> recipients = new LinkedHashSet<>();
+            for (Account account : storage.listAccounts()) {
+                if (account == null || account.uuid == null || account.uuid.isBlank()) continue;
+                if (userPreferences.isUserBlocked(account, msg.playerUuid)) continue;
+                recipients.add(account.uuid);
+            }
+            webPush.sendToUsers(recipients, p);
+        }
         dispatchWebPushReply(msg, replyTargetUuid);
     }
 
@@ -9705,6 +11172,8 @@ public class WebChatServer {
     private void dispatchWebPushReply(ChatMessage msg, String targetUuid) {
         ConfigValues c = host.configValues();
         if (c == null || !c.webPushEnabled || msg == null || targetUuid == null || targetUuid.isBlank()) return;
+        Account targetAccount = accountByUuid(targetUuid);
+        if (targetAccount != null && msg.playerUuid != null && !msg.playerUuid.isBlank() && userPreferences.isUserBlocked(targetAccount, msg.playerUuid)) return;
         WebPushManager.Payload p = new WebPushManager.Payload();
         p.type = "reply";
         p.title = notificationSender(msg.sender);
@@ -9719,6 +11188,8 @@ public class WebChatServer {
     public void dispatchWebPushDirectMessage(String senderUuid, String senderName, String targetUuid, String targetName, String threadId, long messageId, String body) {
         ConfigValues c = host.configValues();
         if (c == null || !c.webPushEnabled) return;
+        Account targetAccount = accountByUuid(targetUuid);
+        if (targetAccount != null && userPreferences.isUserBlocked(targetAccount, senderUuid)) return;
         WebPushManager.Payload p = new WebPushManager.Payload();
         p.type = "dm";
         p.title = notificationSender(senderName);
@@ -9737,6 +11208,16 @@ public class WebChatServer {
         if (roomId.isBlank()) return;
         Set<String> members = host.groupChats().memberUuids(roomId);
         if (members == null || members.isEmpty()) return;
+        String effectiveSenderUuid = senderUuid == null ? (message == null ? "" : message.senderUuid) : senderUuid;
+        if (!effectiveSenderUuid.isBlank()) {
+            members = new LinkedHashSet<>(members);
+            final String blockSenderUuid = effectiveSenderUuid;
+            members.removeIf(memberUuid -> {
+                Account member = accountByUuid(memberUuid);
+                return member != null && userPreferences.isUserBlocked(member, blockSenderUuid);
+            });
+            if (members.isEmpty()) return;
+        }
         String roomName = room != null && room.name != null && !room.name.isBlank() ? room.name : host.language().text("notification.groupChat", "Group chat");
         String body = message == null ? "" : message.body;
         WebPushManager.Payload p = new WebPushManager.Payload();
@@ -9745,7 +11226,7 @@ public class WebChatServer {
         p.body = body == null ? "" : body;
         p.url = webPushNavigationUrlWithParams(Map.of("kwcGroupRoom", roomId, "kwcGroupMessage", String.valueOf(message == null || message.id <= 0 ? 0 : message.id)));
         p.tag = "kwc-group-" + roomId.replaceAll("[^A-Za-z0-9_-]", "");
-        p.senderUuid = senderUuid == null ? (message == null ? "" : message.senderUuid) : senderUuid;
+        p.senderUuid = effectiveSenderUuid;
         p.groupRoomId = roomId;
         webPush.sendToUsers(members, p);
     }

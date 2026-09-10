@@ -1,11 +1,12 @@
-# KOKOTO WebChat 5.2.0 — Visual Documentation Assets
+# KOKOTO WebChat 5.3.0 — Visual Documentation Assets
 
-The `docs/assets/` directory contains reusable diagrams for the repository documentation. The `wiki/assets/` directory contains copies intended for a GitHub Wiki repository where `../docs/assets/...` would not resolve. **5.2.0 distribution pages on Modrinth and CurseForge remain text-only; these diagrams are not part of their Summary/Description/Changelog content.**
+The `docs/assets/` directory contains reusable diagrams for the repository documentation. The `wiki/assets/` directory contains copies intended for a GitHub Wiki repository where `../docs/assets/...` would not resolve. **5.3.0 distribution pages on Modrinth and CurseForge remain text-only; these diagrams are not part of their Summary/Description/Changelog content.**
 
 ## Asset set
 
 | Topic | Static | Animated | Editable source |
 | --- | --- | --- | --- |
+| 5.3.0 architecture | `architecture-5.3.0.svg` / `.png` | — | `source/architecture-5.3.0.dot` |
 | 5.2.0 architecture | `architecture-5.2.0.svg` / `.png` | — | `source/architecture-5.2.0.dot` |
 | 5.1.0 architecture (historical) | `architecture-5.1.0.svg` / `.png` | — | `source/architecture-5.1.0.dot` |
 | Relay Protocol v2 | `relay-v2-flow.svg` / `.png` | `relay-v2-flow.gif` | `source/relay-v2-flow.dot` |
@@ -35,7 +36,7 @@ The `docs/assets/` directory contains reusable diagrams for the repository docum
 ## Rendering policy
 
 - GitHub Markdown/Wiki: prefer Mermaid for live diagrams and SVG/PNG/GIF for visual summaries or animated flows.
-- Modrinth and CurseForge release surfaces stay text-only for 5.2.0. Do not embed these Wiki/docs diagrams in Summary, Description, or Changelog content.
+- Modrinth and CurseForge release surfaces stay text-only for 5.3.0. Do not embed these Wiki/docs diagrams in Summary, Description, or Changelog content.
 - Keep the text explanation next to every figure. A diagram is supplemental, not the sole source of an operational or security requirement.
 - Use meaningful alt text and do not embed secrets, actual server addresses, real user data, or tokens in screenshots/figures.
 

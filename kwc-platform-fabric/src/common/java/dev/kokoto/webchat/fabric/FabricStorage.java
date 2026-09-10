@@ -1,5 +1,13 @@
 package dev.kokoto.webchat.fabric;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * FabricStorage는 Fabric 런타임에서 KWC core 기능을 해당 loader/Minecraft API에 연결한다.
+ * FabricStorage connects KWC core behavior to the concrete Fabric/Minecraft runtime APIs.
+ *
+ * 동일 기능의 다른 loader 구현과 의미를 맞추되 API 버전 차이는 이 플랫폼 계층 안에서만 처리한다.
+ * Keep semantics aligned with other loaders while containing API-version differences within this platform layer.
+ */
 import dev.kokoto.webchat.*;
 
 
@@ -198,6 +206,13 @@ public class FabricStorage implements WebChatStorage {
         pin.pinnedAt = s.getLong("pinnedAt", System.currentTimeMillis());
         pin.sortOrder = s.getLong("sortOrder", pin.pinnedAt);
         pin.pinnedBy = yamlValue(s.getString("pinnedBy"), "");
+        pin.pinnedByUuid = yamlValue(s.getString("pinnedByUuid"), "");
+        pin.pinnedByUsername = yamlValue(s.getString("pinnedByUsername"), "");
+        pin.pinnedByDisplayName = yamlValue(s.getString("pinnedByDisplayName"), pin.pinnedBy);
+        if (pin.pinnedBy.isBlank()) {
+            pin.pinnedBy = !pin.pinnedByDisplayName.isBlank() ? pin.pinnedByDisplayName
+                    : !pin.pinnedByUsername.isBlank() ? pin.pinnedByUsername : pin.pinnedByUuid;
+        }
         pin.time = s.getLong("time", pin.pinnedAt);
         pin.source = yamlValue(s.getString("source"), "web");
         pin.sender = yamlValue(s.getString("sender"), "Unknown");
@@ -224,6 +239,9 @@ public class FabricStorage implements WebChatStorage {
             yml.set(p + "messageId", pin.messageId);
             yml.set(p + "pinnedAt", pin.pinnedAt);
             yml.set(p + "sortOrder", pin.sortOrder);
+            yml.set(p + "pinnedByUuid", pin.pinnedByUuid);
+            yml.set(p + "pinnedByUsername", pin.pinnedByUsername);
+            yml.set(p + "pinnedByDisplayName", pin.pinnedByDisplayName);
             yml.set(p + "pinnedBy", pin.pinnedBy);
             yml.set(p + "time", pin.time);
             yml.set(p + "source", pin.source);
@@ -298,13 +316,13 @@ public class FabricStorage implements WebChatStorage {
         }
     }
 
-    public synchronized PinnedMessage pinMessage(ChatMessage msg, String pinnedBy, int maxPins) {
+    public synchronized PinnedMessage pinMessage(ChatMessage msg, String pinnedByUuid, String pinnedByUsername, String pinnedByDisplayName, int maxPins) {
         if (msg == null || msg.id == null || msg.id.isBlank() || msg.hidden) return null;
         for (PinnedMessage existing : pinnedById.values()) {
             if (msg.id.equals(existing.messageId)) return existing;
         }
         if (maxPins > 0 && pinnedById.size() >= maxPins) return null;
-        PinnedMessage pin = PinnedMessage.fromMessage(msg, pinnedBy);
+        PinnedMessage pin = PinnedMessage.fromMessage(msg, pinnedByUuid, pinnedByUsername, pinnedByDisplayName);
         pinnedById.put(pin.pinId, pin);
         savePinnedMessages();
         return pin;

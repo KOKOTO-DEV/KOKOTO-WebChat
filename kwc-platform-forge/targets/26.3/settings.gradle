@@ -1,0 +1,12 @@
+// KWC 파일 안내 / KWC file guide
+// Minecraft 26.3 Forge 준비 타깃의 plugin repository와 비활성 안전장치를 정의한다. 정식 지원 목록에는 포함되지 않는다.
+// Defines plugin repositories and the disabled safety gate for the Minecraft 26.3 Forge preparation target. It is not part of the supported release matrix.
+// Forge/userdev exact pin과 다음 Minecraft 경계가 확정되기 전에는 Gradle 구성 단계에서 실패한다.
+// Gradle configuration fails until exact Forge/userdev pins and the next Minecraft range boundary are finalized.
+
+pluginManagement { repositories { gradlePluginPortal(); maven { url='https://maven.minecraftforge.net' } } }
+def prepEnabled = providers.gradleProperty('kwc.prep.enabled').orElse('false').get().toBoolean()
+if (!prepEnabled) {
+    throw new GradleException('KWC Forge 26.3 PREP target is disabled. Finalize exact Forge/userdev metadata pins, validate the target, then set kwc.prep.enabled=true.')
+}
+rootProject.name='kwc-forge-26.3-prep'

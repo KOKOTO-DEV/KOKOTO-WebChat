@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * DirectMessageStore는 KWC 상태를 메모리/JSONL/SQLite 같은 영속 매체에 저장하고 조회하는 계층이다.
+ * DirectMessageStore is a persistence layer storing and reading KWC state from memory, JSONL, SQLite, or another backing store.
+ *
+ * 조회 visibility와 mutation 권한을 분리하고, transaction/atomic rewrite가 필요한 작업은 중간 실패로 데이터가 반쯤 적용되지 않게 해야 한다.
+ * Keep read visibility separate from mutation authorization, and use transactions/atomic rewrites where partial failure could leave inconsistent data.
+ */
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -8,6 +16,11 @@ import java.nio.file.StandardOpenOption;
 import java.sql.*;
 import java.util.*;
 
+/**
+ * KWC 유지보수 안내: DM의 thread/message/read/delivery 상태를 SQLite 또는 JSONL backend에 저장하는 영속 계층이다. 5.3.0에서 새 “hide for me” write 경로는 없고, 자기 메시지 전역 삭제는 tombstone 방식으로 relay idempotency를 보존한다. 과거 5.2.x hidden-state는 업그레이드 후 메시지가 다시 나타나지 않도록 읽기 호환만 남아 있다.
+ *
+ * KWC maintenance note: Persistence layer for DM threads/messages/read/delivery state using SQLite or JSONL backends. KWC 5.3.0 has no new “hide for me” write path; sender-owned global deletion uses tombstones to preserve relay idempotency. Legacy 5.2.x hidden state remains read-compatible only so old hidden messages do not reappear after upgrade.
+ */
 public class DirectMessageStore {
     private final ConversationStoreHost host;
     private Connection connection;
@@ -22,6 +35,8 @@ public class DirectMessageStore {
         this.host = java.util.Objects.requireNonNull(host, "host");
     }
 
+    // 설정에 따라 SQLite 또는 JSONL backend를 연다. SQLite는 WAL/busy_timeout을 설정하고 schema migration·pending delivery recovery·retention cleanup까지 startup 시 수행한다.
+    // Opens either SQLite or JSONL according to configuration. SQLite startup enables WAL/busy timeout, then runs schema migration, pending-delivery recovery, and retention cleanup.
     public synchronized void open() {
         close();
         DirectMessageSettings c = host.directMessageSettings();
@@ -147,6 +162,10 @@ public class DirectMessageStore {
                     if (Boolean.parseBoolean(String.valueOf(m.getOrDefault("hidden", "true")))) jsonlHiddenMessages.add(key);
                     else jsonlHiddenMessages.remove(key);
                 }
+            } else if ("delete_message".equals(type)) {
+                long messageId = parseLong(m.get("messageId"), 0L);
+                JsonlMessage msg = jsonlMessages.get(messageId);
+                if (msg != null) msg.hidden = true;
             } else if ("read".equals(type)) {
                 String threadId = String.valueOf(m.getOrDefault("threadId", "")).trim();
                 String user = normalizeUuid(m.get("userUuid"));
@@ -577,6 +596,30 @@ public class DirectMessageStore {
         public String targetServerId = "";
     }
 
+    /** Preflight metadata for the sender-only global DM delete path. */
+    public static class DeletePlan {
+        public boolean ok;
+        public boolean owner;
+        public String error = "";
+        public long messageId;
+        public String threadId = "";
+        public String otherUuid = "";
+        public String senderUuid = "";
+        public String relayId = "";
+        public String targetServerId = "";
+        public long createdAt;
+    }
+
+    /** Result of applying a signed cross-server delete to a relayed DM. */
+    public static class DeleteApplyResult {
+        public boolean ok;
+        public boolean changed;
+        public String error = "";
+        public String threadId = "";
+        public String localUserUuid = "";
+        public String remoteUserUuid = "";
+    }
+
     private static final class ReplyMeta {
         long id;
         String sender = "";
@@ -631,6 +674,8 @@ public class DirectMessageStore {
                 cleanDeliveryId(replyToRelayId, 180), cleanReplyText(replyToSender, 128), cleanReplyText(replyToPreview, 240));
     }
 
+    // local/remote DM 전송이 공통으로 사용하는 저장 경로다. participant thread를 보장하고 client/relay id dedupe, reply snapshot, delivery status를 한 transaction 의미로 기록한다.
+    // Shared persistence path for local and remote DM send. It ensures the participant thread and records client/relay deduplication IDs, reply snapshot, and delivery status with transaction-like consistency.
     private synchronized SendResult sendWithDelivery(String senderUuid, String targetUuid, String body,
                                                        String deliveryStatus, String relayId,
                                                        String targetServerId, String clientMessageId,
@@ -1762,6 +1807,84 @@ public class DirectMessageStore {
     }
 
 
+    /** Searches a participant's complete retained DM history without changing read state. */
+    // 읽음 위치를 변경하지 않고 현재 participant가 볼 수 있는 보존 history만 검색한다. 과거 hidden-state와 global tombstone을 필터링해 UI history와 검색 결과의 visibility가 같게 유지된다.
+    // Searches retained history visible to the participant without changing read position. Legacy hidden-state and global tombstones are filtered so search visibility matches normal history.
+    public synchronized List<DirectMessageMessage> searchMessages(String userUuid, String threadId, String query,
+                                                                   long from, long to, String senderFilter, int limit) {
+        String user = normalizeUuid(userUuid);
+        String tid = String.valueOf(threadId == null ? "" : threadId).trim();
+        String needle = String.valueOf(query == null ? "" : query).trim().toLowerCase(Locale.ROOT);
+        String senderNeedle = String.valueOf(senderFilter == null ? "" : senderFilter).trim().toLowerCase(Locale.ROOT);
+        int max = Math.max(1, limit <= 0 ? 50 : limit);
+        if (user.isBlank() || tid.isBlank()) return new ArrayList<>();
+        if (from != Long.MIN_VALUE && to != Long.MAX_VALUE && from > to) {
+            long swap = from; from = to; to = swap;
+        }
+
+        List<DirectMessageMessage> out = new ArrayList<>();
+        if (jsonlMode()) {
+            if (!jsonlIsParticipant(tid, user)) return out;
+            List<JsonlMessage> raw = new ArrayList<>();
+            for (JsonlMessage msg : jsonlMessages.values()) {
+                if (msg == null || !tid.equals(msg.threadId) || !jsonlVisibleFor(msg, user)) continue;
+                if (from != Long.MIN_VALUE && msg.createdAt < from) continue;
+                if (to != Long.MAX_VALUE && msg.createdAt > to) continue;
+                raw.add(msg);
+            }
+            raw.sort(Comparator.comparingLong((JsonlMessage m) -> m.id).reversed());
+            for (JsonlMessage rawMessage : raw) {
+                DirectMessageMessage msg = jsonlToMessage(rawMessage);
+                if (!matchesDirectMessageSearch(msg, needle, senderNeedle)) continue;
+                out.add(msg);
+                if (out.size() >= max) break;
+            }
+            return out;
+        }
+
+        if (connection == null) return out;
+        try {
+            if (!isParticipant(tid, user)) return out;
+            StringBuilder sql = new StringBuilder(
+                    "SELECT id,thread_id,sender_uuid,body,created_at,reply_to_id,reply_to_sender,reply_to_preview,reply_to_relay_id " +
+                    "FROM dm_messages WHERE thread_id=? AND hidden=0 " +
+                    "AND id NOT IN (SELECT message_id FROM dm_message_state WHERE user_uuid=? AND hidden=1) ");
+            if (from != Long.MIN_VALUE) sql.append("AND created_at>=? ");
+            if (to != Long.MAX_VALUE) sql.append("AND created_at<=? ");
+            sql.append("ORDER BY id DESC");
+            try (PreparedStatement ps = connection.prepareStatement(sql.toString())) {
+                int index = 1;
+                ps.setString(index++, tid);
+                ps.setString(index++, user);
+                if (from != Long.MIN_VALUE) ps.setLong(index++, from);
+                if (to != Long.MAX_VALUE) ps.setLong(index++, to);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        DirectMessageMessage msg = messageFromResult(rs);
+                        if (!matchesDirectMessageSearch(msg, needle, senderNeedle)) continue;
+                        out.add(msg);
+                        if (out.size() >= max) break;
+                    }
+                }
+            }
+        } catch (SQLException ex) {
+            host.warn("Failed to search direct messages: " + ex.getMessage());
+        }
+        return out;
+    }
+
+    private boolean matchesDirectMessageSearch(DirectMessageMessage msg, String needle, String senderNeedle) {
+        if (msg == null) return false;
+        String sender = (String.valueOf(msg.senderUuid == null ? "" : msg.senderUuid) + "\n"
+                + String.valueOf(msg.senderUsername == null ? "" : msg.senderUsername) + "\n"
+                + String.valueOf(msg.senderDisplayName == null ? "" : msg.senderDisplayName)).toLowerCase(Locale.ROOT);
+        if (senderNeedle != null && !senderNeedle.isBlank() && !sender.contains(senderNeedle)) return false;
+        if (needle == null || needle.isBlank()) return true;
+        String haystack = (String.valueOf(msg.body == null ? "" : msg.body) + "\n" + sender).toLowerCase(Locale.ROOT);
+        return haystack.contains(needle);
+    }
+
+
     /** Returns a user's inclusive visible DM range without changing read state. */
     public synchronized List<DirectMessageMessage> archiveRange(String userUuid, String threadId, long firstId, long lastId, int limit) {
         String user = normalizeUuid(userUuid);
@@ -2042,53 +2165,240 @@ public class DirectMessageStore {
     }
 
 
-    public synchronized boolean hideMessage(String userUuid, long messageId) {
-        if (jsonlMode()) return jsonlHideMessage(userUuid, messageId);
-        if (connection == null) return false;
+    /**
+     * Resolve whether the requesting participant owns a visible DM and whether a
+     * sender-owned delete must be mirrored to another KWC server first.
+     */
+    // 삭제를 적용하기 전에 메시지 소유권, thread participant, relay id/target server를 읽어 immutable 계획으로 만든다. 네트워크 relay가 필요한지 mutation 전에 결정할 수 있게 한다.
+    // Builds an immutable preflight plan containing ownership, participants, relay ID, and target server before mutation. This lets callers determine whether network relay is required before deleting anything.
+    public synchronized DeletePlan deletePlan(String userUuid, long messageId) {
+        DeletePlan out = new DeletePlan();
         String user = normalizeUuid(userUuid);
-        if (user.isBlank() || messageId <= 0) return false;
+        if (user.isBlank() || messageId <= 0) { out.error = "invalid_message"; return out; }
+        DirectMessageMessage message = null;
+        if (jsonlMode()) {
+            JsonlMessage raw = jsonlMessages.get(messageId);
+            if (raw != null && !raw.hidden && jsonlVisibleFor(raw, user)) message = jsonlToMessage(raw);
+        } else if (connection != null) {
+            try { message = messageForUser(user, messageId); }
+            catch (RuntimeException ignored) {}
+        }
+        if (message == null) { out.error = "message_not_found"; return out; }
+        out.ok = true;
+        out.messageId = messageId;
+        out.threadId = String.valueOf(message.threadId == null ? "" : message.threadId);
+        out.senderUuid = normalizeUuid(message.senderUuid);
+        out.createdAt = message.createdAt;
+        out.owner = user.equals(out.senderUuid);
+        out.otherUuid = otherParticipant(out.threadId, user);
+        out.relayId = String.valueOf(message.relayId == null ? "" : message.relayId).trim();
+        RemotePlayerRef remote = RemotePlayerRef.parse(out.otherUuid);
+        if (remote != null) out.targetServerId = remote.serverId;
+        return out;
+    }
+
+    /**
+     * Globally deletes a DM only when the requester is its sender. The row is
+     * retained as a hidden tombstone so relay-id deduplication and idempotent
+     * cross-server delete retries remain safe.
+     */
+    // 요청자가 실제 sender인 메시지만 global tombstone으로 바꾸고 reply snapshot을 scrub한다. relay/dedupe id는 남겨 재시도와 중복 delete를 안전하게 처리한다.
+    // Globally tombstones only messages actually sent by the requester and scrubs surviving reply snapshots. Relay/dedupe identifiers remain so retries and duplicate deletes stay idempotent.
+    public synchronized DeleteApplyResult deleteOwnedMessage(String userUuid, long messageId) {
+        return deleteMessage(userUuid, messageId, false);
+    }
+
+    /** Deletes a visible participant message, optionally allowing a moderation override. */
+    public synchronized DeleteApplyResult deleteMessage(String userUuid, long messageId, boolean allowParticipantModerator) {
+        DeleteApplyResult out = new DeleteApplyResult();
+        String user = normalizeUuid(userUuid);
+        if (user.isBlank() || messageId <= 0) { out.error = "invalid_message"; return out; }
+        if (jsonlMode()) {
+            JsonlMessage msg = jsonlMessages.get(messageId);
+            if (msg == null || msg.hidden || !jsonlIsParticipant(msg.threadId, user)
+                    || (!allowParticipantModerator && !user.equals(normalizeUuid(msg.senderUuid)))) {
+                out.error = "message_not_found"; return out;
+            }
+            boolean oldHidden = msg.hidden;
+            Set<String> removedHidden = new HashSet<>();
+            for (String key : new ArrayList<>(jsonlHiddenMessages)) {
+                if (key.endsWith("|" + messageId)) { removedHidden.add(key); jsonlHiddenMessages.remove(key); }
+            }
+            List<Object[]> replySnapshots = scrubJsonlReplySnapshots(msg.threadId, messageId, msg.relayId);
+            msg.hidden = true;
+            try {
+                // Rewrite rather than append a delete-only event so reply snapshots that
+                // contained the deleted body are scrubbed durably as well.
+                rewriteJsonl();
+            } catch (IOException ex) {
+                msg.hidden = oldHidden;
+                jsonlHiddenMessages.addAll(removedHidden);
+                restoreJsonlReplySnapshots(replySnapshots);
+                out.error = "store_error";
+                host.warn("Failed to persist direct message delete tombstone: " + ex.getMessage());
+                return out;
+            }
+            out.ok = true; out.changed = true; out.threadId = msg.threadId;
+            out.localUserUuid = user; out.remoteUserUuid = jsonlOtherParticipant(msg.threadId, user);
+            return out;
+        }
+        if (connection == null) { out.error = "dm_unavailable"; return out; }
         try {
             String threadId;
-            try (PreparedStatement ps = connection.prepareStatement("SELECT thread_id FROM dm_messages WHERE id=? AND hidden=0")) {
+            String sender;
+            String messageRelayId = "";
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT m.thread_id,m.sender_uuid,COALESCE(d.relay_id,'') FROM dm_messages m " +
+                            "LEFT JOIN dm_delivery_state d ON d.message_id=m.id WHERE m.id=? AND m.hidden=0")) {
                 ps.setLong(1, messageId);
                 try (ResultSet rs = ps.executeQuery()) {
-                    if (!rs.next()) return false;
-                    threadId = rs.getString(1);
+                    if (!rs.next()) { out.error = "message_not_found"; return out; }
+                    threadId = rs.getString(1); sender = normalizeUuid(rs.getString(2));
+                    messageRelayId = String.valueOf(rs.getString(3) == null ? "" : rs.getString(3)).trim();
                 }
             }
-            if (!isParticipant(threadId, user)) return false;
-            try (PreparedStatement ps = connection.prepareStatement(
-                    "INSERT INTO dm_message_state(message_id,user_uuid,hidden) VALUES(?,?,1) " +
-                            "ON CONFLICT(message_id,user_uuid) DO UPDATE SET hidden=1")) {
-                ps.setLong(1, messageId);
-                ps.setString(2, user);
-                ps.executeUpdate();
+            if (!isParticipant(threadId, user) || (!allowParticipantModerator && !user.equals(sender))) {
+                out.error = "not_message_owner"; return out;
             }
-            markRead(threadId, user);
-            return true;
+            connection.setAutoCommit(false);
+            int changed;
+            try (PreparedStatement ps = connection.prepareStatement("UPDATE dm_messages SET hidden=1 WHERE id=? AND hidden=0")) {
+                ps.setLong(1, messageId); changed = ps.executeUpdate();
+            }
+            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM dm_message_state WHERE message_id=?")) {
+                ps.setLong(1, messageId); ps.executeUpdate();
+            }
+            scrubSqlReplySnapshots(threadId, messageId, messageRelayId);
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "UPDATE dm_threads SET updated_at=COALESCE((SELECT MAX(created_at) FROM dm_messages WHERE thread_id=? AND hidden=0),updated_at) WHERE id=?")) {
+                ps.setString(1, threadId); ps.setString(2, threadId); ps.executeUpdate();
+            }
+            connection.commit();
+            out.ok = changed > 0; out.changed = changed > 0; out.threadId = threadId;
+            out.localUserUuid = user; out.remoteUserUuid = otherParticipant(threadId, user);
+            if (!out.ok) out.error = "message_not_found";
+            return out;
         } catch (SQLException ex) {
-            host.warn("Failed to hide direct message: " + ex.getMessage());
-            return false;
+            try { connection.rollback(); } catch (SQLException ignored) {}
+            out.error = "store_error";
+            host.warn("Failed to delete owned direct message: " + ex.getMessage());
+            return out;
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) {}
         }
     }
 
-    private boolean jsonlHideMessage(String userUuid, long messageId) {
-        String user = normalizeUuid(userUuid);
-        JsonlMessage msg = jsonlMessages.get(messageId);
-        if (user.isBlank() || msg == null || !jsonlVisibleFor(msg, user)) return false;
-        jsonlHiddenMessages.add(jsonlHiddenKey(user, messageId));
-        try {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("type", "hide_message");
-            m.put("messageId", messageId);
-            m.put("userUuid", user);
-            m.put("hidden", true);
-            appendJsonlEvent(m);
-        } catch (IOException ex) {
-            host.warn("Failed to append direct message hide state: " + ex.getMessage());
+    /** Apply a sender-authoritative delete received from the message's origin server. */
+    // remote peer가 보낸 delete를 originServerId + senderUuid + relayId 삼중 조건으로 검증한 뒤 적용한다. relay id만 안다고 다른 사용자의 메시지를 지울 수 없어야 한다.
+    // Applies a peer delete only after validating originServerId + senderUuid + relayId together. Knowledge of a relay ID alone must never authorize deletion of another sender’s message.
+    public synchronized DeleteApplyResult applyRelayedDelete(String originServerId, String senderUuid, String relayId) {
+        DeleteApplyResult out = new DeleteApplyResult();
+        String rid = cleanDeliveryId(relayId, 180);
+        String expectedSender = RemotePlayerRef.key(originServerId, senderUuid);
+        if (rid.isBlank() || expectedSender.isBlank()) { out.error = "invalid_delete"; return out; }
+        if (jsonlMode()) {
+            JsonlMessage found = null;
+            for (JsonlMessage msg : jsonlMessages.values()) {
+                if (msg != null && rid.equals(msg.relayId)) { found = msg; break; }
+            }
+            if (found == null || !expectedSender.equals(normalizeUuid(found.senderUuid))) { out.error = "message_not_found"; return out; }
+            boolean changed = !found.hidden;
+            boolean oldHidden = found.hidden;
+            List<Object[]> replySnapshots = scrubJsonlReplySnapshots(found.threadId, found.id, rid);
+            found.hidden = true;
+            if (changed || !replySnapshots.isEmpty()) {
+                try { rewriteJsonl(); }
+                catch (IOException ex) {
+                    found.hidden = oldHidden;
+                    restoreJsonlReplySnapshots(replySnapshots);
+                    out.error = "store_error"; return out;
+                }
+            }
+            out.ok = true; out.changed = changed; out.threadId = found.threadId;
+            out.remoteUserUuid = expectedSender; out.localUserUuid = jsonlOtherParticipant(found.threadId, expectedSender);
+            return out;
         }
-        markRead(msg.threadId, user);
-        return true;
+        if (connection == null) { out.error = "dm_unavailable"; return out; }
+        try {
+            long messageId; String threadId; String actualSender; boolean alreadyHidden;
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT m.id,m.thread_id,m.sender_uuid,m.hidden FROM dm_messages m JOIN dm_delivery_state d ON d.message_id=m.id WHERE d.relay_id=? LIMIT 1")) {
+                ps.setString(1, rid);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) { out.error = "message_not_found"; return out; }
+                    messageId = rs.getLong(1); threadId = rs.getString(2); actualSender = normalizeUuid(rs.getString(3)); alreadyHidden = rs.getInt(4) != 0;
+                }
+            }
+            if (!expectedSender.equals(actualSender)) { out.error = "sender_mismatch"; return out; }
+            connection.setAutoCommit(false);
+            int changed = 0;
+            if (!alreadyHidden) {
+                try (PreparedStatement ps = connection.prepareStatement("UPDATE dm_messages SET hidden=1 WHERE id=? AND hidden=0")) {
+                    ps.setLong(1, messageId); changed = ps.executeUpdate();
+                }
+                try (PreparedStatement ps = connection.prepareStatement("DELETE FROM dm_message_state WHERE message_id=?")) {
+                    ps.setLong(1, messageId); ps.executeUpdate();
+                }
+            }
+            // Also scrub any stored reply snapshots that could otherwise retain the
+            // deleted message body. This is safe and idempotent on duplicate deletes.
+            scrubSqlReplySnapshots(threadId, messageId, rid);
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "UPDATE dm_threads SET updated_at=COALESCE((SELECT MAX(created_at) FROM dm_messages WHERE thread_id=? AND hidden=0),updated_at) WHERE id=?")) {
+                ps.setString(1, threadId); ps.setString(2, threadId); ps.executeUpdate();
+            }
+            connection.commit();
+            out.ok = true; out.changed = changed > 0; out.threadId = threadId;
+            out.remoteUserUuid = expectedSender; out.localUserUuid = otherParticipant(threadId, expectedSender);
+            return out;
+        } catch (SQLException ex) {
+            try { connection.rollback(); } catch (SQLException ignored) {}
+            out.error = "store_error"; host.warn("Failed to apply relayed DM delete: " + ex.getMessage()); return out;
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) {}
+        }
+    }
+
+    private List<Object[]> scrubJsonlReplySnapshots(String threadId, long messageId, String relayId) {
+        List<Object[]> snapshots = new ArrayList<>();
+        String tid = String.valueOf(threadId == null ? "" : threadId);
+        String rid = cleanDeliveryId(relayId, 180);
+        for (JsonlMessage candidate : jsonlMessages.values()) {
+            if (candidate == null || candidate.hidden || !tid.equals(candidate.threadId)) continue;
+            boolean references = candidate.replyToId == messageId || (!rid.isBlank() && rid.equals(candidate.replyToRelayId));
+            if (!references) continue;
+            snapshots.add(new Object[]{candidate, candidate.replyToId, candidate.replyToSender, candidate.replyToPreview, candidate.replyToRelayId});
+            candidate.replyToId = 0L;
+            candidate.replyToSender = "";
+            candidate.replyToPreview = "";
+            candidate.replyToRelayId = "";
+        }
+        return snapshots;
+    }
+
+    private void restoreJsonlReplySnapshots(List<Object[]> snapshots) {
+        if (snapshots == null) return;
+        for (Object[] snapshot : snapshots) {
+            if (snapshot == null || snapshot.length < 5 || !(snapshot[0] instanceof JsonlMessage)) continue;
+            JsonlMessage candidate = (JsonlMessage) snapshot[0];
+            candidate.replyToId = (Long) snapshot[1];
+            candidate.replyToSender = String.valueOf(snapshot[2] == null ? "" : snapshot[2]);
+            candidate.replyToPreview = String.valueOf(snapshot[3] == null ? "" : snapshot[3]);
+            candidate.replyToRelayId = String.valueOf(snapshot[4] == null ? "" : snapshot[4]);
+        }
+    }
+
+    private void scrubSqlReplySnapshots(String threadId, long messageId, String relayId) throws SQLException {
+        String rid = cleanDeliveryId(relayId, 180);
+        try (PreparedStatement ps = connection.prepareStatement(
+                "UPDATE dm_messages SET reply_to_id=0,reply_to_sender='',reply_to_preview='',reply_to_relay_id='' " +
+                        "WHERE thread_id=? AND hidden=0 AND (reply_to_id=? OR (?<>'' AND reply_to_relay_id=?))")) {
+            ps.setString(1, String.valueOf(threadId == null ? "" : threadId));
+            ps.setLong(2, messageId);
+            ps.setString(3, rid);
+            ps.setString(4, rid);
+            ps.executeUpdate();
+        }
     }
 
     public synchronized int unreadCount(String userUuid) {

@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * WebPushManager는 여러 저수준 객체를 조합해 하나의 KWC 기능 흐름을 수행하는 서비스/관리 계층이다.
+ * WebPushManager is a service/manager layer coordinating lower-level objects into one KWC feature flow.
+ *
+ * 상태 변경 순서와 실패 시 rollback/재시도 의미가 호출자에게 예측 가능하도록 side effect를 한곳에서 조정한다.
+ * Coordinate side effects so mutation order and rollback/retry behavior remain predictable to callers.
+ */
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -54,6 +62,11 @@ import javax.crypto.spec.SecretKeySpec;
 
 /** Standards-based Web Push sender for browser/mobile push notifications.
  *  It intentionally uses only JDK classes so the plugin does not need another shaded dependency.
+ */
+/**
+ * KWC 유지보수 안내: Web Push subscription, VAPID 암호화/서명, 계정별 category preference와 active-private-view 억제를 관리한다. Push endpoint는 기기별이지만 DM/그룹 “현재 읽고 있음” 상태는 계정 전체 attention 의미를 가지므로 어느 활성 클라이언트든 정확한 대화를 보고 있으면 같은 계정의 모든 endpoint에 대한 해당 알림을 억제할 수 있다.
+ *
+ * KWC maintenance note: Manages Web Push subscriptions, VAPID encryption/signing, account category preferences, and active-private-view suppression. Push endpoints are per device, but DM/group “currently reading” is account-wide attention: any active client viewing the exact conversation can suppress that alert across all endpoints of the account.
  */
 public class WebPushManager {
     public static class Payload {
@@ -340,6 +353,8 @@ public class WebPushManager {
     }
 
 
+    // 브라우저 heartbeat가 보고한 현재 DM/group attention을 계정+device+client 단위 TTL 상태로 갱신한다. 이 상태는 Push subscription 존재 여부와 분리되어야 Push를 끈 PC가 같은 계정 휴대폰의 중복 알림도 억제할 수 있다.
+    // Updates TTL-based DM/group attention keyed by account+device+client from browser heartbeats. It remains independent of Push subscription state so a PC with Push disabled can still suppress duplicate alerts on the same account’s phone.
     public void updateActiveView(Account account, String deviceId, String clientId, boolean active,
                                  String dmThreadId, String groupRoomId) {
         if (account == null || account.uuid == null || account.uuid.isBlank()) return;
@@ -524,6 +539,8 @@ public class WebPushManager {
         sendToUsers(all, payload);
     }
 
+    // 수신 계정별 preference와 active-view 억제를 먼저 적용한 뒤 실제 endpoint 암호화/전송을 수행한다. 억제 판단을 send 이후로 미루면 이미 OS Push가 표시될 수 있다.
+    // Applies account preferences and active-view suppression before encrypting/sending to endpoints. Suppression cannot be deferred until after send because the OS notification may already have been delivered.
     public void sendToUsers(Set<String> userUuids, Payload payload) {
         ConfigValues c = host.config();
         if (c == null || !c.webPushEnabled || payload == null || userUuids == null || userUuids.isEmpty()) return;
@@ -713,7 +730,11 @@ public class WebPushManager {
         String key = clean(p.i18nKey, 160);
         if (key.isBlank()) return fallback;
         String value = subscriptionText(sub, key, fallback);
-        Map<String, String> vars = JsonUtil.parseFlatObject(p.i18nArgs);
+        Map<String, String> vars = new LinkedHashMap<>(JsonUtil.parseFlatObject(p.i18nArgs));
+        if ("game.chat.created".equals(key) && vars.containsKey("type")) {
+            String rawType = String.valueOf(vars.get("type"));
+            vars.put("type", subscriptionText(sub, "game.type." + rawType, rawType));
+        }
         for (Map.Entry<String, String> entry : vars.entrySet()) {
             value = value.replace("{" + entry.getKey() + "}", entry.getValue() == null ? "" : entry.getValue());
         }

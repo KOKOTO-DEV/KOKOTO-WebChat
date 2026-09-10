@@ -1,6 +1,6 @@
 # SimpleNicks-Bero 연동
 
-KOKOTO WebChat 5.2.0은 **Bukkit/Paper 계열**에서 [SimpleNicks-Bero](https://github.com/KOKOTO-DEV/SimpleNicks-Bero)가 Bukkit player display name에 적용한 닉네임을 사용할 수 있습니다. KWC는 SimpleNicks를 hard dependency로 요구하거나 해당 플러그인의 DB를 직접 읽지 않습니다.
+KOKOTO WebChat 5.3.0은 **Bukkit/Paper 계열**에서 [SimpleNicks-Bero](https://github.com/KOKOTO-DEV/SimpleNicks-Bero)가 Bukkit player display name에 적용한 닉네임을 사용할 수 있습니다. KWC는 SimpleNicks를 hard dependency로 요구하거나 해당 플러그인의 DB를 직접 읽지 않습니다.
 
 기본 설치, `/nick` 명령어, 권한, SQLite/MySQL, 저장 닉네임, 보호 기능, PlaceholderAPI/MiniPlaceholders 등 일반 운영은 [원본 SimpleNicks 문서](https://github.com/Simplexity-Development/SimpleNicks)를 참고하세요. 이 문서는 KWC 연동에 필요한 부분만 설명합니다.
 

@@ -7,18 +7,19 @@ web:
     guest: guest
     reconnecting: reconnecting...
     loggedIn: logged in
+    loggedInCount: '{count} logged in'
   button:
     emoji: Emoji
     admin: Admin
     login: Login
     upload: Attach
     resizeEmojiPanel: Drag to resize emoji picker
-    resizeLock: Lock resize
-    resizeUnlock: Unlock resize
     resize: Resize
     send: Send
     reset: Reset
     close: Close
+    closeAllDm: Close all DMs
+    closeAllGroups: Close all group chats
     accept: Accept
     decline: Decline
     cancel: Cancel
@@ -73,7 +74,12 @@ web:
     minutes: minutes
     reason: reason
     emojiPack: new pack/folder name
+  captcha:
+    enterCode: 'Enter code: {code}'
+  mention:
+    suggestions: Mention suggestions
   reply:
+    reply: 'Reply'
     composing: Replying to {sender}
     jump: Jump to replied message
     notFound: The referenced message could not be found.
@@ -103,7 +109,7 @@ web:
     uploadTooLarge: 'File is too large: {name}'
     emojiBatchUploadFailed: 'Uploaded {uploaded}/{total}. Failed: {failed}'
     uploadFailed: 'Upload failed: {error}'
-    confirmDelete: Hide this message?
+    confirmDelete: Delete this message?
     deleteFailed: 'Delete failed: {error}'
     confirmClearHistory: "WARNING: All public chat history, related reactions, and saved public-chat archives will be permanently deleted from the server. This cannot be undone or recovered. Are you sure you want to delete them?"
     adminActionFailed: 'Admin action failed: {error}'
@@ -133,15 +139,15 @@ web:
     dmAuditLoadFailed: "Failed to load DM audit: {error}"
     dmSendFailed: "Failed to send message: {error}"
     dmRetryFailed: 'Failed to retry message: {error}'
-    dmHideFailed: "Failed to hide message: {error}"
+    dmDeleteFailed: 'Failed to delete message: {error}'
     groupLoadFailed: 'Failed to load group chats: {error}'
     groupAuditLoadFailed: "Failed to load group audit: {error}"
     groupJoinFailed: 'Failed to join group chat: {error}'
     groupSendFailed: 'Failed to send group message: {error}'
+    groupDeleteFailed: 'Failed to delete group message: {error}'
     groupCreateFailed: 'Failed to create group chat: {error}'
     groupInviteFailed: 'Failed to invite player: {error}'
     groupLeaveFailed: 'Failed to leave group chat: {error}'
-    groupHideFailed: 'Failed to hide message: {error}'
     groupActionFailed: 'Group action failed: {error}'
     groupSettingsFailed: 'Failed to save group settings: {error}'
     renameFailed: 'Rename failed: {error}'
@@ -215,7 +221,8 @@ web:
     privateMetaOnly: 'Private metadata only'
     privateContentAccess: 'Admin DM audit (contents available)'
     openDmAudit: 'Open this DM session in read-only audit view.'
-    dmAuditView: 'DM audit (read-only)'
+    dmAuditView: 'DM audit'
+    groupAuditView: 'Group audit'
     dmAuditReadOnly: 'This administrator audit view is read-only. Every access is recorded in the audit log.'
     groupMetaOnly: 'Group room metadata'
     groupAuditTitle: 'Admin group audit'
@@ -237,6 +244,8 @@ web:
     archived: 'archived'
     accounts: Accounts
     onlinePlayers: Online players
+    onlineUsers: 'Online users'
+    showOfflineUsers: 'Show offline users'
     none: none
     muteGuestIp: Mute guest/IP
     typeGuest: guest
@@ -300,14 +309,25 @@ web:
     filter: 'Filter'
     settings: Settings
     discordAlertNoChannels: 'No DiscordSRV channels available'
+    navAdministration: 'Administration'
+    navOperations: 'Operations'
+    blocksAndRestrictions: 'Blocks / restrictions'
+    guestIpBlocks: 'Guest / IP mutes'
+    accountRestrictions: 'Signed-in user restrictions'
+    optionCaptchaMathEasy: 'Easy'
+    optionCaptchaMathNormal: 'Normal'
+    optionCaptchaMathHard: 'Hard'
     setting:
       guest-enabled: 'Guest access'
       guest-allow-custom-name: 'Custom guest names'
       guest-cooldown-seconds: 'Guest cooldown (seconds)'
       guest-max-messages-per-minute: 'Guest messages per minute'
       captcha-mode: 'CAPTCHA mode'
+      captcha-math-complexity: 'Math CAPTCHA complexity'
       captcha-require-on-each-message: 'CAPTCHA every message'
       captcha-pass-valid-minutes: 'CAPTCHA pass duration (minutes)'
+      moderation-allow-user-self-message-delete: 'Allow users to delete their own messages'
+      moderation-self-message-delete-window-minutes: 'Own-message deletion limit'
       auth-password-login: 'Password login'
       auth-remember-session-days: 'User session duration (days)'
       admin-admin-session-expire-hours: 'Admin session duration (hours)'
@@ -352,10 +372,29 @@ web:
       content-filter-anti-evasion-interleave-unlimited-gap: 'Unlimited interleave gap'
       content-filter-anti-evasion-collapse-repeats: 'Collapse repeats'
       content-filter-anti-evasion-repeat-limit: 'Repeat limit'
+    userControls: 'User restrictions'
+    userControlsHint: 'Chat ban blocks KWC public/DM/group sending. Upload ban blocks chat and profile-image uploads.'
+    chatBan: 'Chat ban'
+    uploadBan: 'Upload ban'
+    deleteProfileImage: 'Delete profile image'
+    deleteProfileImageConfirm: "Delete this user's custom profile image?"
+    moderatorPermissions: 'Moderator permissions'
+    moderatorPermissionsHint: 'Delegate moderation functions per moderator. Administrator-only server/account/session settings are never delegated.'
+    capabilityViewOnline: 'View online/offline users'
+    capabilityMessageDelete: 'Delete public messages'
+    capabilityGuestMute: 'Mute/unmute guests and IPs'
+    capabilityPinManage: 'Manage public pinned messages'
+    capabilityContentFilterManage: 'Manage content filters and word lists'
+    capabilityEmojiManage: 'Manage emoji uploads, packs, and reactions'
+    capabilityGameManage: 'Create, draw, and close events'
+    capabilityUserRestrictions: 'Set user chat/upload bans'
+    capabilityProfileAvatarDelete: 'Delete user profile images'
+    onlinePermissionMissing: 'Online-user viewing is not delegated to this moderator.'
     settingsGroupGuestCaptcha: 'Guest & CAPTCHA'
     settingsGroupAuthSessions: 'Authentication & sessions'
     settingsGroupProfiles: 'User profiles'
     settingsGroupTyping: 'Typing indicators'
+    settingsGroupModeration: 'Message deletion'
     settingsGroupUploads: 'Uploads'
     settingsGroupDiscordAlerts: 'Discord admin alerts'
     filterGroupGeneral: 'General & scopes'
@@ -369,9 +408,13 @@ web:
     settingsVerifyMismatch: 'Save verification failed for {setting}.'
     optionCaptchaOff: 'Off'
     optionCaptchaMath: 'Math challenge'
+    optionCaptchaText: 'Text code'
+    optionCaptchaMixed: 'Mixed (math/text)'
     optionFilenameRandom: 'Random name'
     optionFilenameOriginal: 'Original name'
     optionMentionNone: 'None'
+    optionDeleteWindowAlways: 'Always'
+    optionDeleteWindowMinutes: 'Within {minutes} minutes'
     filterHint: 'Registered KWC emoji tokens are protected from blocking/filtering. Unregistered :fake: tokens are treated as ordinary text.'
     filterGuideTitle: 'Custom rule examples'
     filterGuideChoose: 'Use filter-word TXT lists for many simple Block/Filter words. Use custom rules when you need a different action, replacement candidates, or per-word replacements.'
@@ -534,6 +577,12 @@ web:
     chatBehavior: 'Chat behavior'
     showTypingIndicator: 'Typing indicators'
     showTypingIndicatorHelp: 'Show other users'' typing activity on this screen. This setting is saved to your KWC account and does not stop your own typing activity from being sent.'
+    presenceSettings: 'Privacy & presence'
+    profileButton: 'Profile'
+    presenceStatus: 'Online status'
+    presenceStatusHelp: 'Offline hides your actual Game/Web presence from other users. Busy keeps you visible but marks you as busy.'
+    blockedUsers: 'Blocked users'
+    blockedUsersEmpty: 'No blocked users.'
     notifications: 'Notifications'
     notificationsPage: 'Browser system notifications'
     notificationsPageHelp: 'Browser notifications are available only in supported browsers.'
@@ -617,6 +666,40 @@ web:
     fontSystem: System
     note: 'This settings window can be moved by dragging its title.'
     noteDrag: This settings window can be moved by dragging its title.
+  presence:
+    profileTitle: 'User profile'
+    game: 'Game'
+    web: 'Web'
+    online: 'Online'
+    busy: 'Busy'
+    offline: 'Offline'
+    invisible: 'Invisible'
+    visibleStatus: 'Visible status'
+    nameToggle: 'Name display: {mode}'
+    nameDisplay: 'Name display'
+    displayName: 'Display name'
+    realName: 'Real name'
+    sendDirectMessage: 'Send DM'
+    profileImage: 'Profile image'
+    profileImageNone: 'None'
+    profileImageMinecraft: 'Minecraft Head'
+    profileImageCustom: 'Custom image'
+    uploadProfileImage: 'Upload image'
+    deleteProfileImage: 'Delete image'
+    saveProfile: 'Save profile'
+    about: 'About / status message'
+    aboutPlaceholder: 'Write a short introduction or status message.'
+    aboutEmpty: 'No introduction or status message.'
+    roleChange: 'Change role'
+    roleUser: 'User'
+    roleModerator: 'Moderator'
+    roleAdmin: 'Admin'
+    userManagement: 'User management'
+    blockUser: 'Block'
+    unblockUser: 'Unblock'
+    invisibleSelfNote: 'Invisible is enabled. Other users see you as Offline.'
+    offlineSelfNote: 'You appear Offline to other users. Your own profile still shows your actual Game/Web connection.'
+
   opacity:
     title: Opacity
   upload:
@@ -703,13 +786,13 @@ web:
     command_too_long: Command is too long
     dmLoadFailed: 'Failed to load messages: {error}'
     dmSendFailed: 'Failed to send message: {error}'
-    dmHideFailed: 'Failed to hide message: {error}'
     dm_disabled: Direct messages are disabled
     web_send_disabled: Web direct-message sending is disabled
     player_not_found: Player not found
     remote_server_unavailable: Remote server is unavailable
     self_message: You cannot send a direct message to yourself
   dm:
+    open: 'Open DM'
     title: Messages
     noThreads: No message threads.
     selectThread: Select a thread
@@ -722,8 +805,8 @@ web:
     hideThreads: Hide conversations
     showThreadsShort: Show
     hideThreadsShort: Hide
-    confirmHideMessage: Hide this message from your view?
-    hideMessage: Hide this message for me
+    deleteOwnMessage: 'Delete message'
+    confirmDeleteOwnMessage: 'Delete this message for both participants?'
     threadList: Conversations
     showConversationList: Show list
     showCurrentConversation: Current only
@@ -756,6 +839,9 @@ web:
     passwordOptionalLabel: 'Password (optional)'
     passwordSettingsLabel: 'Password (blank removes it)'
     membershipEvents: 'Show member join/leave notices'
+    pinsEnabled: 'Enable pinned messages in this room'
+    messageDeleteEnabled: 'Enable message deletion in this room'
+    memberSelfDeleteEnabled: 'Allow members to delete their own messages'
     memberJoined: '{player} joined the room.'
     memberLeft: '{player} left the room.'
     membersShort: 'members'
@@ -776,9 +862,13 @@ web:
     inviteSent: 'Invitation sent.'
     confirmInvite: 'Invite {player} to this group chat?'
     confirmLeave: 'Leave this group chat?'
-    confirmHideMessage: 'Hide this message from your view?'
+    confirmDeleteMessage: 'Delete this message from the room?'
     manage: 'Manage'
-    manageNote: 'Room managers can kick, ban, or transfer ownership. Message contents are not shown here.'
+    manageNote: 'Room managers can kick or ban members; the owner can assign room admins or transfer ownership. Message contents are not shown here.'
+    makeAdmin: 'Make admin'
+    removeAdmin: 'Remove admin'
+    confirmMakeAdmin: 'Make {player} a room admin?'
+    confirmRemoveAdmin: 'Remove room admin from {player}?'
     memberListNote: 'Members can view the participant list. Management actions are only shown to room managers.'
     memberOnlineCount: '{online}/{total} online'
     online: 'Online'
@@ -790,6 +880,7 @@ web:
     confirmKick: 'Kick {player} from this room?'
     confirmBan: 'Ban {player} from this room?'
     confirmTransferOwner: 'Transfer room ownership to {player}?'
+    hideRoom: 'Hide from list'
     confirmHideRoom: 'Hide this room from your group chat list?'
     retentionLimited: 'Retention: {days} days'
     retentionUnlimited: 'Retention: no time limit'
@@ -881,6 +972,37 @@ web:
     helpRevoke: Revoke web sessions
     helpFilter: Manage filter rules
     helpSettings: View or change live settings
+    helpGame: 'List, view, or join events'
+    gameUnavailable: 'The event service is unavailable.'
+    gameAlreadyJoined: 'You already joined this event.'
+    gameJoined: 'You joined the event.'
+    gameClosed: 'The event was closed.'
+    gameDeleted: 'Event deleted: {title}'
+    gameNone: 'There are no events.'
+    gameWinnerCount: 'winners: {count}'
+    gameNoParticipants: 'No participants yet.'
+    gameNoWinners: 'No winners.'
+    gameWinners: 'Winners: {names}'
+    gameNotOpen: 'This event is not open.'
+    gameFull: 'This event is full.'
+    gameNotEnough: 'There are not enough participants to draw winners.'
+    gameFailed: 'Event action failed: {error}'
+    gameCreated: 'Event created: {title} ({id})'
+    gameDrawn: 'Winners were drawn for {title}.'
+    gameFinished: 'Event finalized: {title}'
+    gameListTitle: 'Events: {count}'
+    gameListEntry: '- {id} | {title} | {status} | {participants}/{max}'
+    gameTypeFirstCome: 'First come'
+    gameTypeLottery: 'Lottery'
+    gameStatusOpen: 'Open'
+    gameStatusReady: 'Full'
+    gameStatusCompleted: 'Completed'
+    gameStatusClosed: 'Closed'
+    gameInvalidType: 'Event type must be firstcome or lottery.'
+    gameInvalidTitle: 'Enter an event title up to 80 characters.'
+    gameInvalidParticipantCount: 'Participant count must be at least 2.'
+    gameInvalidWinnerCount: 'Winner count must be between 1 and the participant count.'
+    gameNotLottery: 'This event is not a lottery.'
     filterStatus: 'Filter: {state} / public={public} group={group} dm={dm} / rules={rules}'
     filterListTitle: 'Filter rules: {count}'
     filterRuleNotFound: 'Filter rule not found: {id}'
@@ -896,7 +1018,7 @@ web:
     settingsUpdated: 'Updated {key}={value}. Sessions updated={updated}, expired={expired}.'
     helpDm: Send a direct message
     helpDmList: List direct message threads
-    helpDmHide: Hide a direct message from your view
+    helpDmDelete: Delete one of your direct messages for both participants
     helpDmRead: Read a direct message thread
     helpReply: Reply to a public KWC message
     replyClickHint: "Click to reply (#{id})"
@@ -954,10 +1076,13 @@ web:
     dmReadLastPage: 'You are already on the oldest page.'
     dmNoMessages: No messages in this thread.
     dmMe: me
-    dmHideHint: 'Hide one from your view: /kchat dm hide <messageId>'
+    dmDeleteHint: 'Delete one of your messages: /kchat dm delete <messageId>'
     dmInvalidMessageId: Invalid message id.
-    dmHideFailed: "Failed to hide message."
-    dmHidden: Message hidden from your view.
+    dmDeleteFailed: "Failed to delete message."
+    dmDeleteRemoteUnavailable: "Remote server is unavailable; message was not deleted."
+    dmDeleteNotOwner: "You can delete only direct messages that you sent."
+    dmDeleteWindowExpired: 'This message can no longer be deleted.'
+    dmDeleted: "Message deleted for both participants."
     never: never
     authInvalid: Invalid authentication request.
     authCodeExpired: The authentication code is missing or expired.
@@ -987,6 +1112,64 @@ web:
     failed: 'Command failed: {error}'
     tooLong: 'Command is too long. Maximum: {max} characters.'
     maxLengthHint: 'Maximum: {max} characters'
+  game:
+    list: 'Event list'
+    backToList: 'Back to event list'
+    newEvent: 'New event'
+    server: 'Server'
+    remote: 'Relay server'
+    noEvents: 'There are no events.'
+    confirmDeleteEvent: 'Delete this event?'
+    remoteUnavailable: 'Could not load the event from its origin server.'
+    deleted: 'Deleted event'
+    deletedNotice: 'This event has been deleted and can no longer be opened.'
+    remoteReadOnly: 'Management is available only on the event origin server.'
+    select: 'Open'
+    createdAt: 'Created'
+    error.remote_server_unavailable: 'The origin server is unavailable.'
+    error.game_relay_unavailable: 'The origin server does not support event lookup.'
+    error.remote_game_manage_not_allowed: 'Remote events can be joined, but must be managed on their origin server.'
+    error.permission_denied: 'You do not have permission to manage this event.'
+    error.not_lottery: 'This event is not a lottery.'
+    error.invalid_type: 'Choose first come or lottery.'
+    title: Events
+    type: Type
+    eventTitle: Title
+    maxParticipants: Participants
+    winnerCountLabel: Winners
+    winnerCount: '{count} winners'
+    notificationScope: Notification scope
+    scopeLocal: Current server only
+    scopeRelay: Current server + Relay servers
+    create: Create event
+    join: Join
+    joined: Joined
+    finish: Close registration and finalize
+    finishLottery: Close registration and draw
+    refresh: Refresh
+    open: Open event
+    draw: Draw
+    close: Close event
+    participants: Participants
+    participantHeading: 'Participants ({count})'
+    noParticipants: No participants yet.
+    winners: Winners
+    chat.created: 'Event opened: {title} ({type}, {participants} participants, {winners} winners)'
+    chat.results: 'Event result: {title} - Winners: {winners}'
+    none: There is no current event.
+    type.firstcome: First come
+    type.lottery: Lottery
+    status.open: Open
+    status.ready: Full
+    status.completed: Completed
+    status.closed: Closed
+    error.invalid_title: Enter an event title.
+    error.invalid_participant_count: Enter a participant limit of at least 2.
+    error.invalid_winner_count: Enter at least 1 winner and no more winners than participants.
+    error.game_not_found: There is no matching event.
+    error.game_not_open: This event is not accepting participants.
+    error.game_full: The participant limit has been reached.
+    error.not_enough_participants: There are not enough participants to draw winners.
   security:
     httpServerWarning: "[WARNING] KOKOTO WebChat is configured for HTTP ({url}). Login data and chat traffic can be read in plaintext on the network. Use HTTPS through a reverse proxy whenever possible."
     relayHttpPeerWarning: "[WARNING] Relay peer '{peer}' uses HTTP ({url}). Direct Relay is still allowed, but that peer is excluded from forwarding; HTTPS is strongly recommended."
@@ -1016,4 +1199,3 @@ web:
     offline: 'Offline.
 
       Check connection.'
-

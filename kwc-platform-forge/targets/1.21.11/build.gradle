@@ -1,7 +1,13 @@
+// KWC 파일 안내 / KWC file guide
+// 이 Gradle 파일은 kwc-platform-forge/targets/1.21.11/build.gradle 빌드의 plugin/toolchain/dependency/산출물 이름을 정의한다.
+// This Gradle file defines plugins, toolchains, dependencies, and artifact naming for kwc-platform-forge/targets/1.21.11/build.gradle.
+// exact-target JDK/loader pin은 릴리스 호환성 계약이므로 버전 변경 시 build-all 스크립트와 validation matrix를 함께 확인한다.
+// Exact-target JDK/loader pins are release compatibility contracts; update build-all scripts and validation matrices together when versions change.
+
 plugins { id 'java'; id 'net.minecraftforge.gradle' version '[7.0.17,8)'; id 'net.minecraftforge.jarjar' version '0.2.3' }
 
 group='dev.kokoto'
-version='5.2.1'
+version='5.3.0'
 java.toolchain.languageVersion=JavaLanguageVersion.of(21)
 jarJar.register()
 repositories { minecraft.mavenizer(it); maven fg.forgeMaven; maven fg.minecraftLibsMaven; mavenCentral();  }
@@ -19,10 +25,10 @@ def metadata=tasks.register('generateModMetadata',Copy) { from('../../src/common
 processResources.dependsOn(metadata)
 tasks.withType(JavaCompile).configureEach { options.release=21; options.encoding='UTF-8' }
 tasks.named('jar', Jar).configure {
-    archiveFileName = "KOKOTO-WebChat-5.2.1-Forge-1.21.11-slim.jar"
+    archiveFileName = "KOKOTO-WebChat-5.3.0-Forge-1.21.11-slim.jar"
     from('../../../LICENSE') { rename { 'LICENSE_KOKOTO-WebChat' } }
 }
 tasks.named('jarJar').configure {
-    archiveFileName = "KOKOTO-WebChat-5.2.1-Forge-1.21.11.jar"
+    archiveFileName = "KOKOTO-WebChat-5.3.0-Forge-1.21.11.jar"
 }
 tasks.named('build').configure { dependsOn tasks.named('jarJar') }

@@ -70,7 +70,7 @@ For repeat Windows builds, append `--fast` to `build-all.bat` or `build-target.b
 
 `./gradlew buildAllForge` remains available and delegates each target to the same JDK-selecting helper instead of running every ForgeGradle generation inside one JVM. Do not run old ForgeGradle targets with the system Java 25 directly: Gradle 7.6.4 cannot run on Java 25 and fails with `Unsupported class file major version 69`.
 
-The deployable Jar-in-Jar artifact is `KOKOTO-WebChat-5.2.0-Forge-<Minecraft>.jar`. ForgeGradle 6/7 targets also produce `KOKOTO-WebChat-5.2.0-Forge-<Minecraft>-slim.jar` as the plain input JAR used to create the final Jar-in-Jar artifact; do not deploy the `-slim.jar` file.
+The deployable Jar-in-Jar artifact is `KOKOTO-WebChat-5.3.0-Forge-<Minecraft>.jar`. ForgeGradle 6/7 targets also produce `KOKOTO-WebChat-5.3.0-Forge-<Minecraft>-slim.jar` as the plain input JAR used to create the final Jar-in-Jar artifact; do not deploy the `-slim.jar` file.
 
 ## Runtime
 
@@ -78,3 +78,7 @@ Place only the JAR matching the server's Minecraft version in `mods/`. Configura
 
 
 Windows JDK auto-downloads are validated from the standard JDK `release` metadata before use, avoiding PowerShell 5.x native-stderr false failures.
+
+## Minecraft 26.3 preparation target
+
+Minecraft 26.3 exists under `targets/26.3` only as a **disabled preparation target**. It is not included in `build-all` or the 45-target release validator. Exact loader/API pins remain `TBD`, and `kwc.prep.enabled=false` blocks accidental manual builds. See `../docs/26.3-PREP.md` before activating it.

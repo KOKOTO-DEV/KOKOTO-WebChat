@@ -1,6 +1,6 @@
 # KOKOTO WebChat アップグレードガイド
 
-この文書は 4.5.5 から 5.2.0 までのアップグレード手順を統合したものです。複数バージョンを飛ばす場合は、バージョン順に各セクションを確認してください。
+この文書は 4.5.5 から 5.3.0 までのアップグレード手順を統合したものです。複数バージョンを飛ばす場合は、バージョン順に各セクションを確認してください。
 
 ## 4.5.5 から 4.6.0 へのアップグレード
 
@@ -190,7 +190,7 @@ group-chat:
     enabled: true
 ```
 
-通常 ADMIN/MODERATOR role だけでは body access はできません。audit view は read-only で room membership を必要とせず、room に参加せず read/unread state も変更しません。send/upload/hide や membership change もできません。各 page read は body を audit log にコピーせず `admin.group-audit-read` として記録されます。
+通常 ADMIN/MODERATOR role だけでは body access はできません。audit view は read-only で room membership を必要とせず、room に参加せず read/unread state も変更しません。send/upload/delete や membership change もできません。各 page read は body を audit log にコピーせず `admin.group-audit-read` として記録されます。
 
 ### 設定コメント
 
@@ -260,7 +260,7 @@ KWC 5.0.0 は Modrinth の `kokoto-webchat` を先に確認し、存在しない
 
 ### 4.7.0 → 5.0.0 の主な変更
 
-- 正式 identity を KOKOTO WebChat に統一: `/kchat` (`/kc`), `kwc.*`, KWC data directory, `dev.kokoto.webchat`, `kwc-*` modules。
+- 正式 identity を KOKOTO WebChat に統一: `/kchat` (`/kchat`), `kwc.*`, KWC data directory, `dev.kokoto.webchat`, `kwc-*` modules。
 - Bukkit/Paper/Spigot、Fabric 16 exact-target、NeoForge 12 exact-target、Forge 16 exact-target が shared core を利用。
 - BlueMap、squaremap、Dynmap、Pl3xMap、LiveAtlas、uNmINeD、Overviewer adapter を追加/整理。
 - standalone を既定有効、public prefix `/chat`、API `/chat/api` に統一。
@@ -293,7 +293,7 @@ Bukkit の既存 `plugins/BlueMapWebChat` は初回 KWC 起動時の migration i
 ### Release acceptance
 
 
-> `validate-release-windows.bat` と必要な PowerShell helper は source archive に含まれています。別の `KWC-5.2.0-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、release build の実行には不要です。
+> `validate-release-windows.bat` と必要な PowerShell helper は source archive に含まれています。開発用 regression harness は source archive の `validation/` に含まれ、通常/リリースビルドに別の validation-tools archive は不要です。
 
 `validate-release-windows.bat` が `FINAL RELEASE BUILD PASS`、deployable JAR 45 個、static/config/i18n/document validation、主要 flow の smoke test をすべて通過した候補だけを正式配布します。
 
@@ -375,7 +375,7 @@ SSE の既定上限は **解決済みクライアント IP ごとに 10 接続**
 
 ## KOKOTO WebChat 5.1.0 から 5.2.0 へのアップグレード
 
-upgrade 前に KWC data directory を backup してください。通常の 5.1.0 → 5.2.0 migration は対応 operator value と既存 Relay v2 group/secret/peer を保持します。relay trust reset は歴史的な pre-5.1.0 → 5.1.0 migration のみに適用されます。現在 reference は `config-reference-5.2.0.yml`、自動 review は管理者が正確な `config-version: "5.2.0"` を選ぶまで `5.2.0_auto_migration` を使用します。
+upgrade 前に KWC data directory を backup してください。通常の 5.1.0 → 5.2.0 migration は対応 operator value と既存 Relay v2 group/secret/peer を保持します。relay trust reset は歴史的な pre-5.1.0 → 5.1.0 migration のみに適用されます。その 5.2.0 migration の reference は `config-reference-5.2.0.yml`、自動 review は管理者が正確な `config-version: "5.2.0"` を選ぶまで `5.2.0_auto_migration` を使用します。
 
 5.2.0 は backward-compatible 2.x capability revision として Relay Protocol 2.1 を導入します。Protocol major `2` が compatibility 境界で、KWC product version は診断専用です。公開 reaction、participant server のみに送る cross-server DM reaction、remote DM typing は 2.1 extension を使用し、共通 v2 public/DM/read は 2.x compatibility baseline に残ります。
 
@@ -383,3 +383,16 @@ upgrade 前に KWC data directory を backup してください。通常の 5.1.
 
 upgrade 後、公開 reaction、public/DM/group typing、保存済み会話と PDF/print、private-room Settings/Invite/Leave permission、公開/DM/group 32px bottom-follow を確認してください。複数 relay server で reaction/typing extension を一貫して利用する場合は全 peer を 5.2.0/Relay 2.1 へ更新することを推奨します。
 
+## KOKOTO WebChat 5.2.x から 5.3.0 へのアップグレード
+
+最初に KWC data directory をバックアップしてください。5.3.0 は自動 review 中 `config-version: "5.3.0_auto_migration"` を使用し、`config-reference-5.3.0.yml` / `config-migration-5.3.0.yml` を生成します。既存 5.2.x の operator value は保持されます。廃止された `direct-message.confirm-hide` と `group-chat.confirm-hide` は boolean value を保ったまま `confirm-delete` へ移行します。
+
+この migration では、既存 Relay `groups[].peers[]` に不足している `send` / `receive` policy map と `public-chat`, `event`, `dm`, `profile` 項目も互換既定値 `true` で実際に補完します。既存の明示 map 値と scalar `send: false` / `receive: false` はそのまま保持します。
+
+KWC 5.3.0 全体は Relay Protocol 2.2 を維持します。同じ revision の capability negotiation で sender-owned cross-server DM delete (`delete`)、origin server 向け event request (`game`)、公開 profile/presence lookup (`profile`) を提供します。public/DM/read/reaction/typing は従来の Relay v2 trust/encryption boundary を使用し、optional capability が未対応ならその機能だけ安全に失敗し、protocol revision は変わりません。
+
+DM には message 単位の「自分だけ非表示」はなく、sender だけが自分の message を削除できます。group message delete は room 全体へ適用され、通常 member は自分の通常 message、room-local owner/admin は room message を管理できます。group pin は room-local で全 member が閲覧でき、pin/reorder/unpin は owner/admin のみです。DM/group の保存済み履歴検索は public search UI pattern を使用します。
+
+Presence は Game と Web を分離します。compact list は Game > Web > Offline の代表状態を 1 つ表示し、profile は Game/Web を別々に表示します。account-level Offline は他ユーザーに対して両状態を server-side で mask します（legacy `invisible` preference data は Offline へ移行します）。
+
+upgrade 後は BlueMap refresh recovery、DM/group search/delete、group pin/role、Game/Web presence、Offline privacy、関連 peer を更新した後の cross-server DM delete を確認してください。

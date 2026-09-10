@@ -1,6 +1,6 @@
 # ImageEmojis-Bero 集成 (1.9.x)
 
-KOKOTO WebChat 5.2.0 可选集成 [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)。服务器端 runtime glyph 集成面向 **Bukkit/Paper 系列**，当前按 1.9.x Bero 系列（包括 1.9.2）验证。该兼容层基于 reflection，不构成硬依赖。
+KOKOTO WebChat 5.3.0 可选集成 [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero)。服务器端 runtime glyph 集成面向 **Bukkit/Paper 系列**，当前按 1.9.x Bero 系列（包括 1.9.2）验证。该兼容层基于 reflection，不构成硬依赖。
 
 基础安装、命令、权限、资源包生成和常规运维请参考 [上游 ImageEmojis](https://github.com/MrQuackDuck/ImageEmojis)。本文只说明与 KWC 配合时需要注意的配置。
 

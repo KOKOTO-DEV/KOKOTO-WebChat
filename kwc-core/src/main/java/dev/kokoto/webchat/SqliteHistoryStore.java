@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * SqliteHistoryStore는 KWC 상태를 메모리/JSONL/SQLite 같은 영속 매체에 저장하고 조회하는 계층이다.
+ * SqliteHistoryStore is a persistence layer storing and reading KWC state from memory, JSONL, SQLite, or another backing store.
+ *
+ * 조회 visibility와 mutation 권한을 분리하고, transaction/atomic rewrite가 필요한 작업은 중간 실패로 데이터가 반쯤 적용되지 않게 해야 한다.
+ * Keep read visibility separate from mutation authorization, and use transactions/atomic rewrites where partial failure could leave inconsistent data.
+ */
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,6 +21,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * KWC 유지보수 안내: 공개 채팅 history의 SQLite backend다. cursor pagination, around/search, hidden marker, retention prune를 제공하며 DB 손상 시 sidecar를 포함한 격리 복구를 수행한다. paging은 단순 row offset 대신 안정적인 message cursor를 사용해 동시 append에도 화면 순서를 유지한다.
+ *
+ * KWC maintenance note: SQLite backend for public-chat history, providing cursor pagination, around/search, hidden markers, retention pruning, and corruption quarantine including sidecars. Paging uses stable message cursors rather than row offsets so concurrent appends do not disturb visible ordering.
+ */
 public final class SqliteHistoryStore implements AutoCloseable {
     public static class Page {
         public final List<ChatMessage> messages = new ArrayList<>();
@@ -38,6 +51,8 @@ public final class SqliteHistoryStore implements AutoCloseable {
 
     private static final DateTimeFormatter CORRUPT_BACKUP_TIME = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
 
+    // DB 파일과 WAL/SHM sidecar를 검사한 뒤 SQLite를 연다. quick_check 실패나 orphan sidecar가 있으면 기존 파일 세트를 격리하고 새 DB를 시작해 부분 손상을 그대로 사용하지 않는다.
+    // Checks the database and WAL/SHM sidecars before opening SQLite. Failed quick_check or orphan sidecars quarantine the existing database set and start fresh rather than continuing on partially corrupt state.
     public static SqliteHistoryStore open(CoreLogger logger, Path path) throws SQLException, IOException {
         Path normalized = path.toAbsolutePath().normalize();
         Files.createDirectories(normalized.getParent());
@@ -249,6 +264,8 @@ public final class SqliteHistoryStore implements AutoCloseable {
         }
     }
 
+    // before/after cursor를 사용해 안정적인 history 페이지를 만든다. 결과 edge에서 hasMoreBefore/After를 별도 계산해 UI가 더 불러올 데이터가 있는지 정확히 판단할 수 있게 한다.
+    // Builds stable history pages using before/after cursors. It separately computes hasMoreBefore/After at the result edges so the UI knows precisely whether more data can be loaded.
     public synchronized Page page(String beforeId, String afterId, int limit, long cutoff) {
         Page page = new Page();
         int actualLimit = limit <= 0 ? 500 : Math.max(1, Math.min(500, limit));
@@ -348,6 +365,8 @@ public final class SqliteHistoryStore implements AutoCloseable {
         return result;
     }
 
+    // SQL LIKE 검색과 source/system/date filter를 적용한다. 표시용 i18n 메시지처럼 DB body와 화면 문자열이 다를 수 있는 경우에는 별도 candidate 검색 경로와 조합된다.
+    // Applies SQL LIKE plus source/system/date filtering. For i18n messages whose stored body differs from displayed text, it is combined with a separate candidate-search path.
     public synchronized List<ChatMessage> search(String query, int limit, long cutoff) {
         return search(query, limit, cutoff, Long.MIN_VALUE, Long.MAX_VALUE, "", "", true);
     }

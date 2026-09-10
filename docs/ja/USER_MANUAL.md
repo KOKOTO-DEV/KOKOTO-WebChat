@@ -1,11 +1,11 @@
-# KOKOTO WebChat 5.2.0 総合ユーザー・運用マニュアル
+# KOKOTO WebChat 5.3.0 総合ユーザー・運用マニュアル
 
 
 ## ビジュアルマップ
 
 | 項目 | 図 |
 | --- | --- |
-| アーキテクチャ | [PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg) |
+| アーキテクチャ | [PNG](../assets/architecture-5.3.0.png) · [SVG](../assets/architecture-5.3.0.svg) |
 | Relay Protocol v2 | [Animated GIF](../assets/relay-v2-flow.gif) · [PNG](../assets/relay-v2-flow.png) · [SVG](../assets/relay-v2-flow.svg) |
 | DM/グループ Reply | [PNG](../assets/private-reply-flow.png) · [SVG](../assets/private-reply-flow.svg) |
 | 設定移行 | [Animated GIF](../assets/config-language-migration.gif) · [PNG](../assets/config-language-migration.png) · [SVG](../assets/config-language-migration.svg) |
@@ -15,11 +15,22 @@
 
 この文書で参照する一次規格と公式の外部プロジェクト文書は [REFERENCES.md](REFERENCES.md) にまとめています。
 
-> **5.2.0 運用:** Web Admin **Filter** で公開/グループ/任意 DM の block/mask/replace ルールと送信しないテストを管理し、**Settings** では対応しているライブ設定（guest/CAPTCHA、セッション、ユーザープロファイル、Open chat/DM/group の typing-indicator policy、管理者アラート、upload、content-filter）のみを管理します。moderation の 5 つのポリシー設定は `config.yml` 専用で Web Admin には公開しません。ゲーム側は `/kchat filter` / `/kchat settings`。セッション期間変更は期限切れセッションを復活させず作成時刻基準で既存対象を再計算します。`upload.filename-mode: original` は新規アップロードの安全な Unicode 元名を保持し重複時に番号を付けます。
+> **5.3.0 運用:** Web Admin **Filter** で公開/グループ/任意 DM の block/mask/replace ルールと送信しないテストを管理し、**Settings** では対応しているライブ設定（guest/CAPTCHA、セッション、ユーザープロファイル、Open chat/DM/group の typing-indicator policy、管理者アラート、upload、content-filter）のみを管理します。moderation の 5 つのポリシー設定は `config.yml` 専用で Web Admin には公開しません。ゲーム側は `/kchat filter` / `/kchat settings`。セッション期間変更は期限切れセッションを復活させず作成時刻基準で既存対象を再計算します。`upload.filename-mode: original` は新規アップロードの安全な Unicode 元名を保持し重複時に番号を付けます。
 
 
-この文書は KOKOTO WebChat 5.2.0 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION.md`、サーバー間リレーは `SERVER_RELAY.md`、HTTPS は `CADDY_HTTPS.md` と `NGINX_HTTPS.md` を参照してください。
+この文書は KOKOTO WebChat 5.3.0 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION.md`、サーバー間リレーは `SERVER_RELAY.md`、HTTPS は `CADDY_HTTPS.md` と `NGINX_HTTPS.md` を参照してください。
 
+
+## 5.3.0 の追加機能
+
+- **プライベートチャット:** DM/group は保存済み全履歴を検索できます。DM の「自分だけ非表示」は廃止されました。一般ユーザーの自己削除を有効にした場合、送信者だけが自分の DM を削除でき、削除すると両参加者の会話から消えます。group room には room-local `owner/admin/member` role、pin 管理、room 全体の削除と、global の自己削除設定にも従う member 自己削除 policy が追加されます。
+- **Chat Event:** Web または `/kchat game` から First come/抽選 event を複数同時に運用できます。First come は当選人数だけを定員とし、満員になると自動完了します。抽選は参加人数と当選人数を別に設定します。event 通知は local-only または Relay を選択できます。
+- **Profile / presence:** user profile で Minecraft Head/custom image、280 文字の About、role、personal block list、Game/Web 接続状態を扱います。ユーザーは Online/Busy/Offline を選択でき、Offline は他の viewer に対して実際の Game/Web 状態を server-side で隠します。
+- **Moderation:** ADMIN は account chat/upload 制限、custom profile image 削除、local role 変更を行え、moderator ごとに一部の管理 capability を委任できます。
+- **CAPTCHA / mention:** guest CAPTCHA は off/math/text/mixed と math complexity に対応し、public/DM/group Web composer は IME-safe な `@` autocomplete を共有します。
+- **Relay 2.2:** protocol major 2 の中で sender-owned DM delete、Chat Event routing、remote public-profile lookup を capability-gate します。peer ごとに `public-chat`, `event`, `dm`, `profile` の send/receive を独立制御できます。
+- **Window/UI / adapter:** public/DM/group window の drag/resize/maximize を統一し、全 adapter/standalone wrapper を同じ frontend fragment と CSS から生成して表示差を防ぎます。
+- **画像 privacy:** upload/profile image は対応する EXIF/IPTC/comment/XMP metadata を保存前に除去します。
 
 ## 5.2.0 の追加機能
 
@@ -32,7 +43,7 @@
 
 ## 1. 概要
 
-KOKOTO WebChat は Minecraft サーバーのチャットをブラウザーに接続するサーバー側 Web チャットです。5.2.0 は Bukkit/Paper/Spigot に加え、Fabric 1.18.2〜26.2、NeoForge 1.20.2〜26.2、Forge 1.18.2〜26.2 の exact-target build を提供します。
+KOKOTO WebChat は Minecraft サーバーのチャットをブラウザーに接続するサーバー側 Web チャットです。5.3.0 は Bukkit/Paper/Spigot に加え、Fabric 1.18.2〜26.2、NeoForge 1.20.2〜26.2、Forge 1.18.2〜26.2 の exact-target build を提供します。
 
 主な利用形態:
 
@@ -74,7 +85,7 @@ KOKOTO WebChat は Minecraft サーバーのチャットをブラウザーに接
 7. 再起動または `/kchat reload` を実行します。
 
 ```yaml
-config-version: "5.2.0"
+config-version: "5.3.0"
 enabled: false
 ```
 
@@ -87,7 +98,7 @@ enabled: false
 現在 version の完全な reference は常に次へ生成されます。
 
 ```text
-<KWC data dir>/config-reference-5.2.0.yml
+<KWC data dir>/config-reference-5.3.0.yml
 ```
 
 これは `ui.language` で選択した内蔵言語（`en-US`、`ko-KR`、`ja-JP`、`zh-CN`）と同じ言語で表示した現在のデフォルト設定の管理者向けコピーです。未対応/カスタム UI 言語では英語の設定表示を使用します。reference は migration 入力には使用しません。`/kchat reload` は live service を停止する前に YAML を検証し、不正な YAML なら現在の実行設定を維持します。
@@ -99,12 +110,12 @@ enabled: false
 - 旧 comment・順序・空白・indent は引き継ぎません。
 - 旧 marker が `*_auto_migration` でない場合、実 version upgrade 前に元の `config.yml` を backup します。
 - 既存設定の bundled default が新 version で変わった場合は自動上書きせず review 対象に残します。
-- 実ファイルを `config-version: "5.2.0_auto_migration"` とします。
+- 実ファイルを `config-version: "5.3.0_auto_migration"` とします。
 
 その後、次を生成します。
 
 ```text
-<KWC data dir>/config-migration-5.2.0.yml
+<KWC data dir>/config-migration-5.3.0.yml
 ```
 
 これは不足設定を copy/paste する fragment ではなく **review report** です。自動挿入数、operator 判断が必要な default 変更、最終確認用の正確な version marker、current-vs-reference の**設定値セマンティック差分**を記録します。Difference は解析済み YAML の path/value だけを比較し、comment、空行、indent、引用符形式、行位置、key 順は無視します。各 Difference block は説明 comment を重複コピーせず、その設定の実際の YAML 値 block だけを表示し、list/map は複数行構造を維持します。不足設定と comment はすでに実 config の適切な位置へ挿入されるため、diff の先頭に巨大な reference-only block として並びません。
@@ -113,18 +124,18 @@ enabled: false
 
 | 実 `config.yml` | 動作 |
 |---|---|
-| `config-version` がない/以前/異なる | migration を実行し `5.2.0_auto_migration` にして migration/review report を生成 |
-| `config-version: "5.2.0_auto_migration"` | 自動 migration 有効。startup/reload ごとに最新 bundled `config.yml` から再構築し、現在値を overlay して report/diff を更新 |
-| `config-version: "5.2.0"` | 現在 version の自動 migration を停止。同一 version の migration/backfill を skip し、古い migration 案内を削除 |
+| `config-version` がない/以前/異なる | migration を実行し `5.3.0_auto_migration` にして migration/review report を生成 |
+| `config-version: "5.3.0_auto_migration"` | 自動 migration 有効。startup/reload ごとに最新 bundled `config.yml` から再構築し、現在値を overlay して report/diff を更新 |
+| `config-version: "5.3.0"` | 現在 version の自動 migration を停止。同一 version の migration/backfill を skip し、古い migration 案内を削除 |
 
 この marker は **review 状態ではなく自動 migration の有効/無効**を表します。
 
 ```yaml
 # 確認済みでも自動 migration を継続
-config-version: "5.2.0_auto_migration"
+config-version: "5.3.0_auto_migration"
 
 # 同一 version の自動 migration を停止
-config-version: "5.2.0"
+config-version: "5.3.0"
 ```
 
 後で実際の plugin version upgrade が発生した場合は、新しい version の `_auto_migration` 状態に入ります。
@@ -408,7 +419,7 @@ chat:
 
 ### 8.5 メッセージトークン
 
-KOKOTO WebChat 5.2.0 は、保存または relay の前に管理者設定の `:alias:` token を置換できます。標準 alias は英語のみで、管理者が任意の言語の alias に変更・追加できます。
+KOKOTO WebChat は、保存または relay の前に管理者設定の `:alias:` token を置換できます。標準 alias は英語のみで、管理者が任意の言語の alias に変更・追加できます。
 
 - `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 改行 1 行
 - `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 空行 1 行
@@ -596,10 +607,13 @@ Captcha:
 ```yaml
 captcha:
   mode: "math"
+  math-complexity: "normal"
   expire-seconds: 120
   require-on-each-message: false
   pass-valid-minutes: 120
 ```
+
+`captcha.mode` は `off` / `math` / `text` / `mixed` をサポートします。計算問題は `Solve:` のような言語依存文を付けず `7 + 5 = ?` の式だけを表示します。`captcha.math-complexity` は `easy`（1桁の加減算）、`normal`（加減算と乗算）、`hard`（より大きい数と整数で割り切れる除算を含む）を選択します。文字コードの「コード入力」案内は KWC の選択言語で表示されます。
 
 Mute command:
 
@@ -656,7 +670,7 @@ reply:
 KWC が描画した Minecraft メッセージの URL 以外の部分をクリックすると、次のコマンドが入力欄に準備されます。
 
 ```text
-/kchat reply <messageId> 
+/kchat reply <messageId>
 ```
 
 返信を送信するには:
@@ -696,10 +710,12 @@ direct-message:
   notify-on-login: true
   notify-on-message: true
   web-unread-badge: true
-  confirm-hide: true
+  confirm-delete: true
 ```
 
 受信者は UUID で識別できる必要があります。ローカル参加履歴や連携アカウントだけでなく、relay 経由の game/linked-web message に `playerUuid` が含まれる場合、その送信者の表示名と実 Minecraft 名を新規 DM 検索へ登録します。これにより公開チャットで見た別サーバーの送信者も通常の DM 検索から選択できます。最新 identity は `known-display-names.yml` に保存され、再起動後も検索できます。UUID のない guest/Discord message は登録しません。`storage: auto` は公開チャット storage が JSONL の場合だけ DM も JSONL を使い、それ以外は SQLite を使います。`sqlite` / `jsonl` を明示指定することもできます。
+
+5.3.0 の DM には message 単位の **自分だけ非表示** 操作はありません。ユーザーが削除できるのは自分が送信した DM だけで、削除すると両参加者の会話から除去され、その message を参照する Reply snapshot も消去されます。`direct-message.confirm-delete` は削除確認 dialog を制御します。受信 DM を受信者が削除することはできません。cross-server delete は target peer の成功応答後に origin copy を削除します。
 
 ゲームコマンド:
 
@@ -713,7 +729,7 @@ direct-message:
 /kchat dm read <player> [pageSize]
 /kchat dm next
 /kchat dm prev
-/kchat dm hide <messageId>
+/kchat dm delete <messageId>
 ```
 
 権限:
@@ -760,7 +776,7 @@ group-chat:
   sqlite-file: "group-messages.db"
 ```
 
-Web では公開/非公開ルームの作成、PBKDF2 ハッシュで保存する任意のルームパスワード、招待、承認/拒否、退出、非表示/復元、ルーム設定、未読管理、ユーザー単位のメッセージ非表示、メンバーの kick/block/unblock、所有権移譲を利用できます。
+Web では公開/非公開ルームの作成、PBKDF2 ハッシュで保存する任意のルームパスワード、招待、承認/拒否、退出、ルームの非表示/復元、ルーム設定、未読管理、room-local owner/admin/member role、pin、room 全体の message delete、member 自己削除 policy、メンバーの kick/block/unblock、所有権移譲を利用できます。
 
 各 group message には受信者の既読状態を表示します。数字は「送信時点で member で、現在も room member であり、まだ読んでいない受信者」の人数で、送信者自身は数えません。未読人数が 0 になると `✓` を表示します。通常の配信成功そのものにはラベルを付けません。
 
@@ -812,7 +828,7 @@ pinned:
   preserve-uploads: true
 ```
 
-通常履歴とは別に保存され、top bar から開きます。参照 upload は cleanup から保護できます。
+通常履歴とは別に保存され、top bar から開きます。参照 upload は cleanup から保護できます。公開チャットとグループチャットの **ピン留めしたユーザー** 表示は、通常のユーザー名と同じ表示名 / 実アカウント名モードに従います。構造化されたピン留めユーザー情報を持たない旧公開ピンは、保存済みラベルを fallback として使用します。
 
 ## 19. ファイル/クリップボードアップロード
 
@@ -837,6 +853,8 @@ upload:
 対応: PNG/JPG/JPEG/GIF/WEBP, MP4/WEBM, MP3/M4A/OGG/WAV/FLAC。
 
 `max-total-size-mb: 0` は無制限です。Clipboard mode は `insert` または `send` です。
+
+デスクトップのマルチウィンドウでは、分離した各 DM/グループ会話ウィンドウ自体がドラッグ＆ドロップのアップロード先になります。子ウィンドウへファイルをドロップすると、その DM スレッド/グループルームを有効化してから、その会話の入力欄へアップロード URL を挿入します。従来どおり DM/グループ一覧の親ウィンドウへドロップすることもできます。
 
 `filename-mode: original` でも、クリップボードアップロードは `clipboardData.files` から取得できる長いファイル名を優先します。Windows/Chromium が別のクリップボード項目で `202608~1.JPG` のような DOS 8.3 別名を返しても、長い名前を取得できる場合は元の長い名前を使用します。ブラウザーが 8.3 別名しか公開しない場合は、その別名を元ファイル名として保存せず `clipboard-...` 形式の名前へ置き換えます。
 
@@ -1119,7 +1137,7 @@ discordsrv:
 
 ## 26. サーバー間 Relay
 
-KOKOTO WebChat 5.2.0 は public chat と cross-server 1:1 DM/read receipt に Relay v2 trust/暗号化モデルを維持する **Relay Protocol 2.1** を使用します。group chat room は local のままです。
+KOKOTO WebChat 5.3.0 は Relay v2 trust/暗号化モデルを維持する **Relay Protocol 2.2** を使用します。public chat、cross-server 1:1 DM/read/delete/reaction/typing、remote event の参照/参加、remote public profile 参照を 2.x capability で処理し、group chat room は local のままです。各 peer は `public-chat`, `event`, `dm`, `profile` の送信/受信を独立して許可または拒否できます。
 
 Relay v2 は `groups -> peers` 構造です。各 group は 1 つの shared secret を持ち、peer は server ID、API URL、enabled state のみを持ちます。初回設定では 1 台のサーバーで `shared-secret: ""` のまま起動/リロードし、その `config.yml` に生成された値を同じ group の他サーバーへコピーします。既存の空でない secret は自動再生成されず、32 文字未満の手動 secret は invalid のままです。両側は同じ group で相互に peer 登録する必要があり、同一 peer ID を複数 local group に登録できません。
 
@@ -1190,9 +1208,11 @@ moderation:
 
 機能:
 
-- message hide/delete
+- message delete と public pin/delete action 表示
 - pin 管理
 - guest/IP mute
+- user ごとの chat/upload 制限と custom profile image 削除
+- moderator ごとの委任 capability checkbox
 - session revoke
 - emoji 管理
 - upload/storage usage
@@ -1209,7 +1229,7 @@ private-chat-super-admins:
 
 メタデータビューでは DM/group の title・participant、message count、概算 storage usage、retention state、cleanup preview、lock/exclusion などのメタデータ管理機能を確認できます。
 
-`direct-message.admin-audit.enabled` は default-off の read-only DM 本文監査スイッチです。`private-chat-super-admins` に明示した account だけが利用でき、監査 view では送信、Reply、非表示、既読更新はできません。各 page read は `admin.dm-audit-read` として記録されます。`group-chat.admin-audit.enabled` は独立した read-only group 本文監査スイッチです。
+`direct-message.admin-audit.enabled` は default-off の read-only DM 本文監査スイッチです。`private-chat-super-admins` に明示した account だけが利用でき、監査 view では送信、Reply、削除、既読更新はできません。各 page read は `admin.dm-audit-read` として記録されます。`group-chat.admin-audit.enabled` は独立した read-only group 本文監査スイッチです。
 
 ### 28.2 監査ログ
 
@@ -1299,7 +1319,7 @@ ui:
 /kchat dm read <player> [pageSize]
 /kchat dm next
 /kchat dm prev
-/kchat dm hide <messageId>
+/kchat dm delete <messageId>
 /kchat reply <messageId> <message>
 /kchat group list
 /kchat group <room> <message>
@@ -1326,7 +1346,7 @@ ui:
 root alias:
 
 ```text
-/kc
+/kchat
 ```
 
 group alias:
@@ -1484,7 +1504,7 @@ Restart 必須:
 
 
 ### 管理者 group-chat body audit (4.6.3)
-`group-chat.admin-audit.enabled: true` を設定し、exact Minecraft name または UUID を `private-chat-super-admins` に登録する必要があります。両方の条件が必須です。対象管理者は room member でなくても管理者 room metadata list から body を read-only で開けます。audit view は room 参加、read/unread state 更新、message send/upload/hide、membership 変更を行いません。各 page read は `admin.group-audit-read` として記録され、message body は audit log にコピーされません。
+`group-chat.admin-audit.enabled: true` を設定し、exact Minecraft name または UUID を `private-chat-super-admins` に登録する必要があります。両方の条件が必須です。対象管理者は room member でなくても管理者 room metadata list から body を read-only で開けます。audit view は room 参加、read/unread state 更新、message send/upload/delete、membership 変更を行いません。各 page read は `admin.group-audit-read` として記録され、message body は audit log にコピーされません。
 
 
 

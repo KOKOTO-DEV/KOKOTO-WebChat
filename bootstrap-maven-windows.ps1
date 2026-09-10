@@ -1,3 +1,9 @@
+﻿# KWC 파일 안내 / KWC file guide
+# Windows 빌드에 필요한 Maven을 프로젝트 로컬 cache에 준비해 시스템 전역 설치 상태에 대한 의존을 줄인다.
+# Bootstraps Maven into the project-local cache for Windows builds, reducing dependence on global machine installation.
+# 실패 시 부분 산출물을 최종 릴리스로 오인하지 않도록 exit code와 검증 marker를 유지한다.
+# Preserve exit codes and validation markers so partial output cannot be mistaken for a final release.
+
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [Parameter(Mandatory = $true)][string]$ToolRoot

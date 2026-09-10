@@ -59,7 +59,7 @@ This document describes `plugins/KOKOTO-WebChat/config.yml`.
 If `config-version` is missing or belongs to another version, KWC reads the existing values, backs up the original `config.yml` first when the previous marker is not `*_auto_migration`, creates a fresh file from the running plugin's bundled default config, and overlays the existing values. Old comments, order, whitespace, and indentation are intentionally discarded; bundled comments/layout become authoritative while operator values remain authoritative. Retired settings are not copied back. The result is marked `<plugin-version>_auto_migration`. While that marker remains, startup/reload repeats the same bundled-default rebuild so newly added settings and current bundled comments/layout are picked up automatically. Exact `<plugin-version>` disables same-version automatic **setting** reconstruction. The only same-version rewrite still allowed in that fixed state is a `ui.language` presentation change, which rebuilds comments/layout from the selected built-in template while overlaying every parsed operator value.
 
 `config-migration-<plugin-version>.yml` is a review/diff report. Older generated `config-reference-*`, `config-migration-*`, and `config-upgrade-*` files are removed automatically; internal `config-baselines/*` resources remain because they are required to identify changed defaults across real version upgrades.
-In 5.2.0, `ui.language` also selects the comment/presentation language used when KWC rebuilds `config.yml`, writes `config-reference-5.2.0.yml`, and writes the migration/difference report. Bundled templates are `en-US`, `ko-KR`, `ja-JP`, and `zh-CN`; switching language changes comments/layout only and overlays the existing parsed operator values, including Relay groups/secrets/peers. The semantic difference report compares parsed YAML setting paths and values, not comments, whitespace, indentation, quote style, line numbers, or key order.
+In 5.3.0, `ui.language` also selects the comment/presentation language used when KWC rebuilds `config.yml`, writes `config-reference-5.3.0.yml`, and writes the migration/difference report. Bundled templates are `en-US`, `ko-KR`, `ja-JP`, and `zh-CN`; switching language changes comments/layout only and overlays the existing parsed operator values, including Relay groups/secrets/peers. The semantic difference report compares parsed YAML setting paths and values, not comments, whitespace, indentation, quote style, line numbers, or key order.
 
 ## Master switch
 
@@ -208,7 +208,7 @@ message-tokens:
 
 ## Message search
 
-`/history/search` and the in-chat search modal are available for message text and sender searches when stored history is enabled. The search options section can filter by date/time range, sender, source, and system/event inclusion. The search button is in the floating chat-panel area so the input row stays compact, and search results use a scrollable list with the configured chat theme/font settings. Search results can jump to the matching message using the existing history-around navigation. i18n-backed system/event messages are searched and displayed in the requested web UI language when possible. Search can be disabled with `search.enabled`, and the single `search.result-limit` setting controls both the web UI result count and the `/history/search` API limit. There is no separate internal maximum: setting it to 2000 returns up to 2000 results, while setting it to 10 returns up to 10. Very large values such as 10000 or 100000 are accepted, but they can slow searches, increase response size, and add significant CPU, memory, and database load. The default is 50, and 50-200 is recommended for normal use. With `config-version: "5.2.0_auto_migration"`, missing search settings are inserted automatically on startup/reload. If same-version automatic migration has been disabled with exact `config-version: "5.2.0"`, add the missing keys manually or re-enable `_auto_migration`.
+`/history/search` and the in-chat search modal are available for message text and sender searches when stored history is enabled. The search options section can filter by date/time range, sender, source, and system/event inclusion. The search button is in the floating chat-panel area so the input row stays compact, and search results use a scrollable list with the configured chat theme/font settings. Search results can jump to the matching message using the existing history-around navigation. i18n-backed system/event messages are searched and displayed in the requested web UI language when possible. Search can be disabled with `search.enabled`, and the single `search.result-limit` setting controls both the web UI result count and the `/history/search` API limit. There is no separate internal maximum: setting it to 2000 returns up to 2000 results, while setting it to 10 returns up to 10. Very large values such as 10000 or 100000 are accepted, but they can slow searches, increase response size, and add significant CPU, memory, and database load. The default is 50, and 50-200 is recommended for normal use. With `config-version: "5.3.0_auto_migration"`, missing search settings are inserted automatically on startup/reload. If same-version automatic migration has been disabled with exact `config-version: "5.3.0"`, add the missing keys manually or re-enable `_auto_migration`.
 
 
 ## Direct message threads
@@ -229,7 +229,7 @@ direct-message:
 
 `group-chat.admin-audit.enabled` is an independent, default-off group-content access switch added in 4.6.3. It still requires the account to be listed in `private-chat-super-admins`. The administrator view is read-only, does not require room membership, does not join the room or update read state, and every page read is logged as `admin.group-audit-read` without copying message bodies into the audit log.
 
-`direct-message.admin-audit.enabled` is a separate, default-off DM-body access switch. When enabled, only accounts also listed in `private-chat-super-admins` can open DM bodies in the read-only audit view. The audit view cannot send, reply, hide messages, or change read state. Each page read is audit-logged without copying message bodies into the audit log.
+`direct-message.admin-audit.enabled` is a separate, default-off DM-body access switch. When enabled, only accounts also listed in `private-chat-super-admins` can open DM bodies in the read-only audit view. The audit view cannot send, reply, delete messages, or change read state. Each page read is audit-logged without copying message bodies into the audit log.
 
 `capture-game-whispers` mirrors non-cancelled `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, and `/t` commands into the sender and recipient KWC DM thread. It does not resend or replace the Minecraft whisper. Bukkit does not expose a reliable final success result for every whisper plugin, so a valid command targeting a known player is used as the capture criterion.
 
@@ -239,7 +239,7 @@ direct-message:
 
 ## Important 0-value semantics
 
-`0` does not have one universal meaning. These behaviors are taken from the current 5.2.0 loader/runtime paths; do not infer “unlimited” where the documented behavior is different.
+`0` does not have one universal meaning. These behaviors are taken from the current 5.3.0 loader/runtime paths; do not infer “unlimited” where the documented behavior is different.
 
 - `chat.history-size`: Maximum number of public-chat history rows retained by count. This works alongside the age-retention policy. 0 removes the count limit.
 - `chat.history-retention-days`: Age-retention window in days for public-chat history. 0 disables age-based expiration.
@@ -275,6 +275,8 @@ direct-message:
 - `security.max-sse-connections-total`: Maximum concurrent /stream SSE connections allowed across the entire KWC server. 0 disables this limiting component.
 - `admin.admin-session-expire-hours`: Expiration period in hours for ADMIN web sessions. Values <=0 create administrator sessions without an expiry timestamp.
 - `moderation.default-mute-minutes`: Default mute duration in minutes when no duration is supplied. Values <=0 mean a permanent mute. This setting is config-only.
+- `moderation.allow-user-self-message-delete`: Allows ordinary users to delete messages they sent in public chat, DM, and group chat. Default `false`. DM deletion remains sender-only; group member deletion additionally requires the room-local member self-delete policy and room message deletion to be enabled.
+- `moderation.self-message-delete-window-minutes`: Time window for ordinary-user own-message deletion. `0` means no time limit; a positive value prevents ordinary-user deletion after that many minutes. ADMIN/MODERATOR deletion is not limited by this timer.
 - `commands.max-length`: Maximum command-text length accepted from web command execution. 0 removes this length limit.
 - `ui.image-preview-max-per-message`: Maximum inline image previews rendered from one message. 0 removes the count limit.
 - `ui.image-preview-max-height`: Configured image-preview height cap in pixels. A positive value is still clamped by the chat viewport safety cap; 0 removes only this explicit pixel cap and uses the automatic viewport-derived cap, so it is not truly unlimited.
@@ -356,7 +358,7 @@ A local game sender name suggests `/w <realName> ` when clicked. Linked web-user
 
 ## Server relay configuration
 
-KOKOTO WebChat 5.2.0 uses the Relay v2 trust/encryption model with **Relay Protocol 2.1**. A relay group is the trust boundary: every peer in that group uses the same group `shared-secret`, and peer entries contain only `id`, `url`, and `enabled`. There is no `peers[].secret`.
+KOKOTO WebChat 5.3.0 uses the Relay v2 trust/encryption model with **Relay Protocol 2.2**. A relay group is the trust boundary: every peer in that group uses the same group `shared-secret`. Peer entries keep `id`, `url`, and `enabled`, and may additionally define independent `send` / `receive` policy for `public-chat`, `event`, `dm`, and `profile`. Missing policy keys default to enabled. There is no `peers[].secret`.
 
 ```yaml
 server-relay:
@@ -374,6 +376,7 @@ server-relay:
     guest: true
     discord: false
     system: false
+    event: true
   delivery:
     web: true
     game: true
@@ -387,6 +390,16 @@ server-relay:
         - id: "server-2"
           url: "https://server2.example.com/api"
           enabled: true
+          send:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
+          receive:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
 ```
 
 For first setup, leave `shared-secret: ""` on one server, start/reload KWC, then reopen `config.yml` and copy the generated secret to the other servers in that **same group**. Existing non-empty secrets are preserved; manually supplied secrets shorter than 32 characters remain invalid. Both servers must list each other in the same group with the same generated/copied secret. The same peer ID cannot be registered in multiple local groups; duplicate registrations are disabled. Direct relay authenticates/encrypts each `/relay/v2/message` request independently. `/relay/v2/handshake` is a stateless diagnostic identity/health probe only and does not create or control routing state.
@@ -651,7 +664,7 @@ GIF/JPG/JPEG/WEBP emoji originals automatically get same-folder PNG sidecars for
 
 ## Group chat
 
-`group-chat.enabled` enables the web group-chat system. It supports public/private rooms, optional hashed room passwords, invitations, leave room, room hide/restore, room settings, unread tracking, per-user message hiding, member kick/ban/unban, and owner transfer. Group messages are stored in `group-chat.sqlite-file` (default `group-messages.db`). `group-chat.retention-days: 0` disables age-based cleanup; positive values physically delete older group messages.
+`group-chat.enabled` enables the web group-chat system. It supports public/private rooms, optional hashed room passwords, invitations, leave room, room hide/restore, room settings, unread tracking, room-local owner/admin/member roles, room pinned messages, real room-wide message deletion, member kick/ban/unban, and owner transfer. Group messages are stored in `group-chat.sqlite-file` (default `group-messages.db`). `group-chat.retention-days: 0` disables age-based cleanup; positive values physically delete older group messages.
 
 Room join/leave notices are a **per-room database setting**, not a global `config.yml` switch. Room owners/managers can enable or disable them from Room settings. The flag is stored in `group_rooms.membership_events_enabled`; existing databases default it to enabled when the column is added. Only real membership changes create stored events—closing the group-chat window does not leave a room.
 

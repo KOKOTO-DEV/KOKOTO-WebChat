@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * RelaySettings는 KWC 설정을 core가 사용할 수 있는 형태로 읽거나 보관하는 설정 계층이다.
+ * RelaySettings is part of the configuration layer that reads or carries KWC settings in a core-friendly form.
+ *
+ * 설정 키를 바꿀 때는 canonical config, 과거 baseline, migration, 다국어 template, 문서 reference가 함께 움직여야 한다.
+ * When changing a setting key, update canonical config, historical baselines, migration, localized templates, and documentation references together.
+ */
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -19,6 +27,7 @@ public final class RelaySettings {
     public final boolean guestChat;
     public final boolean discordChat;
     public final boolean systemEvents;
+    public final boolean eventAnnouncements;
     public final boolean deliverToWeb;
     public final boolean deliverToGame;
     public final String gameFormat;
@@ -27,7 +36,7 @@ public final class RelaySettings {
     public RelaySettings(boolean enabled, String serverId, String serverName,
                          int connectTimeoutSeconds, int requestTimeoutSeconds, int maxClockSkewSeconds,
                          int dedupeSeconds, int maxHops, boolean gameChat, boolean webChat,
-                         boolean guestChat, boolean discordChat, boolean systemEvents,
+                         boolean guestChat, boolean discordChat, boolean systemEvents, boolean eventAnnouncements,
                          boolean deliverToWeb, boolean deliverToGame, String gameFormat, List<Group> groups) {
         this.enabled = enabled;
         this.serverId = nz(serverId);
@@ -42,6 +51,7 @@ public final class RelaySettings {
         this.guestChat = guestChat;
         this.discordChat = discordChat;
         this.systemEvents = systemEvents;
+        this.eventAnnouncements = eventAnnouncements;
         this.deliverToWeb = deliverToWeb;
         this.deliverToGame = deliverToGame;
         this.gameFormat = nz(gameFormat);
@@ -64,15 +74,41 @@ public final class RelaySettings {
         }
     }
 
+    public static final class DirectionPolicy {
+        public final boolean enabled;
+        public final boolean publicChat;
+        public final boolean event;
+        public final boolean dm;
+        public final boolean profile;
+
+        public DirectionPolicy(boolean enabled, boolean publicChat, boolean event, boolean dm, boolean profile) {
+            this.enabled = enabled;
+            this.publicChat = publicChat;
+            this.event = event;
+            this.dm = dm;
+            this.profile = profile;
+        }
+
+        public static DirectionPolicy allowAll() { return new DirectionPolicy(true, true, true, true, true); }
+    }
+
     public static final class Peer {
         public final String id;
         public final String url;
         public final boolean enabled;
+        public final DirectionPolicy send;
+        public final DirectionPolicy receive;
 
         public Peer(String id, String url, boolean enabled) {
+            this(id, url, enabled, DirectionPolicy.allowAll(), DirectionPolicy.allowAll());
+        }
+
+        public Peer(String id, String url, boolean enabled, DirectionPolicy send, DirectionPolicy receive) {
             this.id = nz(id);
             this.url = nz(url);
             this.enabled = enabled;
+            this.send = send == null ? DirectionPolicy.allowAll() : send;
+            this.receive = receive == null ? DirectionPolicy.allowAll() : receive;
         }
     }
 }

@@ -1,11 +1,12 @@
-# KOKOTO WebChat 5.2.0 リリースチェックリスト
+# KOKOTO WebChat 5.3.0 リリースチェックリスト
 
 ## ソース / 設定 / 多言語
-- [ ] Root/Bukkit/Fabric/NeoForge/Forge の metadata と成果物名がすべて `5.2.0` である。
-- [ ] `config.yml`、`config-baselines/config-5.2.0.yml`、`distribution/config-reference-5.2.0.yml` が byte-identical である。
-- [ ] 5.1.0 → 5.2.0 migration が `5.2.0_auto_migration` を記録し、既存 Relay v2 group/secret/peer を含む対応済み運用値を保持しながら retired 設定を削除し、正確な `5.2.0` では同一バージョンの設定再構築を停止する。pre-5.1.0 migration の場合だけ legacy Relay v1 trust/topology を再利用せず、明示的な Relay v2 再設定用に初期化する。
+- [ ] Root/Bukkit/Fabric/NeoForge/Forge の metadata と成果物名がすべて `5.3.0` である。
+- [ ] 現在の `config.yml`、`config-baselines/config-5.3.0.yml`、多言語 config template、`distribution/config-reference-5.3.0.yml` の parsed setting path/default が一致し、表示用 comment と `_auto_migration` marker の差だけが許容される。過去 baseline は migration 入力としてのみ保持する。
+- [ ] 5.2.1 → 5.3.0 migration が `5.3.0_auto_migration` を記録し、対応済み運用値と Relay v2 trust 設定を保持し、廃止された hide 確認設定を delete 確認設定へ移行し、正確な `5.3.0` は同一 version の再構築を停止する。
 - [ ] en-US/ko-KR/ja-JP/zh-CN の key set と placeholder が完全に一致する。
 - [ ] `inner.js` と 8 個すべての frontend wrapper が構文検査と embedded JS/CSS 一致検査を通過する。
+- [ ] `node tools/build-inner-bundle.js --check` が成功し、`frontend/inner/manifest.txt`、生成済み `inner.js`、8 個の wrapper の embedded payload がすべて一致する。
 
 ## 機能 smoke test
 - [ ] ゲーム↔Web 公開チャット、Reply、URL、custom emoji、pin、検索、message token、content filter が正常に動作する。
@@ -15,7 +16,7 @@
 - [ ] ゲーム内 DM/group の名前クリックは既存コマンドを入力欄へ準備し、本文クリックは Reply を準備し、URL 部分は URL を開く。
 - [ ] 改ざんした `dm-...`/`group-...` Reply target は、実際の DM 参加者または現在の group member でない限り拒否される。
 
-- [ ] 公開 message reaction が永続化され Relay 2.1 伝播が動作し、reaction-only SSE 更新で再生中 media が再起動しない。32 × 16px empty-state `+` は本文下/次 message 前に各 1px の視覚的余白を取り、reaction OFF は元の 8px spacing、実 reaction は通常の in-flow row を使う。category/search 再描画後も picker 位置と outside-click close が維持され、**Admin > Emojis > Reaction icons** は他の Admin settings と同じ rounded themed row と `emoji = search words` alias editor を提供し、alias は `reaction-search-aliases.txt` に保存される。
+- [ ] 公開 message reaction が永続化され Relay 2.2 伝播が動作し、reaction-only SSE 更新で再生中 media が再起動しない。32 × 16px empty-state `+` は本文下/次 message 前に各 1px の視覚的余白を取り、reaction OFF は元の 8px spacing、実 reaction は通常の in-flow row を使う。category/search 再描画後も picker 位置と outside-click close が維持され、**Admin > Emojis > Reaction icons** は他の Admin settings と同じ rounded themed row と `emoji = search words` alias editor を提供し、alias は `reaction-search-aliases.txt` に保存される。
 - [ ] public/DM/group typing は 5 秒の event-driven window で動作し、自分自身/audit viewer を除外し、長い複数 user 名は人数表示へ縮約し、polling/永続 typing state を作らない。Web Admin Settings/config.yml で server-wide の既定値 Open chat OFF / DM ON / Group ON を個別制御し、個人の Chat settings に typing switch が存在しないこと。
 - [ ] 保存済み会話は server 側で range を再検証し、archive quota と private-room lock policy を適用し、通常 retention 後も snapshot を保持する一方、管理者による元 message 削除は cascade する。
 - [ ] 保存済み会話 PDF/print view は display name + real name を表示し、現在の KWC appearance を使用し、原本が残る image だけを含め、video/audio/その他 file は link とし、失われた原本は unavailable と表示する。
@@ -42,7 +43,7 @@
 - [ ] release validator が全 NeoForge JAR を開き、target が選択した `META-INF/mods.toml` または `META-INF/neoforge.mods.toml`、`modLoader`、`loaderVersion`、KWC ID/version、exact Minecraft dependency、未展開 template placeholder がないことを検証する。
 - [ ] release validator が security + Relay/reaction/typing regression harness を実行し、完成した shaded Bukkit JAR に対して保存済み会話 SQLite runtime harness を実行する。
 
-> `validate-release-windows.bat` と必要な PowerShell helper は source archive に含まれています。別の `KWC-5.2.0-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、release build の実行には不要です。
+> `validate-release-windows.bat` と必要な PowerShell helper は source archive に含まれています。開発用 regression harness も source archive の `validation/` に含まれるため、別の validation-tools archive は不要です。
 
 - [ ] `validate-release-windows.bat` が `FINAL RELEASE BUILD PASS`、45 個の deployable JAR、SHA256SUMS を生成する。
 - [ ] 最終 acceptance は `--fast` なしで実行する。sequential または `--parallel` clean 実行は許可するが、cached/partial build を `FINAL RELEASE BUILD PASS` として扱わない。

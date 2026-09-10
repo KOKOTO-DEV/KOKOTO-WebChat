@@ -1,6 +1,6 @@
 # ImageEmojis-Bero integration (1.9.x)
 
-KOKOTO WebChat 5.2.0 includes an optional **Bukkit/Paper-family** integration for [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero). The current compatibility path is tested against the 1.9.x Bero line (including 1.9.2) and is reflection-based, so ImageEmojis-Bero is not a hard dependency and KWC still starts when it is absent.
+KOKOTO WebChat 5.3.0 includes an optional **Bukkit/Paper-family** integration for [ImageEmojis-Bero](https://github.com/KOKOTO-DEV/ImageEmojis-Bero). The current compatibility path is tested against the 1.9.x Bero line (including 1.9.2) and is reflection-based, so ImageEmojis-Bero is not a hard dependency and KWC still starts when it is absent.
 
 For general installation, commands, permissions, resource-pack generation, and ImageEmojis operation, use the [upstream ImageEmojis documentation](https://github.com/MrQuackDuck/ImageEmojis). This page only documents the settings and deployment details that matter when ImageEmojis-Bero is used together with KWC.
 

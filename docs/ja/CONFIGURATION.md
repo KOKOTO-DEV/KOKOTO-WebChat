@@ -53,7 +53,7 @@ Web Admin には **Filter** と **Settings** タブがあります。Filter で�
 `config-version` がない、または別 version の場合、KWC は既存の設定値を読み取り、最新 bundled `config.yml` から新しい file を作成して既存値を overlay します。以前の marker が `*_auto_migration` でなければ、operator が一度固定した設定とみなし、再構築前に元の `config.yml` 全体を backup します。古い comment・順序・空白・indent は引き継がず、最新 bundled comment/layout を使用し、operator の値だけを保持します。削除済み設定は再追加しません。結果は `<plugin-version>_auto_migration` になります。この marker が残る間は startup/reload ごとに同じ bundled-default rebuild を行い、新しい設定と最新 comment/layout を自動反映します。正確な `<plugin-version>` は同一 version の自動 **設定** 再構築を無効にします。ただし固定状態でも `ui.language` の表示言語が変わった場合は、全 parsed operator values を overlay して保持したまま、選択した内蔵 template からコメント/レイアウトだけを再構築できます。
 
 `config-migration-<plugin-version>.yml` は review/diff report です。旧 version の生成済み `config-reference-*`、`config-migration-*`、`config-upgrade-*` は自動削除され、実 version upgrade の default 差分判定に必要な JAR 内部 `config-baselines/*` のみ保持されます。
-5.2.0 では `ui.language` は Web UI だけでなく、KWC が `config.yml` を再構築するときのコメント/表示言語、`config-reference-5.2.0.yml`、migration/difference report の言語も選択します。Bundled template は `en-US`, `ko-KR`, `ja-JP`, `zh-CN` で、言語を切り替えても comments/layout のみが変わり、Relay group/secret/peer を含む既存の parsed operator values は overlay して保持されます。Difference 判定は comments、空白、indent、quote style、line number、key order ではなく parsed YAML setting path + value を比較します。
+5.3.0 では `ui.language` は Web UI だけでなく、KWC が `config.yml` を再構築するときのコメント/表示言語、`config-reference-5.3.0.yml`、migration/difference report の言語も選択します。Bundled template は `en-US`, `ko-KR`, `ja-JP`, `zh-CN` で、言語を切り替えても comments/layout のみが変わり、Relay group/secret/peer を含む既存の parsed operator values は overlay して保持されます。Difference 判定は comments、空白、indent、quote style、line number、key order ではなく parsed YAML setting path + value を比較します。
 
 ## 全体有効化スイッチ
 
@@ -201,13 +201,13 @@ direct-message:
 
 `group-chat.admin-audit.enabled` は 4.6.3 で追加された独立した default-off の group content access switch です。有効化しても account が `private-chat-super-admins` に指定されている必要があります。管理者 view は read-only で room membership を必要とせず、room 参加や read state 更新も行いません。各 page read は body を audit log にコピーせず `admin.group-audit-read` として記録されます。
 
-`direct-message.admin-audit.enabled` は独立した default-off の DM body audit switch です。有効でも `private-chat-super-admins` に明示された account だけが read-only audit view で DM body を開けます。監査 view では送信、Reply、非表示、既読更新はできず、各 page read は本文をコピーせず audit log に記録されます。
+`direct-message.admin-audit.enabled` は独立した default-off の DM body audit switch です。有効でも `private-chat-super-admins` に明示された account だけが read-only audit view で DM body を開けます。監査 view では送信、Reply、削除、既読更新はできず、各 page read は本文をコピーせず audit log に記録されます。
 
 `capture-game-whispers` は、キャンセルされていない `/w`, `/msg`, `/tell`, `/whisper`, `/m`, `/pm`, `/message`, `/t` を送信者と受信者の KWC DM スレッドへ複製します。Minecraft whisper 自体を再送・置換しません。Bukkit は任意の whisper plugin の最終成功結果を共通 API で提供しないため、既知 player 宛ての正しい形式の command を記録基準にします。
 
 ## 重要な 0 値の意味
 
-`0` の意味はすべての設定で共通ではありません。以下は現在の 5.2.0 loader/runtime の実動作に基づき、実際の説明が異なる設定を推測で「無制限」と解釈してはいけません。
+`0` の意味はすべての設定で共通ではありません。以下は現在の 5.3.0 loader/runtime の実動作に基づき、実際の説明が異なる設定を推測で「無制限」と解釈してはいけません。
 
 - `chat.history-size`: 件数基準で保持する公開チャット履歴の最大行数で、期間保持ポリシーと併用されます。 0 は件数制限をなくします。
 - `chat.history-retention-days`: 公開チャット履歴の期間保持日数です。 0 は期間による期限切れを無効にします。
@@ -243,6 +243,8 @@ direct-message:
 - `security.max-sse-connections-total`: KWC サーバー全体で許可する同時 /stream SSE 接続の最大数です。 0 はこの制限要素を無効にします。
 - `admin.admin-session-expire-hours`: ADMIN Web セッションの有効期間(時間)です。0 以下は管理者セッションに expiry timestamp を設定しません。
 - `moderation.default-mute-minutes`: 期間省略時の mute 既定時間(分)です。0 以下は永久 mute で、config 専用設定です。
+- `moderation.allow-user-self-message-delete`: 一般ユーザーが公開チャット、DM、グループチャットで自分が送信したメッセージを削除できるようにします。既定値は `false` です。DM は送信者本人のメッセージだけが対象で、グループの一般メンバーによる削除には room-local のメンバー自己削除ポリシーと room message deletion の有効化も必要です。
+- `moderation.self-message-delete-window-minutes`: 一般ユーザーが自分のメッセージを削除できる時間です。`0` は時間制限なし、正数では送信後その分数を過ぎると一般ユーザーは削除できません。ADMIN/MODERATOR の削除にはこの時間制限を適用しません。
 - `commands.max-length`: Web command 実行で受け付ける command text の最大長です。 0 はこの長さ制限をなくします。
 - `ui.image-preview-max-per-message`: 1 メッセージからレンダリングする inline 画像プレビューの最大件数です。 0 は件数制限をなくします。
 - `ui.image-preview-max-height`: 画像プレビューに設定する高さ上限(px)です。正数でもチャット viewport の安全上限が併用され、0 はこの明示的 px 上限だけを外して自動 viewport 上限を使うため、完全な無制限ではありません。
@@ -319,7 +321,7 @@ DM/group message も同じ game click model を使います。conversation label
 
 ## サーバーリレー設定
 
-KOKOTO WebChat 5.2.0 は Relay v2 の trust/暗号化モデルを維持する **Relay Protocol 2.1** を使用します。relay group 自体が trust boundary であり、その group のすべての peer relation は 1 つの group `shared-secret` を共有します。peer entry は `id`, `url`, `enabled` のみで、`peers[].secret` はありません。
+KOKOTO WebChat 5.3.0 は Relay v2 の trust/暗号化モデルを維持する **Relay Protocol 2.2** を使用します。relay group 自体が trust boundary で、その group のすべての peer は 1 つの group `shared-secret` を共有します。peer entry は既存の `id`, `url`, `enabled` に加え、`send` / `receive` ごとに `public-chat`, `event`, `dm`, `profile` を任意設定できます。省略した policy はすべて有効です。`peers[].secret` はありません。
 
 ```yaml
 server-relay:
@@ -337,6 +339,7 @@ server-relay:
     guest: true
     discord: false
     system: false
+    event: true
   delivery:
     web: true
     game: true
@@ -350,6 +353,16 @@ server-relay:
         - id: "server-2"
           url: "https://server2.example.com/api"
           enabled: true
+          send:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
+          receive:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
 ```
 
 初回設定では 1 台のサーバーで `shared-secret: ""` のまま起動/リロードし、`config.yml` に生成された値を同じ **group** の他サーバーへコピーする方法を推奨します。既存の空でない secret は保持され、32 文字未満の手動値は自動置換せず invalid になります。両サーバーは同じ group で相互に peer 登録し、同一の生成/コピー secret を使用します。同じ peer ID を複数の local group に登録することはできず、重複登録は無効化されます。direct relay は各 `/relay/v2/message` request を group secret により独立して認証・暗号化します。`/relay/v2/handshake` は状態を保持しない診断用 identity/health probe で、routing 状態を作成・制御しません。
@@ -622,11 +635,11 @@ ui:
 
 ## メッセージ検索
 
-保存履歴が有効な場合、チャットパネル右上のフローティング領域の虫眼鏡ボタンと `/history/search` API でメッセージ本文と送信者を検索できます。検索オプションでは日付/時刻範囲、送信者、ソース、システム/イベントの含有を指定できます。検索結果はスクロール可能な一覧で表示され、チャットのテーマとフォント設定に従います。検索結果をクリックすると、既存の周辺履歴読み込みで該当メッセージへ移動します。i18n キー付きのシステム／イベントメッセージは、可能な場合は要求された Web UI 言語で検索・表示されます。 検索は `search.enabled` で有効/無効を切り替えられ、`search.result-limit` だけで Web UI の結果数と `/history/search` API の上限を制御します。別の内部最大値はなく、2000 に設定すれば最大 2000 件、10 に設定すれば最大 10 件を返します。10000 や 100000 のような非常に大きい値も受け付けますが、検索速度の低下、応答サイズの増加、CPU・メモリ・DB 負荷の増加につながる可能性があります。既定値は 50 で、通常利用では 50〜200 を推奨します。`config-version: "5.2.0_auto_migration"` の場合、不足している検索設定は startup/reload 時に自動挿入されます。正確な `config-version: "5.2.0"` で同一 version の自動 migration を停止した場合のみ、不足 key を手動で追加するか `_auto_migration` を再度有効にしてください。
+保存履歴が有効な場合、チャットパネル右上のフローティング領域の虫眼鏡ボタンと `/history/search` API でメッセージ本文と送信者を検索できます。検索オプションでは日付/時刻範囲、送信者、ソース、システム/イベントの含有を指定できます。検索結果はスクロール可能な一覧で表示され、チャットのテーマとフォント設定に従います。検索結果をクリックすると、既存の周辺履歴読み込みで該当メッセージへ移動します。i18n キー付きのシステム／イベントメッセージは、可能な場合は要求された Web UI 言語で検索・表示されます。 検索は `search.enabled` で有効/無効を切り替えられ、`search.result-limit` だけで Web UI の結果数と `/history/search` API の上限を制御します。別の内部最大値はなく、2000 に設定すれば最大 2000 件、10 に設定すれば最大 10 件を返します。10000 や 100000 のような非常に大きい値も受け付けますが、検索速度の低下、応答サイズの増加、CPU・メモリ・DB 負荷の増加につながる可能性があります。既定値は 50 で、通常利用では 50〜200 を推奨します。`config-version: "5.3.0_auto_migration"` の場合、不足している検索設定は startup/reload 時に自動挿入されます。正確な `config-version: "5.3.0"` で同一 version の自動 migration を停止した場合のみ、不足 key を手動で追加するか `_auto_migration` を再度有効にしてください。
 
 ## グループチャット
 
-`group-chat.enabled` はWebグループチャット機能を有効にします。公開/非公開ルーム、ハッシュ保存される任意パスワード、招待、退出、ルームの非表示/再表示、ルーム設定、未読追跡、ユーザー別メッセージ非表示、メンバーのキック/ban/ban解除、所有者移譲に対応します。グループメッセージは `group-chat.sqlite-file`（既定値 `group-messages.db`）に保存されます。`group-chat.retention-days: 0` は期間整理なし、正の値は古いグループメッセージを物理削除します。
+`group-chat.enabled` はWebグループチャット機能を有効にします。公開/非公開ルーム、ハッシュ保存される任意パスワード、招待、退出、ルームの非表示/再表示、ルーム設定、未読追跡、room-local owner/admin/member role、pin、room 全体の message delete、member 自己削除 policy、メンバーのキック/ban/ban解除、所有者移譲に対応します。グループメッセージは `group-chat.sqlite-file`（既定値 `group-messages.db`）に保存されます。`group-chat.retention-days: 0` は期間整理なし、正の値は古いグループメッセージを物理削除します。
 
 ルームの入退室通知はグローバルな `config.yml` switch ではなく **ルーム単位の DB 設定**です。Room settings から有効/無効を切り替え、`group_rooms.membership_events_enabled` に保存します。既存 DB に列を追加するときは既定で有効になります。実際に membership が変化した場合だけ event を保存し、グループチャット画面を閉じても退出にはなりません。
 

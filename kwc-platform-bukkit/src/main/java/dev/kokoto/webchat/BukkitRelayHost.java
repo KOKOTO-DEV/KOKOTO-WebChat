@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * BukkitRelayHost는 서버간 Relay Protocol 2.x의 설정·호스트 계약·전송 데이터를 담당한다.
+ * BukkitRelayHost participates in configuration, host contracts, or transport data for Relay Protocol 2.x.
+ *
+ * Relay payload는 서버 경계를 넘으므로 origin/target/sender 식별과 capability negotiation을 신뢰 경계 안에서 다시 검증해야 한다.
+ * Relay payloads cross a server trust boundary, so origin/target/sender identity and capability negotiation must be revalidated inside the trust boundary.
+ */
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,7 +29,8 @@ public final class BukkitRelayHost implements RelayHost {
                 if (group == null) { groups.add(null); continue; }
                 List<RelaySettings.Peer> peers = new ArrayList<>();
                 if (group.peers != null) for (ConfigValues.RelayPeer peer : group.peers) {
-                    peers.add(peer == null ? null : new RelaySettings.Peer(peer.id, peer.url, peer.enabled));
+                    peers.add(peer == null ? null : new RelaySettings.Peer(peer.id, peer.url, peer.enabled,
+                            relayPolicy(peer.send), relayPolicy(peer.receive)));
                 }
                 groups.add(new RelaySettings.Group(group.id, group.sharedSecret, group.forwardingEnabled, peers));
             }
@@ -31,8 +40,13 @@ public final class BukkitRelayHost implements RelayHost {
                 c.serverRelayConnectTimeoutSeconds, c.serverRelayRequestTimeoutSeconds, c.serverRelayMaxClockSkewSeconds,
                 c.serverRelayDedupeSeconds, c.serverRelayMaxHops,
                 c.serverRelayGameChat, c.serverRelayWebChat, c.serverRelayGuestChat,
-                c.serverRelayDiscordChat, c.serverRelaySystemEvents,
+                c.serverRelayDiscordChat, c.serverRelaySystemEvents, c.serverRelayEventAnnouncements,
                 c.serverRelayDeliverToWeb, c.serverRelayDeliverToGame, c.serverRelayGameFormat, groups);
+    }
+
+    private static RelaySettings.DirectionPolicy relayPolicy(ConfigValues.RelayDirectionPolicy policy) {
+        if (policy == null) return RelaySettings.DirectionPolicy.allowAll();
+        return new RelaySettings.DirectionPolicy(policy.enabled, policy.publicChat, policy.event, policy.dm, policy.profile);
     }
 
     @Override public String defaultServerName() { return plugin.getServer().getName(); }
@@ -101,8 +115,27 @@ public final class BukkitRelayHost implements RelayHost {
     }
 
     @Override
+    public boolean applyDirectMessageDelete(String originServerId, String senderUuid, String messageRelayId) {
+        DirectMessageStore store = plugin.directMessages();
+        DirectMessageStore.DeleteApplyResult applied = store == null ? null : store.applyRelayedDelete(originServerId, senderUuid, messageRelayId);
+        if (applied == null || !applied.ok) return false;
+        WebChatServer web = plugin.webServer();
+        if (applied.changed && web != null) web.publishDirectMessageUpdate(applied.localUserUuid, applied.remoteUserUuid, applied.threadId);
+        return true;
+    }
+
+    @Override
     public void publishDirectMessageUpdate(String localUserUuid, String remoteUserUuid, String threadId) {
         WebChatServer web = plugin.webServer();
         if (web != null) web.publishDirectMessageUpdate(localUserUuid, remoteUserUuid, threadId);
     }
+    @Override public String handleChatGameRelayRequest(String originServerId, String payloadJson) {
+        WebChatServer web = plugin.webServer();
+        return web == null ? "{\"ok\":false,\"error\":\"game_relay_unavailable\"}" : web.handleRelayedChatGameRequest(originServerId, payloadJson);
+    }
+    @Override public String handleProfileRelayRequest(String originServerId, String payloadJson) {
+        WebChatServer web = plugin.webServer();
+        return web == null ? "{\"ok\":false,\"error\":\"profile_relay_unavailable\"}" : web.handleRelayedProfileRequest(originServerId, payloadJson);
+    }
+
 }

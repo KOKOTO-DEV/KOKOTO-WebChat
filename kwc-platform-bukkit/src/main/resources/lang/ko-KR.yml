@@ -7,18 +7,19 @@ web:
     guest: 게스트
     reconnecting: 재연결 중...
     loggedIn: 로그인됨
+    loggedInCount: '로그인 {count}명'
   button:
     emoji: 이모티콘
     admin: 관리
     login: 로그인
     upload: 첨부
     resizeEmojiPanel: 드래그해서 이모티콘 선택창 크기 조절
-    resizeLock: 리사이즈 잠금
-    resizeUnlock: 리사이즈 잠금 해제
     resize: 크기 조절
     send: 전송
     reset: 초기화
     close: 닫기
+    closeAllDm: 모든 DM 닫기
+    closeAllGroups: 모든 그룹채팅 닫기
     start: 시작
     save: 저장
     edit: 편집
@@ -73,7 +74,12 @@ web:
     minutes: 분
     reason: 사유
     emojiPack: 새 팩/폴더 이름
+  captcha:
+    enterCode: '코드 입력: {code}'
+  mention:
+    suggestions: 멘션 자동완성
   reply:
+    reply: '답글'
     composing: '{sender}에게 답글'
     jump: 답글 대상 메시지로 이동
     notFound: 참조한 메시지를 찾을 수 없습니다.
@@ -103,7 +109,7 @@ web:
     uploadTooLarge: '파일이 너무 큽니다: {name}'
     emojiBatchUploadFailed: '{total}개 중 {uploaded}개 업로드됨. 실패: {failed}'
     uploadFailed: '업로드 실패: {error}'
-    confirmDelete: 이 메시지를 숨길까요?
+    confirmDelete: 이 메시지를 삭제할까요?
     deleteFailed: '삭제 실패: {error}'
     confirmClearHistory: "주의: 서버의 전체 공개 채팅 기록과 관련 반응 및 저장된 공개 채팅 보관본이 영구 삭제됩니다. 삭제 후 취소하거나 복구할 수 없습니다. 정말 삭제하시겠습니까?"
     adminActionFailed: '관리 작업 실패: {error}'
@@ -133,15 +139,15 @@ web:
     dmAuditLoadFailed: "DM 감사 내용을 불러오지 못했습니다: {error}"
     dmSendFailed: "메시지를 보내지 못했습니다: {error}"
     dmRetryFailed: '메시지 재전송 실패: {error}'
-    dmHideFailed: "메시지를 숨기지 못했습니다: {error}"
+    dmDeleteFailed: '메시지 삭제 실패: {error}'
     groupLoadFailed: '그룹 채팅을 불러오지 못했습니다: {error}'
     groupAuditLoadFailed: "그룹채팅 감사 내용을 불러오지 못했습니다: {error}"
     groupJoinFailed: '그룹 채팅방에 입장하지 못했습니다: {error}'
     groupSendFailed: '그룹 메시지를 보내지 못했습니다: {error}'
+    groupDeleteFailed: '그룹 메시지를 삭제하지 못했습니다: {error}'
     groupCreateFailed: '그룹 채팅방을 만들지 못했습니다: {error}'
     groupInviteFailed: '플레이어를 초대하지 못했습니다: {error}'
     groupLeaveFailed: '그룹 채팅방에서 나가지 못했습니다: {error}'
-    groupHideFailed: '메시지를 숨기지 못했습니다: {error}'
     groupActionFailed: '그룹 작업에 실패했습니다: {error}'
     groupSettingsFailed: '그룹 설정을 저장하지 못했습니다: {error}'
     renameFailed: '이름 변경 실패: {error}'
@@ -215,7 +221,8 @@ web:
     privateMetaOnly: '비공개 메시지 메타데이터만 표시'
     privateContentAccess: '관리자 DM 감사 열람(본문 조회 가능)'
     openDmAudit: '이 DM 세션을 읽기 전용 감사 화면으로 엽니다.'
-    dmAuditView: 'DM 감사 열람(읽기 전용)'
+    dmAuditView: 'DM 감사'
+    groupAuditView: '그룹채팅 감사 열람'
     dmAuditReadOnly: '관리자 감사 화면은 읽기 전용이며 모든 열람이 감사 로그에 기록됩니다.'
     groupMetaOnly: '그룹 채팅방 메타데이터'
     groupAuditTitle: '관리자 그룹채팅 감사'
@@ -237,6 +244,8 @@ web:
     archived: '보관됨'
     accounts: 계정
     onlinePlayers: 온라인 플레이어
+    onlineUsers: '온라인 사용자'
+    showOfflineUsers: '오프라인 사용자 표시'
     none: 없음
     muteGuestIp: 게스트/IP 차단
     typeGuest: 게스트
@@ -300,14 +309,25 @@ web:
     filter: '필터'
     settings: 설정
     discordAlertNoChannels: '사용 가능한 DiscordSRV 채널이 없습니다'
+    navAdministration: '상위 관리'
+    navOperations: '운영 관리'
+    blocksAndRestrictions: '차단 / 제한'
+    guestIpBlocks: '게스트 / IP 차단'
+    accountRestrictions: '로그인 사용자 제한'
+    optionCaptchaMathEasy: '쉬움'
+    optionCaptchaMathNormal: '보통'
+    optionCaptchaMathHard: '어려움'
     setting:
       guest-enabled: '게스트 접속'
       guest-allow-custom-name: '게스트 이름 변경'
       guest-cooldown-seconds: '게스트 전송 간격(초)'
       guest-max-messages-per-minute: '게스트 분당 메시지'
       captcha-mode: 'CAPTCHA 방식'
+      captcha-math-complexity: '산술 CAPTCHA 난이도'
       captcha-require-on-each-message: '메시지마다 CAPTCHA'
       captcha-pass-valid-minutes: 'CAPTCHA 인증 유지(분)'
+      moderation-allow-user-self-message-delete: '사용자의 본인 메시지 삭제 허용'
+      moderation-self-message-delete-window-minutes: '본인 메시지 삭제 가능 시간'
       auth-password-login: '비밀번호 로그인'
       auth-remember-session-days: '일반 세션 기간(일)'
       admin-admin-session-expire-hours: '관리자 세션 기간(시간)'
@@ -352,10 +372,29 @@ web:
       content-filter-anti-evasion-interleave-unlimited-gap: '무제한 간격 탐지'
       content-filter-anti-evasion-collapse-repeats: '반복 문자 축약'
       content-filter-anti-evasion-repeat-limit: '반복 허용 수'
+    userControls: '사용자 제한'
+    userControlsHint: '채팅 금지는 KWC 공개/DM/그룹 전송을 막고, 업로드 금지는 채팅 및 프로필 이미지 업로드를 막습니다.'
+    chatBan: '채팅 금지'
+    uploadBan: '업로드 금지'
+    deleteProfileImage: '프로필 사진 삭제'
+    deleteProfileImageConfirm: '이 사용자의 사용자 지정 프로필 사진을 삭제할까요?'
+    moderatorPermissions: '모데레이터 권한'
+    moderatorPermissionsHint: '모데레이터별로 moderation 기능을 위임합니다. 서버/계정/세션 관리자 전용 기능은 위임되지 않습니다.'
+    capabilityViewOnline: '온라인/오프라인 사용자 보기'
+    capabilityMessageDelete: '공개 메시지 삭제'
+    capabilityGuestMute: '게스트/IP 음소거 및 해제'
+    capabilityPinManage: '공개 고정메시지 관리'
+    capabilityContentFilterManage: '필터 및 단어 목록 관리'
+    capabilityEmojiManage: '이모지 업로드·팩·반응 관리'
+    capabilityGameManage: '이벤트 생성·추첨·종료 관리'
+    capabilityUserRestrictions: '사용자 채팅/업로드 금지'
+    capabilityProfileAvatarDelete: '사용자 프로필 사진 삭제'
+    onlinePermissionMissing: '이 모데레이터에게 온라인 사용자 보기 권한이 없습니다.'
     settingsGroupGuestCaptcha: '게스트 / CAPTCHA'
     settingsGroupAuthSessions: '인증 / 세션'
     settingsGroupProfiles: '사용자 프로필'
     settingsGroupTyping: '입력 중 표시'
+    settingsGroupModeration: '메시지 삭제'
     settingsGroupUploads: '업로드'
     settingsGroupDiscordAlerts: 'Discord 관리자 알림'
     filterGroupGeneral: '기본 / 적용 범위'
@@ -369,9 +408,13 @@ web:
     settingsVerifyMismatch: '{setting} 저장 확인에 실패했습니다.'
     optionCaptchaOff: '사용 안 함'
     optionCaptchaMath: '수학 문제'
+    optionCaptchaText: '문자 코드'
+    optionCaptchaMixed: '혼합 (수학/문자)'
     optionFilenameRandom: '무작위 파일명'
     optionFilenameOriginal: '원본 파일명'
     optionMentionNone: '없음'
+    optionDeleteWindowAlways: '항상'
+    optionDeleteWindowMinutes: '{minutes}분 이내'
     filterHint: '등록된 KWC 이모지 토큰은 차단/필터링에 걸리지 않도록 보호하며, 등록되지 않은 :가짜: 토큰은 일반 텍스트로 처리됩니다.'
     filterGuideTitle: '커스텀 규칙 사용 예'
     filterGuideChoose: '단순 차단/필터 단어가 많으면 TXT 필터 목록을 사용하고, 동작을 다르게 하거나 치환 후보·단어별 치환이 필요할 때 커스텀 규칙을 사용하세요.'
@@ -534,6 +577,12 @@ web:
     chatBehavior: '채팅 동작'
     showTypingIndicator: '입력 중 표시'
     showTypingIndicatorHelp: '다른 사용자의 입력 중 상태를 내 화면에 표시합니다. 이 설정은 KWC 계정에 저장되며, 꺼도 내 입력 중 상태 전송은 중지되지 않습니다.'
+    presenceSettings: '개인정보 및 접속 상태'
+    profileButton: '프로필'
+    presenceStatus: '온라인 상태'
+    presenceStatusHelp: '오프라인은 다른 사용자에게 실제 게임/Web 접속 상태를 숨깁니다. 바쁨은 접속 상태를 유지하면서 바쁨으로 표시합니다.'
+    blockedUsers: '차단한 사용자'
+    blockedUsersEmpty: '차단한 사용자가 없습니다.'
     notifications: '알림'
     notificationsPage: '브라우저 시스템 알림'
     notificationsPageHelp: '브라우저 알림은 지원하는 브라우저에서만 사용할 수 있습니다.'
@@ -617,6 +666,40 @@ web:
     fontSystem: 시스템
     note: '이 설정창은 제목을 잡고 이동할 수 있습니다.'
     noteDrag: 이 설정창은 제목을 잡고 이동할 수 있습니다.
+  presence:
+    profileTitle: '사용자 프로필'
+    game: '게임'
+    web: 'Web'
+    online: '온라인'
+    busy: '바쁨'
+    offline: '오프라인'
+    invisible: '오프라인으로 표시'
+    visibleStatus: '표시 상태'
+    nameToggle: '이름 표시: {mode}'
+    nameDisplay: '이름 표시'
+    displayName: '표시이름'
+    realName: '실제이름'
+    sendDirectMessage: 'DM 보내기'
+    profileImage: '프로필 이미지'
+    profileImageNone: '사용 안 함'
+    profileImageMinecraft: 'Minecraft Head'
+    profileImageCustom: '사용자 이미지'
+    uploadProfileImage: '이미지 업로드'
+    deleteProfileImage: '이미지 삭제'
+    saveProfile: '프로필 저장'
+    about: '소개 / 한마디'
+    aboutPlaceholder: '간단한 소개나 한마디를 입력하세요.'
+    aboutEmpty: '등록된 소개나 한마디가 없습니다.'
+    roleChange: '권한 변경'
+    roleUser: '일반 사용자'
+    roleModerator: '모데레이터'
+    roleAdmin: '관리자'
+    userManagement: '사용자 관리'
+    blockUser: '차단'
+    unblockUser: '차단 해제'
+    invisibleSelfNote: '오프라인 표시가 켜져 있습니다. 다른 사용자에게는 오프라인으로 표시됩니다.'
+    offlineSelfNote: '다른 사용자에게는 오프라인으로 표시됩니다. 내 프로필에서는 실제 게임/Web 접속 상태를 확인할 수 있습니다.'
+
   opacity:
     title: 투명도
   role:
@@ -703,13 +786,13 @@ web:
     command_too_long: 명령어가 너무 깁니다
     dmLoadFailed: '메시지함을 불러오지 못했습니다: {error}'
     dmSendFailed: '메시지를 보내지 못했습니다: {error}'
-    dmHideFailed: '메시지를 숨기지 못했습니다: {error}'
     dm_disabled: 메시지함이 비활성화되어 있습니다
     web_send_disabled: 웹 메시지 전송이 비활성화되어 있습니다
     player_not_found: 플레이어를 찾을 수 없습니다
     remote_server_unavailable: 대상 서버에 연결할 수 없습니다
     self_message: 자기 자신에게는 보낼 수 없습니다
   dm:
+    open: 'DM 열기'
     title: 메시지함
     noThreads: 대화 스레드가 없습니다.
     selectThread: 대화를 선택하세요
@@ -722,8 +805,8 @@ web:
     hideThreads: 대화 목록 접기
     showThreadsShort: 펼치기
     hideThreadsShort: 접기
-    confirmHideMessage: 이 메시지를 내 화면에서 숨길까요?
-    hideMessage: 내게서 이 메시지 숨기기
+    deleteOwnMessage: '메시지 삭제'
+    confirmDeleteOwnMessage: '이 메시지를 상대방 화면에서도 삭제할까요?'
     threadList: 대화 목록
     showConversationList: 목록 보기
     showCurrentConversation: 대화만 보기
@@ -756,6 +839,9 @@ web:
     passwordOptionalLabel: '비밀번호 (선택)'
     passwordSettingsLabel: '비밀번호 (비우면 제거)'
     membershipEvents: '멤버 입장/퇴장 알림 표시'
+    pinsEnabled: '이 방에서 고정 메시지 사용'
+    messageDeleteEnabled: '이 방에서 메시지 삭제 사용'
+    memberSelfDeleteEnabled: '일반 멤버의 자기 메시지 삭제 허용'
     memberJoined: '{player}님이 방에 들어왔습니다.'
     memberLeft: '{player}님이 방에서 나갔습니다.'
     membersShort: '명'
@@ -776,9 +862,13 @@ web:
     inviteSent: '초대를 보냈습니다.'
     confirmInvite: '{player}님을 이 그룹 채팅방에 초대할까요?'
     confirmLeave: '이 그룹 채팅방에서 나가시겠습니까?'
-    confirmHideMessage: '이 메시지를 내 화면에서 숨길까요?'
+    confirmDeleteMessage: '이 메시지를 방 전체에서 삭제할까요?'
     manage: '관리'
-    manageNote: '방 관리자는 강퇴, 차단, 방장 이전을 할 수 있습니다. 메시지 본문은 표시되지 않습니다.'
+    manageNote: '방 관리자는 멤버를 강퇴하거나 차단할 수 있고, 방장은 방 관리자 지정/해제와 방장 이전을 할 수 있습니다. 메시지 본문은 표시되지 않습니다.'
+    makeAdmin: '관리자로 지정'
+    removeAdmin: '관리자 해제'
+    confirmMakeAdmin: '{player}님을 이 방의 관리자로 지정할까요?'
+    confirmRemoveAdmin: '{player}님의 방 관리자 권한을 해제할까요?'
     memberListNote: '일반 멤버는 참여자 목록만 볼 수 있습니다. 관리 동작은 방 관리자에게만 표시됩니다.'
     memberOnlineCount: '{online}/{total} 접속'
     online: '온라인'
@@ -790,6 +880,7 @@ web:
     confirmKick: '{player}님을 이 방에서 강퇴할까요?'
     confirmBan: '{player}님을 이 방에서 차단할까요?'
     confirmTransferOwner: '방장 권한을 {player}님에게 이전할까요?'
+    hideRoom: '목록에서 숨기기'
     confirmHideRoom: '이 방을 내 그룹 채팅 목록에서 숨길까요?'
     retentionLimited: '보관 기간: {days}일'
     retentionUnlimited: '보관 기간: 기한 없음'
@@ -881,6 +972,37 @@ web:
     helpRevoke: 웹 세션 취소
     helpFilter: 필터 규칙 관리
     helpSettings: 실시간 설정 확인 및 변경
+    helpGame: '이벤트 목록을 보거나 확인·참가합니다'
+    gameUnavailable: '이벤트 서비스를 사용할 수 없습니다.'
+    gameAlreadyJoined: '이미 이 이벤트에 참가했습니다.'
+    gameJoined: '이벤트에 참가했습니다.'
+    gameClosed: '이벤트를 닫았습니다.'
+    gameDeleted: '이벤트 삭제: {title}'
+    gameNone: '이벤트가 없습니다.'
+    gameWinnerCount: '당첨자: {count}명'
+    gameNoParticipants: '아직 참가자가 없습니다.'
+    gameNoWinners: '당첨자가 없습니다.'
+    gameWinners: '당첨자: {names}'
+    gameNotOpen: '이 이벤트는 참가할 수 있는 상태가 아닙니다.'
+    gameFull: '이 이벤트의 참가 인원이 가득 찼습니다.'
+    gameNotEnough: '당첨자를 추첨하기에 참가자가 부족합니다.'
+    gameFailed: '이벤트 작업 실패: {error}'
+    gameCreated: '이벤트 생성: {title} ({id})'
+    gameDrawn: '{title} 이벤트의 당첨자를 추첨했습니다.'
+    gameFinished: '이벤트 확정: {title}'
+    gameListTitle: '이벤트 목록: {count}개'
+    gameListEntry: '- {id} | {title} | {status} | {participants}/{max}'
+    gameTypeFirstCome: '선착순'
+    gameTypeLottery: '추첨'
+    gameStatusOpen: '모집 중'
+    gameStatusReady: '모집 완료'
+    gameStatusCompleted: '종료'
+    gameStatusClosed: '닫힘'
+    gameInvalidType: '이벤트 종류는 firstcome 또는 lottery여야 합니다.'
+    gameInvalidTitle: '80자 이내의 이벤트 제목을 입력하세요.'
+    gameInvalidParticipantCount: '참가 인원은 2명 이상이어야 합니다.'
+    gameInvalidWinnerCount: '당첨 인원은 1명 이상이며 참가 인원 이하여야 합니다.'
+    gameNotLottery: '추첨 이벤트가 아닙니다.'
     filterStatus: '필터: {state} / 공통={public} 그룹={group} DM={dm} / 규칙={rules}'
     filterListTitle: '필터 규칙: {count}'
     filterRuleNotFound: '필터 규칙을 찾을 수 없습니다: {id}'
@@ -896,7 +1018,7 @@ web:
     settingsUpdated: '{key}={value} 적용됨. 세션 갱신={updated}, 만료={expired}.'
     helpDm: 1:1 메시지 보내기
     helpDmList: 1:1 대화 목록 보기
-    helpDmHide: 내 화면에서 1:1 메시지 숨기기
+    helpDmDelete: 내가 보낸 1:1 메시지를 양쪽 대화에서 삭제
     helpDmRead: 1:1 대화 스레드 읽기
     helpReply: 공개 KWC 메시지에 댓글 보내기
     replyClickHint: "클릭하여 답글 작성 (#{id})"
@@ -954,10 +1076,13 @@ web:
     dmReadLastPage: '이미 가장 오래된 페이지입니다.'
     dmNoMessages: 이 대화에 메시지가 없습니다.
     dmMe: 나
-    dmHideHint: '내 화면에서 숨기기: /kchat dm hide <messageId>'
+    dmDeleteHint: '내가 보낸 메시지 삭제: /kchat dm delete <messageId>'
     dmInvalidMessageId: 잘못된 메시지 ID입니다.
-    dmHideFailed: "메시지를 숨기지 못했습니다."
-    dmHidden: 내 화면에서 메시지를 숨겼습니다.
+    dmDeleteFailed: "메시지를 삭제하지 못했습니다."
+    dmDeleteRemoteUnavailable: "상대 서버에 연결할 수 없어 메시지를 삭제하지 않았습니다."
+    dmDeleteNotOwner: "내가 보낸 1:1 메시지만 삭제할 수 있습니다."
+    dmDeleteWindowExpired: '이 메시지는 삭제 가능 시간이 지났습니다.'
+    dmDeleted: "양쪽 대화에서 메시지를 삭제했습니다."
     never: 없음
     authInvalid: 잘못된 인증 요청입니다.
     authCodeExpired: 인증 코드가 없거나 만료되었습니다.
@@ -987,6 +1112,64 @@ web:
     failed: '명령어 실행 실패: {error}'
     tooLong: 명령어가 너무 깁니다. 최대 {max}자입니다.
     maxLengthHint: 최대 {max}자
+  game:
+    list: '이벤트 목록'
+    backToList: '이벤트 목록으로'
+    newEvent: '새 이벤트'
+    server: '서버'
+    remote: 'Relay 서버'
+    noEvents: '이벤트가 없습니다.'
+    confirmDeleteEvent: '이 이벤트를 삭제할까요?'
+    remoteUnavailable: '원본 서버에서 이벤트를 불러오지 못했습니다.'
+    deleted: '삭제된 이벤트'
+    deletedNotice: '삭제되어 더 이상 열 수 없는 이벤트입니다.'
+    remoteReadOnly: '이벤트 관리는 원본 서버에서만 할 수 있습니다.'
+    select: '열기'
+    createdAt: '생성'
+    error.remote_server_unavailable: '원본 서버에 연결할 수 없습니다.'
+    error.game_relay_unavailable: '원본 서버가 이벤트 조회를 지원하지 않습니다.'
+    error.remote_game_manage_not_allowed: '원격 이벤트는 참가할 수 있지만 관리는 원본 서버에서 해야 합니다.'
+    error.permission_denied: '이 이벤트를 관리할 권한이 없습니다.'
+    error.not_lottery: '추첨 이벤트가 아닙니다.'
+    error.invalid_type: '선착순 또는 추첨을 선택하세요.'
+    title: 이벤트
+    type: 방식
+    eventTitle: 제목
+    maxParticipants: 참가 인원
+    winnerCountLabel: 당첨 인원
+    winnerCount: '당첨 {count}명'
+    notificationScope: 알림 범위
+    scopeLocal: 현재 서버만
+    scopeRelay: Relay 서버에도 전달
+    create: 이벤트 생성
+    join: 참가
+    joined: 참가 완료
+    finish: 모집 마감 및 결과 확정
+    finishLottery: 모집 마감 및 추첨
+    refresh: 새로고침
+    open: 이벤트 열기
+    draw: 추첨
+    close: 이벤트 종료
+    participants: 참가자
+    participantHeading: '참가자 ({count}명)'
+    noParticipants: 아직 참가자가 없습니다.
+    winners: 당첨자
+    chat.created: '이벤트가 시작되었습니다: {title} ({type}, 참가 {participants}명, 당첨 {winners}명)'
+    chat.results: '이벤트 결과: {title} - 당첨자: {winners}'
+    none: 진행 중인 이벤트가 없습니다.
+    type.firstcome: 선착순
+    type.lottery: 추첨
+    status.open: 모집 중
+    status.ready: 모집 완료
+    status.completed: 종료
+    status.closed: 닫힘
+    error.invalid_title: 제목을 입력하세요.
+    error.invalid_participant_count: 참가 인원은 2명 이상으로 입력하세요.
+    error.invalid_winner_count: 당첨 인원은 1명 이상, 참가 인원 이하로 입력하세요.
+    error.game_not_found: 해당 이벤트를 찾을 수 없습니다.
+    error.game_not_open: 참가 가능한 이벤트가 아닙니다.
+    error.game_full: 참가 인원이 모두 찼습니다.
+    error.not_enough_participants: 추첨할 참가자가 부족합니다.
   security:
     httpServerWarning: "[경고] KOKOTO WebChat이 HTTP로 설정되어 있습니다 ({url}). 로그인 정보와 채팅 내용이 네트워크에서 평문으로 노출될 수 있습니다. 가능하면 리버스 프록시를 통해 HTTPS를 사용하세요."
     relayHttpPeerWarning: "[경고] Relay peer '{peer}'가 HTTP를 사용합니다 ({url}). Direct Relay는 허용되지만 해당 peer는 forwarding에서 제외됩니다. HTTPS 사용을 강력히 권장합니다."
@@ -1015,4 +1198,3 @@ web:
     offline: '연결 끊김.
 
       네트워크를 확인해 주세요.'
-

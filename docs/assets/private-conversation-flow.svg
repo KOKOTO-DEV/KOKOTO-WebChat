@@ -75,7 +75,7 @@
 <title>relay</title>
 <path fill="#fce7f3" stroke="#334155" d="M995.5,-128.54C995.5,-128.54 898.5,-128.54 898.5,-128.54 892.5,-128.54 886.5,-122.54 886.5,-116.54 886.5,-116.54 886.5,-102.54 886.5,-102.54 886.5,-96.54 892.5,-90.54 898.5,-90.54 898.5,-90.54 995.5,-90.54 995.5,-90.54 1001.5,-90.54 1007.5,-96.54 1007.5,-102.54 1007.5,-102.54 1007.5,-116.54 1007.5,-116.54 1007.5,-122.54 1001.5,-128.54 995.5,-128.54"/>
 <text text-anchor="middle" x="947" y="-112.94" font-family="Noto Sans" font-size="12.00">Remote DM</text>
-<text text-anchor="middle" x="947" y="-99.94" font-family="Noto Sans" font-size="12.00">Relay Protocol 2.1</text>
+<text text-anchor="middle" x="947" y="-99.94" font-family="Noto Sans" font-size="12.00">Relay Protocol 2.2</text>
 </g>
 <!-- store&#45;&gt;relay -->
 <g id="edge4" class="edge">

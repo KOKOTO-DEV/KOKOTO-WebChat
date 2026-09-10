@@ -222,4 +222,4 @@ HTTPS 公開 API の基準は `http.public-prefix + http.path-prefix` で、既�
 - [NGINX `ngx_http_proxy_module`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html)
 - [BlueMap reverse-proxy guide](https://bluemap.bluecolored.de/wiki/webserver/ReverseProxy.html)
 
-KWC 固有の path-prefix、trusted proxy、SSE、upload、authentication の動作は、これらの外部資料ではなく KWC 5.2.0 のソースと設定を基準にしてください。
+KWC 固有の path-prefix、trusted proxy、SSE、upload、authentication の動作は、これらの外部資料ではなく KWC 5.3.0 のソースと設定を基準にしてください。

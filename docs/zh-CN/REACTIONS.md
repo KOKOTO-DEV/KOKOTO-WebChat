@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.2.0 — 消息反应
+# KOKOTO WebChat 5.3.0 — 消息反应
 
 反应是公共聊天、1:1 DM 与普通群聊消息的持久化消息状态。对于 Relay 公共消息，**最初创建该公共消息的服务器**仍是公共 reaction state 的 authoritative owner。跨服务器 DM reaction 只直接发送到另一位参与者所在服务器，不会广播给无关 Relay peer。群聊房间仍是本地功能，加入/离开事件不能添加 reaction。
 

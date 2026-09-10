@@ -1,5 +1,13 @@
 package dev.kokoto.webchat.forge;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * ForgePlatformAdapter는 Forge API를 loader-neutral core/adapter 계약으로 변환하는 플랫폼 bridge다.
+ * ForgePlatformAdapter bridges Forge APIs into loader-neutral core/adapter contracts.
+ *
+ * 플랫폼 객체를 core에 노출하지 않고 UUID/중립 모델만 넘겨 다른 loader target의 classpath와 섞이지 않게 한다.
+ * Expose only UUID/neutral models to core rather than platform objects so loader target classpaths stay isolated.
+ */
 import dev.kokoto.webchat.*;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;

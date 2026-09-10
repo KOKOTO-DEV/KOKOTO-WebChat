@@ -1,0 +1,12 @@
+// KWC 파일 안내 / KWC file guide
+// Minecraft 26.3 Fabric 준비 타깃의 plugin repository와 비활성 안전장치를 정의한다. 정식 지원 목록에는 포함되지 않는다.
+// Defines plugin repositories and the disabled safety gate for the Minecraft 26.3 Fabric preparation target. It is not part of the supported release matrix.
+// kwc.prep.enabled=true로 바꾸기 전에는 Gradle 자체도 실패시켜 미확정 타깃이 실수로 배포되지 않게 한다.
+// Gradle itself fails until kwc.prep.enabled=true so an unvalidated target cannot be shipped accidentally.
+
+pluginManagement { repositories { maven { name='Fabric'; url='https://maven.fabricmc.net/' }; mavenCentral(); gradlePluginPortal() } }
+def prepEnabled = providers.gradleProperty('kwc.prep.enabled').orElse('false').get().toBoolean()
+if (!prepEnabled) {
+    throw new GradleException('KWC Fabric 26.3 PREP target is disabled. Finalize exact loader/API pins, validate the target, then set kwc.prep.enabled=true.')
+}
+rootProject.name='kwc-fabric-26-3-prep'

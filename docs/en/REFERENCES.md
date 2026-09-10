@@ -1,6 +1,6 @@
-# KOKOTO WebChat 5.2.0 — References and Standards
+# KOKOTO WebChat 5.3.0 — References and Standards
 
-This page lists the primary external specifications and official product documentation used by the KOKOTO WebChat 5.2.0 technical and operations documentation. KWC-specific behavior is defined by the source code and release documentation in this repository; the links below are references for the underlying protocols, APIs, storage modes, and third-party integrations.
+This page lists the primary external specifications and official product documentation used by the KOKOTO WebChat 5.3.0 technical and operations documentation. KWC-specific behavior is defined by the source code and release documentation in this repository; the links below are references for the underlying protocols, APIs, storage modes, and third-party integrations.
 
 ## Cryptography and authentication
 
@@ -63,7 +63,7 @@ This page lists the primary external specifications and official product documen
 - **SimpleNicks upstream**  
   https://github.com/Simplexity-Development/SimpleNicks
 
-Upstream documentation describes the original projects. KWC-Bero integration behavior and KWC-specific compatibility are defined by the matching KWC documentation and 5.2.0 source.
+Upstream documentation describes the original projects. KWC-Bero integration behavior and KWC-specific compatibility are defined by the matching KWC documentation and 5.3.0 source.
 
 ## Android file selection
 
@@ -91,5 +91,5 @@ These references explain the platform/browser filename handoff. KWC only sees th
 
 - Prefer primary specifications and official vendor/project documentation.
 - A reference link does **not** imply that KWC implements every feature in that specification or product.
-- KWC behavior, defaults, compatibility rules, and security boundaries must be verified against the 5.2.0 source code and current KWC documentation.
-- Historical KWC documents remain historical; do not use an older document as the definition of current 5.2.0 behavior.
+- KWC behavior, defaults, compatibility rules, and security boundaries must be verified against the 5.3.0 source code and current KWC documentation.
+- Historical KWC documents remain historical; do not use an older document as the definition of current 5.3.0 behavior.

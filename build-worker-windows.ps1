@@ -1,3 +1,9 @@
+﻿# KWC 파일 안내 / KWC file guide
+# 병렬 빌드 창 하나에서 특정 loader target 목록을 순서대로 빌드하고 progress 상태/로그를 기록하는 worker다.
+# Worker that builds one loader target list sequentially in a parallel build window while writing progress state and logs.
+# 실패 시 부분 산출물을 최종 릴리스로 오인하지 않도록 exit code와 검증 marker를 유지한다.
+# Preserve exit codes and validation markers so partial output cannot be mistaken for a final release.
+
 param(
     [Parameter(Mandatory = $true)][string]$WorkerPath,
     [Parameter(Mandatory = $true)][string]$LogPath,

@@ -1,3 +1,11 @@
+/* KWC 스타일 구조 안내 / KWC style guide
+ * 이 파일은 공개 채팅, DM, 그룹, 검색, 핀, 설정 modal이 공유하는 런타임 CSS다. 테마별 차이는 가능한 한 CSS custom property로 전달하고 컴포넌트 selector 자체를 중복하지 않는다.
+ * This is the shared runtime CSS for public chat, DM, groups, search, pins, and settings modals. Theme differences should flow through CSS custom properties instead of duplicating component selectors.
+ *
+ * 8개 map/standalone 사본은 byte-identical하게 유지한다. 한 사본만 수정하면 adapter마다 UI가 달라지므로 변경 후 모든 chat.css를 동기화하고 hash를 확인한다.
+ * Keep all eight map/standalone copies byte-identical. Editing only one copy creates adapter-specific UI drift, so synchronize every chat.css and verify hashes after changes.
+ */
+
 #kwc-root {
   position: fixed;
   right: 8px;
@@ -6,7 +14,7 @@
   max-width: calc(100vw - 16px);
   height: 430px;
   max-height: calc(100vh - 16px);
-  z-index: 999999;
+  z-index: 1000;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #f4f4f4;
 }
@@ -263,8 +271,46 @@
 .kwc-admin-modal {
   width: 560px;
   max-height: calc(100vh - 40px);
-  overflow-y: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
+
+.kwc-admin-modal-head { flex: 0 0 auto; margin-bottom: 10px; }
+.kwc-admin-scroll-area { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 8px; scrollbar-gutter: stable; }
+
+.kwc-admin-drag-handle {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.kwc-admin-drag-handle.kwc-dragging { cursor: grabbing; }
+
+.kwc-admin-online-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 6px 14px;
+  max-height: 240px;
+}
+
+.kwc-game-modal { width: min(500px, calc(100vw - 30px)); max-height: calc(100vh - 40px); overflow-y: auto; }
+.kwc-game-summary { display: flex; flex-direction: column; gap: 5px; padding: 10px; border-radius: 8px; background: rgba(255,255,255,.07); }
+.kwc-game-summary > strong { font-size: 16px; }
+.kwc-game-summary > span { font-size: 12px; opacity: .78; }
+.kwc-game-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 10px 0; }
+.kwc-game-create-form, .kwc-game-create-form label { display: flex; flex-direction: column; gap: 6px; }
+.kwc-game-create-form { gap: 10px; }
+.kwc-game-number-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.kwc-game-participants h4 { margin-bottom: 7px; }
+.kwc-game-participant-list { max-height: 220px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 5px 12px; padding: 7px; border-radius: 7px; background: rgba(255,255,255,.045); scrollbar-gutter: stable; }
+.kwc-game-participant { min-width: 0; display: flex; align-items: center; gap: 7px; padding: 4px 5px; }
+.kwc-game-participant-number { flex: 0 0 auto; min-width: 1.6em; opacity: .65; text-align: right; }
+.kwc-game-participant .kwc-sender { min-width: 0; overflow-wrap: anywhere; }
+.kwc-game-chat-link { margin-left: 8px; padding: 2px 7px; vertical-align: baseline; }
+.kwc-game-winners { display: flex; flex-wrap: wrap; gap: 6px; }
+.kwc-game-winners > span { padding: 4px 8px; border-radius: 999px; background: rgba(255,205,64,.18); font-weight: 700; }
 
 .kwc-admin-grid {
   display: grid;
@@ -2572,7 +2618,8 @@
   background: rgba(255,255,255,0.18);
 }
 
-.kwc-pinned-open > #kwc-pinned-label {
+.kwc-pinned-open > #kwc-pinned-label,
+.kwc-pinned-open > #kwc-group-pinned-label {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
@@ -4301,7 +4348,7 @@ body.kwc-emoji-resizing {
   line-height: 18px;
   text-align: center;
   cursor: pointer;
-  opacity: 0;
+  opacity: 1;
   visibility: hidden;
   pointer-events: none;
   transform: scale(.9);
@@ -5537,10 +5584,9 @@ body.kwc-emoji-resizing #kwc-root.kwc-theme-system .kwc-emoji-resize-handle::bef
 
 .kwc-dm-message {
   position: relative;
-  padding-right: 30px !important;
 }
 
-.kwc-dm-message-hide {
+.kwc-private-message-delete {
   position: absolute;
   top: 5px;
   right: 6px;
@@ -5562,11 +5608,13 @@ body.kwc-emoji-resizing #kwc-root.kwc-theme-system .kwc-emoji-resize-handle::bef
   line-height: 1;
   text-align: center;
   opacity: 0;
+  pointer-events: none;
 }
 
-.kwc-dm-message:hover .kwc-dm-message-hide,
-.kwc-dm-message-hide:focus {
+.kwc-dm-message:hover .kwc-private-message-delete,
+.kwc-private-message-delete:focus {
   opacity: 1;
+  pointer-events: auto;
   background: var(--kwc-button-hover-bg, rgba(255,255,255,0.16));
 }
 
@@ -6192,13 +6240,13 @@ body.kwc-emoji-resizing #kwc-root.kwc-theme-system .kwc-emoji-resize-handle::bef
   color: var(--kwc-muted-color, #64748b) !important;
 }
 
-.kwc-dm-modal-backdrop.kwc-theme-light .kwc-dm-message-hide {
+.kwc-dm-modal-backdrop.kwc-theme-light .kwc-private-message-delete {
   color: var(--kwc-muted-color, #64748b) !important;
   border: 1px solid transparent !important;
 }
 
-.kwc-dm-modal-backdrop.kwc-theme-light .kwc-dm-message-hide:hover,
-.kwc-dm-modal-backdrop.kwc-theme-light .kwc-dm-message-hide:focus {
+.kwc-dm-modal-backdrop.kwc-theme-light .kwc-private-message-delete:hover,
+.kwc-dm-modal-backdrop.kwc-theme-light .kwc-private-message-delete:focus {
   color: var(--kwc-text-color, #111827) !important;
   background: var(--kwc-button-hover-bg, rgba(226,232,240,0.98)) !important;
   border-color: rgba(148, 163, 184, 0.58) !important;
@@ -6268,12 +6316,12 @@ body.kwc-emoji-resizing #kwc-root.kwc-theme-system .kwc-emoji-resize-handle::bef
   .kwc-dm-modal-backdrop.kwc-theme-system .kwc-dm-empty {
     color: var(--kwc-muted-color, #64748b) !important;
   }
-  .kwc-dm-modal-backdrop.kwc-theme-system .kwc-dm-message-hide {
+  .kwc-dm-modal-backdrop.kwc-theme-system .kwc-private-message-delete {
     color: var(--kwc-muted-color, #64748b) !important;
     border: 1px solid transparent !important;
   }
-  .kwc-dm-modal-backdrop.kwc-theme-system .kwc-dm-message-hide:hover,
-  .kwc-dm-modal-backdrop.kwc-theme-system .kwc-dm-message-hide:focus {
+  .kwc-dm-modal-backdrop.kwc-theme-system .kwc-private-message-delete:hover,
+  .kwc-dm-modal-backdrop.kwc-theme-system .kwc-private-message-delete:focus {
     color: var(--kwc-text-color, #111827) !important;
     background: var(--kwc-button-hover-bg, rgba(226,232,240,0.98)) !important;
     border-color: rgba(148, 163, 184, 0.58) !important;
@@ -8509,43 +8557,10 @@ body.kwc-standalone-mode {
 }
 
 /* v4.5.0 follow-up: resize lock, admin badge action, and local chat-setting presets. */
-#kwc-root .kwc-resize-lock-float {
-  position: absolute;
-  top: 92px;
-  right: 10px;
-  z-index: 7;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
-  padding: 0 !important;
-  border: 1px solid var(--kwc-border-color, rgba(255,255,255,0.16)) !important;
-  border-radius: 999px;
-  color: var(--kwc-button-text, var(--kwc-text-color, #fff)) !important;
-  background: var(--kwc-button-bg, rgba(28, 35, 48, 0.92)) !important;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.24);
-  backdrop-filter: blur(8px);
-  text-align: center;
-  font-size: 15px !important;
-  line-height: 1;
-}
 
-#kwc-root.kwc-has-pinned-bar .kwc-resize-lock-float {
-  top: 136px;
-}
 
-#kwc-root .kwc-resize-lock-float:hover,
-#kwc-root .kwc-resize-lock-float:focus-visible {
-  background: var(--kwc-button-hover-bg, rgba(42, 52, 70, 0.96)) !important;
-  outline: none;
-}
 
-#kwc-root.kwc-resize-locked .kwc-resize-handle,
-#kwc-root:not(.kwc-resizable) .kwc-resize-handle,
-#kwc-root.kwc-minimized .kwc-resize-lock-button,
-#kwc-root.kwc-guest-hidden .kwc-resize-lock-button {
+#kwc-root:not(.kwc-resizable) .kwc-resize-handle {
   display: none !important;
 }
 
@@ -8553,8 +8568,9 @@ body.kwc-standalone-mode {
   cursor: pointer !important;
   max-width: 70px !important;
   min-width: 44px !important;
-  min-height: 22px !important;
-  height: 22px !important;
+  min-height: 26px !important;
+  height: 26px !important;
+  max-height: 26px !important;
   padding-left: 7px !important;
   padding-right: 7px !important;
   font-size: 10px !important;
@@ -8608,9 +8624,6 @@ body.kwc-standalone-mode {
   outline-offset: 2px !important;
 }
 
-#kwc-root.kwc-minimized .kwc-resize-lock-float {
-  display: none !important;
-}
 
 #kwc-root .kwc-notify-options {
   display: grid;
@@ -8918,6 +8931,64 @@ body.kwc-standalone-mode {
 .kwc-group-online-dot.kwc-offline {
   background: rgba(160, 160, 170, 0.65);
   box-shadow: none;
+}
+
+/* 5.3.0: unified Game/Web presence for compact lists and user profiles. */
+.kwc-presence-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  font-size: 10px;
+  line-height: 1.25;
+  color: var(--kwc-muted-color, rgba(255,255,255,0.72));
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.kwc-presence-compact[role="button"] { cursor: pointer; }
+.kwc-presence-compact[role="button"]:hover,
+.kwc-presence-compact[role="button"]:focus {
+  color: var(--kwc-link-color, #74c7ff);
+  outline: none;
+}
+
+.kwc-presence-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--kwc-border-color, rgba(255,255,255,0.25));
+}
+
+.kwc-presence-game .kwc-presence-dot {
+  background: var(--kwc-link-color, #74c7ff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--kwc-link-color, #74c7ff) 18%, transparent);
+}
+
+.kwc-presence-web .kwc-presence-dot {
+  background: var(--kwc-text-color, #f4f4f4);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--kwc-text-color, #f4f4f4) 14%, transparent);
+}
+
+.kwc-presence-offline .kwc-presence-dot { box-shadow: none; }
+
+.kwc-user-profile-modal { width: min(390px, calc(100vw - 30px)); }
+.kwc-user-profile-identity { margin-bottom: 12px; }
+.kwc-user-profile-presence {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0;
+}
+.kwc-user-profile-presence > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 9px;
+  border: 1px solid var(--kwc-border-color, rgba(255,255,255,0.14));
+  border-radius: 7px;
+  background: var(--kwc-surface-bg, rgba(255,255,255,0.05));
 }
 
 /* v4.5.0 follow-up: keyword alert apply/status line. */
@@ -9231,11 +9302,8 @@ body.kwc-standalone-mode {
 #kwc-root.kwc-minimized #kwc-login,
 #kwc-root.kwc-minimized #kwc-admin,
 #kwc-root.kwc-minimized #kwc-pip,
-#kwc-root.kwc-minimized #kwc-search-open,
-#kwc-root.kwc-minimized #kwc-resize-lock {
+#kwc-root.kwc-minimized #kwc-search-open {
   display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
 }
 
 #kwc-root.kwc-minimized .kwc-actions > #kwc-min {
@@ -9314,11 +9382,10 @@ body.kwc-standalone-mode {
 
 
 /* Responsive KWC expanded header.
-   Keep the normal header on one row for as long as every actionable/status
-   control still fits. The product title is expendable: it may ellipsize down to
-   zero width before wrapping. JavaScript adds .kwc-header-wrapped only when the
-   preserved status/admin control plus the visible right-side actions no longer
-   fit on one row. */
+   Keep one row only while a useful title slot, status/admin control and all
+   actions fit. RC22 intentionally wraps before the title disappears. In wrapped
+   mode row 1 is identity + window controls and row 2 groups chat/event/notice
+   actions separately from the login/account action. */
 #kwc-root:not(.kwc-minimized) .kwc-header {
   display: flex !important;
   flex-direction: row !important;
@@ -9425,11 +9492,9 @@ body.kwc-standalone-mode {
 }
 
 /* Only wrapped mode has the extra header row, so only wrapped mode moves the
-   floating search/resize-lock controls down by the extra ~29px. */
+   floating search controls down by the extra ~29px. */
 #kwc-root.kwc-header-wrapped .kwc-search-float { top: 83px; }
 #kwc-root.kwc-header-wrapped.kwc-has-pinned-bar .kwc-search-float { top: 127px; }
-#kwc-root.kwc-header-wrapped .kwc-resize-lock-float { top: 121px; }
-#kwc-root.kwc-header-wrapped.kwc-has-pinned-bar .kwc-resize-lock-float { top: 165px; }
 
 /* Preserve the original compact minimized pill: title + restore only. */
 #kwc-root.kwc-minimized .kwc-header {
@@ -10020,9 +10085,9 @@ body.kwc-standalone-mode {
    they must never force themselves visible independently. */
 .kwc-dm-modal-backdrop .kwc-dm-message .kwc-dm-message-meta .kwc-mini-actions {
   display: inline-flex !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 .kwc-dm-modal-backdrop .kwc-dm-message:hover .kwc-dm-message-meta .kwc-mini-actions,
 .kwc-dm-modal-backdrop .kwc-dm-message:focus-within .kwc-dm-message-meta .kwc-mini-actions,
@@ -10229,7 +10294,9 @@ body.kwc-standalone-mode {
 }
 
 #kwc-root .kwc-pinned-open #kwc-pinned-label.kwc-emoji-only .kwc-custom-emoji,
-#kwc-root .kwc-pinned-open #kwc-pinned-label .kwc-pinned-summary-title.kwc-emoji-only .kwc-custom-emoji {
+#kwc-root .kwc-pinned-open #kwc-group-pinned-label.kwc-emoji-only .kwc-custom-emoji,
+#kwc-root .kwc-pinned-open #kwc-pinned-label .kwc-pinned-summary-title.kwc-emoji-only .kwc-custom-emoji,
+#kwc-root .kwc-pinned-open #kwc-group-pinned-label .kwc-pinned-summary-title.kwc-emoji-only .kwc-custom-emoji {
   width: auto !important;
   height: auto !important;
   max-width: 100% !important;
@@ -10237,7 +10304,8 @@ body.kwc-standalone-mode {
   vertical-align: middle;
 }
 
-#kwc-root .kwc-pinned-open #kwc-pinned-label .kwc-pinned-summary-title.kwc-emoji-only {
+#kwc-root .kwc-pinned-open #kwc-pinned-label .kwc-pinned-summary-title.kwc-emoji-only,
+#kwc-root .kwc-pinned-open #kwc-group-pinned-label .kwc-pinned-summary-title.kwc-emoji-only {
   display: flex;
   align-items: center;
   line-height: normal;
@@ -10329,10 +10397,15 @@ body.kwc-standalone-mode {
 }
 .kwc-reaction-actor-row { display: block; min-height: 1.35em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kwc-reaction-picker {
+  /* 5.3.0 RC27: reaction choices must remain comfortably tappable/readable.
+     Do not squeeze the picker back to tiny cells just to avoid scrollbars; both
+     axes may scroll when a mobile viewport cannot fit the full reaction grid. */
+  --kwc-reaction-picker-cell: clamp(36px, 10vw, 40px);
+  --kwc-reaction-picker-icon: clamp(21px, 6vw, 24px);
   position: fixed;
   z-index: 1000005;
-  width: min(340px, calc(100vw - 12px));
-  max-height: min(390px, calc(100vh - 12px));
+  width: min(380px, calc(100vw - 12px));
+  max-height: min(420px, calc(100vh - 12px));
   overflow: auto;
   box-sizing: border-box;
   padding: 8px;
@@ -10344,22 +10417,29 @@ body.kwc-standalone-mode {
   font-family: inherit;
 }
 .kwc-reaction-categories {
-  display: grid;
-  grid-template-columns: repeat(9, minmax(28px, 1fr));
+  display: flex;
   gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
+  padding-bottom: 2px;
 }
 .kwc-reaction-category,
 .kwc-reaction-choice {
-  min-width: 0;
-  height: 32px;
+  min-width: var(--kwc-reaction-picker-cell);
+  height: var(--kwc-reaction-picker-cell);
   border: 0;
-  border-radius: 6px;
+  border-radius: 7px;
   background: rgba(255,255,255,0.08);
   color: inherit;
   cursor: pointer;
-  font-size: 18px;
+  font-size: var(--kwc-reaction-picker-icon);
 }
-.kwc-reaction-category { font-size: 16px; }
+.kwc-reaction-category {
+  flex: 0 0 var(--kwc-reaction-picker-cell);
+  font-size: clamp(19px, 5.5vw, 22px);
+}
 .kwc-reaction-category.kwc-active { outline: 2px solid rgba(120,185,255,.75); outline-offset: -2px; background: rgba(90,155,230,.18); }
 .kwc-reaction-category:hover,
 .kwc-reaction-choice:hover { background: rgba(255,255,255,0.16); }
@@ -10372,12 +10452,21 @@ body.kwc-standalone-mode {
 .kwc-reaction-search { flex: 0 0 auto; }
 .kwc-reaction-grid {
   display: grid;
-  grid-template-columns: repeat(8, minmax(28px, 1fr));
-  gap: 4px;
-  max-height: 210px;
-  overflow-y: auto;
+  grid-template-columns: repeat(8, var(--kwc-reaction-picker-cell));
+  grid-auto-rows: var(--kwc-reaction-picker-cell);
+  justify-content: start;
+  align-content: start;
+  gap: 5px;
+  max-height: min(252px, 48vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 0 0 2px;
 }
-.kwc-reaction-choice .kwc-reaction-emoji { width: 22px; height: 22px; }
+.kwc-reaction-choice .kwc-reaction-emoji {
+  width: clamp(26px, 7vw, 28px);
+  height: clamp(26px, 7vw, 28px);
+}
 .kwc-reaction-empty { grid-column: 1 / -1; padding: 18px 8px; text-align: center; opacity: .7; font-size: 11px; }
 .kwc-reaction-admin-list { width: 100%; box-sizing: border-box; resize: vertical; min-height: 68px; font-size: 18px; line-height: 1.5; }
 #kwc-root.kwc-theme-light ~ .kwc-reaction-picker,
@@ -10518,7 +10607,7 @@ body.kwc-standalone-mode {
 .kwc-archive-reply { border-left: 3px solid var(--kwc-border-color, rgba(255,255,255,.24)); padding: 3px 7px; margin: 4px 0; font-size: 11px; opacity: .82; }
 .kwc-archive-reply-sender { font-weight: 700; margin-bottom: 1px; }
 @media print {
-  .kwc-archive-print .kwc-button, .kwc-archive-print .kwc-dm-message-hide, .kwc-archive-print .kwc-mini-actions { display: none !important; }
+  .kwc-archive-print .kwc-button, .kwc-archive-print .kwc-private-message-delete, .kwc-archive-print .kwc-mini-actions { display: none !important; }
   .kwc-archive-print .kwc-archive-messages { max-height: none !important; overflow: visible !important; }
   .kwc-archive-print .kwc-archive-message { break-inside: avoid; page-break-inside: avoid; }
   .kwc-archive-print .kwc-archive-image { max-height: 680px; break-inside: avoid; }
@@ -10561,3 +10650,1486 @@ body.kwc-standalone-mode {
   }
 }
 
+/* 5.3.0 private-conversation header tools. */
+.kwc-private-window-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.kwc-private-window-tool {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 !important;
+  display: inline-grid;
+  place-items: center;
+  line-height: 1;
+}
+.kwc-private-title-actions,
+.kwc-group-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.kwc-private-search-scope {
+  margin-top: 2px;
+  max-width: min(58vw, 420px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--kwc-muted-color, rgba(255,255,255,0.68));
+  font-size: 12px;
+  font-weight: 500;
+}
+
+
+
+/* 5.3.0 RC5: manual Busy presence and profile-owned name display selector. */
+.kwc-presence-busy .kwc-presence-dot {
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.08);
+}
+
+.kwc-user-profile-name-mode {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.kwc-user-profile-status-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.8fr);
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.kwc-user-profile-name-mode-actions {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.kwc-user-profile-name-mode-actions .kwc-button.kwc-active {
+  font-weight: 700;
+  outline: 1px solid currentColor;
+}
+
+/* 5.3.0 account/profile entry */
+.kwc-account-profile-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+.kwc-account-profile-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1.17em;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kwc-account-profile-name:hover,
+.kwc-account-profile-name:focus-visible {
+  text-decoration: none;
+}
+
+/* 5.3.0 profile card */
+.kwc-user-profile-modal { width: min(430px, calc(100vw - 30px)); }
+.kwc-user-profile-top { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.kwc-user-profile-top-main { min-width: 0; flex: 1 1 auto; }
+.kwc-user-profile-avatar { width: 82px; height: 82px; flex: 0 0 82px; position: relative; overflow: hidden; border-radius: 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); display: grid; place-items: center; }
+.kwc-user-profile-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: auto; }
+.kwc-user-profile-avatar-placeholder { font-size: 30px; font-weight: 800; opacity: .72; }
+.kwc-user-profile-avatar-mode, .kwc-user-profile-about-edit { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; font-size: 12px; font-weight: 700; }
+.kwc-user-profile-avatar-actions { margin: 0 0 10px; }
+.kwc-user-profile-about { margin: 10px 0; padding: 9px 10px; border-radius: 8px; background: rgba(255,255,255,0.06); }
+.kwc-user-profile-about > span { display: block; margin-bottom: 5px; font-size: 11px; font-weight: 700; opacity: .72; }
+.kwc-user-profile-about p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.kwc-user-profile-about-edit textarea { box-sizing: border-box; width: 100%; min-height: 72px; resize: vertical; line-height: 1.4; }
+
+/* 5.3.0 web @mention autocomplete */
+.kwc-mention-autocomplete {
+  position: fixed;
+  z-index: 1000005;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+  max-height: 232px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid var(--kwc-border-color, rgba(255,255,255,0.14));
+  border-radius: 9px;
+  background: rgba(var(--kwc-modal-bg-rgb, 29,29,36), 0.98);
+  color: var(--kwc-text-color, #fff);
+  box-shadow: 0 10px 28px var(--kwc-shadow-color, rgba(0,0,0,0.35));
+  backdrop-filter: blur(10px);
+}
+
+.kwc-mention-option {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.kwc-mention-option:hover,
+.kwc-mention-option.kwc-active {
+  background: var(--kwc-surface-hover-bg, rgba(255,255,255,0.14));
+}
+.kwc-mention-option.kwc-active {
+  outline: 1px solid var(--kwc-border-color, rgba(255,255,255,0.24));
+  outline-offset: -1px;
+}
+
+.kwc-mention-option-name {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.kwc-mention-option-meta {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--kwc-muted-color, rgba(255,255,255,0.72));
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+@media (max-width: 560px) {
+  .kwc-mention-autocomplete { max-height: 196px; }
+  .kwc-mention-option { min-height: 46px; padding: 7px 9px; }
+}
+
+
+/* RC15 profile blocking and moderation controls */
+.kwc-pref-subsection { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.12); }
+.kwc-pref-blocked-users { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.kwc-pref-blocked-user { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kwc-user-profile-identity-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.kwc-user-profile-block { margin-left: 2px; }
+.kwc-admin-user-controls, .kwc-admin-moderator-permissions { display: flex; flex-direction: column; gap: 8px; }
+.kwc-admin-user-control > div,
+.kwc-admin-moderator-permissions > .kwc-admin-item > div { width: 100%; }
+.kwc-admin-capability-grid {
+  /* Moderator capabilities are intentionally split into two balanced groups
+     (5/4 for the current nine capabilities) instead of relying on auto-flow. */
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 8px 0;
+}
+.kwc-admin-capability-column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.kwc-admin-capability-grid label, .kwc-admin-user-control label { display: inline-flex; align-items: center; gap: 5px; }
+.kwc-admin-user-controls > .kwc-admin-item,
+.kwc-admin-moderator-permissions > .kwc-admin-item {
+  /* 로그인 사용자 제한과 모데레이터 권한은 하나의 스크롤 표이므로 행마다 중첩 카드 외곽선을 만들지 않는다.
+     Signed-in restrictions and moderator permissions are single scrolling tables, so rows must not render nested card outlines. */
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding-left: 0;
+  padding-right: 0;
+}
+.kwc-moderator-real-name { margin-left: 6px; font-size: .9em; opacity: .72; }
+
+@media (max-width: 420px) {
+  .kwc-admin-capability-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+#kwc-root .kwc-msg.kwc-has-delete-action { position: relative; }
+#kwc-root .kwc-public-message-delete {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+#kwc-root .kwc-msg:hover > .kwc-public-message-delete,
+#kwc-root .kwc-msg:focus-within > .kwc-public-message-delete,
+#kwc-root .kwc-public-message-delete:focus {
+  opacity: 1;
+  pointer-events: auto;
+  background: var(--kwc-button-hover-bg, rgba(255,255,255,0.16));
+}
+
+/* Public, DM and group actions use the same hover-only presentation. */
+#kwc-root .kwc-msg > .kwc-meta .kwc-mini-actions,
+.kwc-dm-modal-backdrop .kwc-dm-message > .kwc-dm-message-meta .kwc-mini-actions {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+#kwc-root .kwc-msg:hover > .kwc-meta .kwc-mini-actions,
+#kwc-root .kwc-msg:focus-within > .kwc-meta .kwc-mini-actions,
+#kwc-root .kwc-msg.kwc-reaction-touch-open > .kwc-meta .kwc-mini-actions,
+.kwc-dm-modal-backdrop .kwc-dm-message:hover > .kwc-dm-message-meta .kwc-mini-actions,
+.kwc-dm-modal-backdrop .kwc-dm-message:focus-within > .kwc-dm-message-meta .kwc-mini-actions,
+.kwc-dm-modal-backdrop .kwc-dm-message.kwc-reaction-touch-open > .kwc-dm-message-meta .kwc-mini-actions {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+.kwc-group-membership-event:hover > .kwc-private-message-delete,
+.kwc-group-membership-event:focus-within > .kwc-private-message-delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* RC16 follow-up: balanced admin scrolling, persistent pin controls, and independent chat windows. */
+.kwc-admin-scroll-area {
+  margin-right: -6px;
+  padding-right: 6px;
+  scrollbar-gutter: auto;
+}
+.kwc-pinned-backdrop .kwc-pinned-actions {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  display: inline-flex !important;
+}
+#kwc-group-messages > .kwc-group-empty-event {
+  font-family: var(--kwc-chat-font-family, inherit) !important;
+  font-size: var(--kwc-chat-message-font-size, var(--kwc-message-font-size, 13px)) !important;
+  text-shadow: var(--kwc-chat-text-shadow, var(--kwc-text-shadow, none)) !important;
+}
+.kwc-dm-modal-backdrop {
+  padding: 12px !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  background: transparent !important;
+  pointer-events: none !important;
+}
+.kwc-dm-modal-backdrop > .kwc-dm-modal {
+  pointer-events: auto !important;
+  position: absolute;
+  width: min(720px, calc(100vw - 24px)) !important;
+  height: min(620px, calc(100vh - 24px)) !important;
+  min-width: min(320px, calc(100vw - 24px)) !important;
+  min-height: min(300px, calc(100vh - 24px)) !important;
+  max-width: calc(100vw - 16px) !important;
+  max-height: calc(100vh - 16px) !important;
+  margin: 0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 14px 40px rgba(0,0,0,.38) !important;
+}
+.kwc-chat-window-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  z-index: 30;
+  touch-action: none;
+}
+.kwc-chat-window-resize-handle::after {
+  content: "";
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: .58;
+}
+#kwc-root.kwc-standalone-mode:not(.kwc-minimized) {
+  inset: auto 12px 12px auto !important;
+  width: var(--kwc-standalone-width, 372px) !important;
+  height: var(--kwc-standalone-height, 462px) !important;
+  max-width: calc(100vw - 24px) !important;
+  max-height: calc(100vh - 24px) !important;
+  border-radius: 12px !important;
+}
+#kwc-root.kwc-standalone-mode.kwc-standalone-positioned:not(.kwc-minimized) {
+  left: var(--kwc-standalone-left, 12px) !important;
+  top: var(--kwc-standalone-top, 12px) !important;
+  right: auto !important;
+  bottom: auto !important;
+}
+#kwc-root.kwc-standalone-mode:not(.kwc-minimized) .kwc-panel {
+  border-radius: 12px !important;
+}
+@media (max-width: 640px) {
+  #kwc-root.kwc-standalone-mode:not(.kwc-minimized) {
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0 !important;
+  }
+  #kwc-root.kwc-standalone-mode:not(.kwc-minimized) .kwc-panel { border-radius: 0 !important; }
+  .kwc-dm-modal-backdrop { padding: 4px !important; }
+  .kwc-dm-modal-backdrop > .kwc-dm-modal {
+    left: 4px !important;
+    top: 4px !important;
+    width: calc(100vw - 8px) !important;
+    height: calc(100vh - 8px) !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+  }
+  .kwc-chat-window-resize-handle { display: none; }
+}
+
+/* 5.3.0 RC16: separate high-level administration from day-to-day operations. */
+.kwc-admin-nav-groups { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
+.kwc-admin-nav-group { min-width:0; }
+.kwc-admin-nav-label { margin:0 0 4px 2px; font-size:10px; font-weight:700; opacity:.62; }
+.kwc-admin-nav-group .kwc-tabs { margin-bottom:0; flex-wrap:wrap; }
+.kwc-admin-nav-group .kwc-tab { flex:1 1 110px; }
+.kwc-user-profile-role,
+.kwc-user-profile-role-control { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:8px 0; }
+.kwc-user-profile-management,
+.kwc-user-profile-blocked-section { display:flex; flex-direction:column; gap:7px; margin:10px 0; padding:9px; border-radius:8px; background:rgba(255,255,255,.06); }
+.kwc-user-profile-presence > [data-presence-dm-uuid] { cursor:pointer; }
+.kwc-user-profile-presence > [data-presence-dm-uuid]:hover { background:rgba(255,255,255,.06); }
+
+/* 5.3.0 RC17: unified movable/resizable chat windows and owner-scoped overlays. */
+.kwc-chat-window-resize-handle { display: none !important; }
+.kwc-window-resize-zone {
+  position: fixed !important;
+  display: block;
+  background: transparent !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  pointer-events: auto !important;
+  touch-action: none !important;
+  z-index: 2147483646;
+}
+.kwc-window-resize-zone-n, .kwc-window-resize-zone-s { cursor: ns-resize; }
+.kwc-window-resize-zone-e, .kwc-window-resize-zone-w { cursor: ew-resize; }
+.kwc-window-resize-zone-ne, .kwc-window-resize-zone-sw { cursor: nesw-resize; }
+.kwc-window-resize-zone-nw, .kwc-window-resize-zone-se { cursor: nwse-resize; }
+.kwc-dm-head h3, #kwc-root .kwc-header { user-select: none; }
+.kwc-dm-modal-backdrop > .kwc-dm-modal.kwc-private-child-modal {
+  width: min(620px, calc(100vw - 24px)) !important;
+  height: min(560px, calc(100vh - 24px)) !important;
+}
+.kwc-private-child-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.kwc-private-child-body > .kwc-dm-conversation {
+  display: flex !important;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.kwc-private-conversation-snapshot { pointer-events: none !important; user-select: none; }
+.kwc-private-conversation-snapshot .kwc-private-window-tools,
+.kwc-private-conversation-snapshot .kwc-group-actions,
+.kwc-private-conversation-snapshot .kwc-dm-compose,
+.kwc-private-conversation-snapshot .kwc-reply-compose,
+.kwc-private-conversation-snapshot .kwc-emoji-panel,
+.kwc-private-conversation-snapshot .kwc-emoji-resize-handle { display: none !important; }
+.kwc-dm-modal.kwc-private-multi-list > .kwc-dm-layout { grid-template-columns: minmax(250px, 1fr) !important; }
+.kwc-dm-modal.kwc-private-multi-list > .kwc-dm-layout > .kwc-dm-sidebar { display: flex !important; width: 100% !important; }
+.kwc-dm-modal.kwc-private-multi-list > .kwc-dm-layout > .kwc-dm-conversation { display: none !important; }
+.kwc-private-back-to-list { flex: 0 0 auto; }
+.kwc-dm-title.kwc-dm-title-back { cursor: default !important; }
+.kwc-dm-title.kwc-dm-title-back:hover { background: transparent !important; }
+
+/* A popup belongs to the chat window that opened it. It never blocks sibling chat windows. */
+.kwc-modal.kwc-window-owner { isolation: isolate; }
+#kwc-root.kwc-window-owner { isolation: isolate; }
+.kwc-window-owned-overlay.kwc-modal-backdrop {
+  position: absolute !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  pointer-events: auto !important;
+  background: rgba(0,0,0,.34) !important;
+  z-index: 120 !important;
+  border-radius: inherit;
+  overflow: auto;
+}
+.kwc-window-owned-overlay.kwc-modal-backdrop > .kwc-modal {
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: min(560px, calc(100% - 16px)) !important;
+  max-width: calc(100% - 16px) !important;
+  max-height: calc(100% - 16px) !important;
+  margin: auto !important;
+  pointer-events: auto !important;
+}
+.kwc-window-owned-overlay.kwc-group-form-backdrop > .kwc-group-form-modal { pointer-events: auto !important; }
+
+/* Keep the surrounding list/section surfaces. Only the innermost per-user row
+   rectangle is flattened so the user name does not sit inside another boxed card. */
+.kwc-modal-backdrop.kwc-user-prefs-backdrop .kwc-admin-user-controls > .kwc-admin-item,
+.kwc-modal-backdrop.kwc-user-prefs-backdrop .kwc-admin-moderator-permissions > .kwc-admin-item {
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+
+@media (max-width: 899px), (max-height: 479px) {
+  .kwc-window-resize-zone:not(.kwc-root-resize-zone) { display: none !important; }
+  .kwc-private-child-backdrop { display: none !important; }
+  .kwc-dm-modal-backdrop[data-kwc-private-list-window] { padding: 4px !important; }
+  .kwc-dm-modal-backdrop[data-kwc-private-list-window] > .kwc-dm-modal {
+    left: 4px !important;
+    top: 4px !important;
+    width: calc(100vw - 8px) !important;
+    height: calc(100vh - 8px) !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+  }
+}
+
+/* RC19: unified desktop window chrome. Resize is available whenever uiResizable is enabled; no resize-lock control is rendered. */
+/* Maximized chat windows occupy the complete viewport; only normal windows keep rounded corners/gaps. */
+.kwc-dm-modal[data-kwc-maximized="1"] {
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+}
+#kwc-root.kwc-standalone-mode.kwc-window-maximized:not(.kwc-minimized) {
+  left: 0 !important;
+  top: 0 !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+}
+#kwc-root.kwc-standalone-mode.kwc-window-maximized:not(.kwc-minimized) .kwc-panel {
+  border-radius: 0 !important;
+}
+
+
+/* 5.3.0 RC20: minimized chat is a single restore (+) control.
+   No title, PiP, login/account, notification, or secondary action reserves space. */
+#kwc-root.kwc-minimized,
+#kwc-root.kwc-guest-hidden.kwc-minimized {
+  width: 48px !important;
+  max-width: 48px !important;
+  min-width: 48px !important;
+  height: 48px !important;
+  max-height: 48px !important;
+  min-height: 48px !important;
+}
+#kwc-root.kwc-minimized .kwc-panel,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-panel {
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px !important;
+  min-height: 48px !important;
+  border-radius: 16px !important;
+}
+#kwc-root.kwc-minimized .kwc-header,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-header {
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px !important;
+  min-height: 48px !important;
+  padding: 9px !important;
+  gap: 0 !important;
+  justify-content: center !important;
+}
+#kwc-root.kwc-minimized .kwc-header-identity,
+#kwc-root.kwc-minimized .kwc-actions-secondary,
+#kwc-root.kwc-minimized .kwc-actions-primary > :not(#kwc-min),
+#kwc-root.kwc-minimized #kwc-pip,
+#kwc-root.kwc-minimized #kwc-login,
+#kwc-root.kwc-minimized #kwc-notifications,
+#kwc-root.kwc-minimized #kwc-dm,
+#kwc-root.kwc-minimized #kwc-group,
+#kwc-root.kwc-minimized #kwc-game,
+#kwc-root.kwc-minimized #kwc-search-open {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+#kwc-root.kwc-minimized .kwc-header-primary,
+#kwc-root.kwc-minimized .kwc-actions-primary {
+  width: 30px !important;
+  min-width: 30px !important;
+  flex: 0 0 30px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  justify-content: center !important;
+}
+#kwc-root.kwc-minimized #kwc-min {
+  display: inline-flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+/* Standalone public chat uses the same edge policy as embedded adapters:
+   collapse to the lower-left or lower-right viewport edge based on the
+   pre-minimize window center. Restore keeps the pre-minimize normal geometry. */
+#kwc-root.kwc-standalone-mode.kwc-minimized[data-kwc-minimized-side="left"] {
+  left: 0 !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: 0 !important;
+}
+#kwc-root.kwc-standalone-mode.kwc-minimized[data-kwc-minimized-side="right"],
+#kwc-root.kwc-standalone-mode.kwc-minimized:not([data-kwc-minimized-side]) {
+  left: auto !important;
+  right: 0 !important;
+  top: auto !important;
+  bottom: 0 !important;
+}
+
+
+/* 5.3.0 RC21: restore the legacy compact minimized pill and guest-only chrome policy.
+   Minimized keeps the localized title so the collapsed window is identifiable;
+   the restore (+) control is the only action button left visible. */
+#kwc-root.kwc-minimized,
+#kwc-root.kwc-guest-hidden.kwc-minimized {
+  width: 124px !important;
+  max-width: 124px !important;
+  min-width: 124px !important;
+  height: 48px !important;
+  max-height: 48px !important;
+  min-height: 48px !important;
+}
+#kwc-root.kwc-minimized .kwc-panel,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-panel {
+  width: 124px !important;
+  height: 48px !important;
+  min-width: 124px !important;
+  min-height: 48px !important;
+  margin: 0 !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+}
+#kwc-root.kwc-minimized .kwc-header,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-header {
+  width: 124px !important;
+  height: 48px !important;
+  min-width: 124px !important;
+  min-height: 48px !important;
+  padding: 0 8px 0 11px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+  border-bottom: 0 !important;
+}
+#kwc-root.kwc-minimized .kwc-header-primary,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-header-primary {
+  width: 100% !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+#kwc-root.kwc-minimized .kwc-header-identity,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-header-identity {
+  display: flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  align-items: center !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+#kwc-root.kwc-minimized .kwc-title,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-title {
+  display: inline-flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  align-items: center !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+#kwc-root.kwc-minimized .kwc-status,
+#kwc-root.kwc-minimized .kwc-actions-secondary,
+#kwc-root.kwc-minimized .kwc-actions-primary > :not(#kwc-min),
+#kwc-root.kwc-minimized #kwc-pip,
+#kwc-root.kwc-minimized #kwc-login,
+#kwc-root.kwc-minimized #kwc-notifications,
+#kwc-root.kwc-minimized #kwc-dm,
+#kwc-root.kwc-minimized #kwc-group,
+#kwc-root.kwc-minimized #kwc-game,
+#kwc-root.kwc-minimized #kwc-search-open {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+#kwc-root.kwc-minimized .kwc-actions-primary,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-actions-primary {
+  display: flex !important;
+  width: 30px !important;
+  min-width: 30px !important;
+  flex: 0 0 30px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 0 !important;
+}
+#kwc-root.kwc-minimized #kwc-min,
+#kwc-root.kwc-guest-hidden.kwc-minimized #kwc-min {
+  display: inline-flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* When guest chat is disabled and hidden, match the 5.2.1 login-only surface:
+   keep title + Login + minimize, but expose no account-only/private controls or chat body. */
+#kwc-root.kwc-guest-hidden:not(.kwc-minimized) #kwc-dm,
+#kwc-root.kwc-guest-hidden:not(.kwc-minimized) #kwc-group,
+#kwc-root.kwc-guest-hidden:not(.kwc-minimized) #kwc-game,
+#kwc-root.kwc-guest-hidden:not(.kwc-minimized) #kwc-notifications,
+#kwc-root.kwc-guest-hidden:not(.kwc-minimized) #kwc-pip,
+#kwc-root.kwc-guest-hidden:not(.kwc-minimized) #kwc-search-open,
+#kwc-root.kwc-guest-hidden:not(.kwc-minimized) #kwc-pinned-bar,
+#kwc-root.kwc-guest-hidden:not(.kwc-minimized) #kwc-jump-latest,
+#kwc-root.kwc-guest-hidden:not(.kwc-minimized) .kwc-status {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+#kwc-root.kwc-guest-hidden:not(.kwc-minimized) #kwc-login,
+#kwc-root.kwc-guest-hidden:not(.kwc-minimized) #kwc-min {
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+/* 5.3.0 RC22: semantic header clusters + mobile private-chat visual viewport fit. */
+#kwc-root:not(.kwc-minimized):not(.kwc-header-wrapped) .kwc-action-cluster {
+  display: contents !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-actions-secondary {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-chat {
+  flex: 1 1 auto !important;
+  justify-content: flex-start !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-account {
+  flex: 0 0 auto !important;
+  justify-content: flex-end !important;
+  margin-left: auto !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-header-identity .kwc-title {
+  min-width: 72px !important;
+}
+.kwc-dm-modal-backdrop.kwc-private-mobile-viewport {
+  overflow: hidden !important;
+  padding: 0 !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  overscroll-behavior: none !important;
+}
+.kwc-dm-modal-backdrop.kwc-private-mobile-viewport > .kwc-dm-modal {
+  box-sizing: border-box !important;
+  border-radius: 0 !important;
+  overflow: hidden !important;
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px)) !important;
+}
+.kwc-dm-modal-backdrop.kwc-private-mobile-viewport .kwc-dm-layout,
+.kwc-dm-modal-backdrop.kwc-private-mobile-viewport .kwc-dm-conversation,
+.kwc-dm-modal-backdrop.kwc-private-mobile-viewport .kwc-dm-sidebar {
+  min-height: 0 !important;
+}
+
+
+/* 5.3.0 RC26: event list / multi-event browser. */
+.kwc-game-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.kwc-game-list > h4, .kwc-game-create-form > h4 { margin: 0 0 2px; }
+.kwc-game-list-body { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; scrollbar-gutter: stable; }
+.kwc-game-list-row { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px; background: rgba(255,255,255,.055); }
+.kwc-game-list-main { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; }
+.kwc-game-list-main > strong, .kwc-game-list-main > span, .kwc-game-list-main > small { min-width: 0; overflow-wrap: anywhere; }
+.kwc-game-list-main > span, .kwc-game-list-main > small { font-size: 12px; opacity: .78; }
+@media (max-width: 520px) { .kwc-game-list-row { align-items: stretch; flex-direction: column; } .kwc-game-list-row > .kwc-button { align-self: flex-end; } }
+
+
+/* 5.3.0 RC26: responsive group-chat title bar.
+   Preserve room identity/member counts on row 1 and move interaction controls
+   to row 2 when the resizable group window no longer has enough horizontal room. */
+.kwc-group-modal .kwc-group-title.kwc-group-title-wrapped:not(.kwc-admin-meta-row) {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-areas:
+    "main"
+    "actions" !important;
+  align-items: stretch !important;
+  row-gap: 6px !important;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+  white-space: normal !important;
+}
+.kwc-group-modal .kwc-group-title.kwc-group-title-wrapped > .kwc-group-title-main {
+  width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+.kwc-group-modal .kwc-group-title.kwc-group-title-wrapped > .kwc-group-actions {
+  display: flex !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 6px !important;
+  flex-wrap: nowrap !important;
+}
+.kwc-group-modal .kwc-group-title.kwc-group-title-wrapped > .kwc-group-actions > .kwc-button,
+.kwc-group-modal .kwc-group-title.kwc-group-title-wrapped > .kwc-group-actions > .kwc-private-window-tools {
+  flex: 0 1 auto !important;
+  min-width: 0 !important;
+}
+.kwc-group-modal .kwc-group-title.kwc-group-title-wrapped > .kwc-group-actions > .kwc-button {
+  padding-left: 9px !important;
+  padding-right: 9px !important;
+}
+
+/* RC26: the public header's second row should visually occupy the available
+   width instead of leaving a large empty center gap after wrapping. */
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-chat > .kwc-button {
+  flex: 1 1 46px !important;
+  min-width: 42px !important;
+  max-width: 64px !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+  justify-content: center !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-account > .kwc-button {
+  min-width: 76px !important;
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+  justify-content: center !important;
+}
+
+/* 5.3.0 RC26: mobile standalone is a fixed visual-viewport surface.
+   Use JS-provided visualViewport pixels instead of 100vh so browser chrome,
+   orientation changes, and edge-navigation gestures cannot leave a resized window. */
+#kwc-root.kwc-standalone-mode.kwc-window-maximized.kwc-mobile-window-locked:not(.kwc-minimized) {
+  left: var(--kwc-standalone-left, 0px) !important;
+  top: var(--kwc-standalone-top, 0px) !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: var(--kwc-standalone-width, 100vw) !important;
+  height: var(--kwc-standalone-height, 100dvh) !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+}
+#kwc-root.kwc-standalone-mode.kwc-mobile-window-locked:not(.kwc-minimized) .kwc-panel {
+  border-radius: 0 !important;
+}
+#kwc-root.kwc-standalone-mode.kwc-mobile-window-locked:not(.kwc-minimized) .kwc-header {
+  cursor: default !important;
+}
+
+/* 5.3.0 RC28: blocking modal affordance, non-sticky modal dragging, responsive headers, and compact event history. */
+.kwc-modal-backdrop.kwc-user-prefs-backdrop {
+  background: rgba(0,0,0,0.56) !important;
+  backdrop-filter: blur(1.5px);
+}
+.kwc-modal-backdrop.kwc-user-prefs-backdrop > .kwc-modal > .kwc-modal-head,
+.kwc-modal-backdrop.kwc-user-prefs-backdrop > .kwc-modal > .kwc-modal-head > h3 {
+  cursor: grab !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  touch-action: none;
+}
+.kwc-modal-backdrop.kwc-user-prefs-backdrop > .kwc-modal > .kwc-modal-head.kwc-dragging,
+.kwc-modal-backdrop.kwc-user-prefs-backdrop > .kwc-modal > .kwc-modal-head.kwc-dragging > h3,
+.kwc-modal-drag-handle.kwc-dragging {
+  cursor: grabbing !important;
+}
+
+/* Wrapped public header: row 1 window controls should grow with row 2 instead of
+   looking unchanged, while row 2 uses a real grid so buttons never overlap. */
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-actions-primary > .kwc-button {
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  padding: 0 !important;
+  font-size: max(15px, var(--kwc-button-font-size, 12px)) !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-actions-secondary {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: stretch !important;
+  gap: 7px !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-chat {
+  display: flex !important;
+  align-items: stretch !important;
+  gap: 6px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-chat > .kwc-button {
+  width: auto !important;
+  flex: 1 1 36px !important;
+  min-width: 26px !important;
+  max-width: 54px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+  overflow: hidden !important;
+  justify-content: center !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-account {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
+  margin-left: 0 !important;
+}
+#kwc-root #kwc-login.kwc-login-user {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-account > #kwc-login.kwc-login-user {
+  box-sizing: border-box !important;
+  width: min(calc(16ch + 22px), 44vw) !important;
+  min-width: min(calc(16ch + 22px), 44vw) !important;
+  max-width: min(calc(16ch + 22px), 44vw) !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+  justify-content: center !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-account > #kwc-login:not(.kwc-login-user) {
+  min-width: 68px !important;
+  max-width: min(96px, 32vw) !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+}
+
+/* Wrapped group title: keep identity/counts on row 1 and let the action row scroll
+   horizontally rather than overlap or clip buttons when the window is very narrow. */
+.kwc-group-modal .kwc-group-title.kwc-group-title-wrapped > .kwc-group-actions {
+  justify-content: flex-start !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  padding-bottom: 2px;
+}
+/* Preserve the original right-aligned action row while there is spare width.
+   The spacer shrinks to zero before horizontal overflow begins, so very narrow
+   group windows can still scroll from the first action instead of overlapping. */
+.kwc-group-modal .kwc-group-title.kwc-group-title-wrapped > .kwc-group-actions::before {
+  content: "";
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.kwc-group-modal .kwc-group-title.kwc-group-title-wrapped > .kwc-group-actions > .kwc-button,
+.kwc-group-modal .kwc-group-title.kwc-group-title-wrapped > .kwc-group-actions > .kwc-private-window-tools {
+  flex: 0 0 auto !important;
+}
+
+/* Event history is expected to accumulate. Keep rows compact and scroll the list;
+   details remain in the selected event view. Local event managers get explicit
+   Open/Delete text buttons instead of reusing the hover-only message-delete affordance. */
+.kwc-game-list-body {
+  max-height: min(46vh, 340px) !important;
+  gap: 4px !important;
+  overflow-y: auto !important;
+  padding-right: 2px;
+}
+.kwc-game-list-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-height: 44px;
+  padding: 6px 7px !important;
+}
+.kwc-game-list-main {
+  min-width: 0;
+  gap: 1px !important;
+  justify-content: center;
+}
+.kwc-game-list-main > strong {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+.kwc-game-list-main > span {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 11px !important;
+}
+.kwc-game-list-actions {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  justify-self: end;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.kwc-game-list-actions > .kwc-button {
+  width: 52px !important;
+  min-width: 52px !important;
+  max-width: 52px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 !important;
+  padding: 0 6px !important;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+.kwc-game-list-delete {
+  position: static !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  flex: 0 0 52px !important;
+}
+.kwc-game-chat-link-unavailable {
+  cursor: default !important;
+  opacity: 0.72;
+}
+@media (max-width: 420px) {
+  .kwc-game-list-row {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 6px !important;
+    padding: 6px !important;
+  }
+  .kwc-game-list-actions {
+    gap: 4px;
+  }
+  .kwc-game-list-actions > .kwc-button {
+    width: 48px !important;
+    min-width: 48px !important;
+    max-width: 48px !important;
+  }
+  .kwc-game-list-delete {
+    flex-basis: 48px !important;
+  }
+}
+
+/* 5.3.0 RC30: DM/group message search follows the public-chat search affordance.
+   Keep it out of the title/action row and float it over the message surface.
+   The zero-height anchor is placed after the pinned bar for groups, so a visible
+   pinned notice naturally stays above Search without hard-coded title heights. */
+.kwc-private-search-float-row {
+  position: relative;
+  flex: 0 0 0;
+  width: 100%;
+  height: 0;
+  min-height: 0;
+  overflow: visible;
+  z-index: 9;
+  pointer-events: none;
+}
+.kwc-private-search-float {
+  position: absolute !important;
+  top: 8px;
+  right: 10px;
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--kwc-border-color, rgba(255,255,255,0.16)) !important;
+  border-radius: 999px !important;
+  color: var(--kwc-button-text, var(--kwc-text-color, #fff)) !important;
+  background: var(--kwc-button-bg, rgba(28,35,48,0.92)) !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.24);
+  text-align: center;
+  font-size: max(14px, var(--kwc-button-font-size, 12px)) !important;
+  line-height: 1;
+  z-index: 10;
+  pointer-events: auto;
+}
+.kwc-private-search-float:hover,
+.kwc-private-search-float:focus-visible {
+  background: var(--kwc-button-hover-bg, rgba(42,52,70,0.96)) !important;
+  outline: none;
+}
+
+/* 5.3.0 RC29: unread badges belong above their header buttons, not inside the
+   button clipping box. Keep the badge readable for 1..99+ while preserving the
+   compact wrapped header. */
+#kwc-root:not(.kwc-minimized) .kwc-actions-secondary,
+#kwc-root:not(.kwc-minimized) .kwc-action-cluster-chat {
+  overflow: visible !important;
+}
+#kwc-root:not(.kwc-minimized) #kwc-dm,
+#kwc-root:not(.kwc-minimized) #kwc-group,
+#kwc-root:not(.kwc-minimized) #kwc-notifications {
+  position: relative !important;
+  overflow: visible !important;
+}
+#kwc-root:not(.kwc-minimized) #kwc-dm-badge,
+#kwc-root:not(.kwc-minimized) #kwc-group-badge,
+#kwc-root:not(.kwc-minimized) #kwc-notification-badge {
+  top: 0 !important;
+  right: 0 !important;
+  transform: translate(42%, -42%) !important;
+  z-index: 12 !important;
+  min-width: 16px !important;
+  height: 16px !important;
+  line-height: 16px !important;
+  padding: 0 4px !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  white-space: nowrap !important;
+  pointer-events: none !important;
+}
+
+/* 5.3.0 RC29 final: audit headers, wrapped admin indicator, and unclipped unread badges. */
+/* The actual DM audit conversation has no extra separator line. The audit label
+   and identity share one row while there is room; the identity naturally drops
+   under the audit label before it is reduced to an unusable single ellipsis. */
+.kwc-private-title-row.kwc-private-title-row-audit {
+  border-bottom: 0 !important;
+}
+/* Reuse the normal private-title-row vertical alignment for audit actions.
+   Do not add an audit-only pixel offset; the Back button should inherit the
+   same top/bottom inset behavior as the other title-row action buttons. */
+.kwc-private-title-row > .kwc-dm-title.kwc-dm-title-audit-layout {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 3px 7px !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  line-height: 1.25 !important;
+}
+.kwc-private-audit-badge {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-weight: 650;
+}
+.kwc-dm-audit-identity {
+  flex: 1 1 168px;
+  min-width: min(168px, 100%);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kwc-dm-audit-identity > * {
+  max-width: 100%;
+}
+
+/* Group audit uses the same compact badge vocabulary, but deliberately adds no
+   audit-specific border/line to the group title. */
+.kwc-group-audit-badge {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-weight: 650;
+}
+.kwc-group-modal .kwc-group-title.kwc-group-title-audit > .kwc-group-title-main {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 4px 6px !important;
+  min-width: 0 !important;
+}
+.kwc-group-modal .kwc-group-title.kwc-group-title-audit .kwc-group-title-name {
+  flex: 1 1 120px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* Wrapped public header: PIP/minimize keep their ordinary button geometry. Only
+   the clickable administrator status gets a modestly larger hit target. */
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-actions-primary > .kwc-button {
+  width: revert !important;
+  min-width: revert !important;
+  height: revert !important;
+  min-height: revert !important;
+  max-height: revert !important;
+  padding: revert !important;
+  font-size: revert !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) #kwc-pip,
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) #kwc-min {
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) #kwc-min {
+  width: 30px !important;
+  min-width: 30px !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-status.kwc-status-admin-action {
+  /* Height/font stay identical to the one-row state; wrapped mode only gives the badge more horizontal room. */
+  min-width: 50px !important;
+  max-width: 78px !important;
+  padding-left: 9px !important;
+  padding-right: 9px !important;
+}
+
+/* Badges intentionally overhang the header buttons. Do not let the second-row
+   grid or chat cluster clip 1..99+ text. */
+#kwc-root:not(.kwc-minimized) .kwc-actions-secondary,
+#kwc-root:not(.kwc-minimized) .kwc-action-cluster-chat,
+#kwc-root:not(.kwc-minimized) .kwc-action-cluster-chat > .kwc-button {
+  overflow: visible !important;
+}
+#kwc-root:not(.kwc-minimized) #kwc-dm-badge,
+#kwc-root:not(.kwc-minimized) #kwc-group-badge,
+#kwc-root:not(.kwc-minimized) #kwc-notification-badge {
+  top: 0 !important;
+  right: 0 !important;
+  transform: translate(45%, -45%) !important;
+  z-index: 30 !important;
+  min-width: 17px !important;
+  height: 17px !important;
+  line-height: 17px !important;
+  padding: 0 4px !important;
+  overflow: visible !important;
+  white-space: nowrap !important;
+}
+
+/* RC29 correction: explicitly restore pre-wrap window-control geometry rather
+   than using CSS revert, which would cross the author-origin boundary. */
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) #kwc-pip {
+  width: auto !important;
+  min-width: 0 !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  padding: 0 8px !important;
+  font-size: 12px !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) #kwc-min {
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  padding: 0 !important;
+  font-size: 16px !important;
+}
+
+/* 5.3.0 RC33: final public minimized chrome contract.
+   Later historical rules must not reintroduce the title or any secondary action:
+   a minimized public-chat window is exactly one 48px restore (+) control. */
+#kwc-root.kwc-minimized,
+#kwc-root.kwc-guest-hidden.kwc-minimized {
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  max-height: 48px !important;
+}
+#kwc-root.kwc-minimized .kwc-panel,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-panel,
+#kwc-root.kwc-minimized .kwc-header,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-header {
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  max-height: 48px !important;
+}
+#kwc-root.kwc-minimized .kwc-header,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-header {
+  padding: 9px !important;
+  gap: 0 !important;
+  justify-content: center !important;
+}
+#kwc-root.kwc-minimized .kwc-header-identity,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-header-identity,
+#kwc-root.kwc-minimized .kwc-actions-secondary,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-actions-secondary,
+#kwc-root.kwc-minimized .kwc-actions-primary > :not(#kwc-min),
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-actions-primary > :not(#kwc-min) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+#kwc-root.kwc-minimized .kwc-header-primary,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-header-primary,
+#kwc-root.kwc-minimized .kwc-actions-primary,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-actions-primary {
+  width: 30px !important;
+  min-width: 30px !important;
+  max-width: 30px !important;
+  flex: 0 0 30px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  justify-content: center !important;
+}
+#kwc-root.kwc-minimized #kwc-min,
+#kwc-root.kwc-guest-hidden.kwc-minimized #kwc-min {
+  display: inline-flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  width: 30px !important;
+  min-width: 30px !important;
+  max-width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+
+/* 5.3.0 RC34: public-header live-feedback correction.
+   In one-row mode the four icon actions may shrink only down to the 30px
+   window-control/PIP footprint. JS wraps only after that compact geometry no
+   longer fits, and unwraps only after the normal one-row geometry fits again. */
+#kwc-root:not(.kwc-minimized):not(.kwc-header-wrapped) .kwc-action-cluster-chat > .kwc-button {
+  box-sizing: border-box !important;
+  width: 36px !important;
+  min-width: 30px !important;
+  max-width: 36px !important;
+  flex: 0 1 36px !important;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+  justify-content: center !important;
+}
+
+/* The account button uses its actual (already <=16-code-point) label width.
+   Never reserve a 16ch box for a short username. */
+#kwc-root #kwc-login.kwc-login-user,
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-account > #kwc-login.kwc-login-user {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  flex: 0 1 auto !important;
+}
+
+/* Wrapped unread counts overhang the icon exactly as they do in one-row mode.
+   Negative offsets are used instead of a transform so a flex/grid resize cannot
+   make the badge appear buried inside the button. */
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) #kwc-dm-badge,
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) #kwc-group-badge,
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) #kwc-notification-badge {
+  top: -6px !important;
+  right: -6px !important;
+  transform: none !important;
+  z-index: 40 !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-actions-secondary,
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-chat,
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-chat > .kwc-button {
+  overflow: visible !important;
+}
+
+/* Event rows must not reserve an empty scrollbar gutter when there is no
+   scrollbar; that reservation made Delete look shifted left relative to Close. */
+.kwc-game-list-body {
+  scrollbar-gutter: auto !important;
+  padding-right: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+.kwc-game-list-row {
+  padding-right: 0 !important;
+}
+.kwc-game-list-actions {
+  justify-self: end !important;
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* First-come normally keeps this field visible as a disabled mirror. The class
+   remains only as a compatibility guard for older generated markup. */
+.kwc-game-max-field-firstcome-hidden {
+  display: none !important;
+}
+
+
+/* 5.3.0 RC35: public-header shrink order and icon legibility hotfix.
+   Keep the KOKOTO WebChat identity intact in one-row mode. The secondary action
+   area is the shrinkable region: its four icon buttons contract from 36px to
+   the 30px PIP/minimize footprint before the existing RC34 wrap threshold is
+   allowed to move the actions to row 2. The wrapped-to-one-row threshold stays
+   unchanged. Button boxes and spacing are unchanged; only glyph/text size is
+   increased slightly for legibility. */
+#kwc-root:not(.kwc-minimized):not(.kwc-header-wrapped) .kwc-header-identity {
+  flex: 0 0 auto !important;
+  min-width: max-content !important;
+  overflow: visible !important;
+}
+#kwc-root:not(.kwc-minimized):not(.kwc-header-wrapped) .kwc-header-identity .kwc-title {
+  flex: 0 0 auto !important;
+  min-width: max-content !important;
+  max-width: none !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+#kwc-root:not(.kwc-minimized):not(.kwc-header-wrapped) .kwc-actions-secondary {
+  flex: 0 1 auto !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+}
+#kwc-root:not(.kwc-minimized):not(.kwc-header-wrapped) .kwc-action-cluster-account > #kwc-login {
+  flex: 0 0 auto !important;
+}
+
+/* Increase only the contents of existing controls; do not enlarge their boxes. */
+#kwc-root:not(.kwc-minimized) #kwc-dm,
+#kwc-root:not(.kwc-minimized) #kwc-group,
+#kwc-root:not(.kwc-minimized) #kwc-game,
+#kwc-root:not(.kwc-minimized) #kwc-notifications {
+  font-size: max(15px, var(--kwc-button-font-size, 12px)) !important;
+}
+#kwc-root:not(.kwc-minimized) #kwc-login {
+  font-size: max(13px, var(--kwc-button-font-size, 12px)) !important;
+}
+#kwc-root:not(.kwc-minimized) .kwc-header-identity .kwc-status {
+  font-size: max(10px, calc(var(--kwc-button-font-size, 12px) - 1px)) !important;
+}
+#kwc-root .kwc-emoji-button {
+  font-size: max(17px, var(--kwc-button-font-size, 12px)) !important;
+}
+#kwc-root .kwc-button.kwc-upload {
+  font-size: max(16px, var(--kwc-button-font-size, 12px)) !important;
+}
+#kwc-root .kwc-send {
+  font-size: max(13px, var(--kwc-button-font-size, 12px)) !important;
+}
+
+
+/* 5.3.0 RC37: public-header action sizing/threshold correction.
+   Use the wrapped-row menu footprint as the normal size in both layouts.
+   In one-row mode the four chat/event/notification buttons may shrink from
+   46px to the 30px PIP/minimize footprint; only when 30px no longer fits does
+   the header wrap. Wrapped mode uses the same 30px floor, so returning to one
+   row can happen as soon as four PIP-sized buttons fit. */
+#kwc-root:not(.kwc-minimized):not(.kwc-header-wrapped) .kwc-action-cluster-chat > .kwc-button {
+  box-sizing: border-box !important;
+  width: 46px !important;
+  min-width: 30px !important;
+  max-width: 46px !important;
+  flex: 0 1 46px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+}
+#kwc-root.kwc-header-wrapped:not(.kwc-minimized) .kwc-action-cluster-chat > .kwc-button {
+  box-sizing: border-box !important;
+  flex: 1 1 46px !important;
+  min-width: 30px !important;
+  max-width: 54px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+}

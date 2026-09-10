@@ -1,3 +1,9 @@
+﻿# KWC 파일 안내 / KWC file guide
+# map adapter 설치/패키징이 플랫폼별 파일 구조와 idempotency 계약을 지키는지 자동 검증한다.
+# Automatically validates map-adapter installation/packaging against platform file-layout and idempotency contracts.
+# 실패 시 부분 산출물을 최종 릴리스로 오인하지 않도록 exit code와 검증 marker를 유지한다.
+# Preserve exit codes and validation markers so partial output cannot be mistaken for a final release.
+
 param([Parameter(Mandatory=$true)][string]$ProjectRoot)
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path -LiteralPath $ProjectRoot).Path

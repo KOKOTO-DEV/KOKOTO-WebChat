@@ -1,17 +1,17 @@
-# KOKOTO WebChat 5.2.0 — 기술 참고서
+# KOKOTO WebChat 5.3.0 — 기술 참고서
 
 반응 authority, 직결/다단 전달, 원문 서버 단절 outbox, 작성자 알림 그림은 [REACTIONS.md](REACTIONS.md)를 참고하세요.
 
 
-![KOKOTO WebChat 5.2.0 아키텍처 개요](../assets/architecture-5.2.0.svg)
+![KOKOTO WebChat 5.3.0 아키텍처 개요](../assets/architecture-5.3.0.svg)
 
-[PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg)
+[PNG](../assets/architecture-5.3.0.png) · [SVG](../assets/architecture-5.3.0.svg)
 
 > **참고:** 도식은 이해를 돕는 보조 자료입니다. KWC 고유 동작의 기준은 실제 소스와 이 문서의 설명입니다.
 
 ## 구조와 데이터 흐름 그림
 
-![KWC 5.2.0 전체 구조](../assets/architecture-5.2.0.svg)
+![KWC 5.3.0 전체 구조](../assets/architecture-5.3.0.svg)
 
 ![관리자/HTTP 보안 경계](../assets/admin-security-boundary.svg)
 
@@ -37,10 +37,10 @@ public history, direct message, group chat은 SQLite store를 사용하며 `PRAG
 ## 플랫폼 abstraction과 exact-target build
 `PlatformAdapter`와 관련 host interface가 loader API를 core에서 분리합니다. release matrix는 Bukkit 1 + Fabric 16 + NeoForge 12 + Forge 16 = **45 deployable artifacts**입니다. build helper가 Minecraft 세대에 따라 Java 17/21/25를 선택합니다. Windows에서는 exact-target 임시 경로가 검증된 path profile을 넘지 않도록 Gradle/Maven 전에 path-length preflight를 수행합니다.
 
-## Relay Protocol 2.1 compatibility and Relay v2 trust model
-Relay v2는 명시적인 `groups -> peers` 구조를 사용합니다. group 하나가 symmetric trust domain이며 group shared secret도 하나뿐이고 peer별 secret은 없습니다. 32자 미만 group secret은 거부합니다. 단, 빈 group secret은 provisioning 요청으로 처리되어 startup/reload 시 암호학적으로 안전한 32바이트 URL-safe secret을 생성해 `config.yml`에 저장하며, 비어 있지 않은 값은 자동 재생성하지 않습니다. 동일 peer ID를 여러 local group에 등록할 수 없고 양쪽 서버가 같은 group에서 서로를 peer로 등록해야 합니다.
+## Relay Protocol 2.2 compatibility and Relay v2 trust model
+Relay Protocol 2.2는 명시적인 `groups -> peers` 구조를 사용하며 Protocol major `2`를 wire compatibility 경계로 유지합니다. 현재 capability는 `public`, `dm`, `read`, `delete`, `reaction`, `reaction-authority`, `typing`, `game`, `profile`입니다. group 하나가 symmetric trust domain이며 group shared secret도 하나뿐이고 peer별 secret은 없습니다. 32자 미만 group secret은 거부합니다. 빈 group secret은 provisioning 요청으로 처리되어 startup/reload 시 암호학적으로 안전한 32바이트 URL-safe secret을 생성해 `config.yml`에 저장하며, 비어 있지 않은 값은 자동 재생성하지 않습니다. 동일 peer ID를 여러 local group에 등록할 수 없고 양쪽 서버가 같은 group에서 서로를 peer로 등록해야 합니다. 각 peer는 `public-chat`, `event`, `dm`, `profile`의 송신/수신을 독립적으로 제한할 수 있으며 생략한 정책은 호환성을 위해 활성으로 처리됩니다.
 
-`/relay/v2/handshake`는 protocol/product version, group, sender/target ID, timestamp, nonce, sender outbound transport를 group secret HMAC으로 인증합니다. receiver는 group membership, target identity, clock skew, nonce replay를 검사합니다. 이 endpoint는 상태를 저장하지 않는 진단용 identity/health probe이며 route 상태를 만들지 않습니다. direct `/relay/v2/message`는 각 요청을 독립적으로 인증합니다. receiver는 sender를 같은 group과 같은 shared secret으로 상호 등록해야 합니다. v1 endpoint는 HTTP 426을 반환합니다.
+`/relay/v2/handshake`는 protocol major/revision, group, sender/target ID, timestamp, nonce, sender outbound transport를 group secret HMAC으로 인증합니다. 제품 버전은 진단용이며 현대 2.x signature/호환성 판단에 사용하지 않습니다. receiver는 group membership, target identity, clock skew, nonce replay를 검사합니다. 이 endpoint는 상태를 저장하지 않는 진단용 identity/health probe이며 route 상태를 만들지 않습니다. direct `/relay/v2/message`는 각 요청을 독립적으로 인증합니다. receiver는 sender를 같은 group과 같은 shared secret으로 상호 등록해야 합니다. v1 endpoint는 HTTP 426을 반환합니다.
 
 ## Relay payload 암호화
 각 방향에 대해 group secret과 direction context에서 HKDF-SHA256으로 256-bit key를 만듭니다. `/relay/v2/message`는 random 12-byte IV와 128-bit tag의 AES-256-GCM을 사용합니다. GCM AAD에는 `group`, `from`, `to`, `timestamp`, `nonce`, `IV`가 들어갑니다. 응답도 group/responder/requester/timestamp/request nonce/status/body tuple을 HMAC-SHA256으로 인증해 중간자가 성공 HTTP 응답을 위조하지 못하게 합니다. timestamp, request nonce, relay/receipt ID, origin, hop count 검증으로 replay/loop를 방어합니다.
@@ -77,5 +77,5 @@ DM/group Reply는 표시 문자열에서 추측하지 않고 metadata로 저장�
 일반 history/private retention은 이미 저장된 snapshot을 삭제하지 않습니다. 관리자 원본 메시지 삭제, 공개 history 전체 삭제, 관리자 DM thread/group room 삭제, 비공개 방 lock 정책은 개인 archive보다 항상 우선합니다.
 
 ## Typing 상태
-공개/DM/그룹 typing은 ephemeral 상태입니다. 브라우저 input event 한 번이 5초 window를 만들고 그 기간의 추가 key 입력은 클라이언트에서 억제합니다. SQLite/JSONL에 기록하지 않고 polling이나 상시 typing worker도 없습니다. 로컬 그룹 상태는 기존 SSE를 통해 현재 방 멤버에게만 전달하고, 타 서버 DM typing은 Relay Protocol 2.1을 사용합니다.
+공개/DM/그룹 typing은 ephemeral 상태입니다. 브라우저 input event 한 번이 5초 window를 만들고 그 기간의 추가 key 입력은 클라이언트에서 억제합니다. SQLite/JSONL에 기록하지 않고 polling이나 상시 typing worker도 없습니다. 로컬 그룹 상태는 기존 SSE를 통해 현재 방 멤버에게만 전달하고, 타 서버 DM typing은 현재 Relay Protocol 2.2의 `typing` capability를 사용합니다.
 

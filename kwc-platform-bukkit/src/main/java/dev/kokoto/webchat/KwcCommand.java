@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * Bukkit의 /kchat 명령 tree를 등록하고 인자를 GameCommandService/관리 기능으로 전달하는 command entry point다.
+ * Bukkit /kchat command-tree entry point that forwards arguments into GameCommandService and administrative operations.
+ *
+ * tab completion과 help에 보이는 명령이 실제 권한/기능 설정과 어긋나지 않게 하고, 최종 권한 검사는 서비스 계층에서 다시 수행한다.
+ * Keep tab completion/help aligned with actual permissions and feature flags; service layers still perform final authorization.
+ */
 import org.bukkit.ChatColor;
 import org.bukkit.command.*;
 import org.bukkit.entity.Player;
@@ -15,6 +23,7 @@ import java.util.UUID;
 
 public class KwcCommand implements CommandExecutor, TabCompleter {
     private final KokotoWebChatPlugin plugin;
+    private final GameCommandService gameCommands;
     private final Map<String, DmReadCursor> dmReadCursors = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, DmListCursor> dmListCursors = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, GroupReadCursor> groupReadCursors = new java.util.concurrent.ConcurrentHashMap<>();
@@ -43,9 +52,12 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
 
     public KwcCommand(KokotoWebChatPlugin plugin) {
         this.plugin = plugin;
+        this.gameCommands = new GameCommandService(new BukkitWebChatHost(plugin), plugin::webServer);
     }
 
     @Override
+    // Bukkit /kchat의 최상위 dispatcher다. root permission/기능 enable 상태를 확인한 뒤 auth, DM, group, admin 등 하위 명령으로 분기한다. 명령 문자열에서 추출한 UUID/ID는 최종 권한 근거로 신뢰하지 않는다.
+    // Top-level Bukkit /kchat dispatcher. It checks root permission/feature enablement then routes to auth, DM, group, admin, and other subcommands. UUIDs/IDs parsed from command text are never trusted as final authorization.
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String sub = args.length == 0 ? "" : args[0].toLowerCase();
         ConfigValues config = plugin.configValues();
@@ -82,6 +94,8 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             case "group":
             case "gc":
                 return group(sender, args);
+            case "game":
+                return game(sender, args);
             case "sessions":
                 return sessions(sender);
             case "revoke":
@@ -90,6 +104,21 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
                 help(sender);
                 return true;
         }
+    }
+
+    private boolean game(CommandSender sender, String[] args) {
+        String raw = args.length <= 1 ? "game" : "game " + String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length));
+        Player player = sender instanceof Player p ? p : null;
+        GameCommandService.Sender shared = new GameCommandService.Sender() {
+            @Override public boolean isPlayer() { return player != null; }
+            @Override public UUID uuid() { return player == null ? null : player.getUniqueId(); }
+            @Override public String username() { return player == null ? sender.getName() : player.getName(); }
+            @Override public String displayName() { return player == null ? sender.getName() : plugin.displayPlayerName(player); }
+            @Override public String actorName() { return sender.getName(); }
+            @Override public void send(String message) { sender.sendMessage(message); }
+        };
+        gameCommands.execute(shared, raw);
+        return true;
     }
 
     private boolean reply(CommandSender sender, String[] args) {
@@ -306,6 +335,8 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
 
 
 
+    // DM 하위 명령을 list/read/send/delete로 분기한다. 5.3.0에는 hide 명령이 없으며 delete는 자기 메시지에 대해서만 서버 저장소가 최종 승인한다.
+    // Routes DM subcommands such as list/read/send/delete. KWC 5.3.0 has no hide command, and the store gives final approval to delete only messages owned by the sender.
     private boolean dm(CommandSender sender, String[] args) {
         ConfigValues config = plugin.configValues();
         if (config == null || !config.directMessageEnabled || plugin.directMessages() == null || !plugin.directMessages().available()) {
@@ -360,8 +391,8 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             return dmReadMove(sender, senderUuid, args[1].toLowerCase(java.util.Locale.ROOT).startsWith("p") ? -1 : 1);
         }
 
-        if ("hide".equalsIgnoreCase(args[1]) || "delete".equalsIgnoreCase(args[1])) {
-            return dmHide(sender, senderUuid, args);
+        if ("delete".equalsIgnoreCase(args[1])) {
+            return dmDelete(sender, senderUuid, args);
         }
 
         if (!config.directMessageAllowGameSend) {
@@ -378,6 +409,15 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         RemotePlayerRef remoteTarget = RemotePlayerRef.parse(target.uuid);
+        WebChatServer policyServer = plugin.webServer();
+        if (policyServer != null && policyServer.userChatBanned(senderUuid)) {
+            sender.sendMessage(red(msg("chatBanned", "You are not allowed to send KWC chat messages.")));
+            return true;
+        }
+        if (policyServer != null && policyServer.directMessageBlocked(senderUuid, target.uuid)) {
+            sender.sendMessage(red(msg("dmBlocked", "Direct messaging with this user is blocked.")));
+            return true;
+        }
         ServerRelay relay = plugin.serverRelay();
         if (remoteTarget != null && (relay == null || !relay.canRouteDirectMessage(remoteTarget.serverId))) {
             sender.sendMessage(red(msg("dmRemoteServerUnavailable", "The target server is unavailable.")));
@@ -566,6 +606,8 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
     }
 
 
+    // 그룹 하위 명령의 room 탐색·읽기·보내기·관리 흐름을 분기한다. room-local owner/admin/member 정책은 명령 UI가 아니라 GroupChatStore에서 다시 검사된다.
+    // Routes group room lookup, read, send, and management subcommands. Room-local owner/admin/member policy is revalidated in GroupChatStore rather than trusted from command UI.
     private boolean group(CommandSender sender, String[] args) {
         ConfigValues config = plugin.configValues();
         if (config == null || !config.groupChatEnabled || plugin.groupChats() == null || !plugin.groupChats().available()) {
@@ -636,6 +678,11 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
 
     private boolean groupSend(CommandSender sender, Player player, String senderUuid, GroupRoom room, String message, String gameDisplayOverride, long replyToId) {
         ConfigValues config = plugin.configValues();
+        WebChatServer policyServer = plugin.webServer();
+        if (policyServer != null && policyServer.userChatBanned(senderUuid)) {
+            sender.sendMessage(red(msg("chatBanned", "You are not allowed to send KWC chat messages.")));
+            return true;
+        }
         if (message == null) {
             sender.sendMessage(red(msg("groupDirectInputRequired", "Group messages must be typed directly by the player.")));
             return true;
@@ -990,8 +1037,10 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
         if (root == null) return false;
         return root.equals("kchat")
                 || root.equals("kc")
+                || root.equals("kwc")
                 || root.equals("kokoto-webchat:kchat")
-                || root.equals("kokoto-webchat:kc");
+                || root.equals("kokoto-webchat:kc")
+                || root.equals("kokoto-webchat:kwc");
     }
 
     private boolean isDmReservedSubcommand(String value) {
@@ -1003,7 +1052,6 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
                 || value.equals("next")
                 || value.equals("prev")
                 || value.equals("previous")
-                || value.equals("hide")
                 || value.equals("delete");
     }
 
@@ -1160,33 +1208,44 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
                     message.replyToId, message.replyToRelayId, message.replyToSender, message.replyToPreview);
         }
         sender.sendMessage(ChatColor.GRAY + msg("dmReadNavHint", "Use /kchat dm prev for newer messages, /kchat dm next for older messages."));
-        sender.sendMessage(ChatColor.GRAY + msg("dmHideHint", "Hide one from your view: /kchat dm hide <messageId>"));
+        sender.sendMessage(ChatColor.GRAY + msg("dmDeleteHint", "Delete one of your messages: /kchat dm delete <messageId>"));
         return true;
     }
 
-    private boolean dmHide(CommandSender sender, String senderUuid, String[] args) {
-        if (args.length < 3) {
-            sender.sendMessage(yellow("/kchat dm hide <messageId>"));
-            return true;
-        }
+    // 명령으로 받은 message ID를 현재 사용자 UUID와 함께 delete plan에 전달한다. 원격 DM이면 Relay acknowledgement가 성공해야 로컬 삭제가 확정되어 웹 UI와 같은 의미를 유지한다.
+    // Passes the command-supplied message ID together with the current user UUID into the delete plan. Remote DM deletion is finalized locally only after relay acknowledgement, matching web UI semantics.
+    private boolean dmDelete(CommandSender sender, String senderUuid, String[] args) {
+        if (args.length < 3) { sender.sendMessage(yellow("/kchat dm delete <messageId>")); return true; }
         long messageId;
-        try {
-            messageId = Long.parseLong(args[2]);
-        } catch (NumberFormatException ex) {
-            sender.sendMessage(red(msg("dmInvalidMessageId", "Invalid message id.")));
-            return true;
+        try { messageId = Long.parseLong(args[2]); }
+        catch (NumberFormatException ex) { sender.sendMessage(red(msg("dmInvalidMessageId", "Invalid message id."))); return true; }
+        DirectMessageStore.DeletePlan plan = plugin.directMessages().deletePlan(senderUuid, messageId);
+        if (!plan.ok) { sender.sendMessage(red(msg("dmDeleteFailed", "Failed to delete message."))); return true; }
+        if (!plan.owner) { sender.sendMessage(red(msg("dmDeleteNotOwner", "You can delete only direct messages that you sent."))); return true; }
+        ConfigValues deleteConfig = plugin.configValues();
+        int deleteWindow = deleteConfig == null ? 0 : Math.max(0, deleteConfig.selfMessageDeleteWindowMinutes);
+        if (deleteConfig == null || !deleteConfig.selfMessageDeleteEnabled || (deleteWindow > 0
+                && (plan.createdAt <= 0L || System.currentTimeMillis() - plan.createdAt > deleteWindow * 60_000L))) {
+            sender.sendMessage(red(msg("dmDeleteWindowExpired", "This message can no longer be deleted."))); return true;
         }
-        String threadId = plugin.directMessages().threadIdForMessage(senderUuid, messageId);
-        boolean ok = plugin.directMessages().hideMessage(senderUuid, messageId);
-        if (!ok) {
-            sender.sendMessage(red(msg("dmHideFailed", "Failed to hide message.")));
-            return true;
+        if (!plan.targetServerId.isBlank()) {
+            ServerRelay relay = plugin.serverRelay();
+            if (relay == null || plan.relayId.isBlank() || !relay.canRouteDirectMessage(plan.targetServerId)) {
+                sender.sendMessage(red(msg("dmDeleteRemoteUnavailable", "Remote server is unavailable; message was not deleted."))); return true;
+            }
+            boolean remoteDeleted = false;
+            try { remoteDeleted = relay.publishDirectMessageDelete(plan.targetServerId, senderUuid, plan.relayId).get(10, java.util.concurrent.TimeUnit.SECONDS); }
+            catch (Exception ignored) {}
+            if (!remoteDeleted) { sender.sendMessage(red(msg("dmDeleteFailed", "Failed to delete message."))); return true; }
         }
+        DirectMessageStore.DeleteApplyResult deleted = plugin.directMessages().deleteOwnedMessage(senderUuid, messageId);
+        if (deleted == null || !deleted.ok) { sender.sendMessage(red(msg("dmDeleteFailed", "Failed to delete message."))); return true; }
         WebChatServer server = plugin.webServer();
-        if (server != null) server.publishDirectMessageUpdate(senderUuid, senderUuid, threadId);
-        sender.sendMessage(green(msg("dmHidden", "Message hidden from your view.")));
+        if (server != null) server.publishDirectMessageUpdate(senderUuid, plan.otherUuid, plan.threadId);
+        sender.sendMessage(green(msg("dmDeleted", "Direct message deleted for both participants.")));
         return true;
     }
+
     private String formatCommandPlayer(String displayName, String username, String uuid) {
         String display = displayName == null ? "" : displayName.trim();
         String user = username == null ? "" : username.trim();
@@ -1480,6 +1539,9 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(yellow("/kchat auth <code>") + ChatColor.GRAY + " - " + msg("helpAuth", "Link web account"));
         sender.sendMessage(yellow("/kchat password <newPassword>") + ChatColor.GRAY + " - " + msg("helpPassword", "Set web login password"));
         sender.sendMessage(yellow("/kchat status") + ChatColor.GRAY + " - " + msg("helpStatus", "Show runtime status"));
+        if (sender instanceof Player) {
+            sender.sendMessage(yellow("/kchat game status|participants|join") + ChatColor.GRAY + " - " + msg("helpGame", "View, list participants, or join the current event"));
+        }
         if (PermissionCompat.has(sender, "kwc.admin")) {
             sender.sendMessage(yellow("/kchat reload") + ChatColor.GRAY + " - " + msg("helpReload", "Reload configuration"));
             sender.sendMessage(yellow("/kchat admin ...") + ChatColor.GRAY + " - " + msg("helpAdmin", "Manage admin accounts and roles"));
@@ -1492,7 +1554,7 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(yellow("/kchat dm <player> <message>") + ChatColor.GRAY + " - " + msg("helpDm", "Send a direct message"));
             sender.sendMessage(yellow("/kchat dm list [pageSize]") + ChatColor.GRAY + " - " + msg("helpDmList", "List direct message threads"));
             sender.sendMessage(yellow("/kchat dm read <player> [pageSize]") + ChatColor.GRAY + " - " + msg("helpDmRead", "Read a direct message thread"));
-            sender.sendMessage(yellow("/kchat dm hide <messageId>") + ChatColor.GRAY + " - " + msg("helpDmHide", "Hide a direct message from your view"));
+            sender.sendMessage(yellow("/kchat dm delete <messageId>") + ChatColor.GRAY + " - " + msg("helpDmDelete", "Delete one of your direct messages for both participants"));
         }
         if (config != null && config.pluginEnabled && config.groupChatEnabled && sender instanceof Player && PermissionCompat.has(sender, "kwc.group")) {
             sender.sendMessage(yellow("/kchat group list") + ChatColor.GRAY + " - " + msg("helpGroupList", "List joined group chats"));
@@ -1540,7 +1602,7 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
     private boolean isDmSubcommand(String value) {
         String v = String.valueOf(value == null ? "" : value).toLowerCase(java.util.Locale.ROOT);
         return v.equals("list") || v.equals("unread") || v.equals("read") || v.equals("view")
-                || v.equals("next") || v.equals("prev") || v.equals("previous") || v.equals("hide") || v.equals("delete");
+                || v.equals("next") || v.equals("prev") || v.equals("previous") || v.equals("delete");
     }
 
     private List<String> emojiTokenTabSuggestions(String partial) {
@@ -1657,6 +1719,7 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             if (config != null && config.directMessageEnabled && sender instanceof Player) out.add("dm");
             if (config != null && config.replyGameClickEnabled && sender instanceof Player) out.add("reply");
             if (config != null && config.groupChatEnabled && sender instanceof Player) out.add("group");
+            if (sender instanceof Player) out.add("game");
             if (PermissionCompat.has(sender, "kwc.admin")) {
                 out.add("reload");
                 out.add("admin");
@@ -1664,6 +1727,17 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
                 out.add("sessions");
                 out.add("revoke");
             }
+        } else if (args.length == 2 && "game".equalsIgnoreCase(args[0]) && sender instanceof Player) {
+            out.add("status");
+            out.add("participants");
+            out.add("join");
+            out.add("create");
+            out.add("finish");
+            out.add("draw");
+            out.add("close");
+        } else if (args.length == 3 && "game".equalsIgnoreCase(args[0]) && "create".equalsIgnoreCase(args[1])) {
+            out.add("firstcome");
+            out.add("lottery");
         } else if (args.length >= 3 && "reply".equalsIgnoreCase(args[0]) && sender instanceof Player) {
             out.addAll(emojiTokenTabSuggestions(args[args.length - 1]));
         } else if (args.length == 2 && "dm".equalsIgnoreCase(args[0]) && sender instanceof Player) {
@@ -1672,7 +1746,7 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             out.add("read");
             out.add("next");
             out.add("prev");
-            out.add("hide");
+            out.add("delete");
             String partial = args.length > 1 ? args[1] : "";
             for (PlayerIdentity p : plugin.storage().listKnownPlayers(partial, 20)) {
                 String suggestion = directMessageTargetSuggestion(p);

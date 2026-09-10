@@ -1,5 +1,13 @@
 package dev.kokoto.webchat.adapter.bluemap;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * BlueMapAdapter는 bluemap 웹맵/프런트엔드에 KWC asset과 설정을 설치·갱신·제거하는 adapter 계층이다.
+ * BlueMapAdapter is an adapter layer installing, updating, and removing KWC assets/configuration for the bluemap web map/frontend.
+ *
+ * adapter가 소유한 파일만 수정하고 사용자/맵 프로그램의 다른 파일을 덮어쓰지 않으며, 반복 실행해도 같은 결과가 되는 idempotency를 유지한다.
+ * Modify only adapter-owned files, never overwrite unrelated user/map files, and keep installation idempotent across repeated runs.
+ */
 import dev.kokoto.webchat.ConfigValues;
 import dev.kokoto.webchat.JsonUtil;
 
@@ -31,6 +39,8 @@ public final class BlueMapAdapter {
      * Installs/registers the addon through BlueMapAPI's WebApp surface.
      * This path is used by Fabric/NeoForge and intentionally does not touch webapp.conf.
      */
+    // BlueMap API integration이 제공한 web root 안에 KWC addon asset을 설치하고 config.js를 먼저 등록한 뒤 chat.js/chat.css를 등록한다. config-before-chat 순서는 새로고침 race에서 API base가 /api로 잘못 고정되는 것을 막는 핵심 계약이다.
+    // Installs KWC addon assets inside the BlueMap API-provided web root, registering config.js before chat.js/chat.css. Config-before-chat ordering is a key contract preventing refresh races from locking API base to /api.
     public void installApi(java.nio.file.Path webRoot, WebAppRegistration registration) {
         ConfigValues config = host.configValues();
         if (config == null || webRoot == null || registration == null) return;
@@ -109,6 +119,8 @@ public final class BlueMapAdapter {
         void registerStyle(String url);
     }
 
+    // filesystem 기반 BlueMap 설치 경로를 탐색하고 KWC가 소유한 addon 파일과 필요하면 webapp.conf만 idempotent하게 갱신한다. 사용자가 관리하는 다른 addon/설정은 보존한다.
+    // Discovers filesystem-based BlueMap installations and idempotently updates only KWC-owned addon files plus webapp.conf when configured. Other user-managed addons/settings are preserved.
     public void install() {
         ConfigValues config = host.configValues();
         if (config == null) return;
@@ -380,6 +392,8 @@ public final class BlueMapAdapter {
         return unique;
     }
 
+    // 기존 KWC/BMWC 항목을 canonical addon path 기준으로 제거한 뒤 scripts/styles 배열에 필요한 항목을 정확히 한 번 삽입한다. 반복 reload로 중복 entry가 쌓이지 않아야 한다.
+    // Removes legacy KWC/BMWC entries using the canonical addon path, then inserts required script/style entries exactly once. Repeated reloads must not accumulate duplicates.
     private boolean patchSingleWebappConf(File conf, ConfigValues c) {
         String version = assetVersionToken;
         String addonPath = canonicalAddonPath(c.addonPath);

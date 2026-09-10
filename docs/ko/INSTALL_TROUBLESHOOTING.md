@@ -17,14 +17,14 @@ mvn clean package
 출력:
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.0-Bukkit-1.18-26.2.jar
 ```
 
 Windows에서는 루트 validator를 플랫폼 빌드 도우미로도 사용할 수 있습니다.
 
 ```bat
 
-> `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source archive에 포함되어 있습니다. 별도의 `KWC-5.2.0-validation-tools.zip`에는 개발용 브라우저 회귀검증 도구만 들어 있으며 릴리스 빌드 실행에는 필요하지 않습니다.
+> `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source archive에 포함되어 있습니다. 개발용 회귀검증 하네스는 source archive의 `validation/`에 포함되며, 일반/릴리스 빌드에 별도 validation-tools archive가 필요하지 않습니다.
 
 validate-release-windows.bat --bukkit
 validate-release-windows.bat --bukkit --fast
@@ -52,9 +52,9 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 현재 버전 쿼리가 포함되어야 합니다.
 
 ```text
-addons/kokoto-web-chat/config.js?v=5.2.0-<cache-token>
-addons/kokoto-web-chat/chat.js?v=5.2.0-<cache-token>
-addons/kokoto-web-chat/chat.css?v=5.2.0-<cache-token>
+addons/kokoto-web-chat/config.js?v=5.3.0-<cache-token>
+addons/kokoto-web-chat/chat.js?v=5.3.0-<cache-token>
+addons/kokoto-web-chat/chat.css?v=5.3.0-<cache-token>
 ```
 
 실제 웹 파일 갱신도 확인합니다.

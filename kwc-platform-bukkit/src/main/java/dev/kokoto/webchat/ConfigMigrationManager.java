@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * ConfigMigrationManager는 이전 KWC/BMWC 설치 데이터를 현재 형식으로 옮기는 migration 코드다.
+ * ConfigMigrationManager migrates older KWC/BMWC installation data into the current format.
+ *
+ * 기존 관리자 값을 가능한 한 보존하고, 한 번 적용한 migration을 재실행해도 결과가 달라지지 않는 idempotency를 유지해야 한다.
+ * It should preserve administrator choices where possible and remain idempotent when the same migration is evaluated again.
+ */
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 

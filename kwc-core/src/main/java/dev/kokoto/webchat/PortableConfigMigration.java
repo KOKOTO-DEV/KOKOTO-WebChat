@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * PortableConfigMigration는 이전 KWC/BMWC 설치 데이터를 현재 형식으로 옮기는 migration 코드다.
+ * PortableConfigMigration migrates older KWC/BMWC installation data into the current format.
+ *
+ * 기존 관리자 값을 가능한 한 보존하고, 한 번 적용한 migration을 재실행해도 결과가 달라지지 않는 idempotency를 유지해야 한다.
+ * It should preserve administrator choices where possible and remain idempotent when the same migration is evaluated again.
+ */
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -25,6 +33,11 @@ import java.util.Objects;
  * remain the semantic comparison baseline; generated config-reference files are
  * administrator-readable presentation copies only and are never migration input.
  */
+/**
+ * KWC 유지보수 안내: 구 버전 config를 현재 canonical config로 올리면서 관리자 값을 최대한 보존하는 migration 엔진이다. baseline은 과거 버전별 기본값 비교에 사용하고, renamed/retired setting은 명시적으로 관리한다. migration은 원본 backup과 보고서를 남겨 자동 변경 내용을 추적할 수 있게 한다.
+ *
+ * KWC maintenance note: Migration engine upgrading older configs to the current canonical config while preserving administrator choices wherever possible. Historical baselines are used for default comparisons, while renamed/retired settings are explicit. Migration keeps backups and reports so automatic changes remain auditable.
+ */
 public final class PortableConfigMigration {
     private static final DateTimeFormatter BACKUP_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final java.util.Set<String> RETIRED_SETTINGS = java.util.Set.of(
@@ -34,7 +47,13 @@ public final class PortableConfigMigration {
             "ui.resume-refresh.skip-while-media-active",
             "notifications.notify-own-messages",
             "notifications.show-message-preview",
-            "server-relay.forward-received-public-chat"
+            "server-relay.forward-received-public-chat",
+            "direct-message.confirm-hide",
+            "group-chat.confirm-hide"
+    );
+    private static final Map<String,String> RENAMED_SETTINGS = Map.of(
+            "direct-message.confirm-hide", "direct-message.confirm-delete",
+            "group-chat.confirm-hide", "group-chat.confirm-delete"
     );
     private static final String CONFIG_LANGUAGE_MARKER = "# KWC config-comment-language: ";
     private static final Map<String, String> CONFIG_TEMPLATE_RESOURCES = Map.of(
@@ -43,17 +62,18 @@ public final class PortableConfigMigration {
             "zh-CN", "config-templates/config-zh-CN.yml"
     );
 
-    private static final Map<String, String> BASELINE_RESOURCES = Map.of(
-            "4.5.5", "config-baselines/config-4.5.5.yml",
-            "4.6.0", "config-baselines/config-4.6.0.yml",
-            "4.6.1", "config-baselines/config-4.6.1.yml",
-            "4.6.2", "config-baselines/config-4.6.2.yml",
-            "4.6.3", "config-baselines/config-4.6.3.yml",
-            "4.6.4", "config-baselines/config-4.6.4.yml",
-            "4.7.0", "config-baselines/config-4.7.0.yml",
-            "5.0.0", "config-baselines/config-5.0.0.yml",
-            "5.1.0", "config-baselines/config-5.1.0.yml",
-            "5.2.0", "config-baselines/config-5.2.0.yml"
+    private static final Map<String, String> BASELINE_RESOURCES = Map.ofEntries(
+            Map.entry("4.5.5", "config-baselines/config-4.5.5.yml"),
+            Map.entry("4.6.0", "config-baselines/config-4.6.0.yml"),
+            Map.entry("4.6.1", "config-baselines/config-4.6.1.yml"),
+            Map.entry("4.6.2", "config-baselines/config-4.6.2.yml"),
+            Map.entry("4.6.3", "config-baselines/config-4.6.3.yml"),
+            Map.entry("4.6.4", "config-baselines/config-4.6.4.yml"),
+            Map.entry("4.7.0", "config-baselines/config-4.7.0.yml"),
+            Map.entry("5.0.0", "config-baselines/config-5.0.0.yml"),
+            Map.entry("5.1.0", "config-baselines/config-5.1.0.yml"),
+            Map.entry("5.2.0", "config-baselines/config-5.2.0.yml"),
+            Map.entry("5.3.0", "config-baselines/config-5.3.0.yml")
     );
 
     private PortableConfigMigration() {}
@@ -76,6 +96,8 @@ public final class PortableConfigMigration {
 
     public record Result(boolean changed, boolean automaticMigrationEnabled, int insertedSettings) {}
 
+    // 현재 config와 과거 baseline을 비교해 사용자 수정값을 식별하고 새 canonical template에 재적용한다. renamed/retired setting, 주석 언어, backup/report 생성까지 한 번의 migration 흐름에서 처리한다.
+    // Compares the current config with its historical baseline, identifies administrator overrides, and reapplies them onto the new canonical template. Renamed/retired settings, comment language, backup, and report generation are handled in the same migration flow.
     public static Result reconcile(Path dataDirectory,
                                    String targetVersion,
                                    ResourceOpener opener,
@@ -100,6 +122,11 @@ public final class PortableConfigMigration {
         // controls comments/layout/reference/report language; the parsed setting values are
         // always overlaid back onto the selected template and therefore remain authoritative.
         Map<String,Object> actual = loadSnapshot(loader, Files.newInputStream(configPath));
+        // 5.3.0 RC31/RC32 added asymmetric per-peer Relay policy inside the groups YAML list.
+        // A flat canonical default cannot express keys for an operator-created peer, so ordinary
+        // missing-setting comparison cannot insert these nested values. Augment existing peer maps
+        // explicitly while preserving scalar send/receive shortcuts and every operator value.
+        int relayPeerPolicyInsertions = augmentRelayPeerPolicies(actual);
         String declared = safe(string(actual.get("config-version")));
         String configLanguage = normalizeConfigLanguage(actual.get("ui.language"));
         String templateResource = configTemplateResource(configLanguage);
@@ -116,25 +143,28 @@ public final class PortableConfigMigration {
         if (target.equals(declared)) {
             boolean languageChanged = !configLanguage.equals(renderedLanguage);
             boolean retiredPresent = actual.keySet().stream().anyMatch(RETIRED_SETTINGS::contains);
-            if (languageChanged || retiredPresent) {
+            boolean relayPeerPolicyChanged = relayPeerPolicyInsertions > 0;
+            if (languageChanged || retiredPresent || relayPeerPolicyChanged) {
                 rebuildPhysical(configPath, templateText, actual, target, false);
             }
             boolean removed = Files.deleteIfExists(reportPath) | Files.deleteIfExists(legacyGuidePath);
             if (info != null) {
                 String prefix = "Config version " + target + " has automatic migration disabled.";
-                if (languageChanged || retiredPresent) {
-                    String reason = languageChanged && retiredPresent
-                            ? "ui.language/comment layout and retired settings"
-                            : (languageChanged ? "ui.language/comment layout" : "retired settings");
-                    info.log(prefix + " Rebuilt the current template for " + reason
-                            + " while preserving active parsed setting values.");
+                if (languageChanged || retiredPresent || relayPeerPolicyChanged) {
+                    List<String> reasons = new ArrayList<>();
+                    if (languageChanged) reasons.add("ui.language/comment layout");
+                    if (retiredPresent) reasons.add("retired settings");
+                    if (relayPeerPolicyChanged) reasons.add("missing Relay peer send/receive policy");
+                    info.log(prefix + " Rebuilt the current template for " + String.join(", ", reasons)
+                            + " while preserving active parsed setting values; Relay peer policy values inserted="
+                            + relayPeerPolicyInsertions + ".");
                 } else {
                     info.log(removed
                             ? prefix + " Stale migration files were removed."
                             : prefix + " Migration comparison was skipped.");
                 }
             }
-            return new Result(languageChanged || retiredPresent, false, 0);
+            return new Result(languageChanged || retiredPresent || relayPeerPolicyChanged, false, relayPeerPolicyInsertions);
         }
 
         if (autoVersion.equals(declared)) {
@@ -149,10 +179,10 @@ public final class PortableConfigMigration {
                     refreshed, currentDefaults, configLanguage);
             Files.deleteIfExists(legacyGuidePath);
             if (info != null) info.log("Config automatic migration is enabled: config-version=\"" + autoVersion
-                    + "\". Rebuilt from the " + configLanguage + " bundled config template and overlaid existing values; newly inserted settings=" + newlyInserted.size()
+                    + "\". Rebuilt from the " + configLanguage + " bundled config template and overlaid existing values; newly inserted settings=" + (newlyInserted.size() + relayPeerPolicyInsertions)
                     + ". Existing configured values were preserved. Set config-version to \"" + target
                     + "\" only if same-version automatic migration should be disabled.");
-            return new Result(!afterText.equals(beforeText), true, newlyInserted.size());
+            return new Result(!afterText.equals(beforeText), true, newlyInserted.size() + relayPeerPolicyInsertions);
         }
 
         String baselineVersion = chooseBaselineVersion(declared);
@@ -177,10 +207,77 @@ public final class PortableConfigMigration {
         if (info != null) info.log("Config migration completed: detected=" + (declared.isBlank() ? "not set" : declared)
                 + ", target=" + target + ", baseline=" + (baselineVersion.isBlank() ? "not available" : baselineVersion)
                 + ", template-language=" + configLanguage
-                + ", auto-inserted=" + before.missingSettings.size() + ", changed-default-review=" + after.changedDefaults.size()
+                + ", auto-inserted=" + (before.missingSettings.size() + relayPeerPolicyInsertions) + ", changed-default-review=" + after.changedDefaults.size()
                 + "; leave config-version as \"" + autoVersion + "\" to keep automatic migration, or set it to \""
                 + target + "\" to disable same-version automatic migration.");
-        return new Result(true, true, before.missingSettings.size());
+        return new Result(true, true, before.missingSettings.size() + relayPeerPolicyInsertions);
+    }
+
+    private static int augmentRelayPeerPolicies(Map<String,Object> actual) {
+        if (actual == null) return 0;
+        Object rawGroups = actual.get("server-relay.groups");
+        if (!(rawGroups instanceof List<?> groups) || groups.isEmpty()) return 0;
+
+        ArrayList<Object> rebuiltGroups = new ArrayList<>(groups.size());
+        int inserted = 0;
+        boolean changed = false;
+        for (Object rawGroup : groups) {
+            if (!(rawGroup instanceof Map<?,?> groupMap)) {
+                rebuiltGroups.add(rawGroup);
+                continue;
+            }
+            LinkedHashMap<String,Object> group = stringKeyMap(groupMap);
+            Object rawPeers = group.get("peers");
+            if (!(rawPeers instanceof List<?> peers) || peers.isEmpty()) {
+                rebuiltGroups.add(group);
+                continue;
+            }
+            ArrayList<Object> rebuiltPeers = new ArrayList<>(peers.size());
+            boolean groupChanged = false;
+            for (Object rawPeer : peers) {
+                if (!(rawPeer instanceof Map<?,?> peerMap)) {
+                    rebuiltPeers.add(rawPeer);
+                    continue;
+                }
+                LinkedHashMap<String,Object> peer = stringKeyMap(peerMap);
+                int before = inserted;
+                inserted += augmentRelayDirection(peer, "send");
+                inserted += augmentRelayDirection(peer, "receive");
+                if (inserted != before) groupChanged = true;
+                rebuiltPeers.add(peer);
+            }
+            if (groupChanged) {
+                group.put("peers", rebuiltPeers);
+                changed = true;
+            }
+            rebuiltGroups.add(group);
+        }
+        if (changed) actual.put("server-relay.groups", rebuiltGroups);
+        return inserted;
+    }
+
+    private static int augmentRelayDirection(LinkedHashMap<String,Object> peer, String direction) {
+        Object raw = peer.get(direction);
+        if (raw != null && !(raw instanceof Map<?,?>)) {
+            // Boolean/scalar shorthand is intentional and controls the entire direction.
+            return 0;
+        }
+        LinkedHashMap<String,Object> policy = raw instanceof Map<?,?> map ? stringKeyMap(map) : new LinkedHashMap<>();
+        int inserted = 0;
+        for (String key : List.of("public-chat", "event", "dm", "profile")) {
+            if (!policy.containsKey(key)) {
+                policy.put(key, true);
+                inserted++;
+            }
+        }
+        if (raw == null || inserted > 0) peer.put(direction, policy);
+        return inserted;
+    }
+
+    private static LinkedHashMap<String,Object> stringKeyMap(Map<?,?> source) {
+        LinkedHashMap<String,Object> out = new LinkedHashMap<>();
+        for (Map.Entry<?,?> entry : source.entrySet()) out.put(String.valueOf(entry.getKey()), entry.getValue());
+        return out;
     }
 
     private static void rebuildPhysical(Path configPath,
@@ -195,6 +292,10 @@ public final class PortableConfigMigration {
         LinkedHashMap<String,Object> overlay = new LinkedHashMap<>();
         if (actual != null) overlay.putAll(actual);
         overlay.remove("config-version");
+        for (Map.Entry<String,String> rename : RENAMED_SETTINGS.entrySet()) {
+            Object oldValue = overlay.get(rename.getKey());
+            if (oldValue != null && !overlay.containsKey(rename.getValue())) overlay.put(rename.getValue(), oldValue);
+        }
         RETIRED_SETTINGS.forEach(overlay::remove);
         if (resetRelayV2) {
             // Relay v1 and relay v2 do not share a safely inferable trust topology.

@@ -1,4 +1,4 @@
-# Server Relay — Protocol 2.1
+# Server Relay — Protocol 2.2
 
 For reaction authority, direct/multi-hop delivery, offline outbox behavior and notification diagrams, see [REACTIONS.md](REACTIONS.md).
 
@@ -13,7 +13,7 @@ For reaction authority, direct/multi-hop delivery, offline outbox behavior and n
 
 > **Security boundary:** Relay v2 is hop-by-hop authenticated encryption, not end-to-end encryption. A forwarding KWC server is a trusted participant.
 
-KOKOTO WebChat 5.2.0 uses **Relay Protocol 2.1**, a backward-compatible 2.x capability revision over the Relay v2 trust/encryption model introduced in 5.1.0. Protocol major `2` remains the wire-compatibility boundary. 2.1 advertises `public`, `dm`, `read`, `reaction`, `reaction-authority`, and `typing`; product version is diagnostic only. Public chat and cross-server 1:1 DM/read receipts share the group-scoped authenticated transport, public reactions, targeted cross-server DM reactions, and remote DM typing use 2.1 extensions, and group-chat rooms remain local.
+KOKOTO WebChat 5.3.0 uses **Relay Protocol 2.2**, the fixed relay revision for the entire 5.3.0 line. Protocol major `2` remains the wire-compatibility boundary. Revision 2.2 advertises `public`, `dm`, `read`, `delete`, `reaction`, `reaction-authority`, `typing`, `game`, and `profile`; product version is diagnostic only. Reaction/reaction-authority/typing remain compatible with the 2.1 feature set, while 5.3.0 capability-negotiates `delete`, `game`, and `profile` within revision 2.2. Group-chat rooms remain local.
 
 
 ## Security-sensitive upgrade scope
@@ -31,7 +31,7 @@ A relay **group is the security boundary**. Each group contains:
 - one group `id`;
 - one `shared-secret` used by every member relationship in that group;
 - a group-local `forwarding.enabled` switch;
-- a list of peers containing only `id`, `url`, and `enabled`.
+- a list of peers containing `id`, `url`, `enabled`, and optional `send` / `receive` policy controls. The group secret remains group-level; it is never stored per peer.
 
 There is no `peers[].secret` in protocol v2. This deliberately prevents a peer entry from being paired with a secret belonging to the wrong group.
 
@@ -58,6 +58,7 @@ server-relay:
     guest: true
     discord: false
     system: false
+    event: true
 
   delivery:
     web: true
@@ -74,6 +75,16 @@ server-relay:
         - id: "server-2"
           url: "https://server2.example.com/api"
           enabled: true
+          send:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
+          receive:
+            public-chat: true
+            event: true
+            dm: true
+            profile: true
 ```
 
 Start/reload `server-1` once with the blank value, reopen its `config.yml`, then copy the generated secret into `server-2`:
@@ -94,11 +105,20 @@ server-relay:
           enabled: true
 ```
 
+
+### Per-peer send/receive policy
+
+Each peer keeps `enabled` as its master switch and may independently restrict `send` and `receive`. Both directions and all traffic classes default to `true` when omitted, so existing 5.2.x/earlier-5.3.0 peer entries keep their behavior. `send: false` or `receive: false` disables that entire direction. When a direction is a map, `public-chat`, `event`, `dm`, and `profile` can be toggled independently. Public reactions/typing follow `public-chat`; DM reactions/typing/read/delete follow `dm`; targeted event lookup/join follows `event`; remote profile lookup follows `profile`.
+
+For an existing config, KWC does not rely only on runtime defaults: migration physically adds any missing `send` / `receive` maps and missing `public-chat`, `event`, `dm`, and `profile` entries with `true`. Existing explicit values are preserved, including a scalar `send: false` or `receive: false`, and running migration again is idempotent.
+
+`sources.event` is separate from `sources.system`. This lets event announcements relay while unrelated system notices stay local. Per-event **Notification scope** still decides whether that event's creation/result announcements are local-only or eligible for Relay; peer `send.event` / `receive.event` are the upper routing policy.
+
 ## Request authentication and optional identity probe
 
 Direct relay follows the 5.0.0 operating model: every `/relay/v2/message` request authenticates itself independently. The receiving server must still list the sender in the same group with the same shared secret, because that group membership and secret are required to authenticate/decrypt the request. The reverse direction is independent. `/relay/v2/handshake` is a stateless diagnostic identity/health probe only; it does not create, retain, enable, or disable a direct relay route. The optional probe request binds:
 
-- protocol major `2` plus protocol revision `2.1`; the KWC product version is not part of the modern compatibility/signature key;
+- protocol major `2` plus protocol revision `2.2`; the KWC product version is not part of the modern compatibility/signature key;
 - `group-id`;
 - sender server ID;
 - target server ID;
@@ -115,12 +135,17 @@ Endpoints:
 /relay/v2/message
 ```
 
-Legacy v1 endpoints (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, `/relay/dm/read`) return **HTTP 426** and advertise protocol major `2` / revision `2.1`.
+Legacy v1 endpoints (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, `/relay/dm/read`) return **HTTP 426** and advertise protocol major `2` / revision `2.2`.
 
 
 ## Protocol revision and capabilities
 
-Relay compatibility is no longer tied to the KWC product version. `X-KWC-Relay-Version: 2` identifies the compatible major wire family; `X-KWC-Relay-Protocol: 2.1` and `X-KWC-Relay-Capabilities` describe the current revision and optional extensions. A 2.0 peer can continue exchanging the common v2 public/DM/read traffic with a 2.1 peer. Reaction and typing are 2.1 extensions; lack of an extension must not make the peer itself incompatible. The handshake response reports `serverVersion` only for diagnostics.
+Relay compatibility is no longer tied to the KWC product version. `X-KWC-Relay-Version: 2` identifies the compatible major wire family; `X-KWC-Relay-Protocol: 2.2` and `X-KWC-Relay-Capabilities` describe the current revision and optional extensions. A 2.0 peer can continue exchanging common v2 public/DM/read traffic with a 2.2 peer. Reaction, reaction-authority, and typing were added as 2.1 extensions. KWC 5.3.0 keeps revision 2.2 and capability-negotiates `delete`, `game`, and `profile` within that same revision. If either participating peer lacks `delete`, the deletion fails safely and the sender keeps its local copy. Lack of an optional extension does not make the peer itself incompatible. The handshake response reports `serverVersion` only for diagnostics.
+
+
+### Event relay routing (2.2)
+
+The `game` capability does not broadcast event actions to every peer. Event announcements carry the event ID and origin server ID. Opening or joining a relayed event sends a targeted `game-request` only toward that origin server (through an allowed forwarding route when needed). A receiver must not substitute its own local event when the origin event cannot be reached; unsupported/older peers fail safely or show only the announcement snapshot.
 
 ## Message encryption and authentication
 
@@ -137,7 +162,7 @@ nonce
 IV
 ```
 
-Changing any of those values causes authentication to fail. The encrypted payload contains the message kind (`public`, `dm`, or `read`) and the corresponding relay envelope.
+Changing any of those values causes authentication to fail. The encrypted payload contains the message kind (`public`, `dm`, `read`, `delete`, or another negotiated extension kind) and the corresponding relay envelope.
 
 Successful and error responses from a known peer are also authenticated with HMAC-SHA256. The response signature binds the group, responder, requester, response timestamp, request nonce, HTTP status, and response body. This prevents an unauthenticated intermediary from forging a successful HTTP response.
 
@@ -212,3 +237,7 @@ See [REFERENCES.md](REFERENCES.md) for the primary standards and official third-
 - [RFC 5869 — HKDF](https://www.rfc-editor.org/info/rfc5869/)
 - [NIST SP 800-38D — GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)
 - [RFC 9110 — HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
+
+### Remote profile lookup (2.2)
+
+The `profile` capability performs a targeted `profile-request` to the user’s origin server and returns only public profile/presence data. Sessions, restrictions, and administrator-only data are never included in the relay response.

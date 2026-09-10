@@ -17,14 +17,14 @@ mvn clean package
 输出:
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.2.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.0-Bukkit-1.18-26.2.jar
 ```
 
 Windows 下也可以把根目录 validator 作为平台构建辅助脚本使用：
 
 ```bat
 
-> `validate-release-windows.bat` 及其所需的 PowerShell helper 已包含在 source archive 中。单独的 `KWC-5.2.0-validation-tools.zip` 只包含开发专用的浏览器回归测试工具，运行发布构建时不需要它。
+> `validate-release-windows.bat`、所需 PowerShell helper 以及 `validation/` 下的开发回归 harness 都包含在 source archive 中。运行 release build 不需要单独的 validation-tools 包。
 
 validate-release-windows.bat --bukkit
 validate-release-windows.bat --bukkit --fast
@@ -52,9 +52,9 @@ grep -R "bluemap-web-chat" -n /opt/minecraft/server/plugins/BlueMap/webapp.conf
 条目应包含当前版本 query。
 
 ```text
-addons/kokoto-web-chat/config.js?v=5.2.0-<cache-token>
-addons/kokoto-web-chat/chat.js?v=5.2.0-<cache-token>
-addons/kokoto-web-chat/chat.css?v=5.2.0-<cache-token>
+addons/kokoto-web-chat/config.js?v=5.3.0-<cache-token>
+addons/kokoto-web-chat/chat.js?v=5.3.0-<cache-token>
+addons/kokoto-web-chat/chat.css?v=5.3.0-<cache-token>
 ```
 
 同时确认实际 Web 文件已更新。

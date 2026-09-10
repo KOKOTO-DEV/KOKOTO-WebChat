@@ -1,6 +1,6 @@
 # SimpleNicks-Bero 集成
 
-KOKOTO WebChat 5.2.0 在 **Bukkit/Paper 系列**服务器上可以使用 [SimpleNicks-Bero](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) 写入 Bukkit player display name 的昵称。KWC 不把 SimpleNicks 作为硬依赖，也不会直接读取该插件的数据库。
+KOKOTO WebChat 5.3.0 在 **Bukkit/Paper 系列**服务器上可以使用 [SimpleNicks-Bero](https://github.com/KOKOTO-DEV/SimpleNicks-Bero) 写入 Bukkit player display name 的昵称。KWC 不把 SimpleNicks 作为硬依赖，也不会直接读取该插件的数据库。
 
 常规安装、`/nick` 命令、权限、SQLite/MySQL、昵称保存、昵称保护、PlaceholderAPI/MiniPlaceholders 等一般操作请参考 [上游 SimpleNicks 文档](https://github.com/Simplexity-Development/SimpleNicks)。本文只说明与 KWC 有关的配置。
 

@@ -1,0 +1,39 @@
+// KWC 파일 안내 / KWC file guide
+// Minecraft 26.3 NeoForge 정식 지원 전에 source/API 호환성과 exact NeoForge pin을 검증하기 위한 비활성 준비 빌드다.
+// Disabled preparation build used to validate source/API compatibility and the exact NeoForge pin before official Minecraft 26.3 support.
+// NeoForge pin이 TBD이면 활성 플래그를 켜더라도 즉시 실패하도록 하여 moving/latest 의존성을 금지한다.
+// Even after enabling the prep flag, a TBD NeoForge pin fails immediately so moving/latest dependencies cannot enter a release.
+
+plugins { id 'java-library'; id 'net.neoforged.moddev' version '2.0.144' }
+
+def requiredPin = { String key ->
+    def value = providers.gradleProperty(key).orNull?.trim()
+    if (!value || value.equalsIgnoreCase('TBD')) {
+        throw new GradleException("KWC NeoForge 26.3 PREP requires an exact ${key} pin before activation.")
+    }
+    value
+}
+def minecraftVersion = providers.gradleProperty('kwc.minecraft').get()
+def neoVersion = requiredPin('kwc.neoforge')
+def targetJava = providers.gradleProperty('kwc.java').get()
+
+version='5.3.0'; group='dev.kokoto.webchat'
+base { archivesName='KOKOTO-WebChat-5.3.0-NeoForge-26.3' }
+java.toolchain.languageVersion=JavaLanguageVersion.of(Integer.parseInt(targetJava))
+repositories { mavenCentral(); maven { url 'https://repo.bluecolored.de/releases' } }
+// 26.2 modern event compatibility layer를 준비 기준으로 사용하지만 최종 26.3 API에서 반드시 재검증한다.
+// Use the 26.2 modern event compatibility layer as the prep baseline, but revalidate it against the final 26.3 API.
+sourceSets.main.java.srcDirs=['../../src/common/java','../../src/compatEvents/java','../../src/compatModern/java','../../../kwc-core/src/main/java','../../../kwc-adapter-bluemap/src/main/java','../../../kwc-adapter-squaremap/src/main/java','../../../kwc-adapter-dynmap/src/main/java','../../../kwc-adapter-pl3xmap/src/main/java','../../../kwc-adapter-liveatlas/src/main/java','../../../kwc-adapter-unmined/src/main/java','../../../kwc-adapter-overviewer/src/main/java','../../../kwc-adapter-bluemap-api/src/main/java']
+sourceSets.main.resources.srcDirs=['../../../kwc-standalone-frontend/src/main/resources','../../../kwc-adapter-bluemap/src/main/resources','../../../kwc-adapter-squaremap/src/main/resources','../../../kwc-adapter-dynmap/src/main/resources','../../../kwc-adapter-pl3xmap/src/main/resources','../../../kwc-adapter-liveatlas/src/main/resources','../../../kwc-adapter-unmined/src/main/resources','../../../kwc-adapter-overviewer/src/main/resources']
+neoForge { version=neoVersion; mods { kokoto_webchat { sourceSet sourceSets.main } } }
+configurations { kwcEmbed }
+dependencies {
+ implementation 'org.xerial:sqlite-jdbc:3.53.2.0'; kwcEmbed 'org.xerial:sqlite-jdbc:3.53.2.0'
+ implementation 'org.yaml:snakeyaml:2.4'; kwcEmbed 'org.yaml:snakeyaml:2.4'
+ compileOnly 'de.bluecolored:bluemap-api:2.8.0'
+}
+def metadata=tasks.register('generateModMetadata',Copy) { from('../../src/common/templates-new'); into(layout.buildDirectory.dir('generated/resources')); expand(neo_version:neoVersion,minecraft_version:minecraftVersion) }
+tasks.named('processResources').configure { dependsOn(metadata); from(layout.buildDirectory.dir('generated/resources')); from('../../../kwc-platform-bukkit/src/main/resources') { include 'config.yml'; include 'config-baselines/**'; include 'config-templates/**'; include 'lang/**'; include 'filter-lists-default/**' } }
+tasks.withType(JavaCompile).configureEach { options.release=Integer.parseInt(targetJava); options.encoding='UTF-8' }
+jar { duplicatesStrategy=DuplicatesStrategy.EXCLUDE; from({ configurations.kwcEmbed.collect { it.isDirectory()?it:zipTree(it) } }); exclude 'META-INF/*.SF','META-INF/*.RSA','META-INF/*.DSA'; from('../../../LICENSE') { rename { 'LICENSE_KOKOTO-WebChat' } } }
+tasks.withType(AbstractArchiveTask).configureEach { archiveBaseName.set('KOKOTO-WebChat-5.3.0-NeoForge-26.3'); archiveVersion.set('') }

@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.2.0 — 用户指南
+# KOKOTO WebChat 5.3.0 — 用户指南
 
 反应 authority、直连/多跳传递、origin 断开时的 outbox 与作者通知图请参阅 [REACTIONS.md](REACTIONS.md)。
 

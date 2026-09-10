@@ -1,5 +1,13 @@
 package dev.kokoto.webchat;
 
+
+/* KWC 파일 안내 / KWC file guide
+ * 외부 JSON library 의존성을 최소화하면서 KWC API/저장 형식에 필요한 JSON escaping/encoding을 제공하는 공통 유틸리티다.
+ * Shared utility providing JSON escaping/encoding needed by KWC APIs and storage while minimizing external JSON dependencies.
+ *
+ * 사용자 문자열은 반드시 올바르게 escape해야 하며, JSON 조각을 문자열 연결로 만들 때는 이 유틸리티를 우선 사용한다.
+ * User-controlled strings must be escaped correctly; prefer this utility when JSON fragments would otherwise be built by string concatenation.
+ */
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;

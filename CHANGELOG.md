@@ -1,13 +1,46 @@
 # Changelog
 
+## 5.3.0
+
+### Added
+
+- **Chat Events**: added multiple simultaneous First come and Lottery events with Web and `/kchat game` management, participant/winner views, local-or-Relay announcement scope, persisted event state, event deletion, and targeted origin-server routing for relayed event links. First come uses winner count as its only capacity and completes automatically when every winner slot is filled; Lottery keeps separate participant and winner counts.
+- **DM/group retained-history search**: added full stored-history search for DM threads and group rooms using the public-search interaction pattern, including jump-to-result without marking a conversation read just because it was searched.
+- **Sender-owned DM deletion**: when ordinary-user own-message deletion is enabled, users can delete only DMs they sent. Deletion removes the message for both participants and clears surviving Reply snapshots that referenced it. Cross-server deletion is sender-authoritative and requires acknowledgement from the target peer before the origin copy is removed.
+- **Ordinary-user own-message deletion policy**: added `moderation.allow-user-self-message-delete` (default `false`) and `moderation.self-message-delete-window-minutes` (`0` = no time limit). When enabled, users may delete their own public messages; DM deletion remains sender-only; group member deletion additionally follows the room-local self-delete and message-deletion policy.
+- **Group roles, pins, and deletion policy**: group rooms now have room-local `owner`, `admin`, and `member` roles, room-local pinned-message management, room-wide message deletion, and per-room controls for pins, deletion, and member self-deletion. A pin keeps its stored snapshot if the source message is later deleted, until an owner/admin explicitly unpins it or the room is deleted.
+- **Profiles, presence, and personal blocking**: added user profile cards, Minecraft Head/default fallback avatars, optional custom profile images, a 280-character About/status field, separate Game/Web presence, account-visible status (`Online`, `Busy`, `Offline`), server-side Offline privacy masking, and personal user block/unblock.
+- **Administration and delegated moderation**: added per-user chat/upload restrictions, administrator profile-image removal and role changes, plus per-moderator capability controls for selected online-user, deletion, mute, pin, restriction, and profile-image actions.
+- **Built-in CAPTCHA modes**: added `off`, `math`, `text`, and `mixed` modes plus `easy` / `normal` / `hard` math complexity.
+- **Web mention autocomplete**: added shared `@` candidate completion to public chat, DM, and group composers with keyboard, mouse/touch, IME-safe handling, real-account token insertion, and server-enforced candidate scope.
+- **Upload/profile image metadata stripping**: JPEG EXIF/IPTC/comment metadata, PNG text/EXIF metadata, and WebP EXIF/XMP metadata are stripped before stored-byte quota accounting.
+- **Frontend maintainability**: maintainable frontend source is split into 18 ordered fragments under `frontend/inner/`; `tools/build-inner-bundle.js` deterministically generates root `inner.js` and synchronizes the embedded JavaScript/CSS payloads in all eight map/standalone wrappers.
+
+### Changed
+
+- Relay Protocol is **2.2** while keeping protocol-major-2 compatibility. Capability negotiation now covers sender-owned DM `delete`, targeted chat-event `game`, and remote public-profile `profile` operations in addition to the existing public/DM/read/reaction/typing flows.
+- Relay peers keep `enabled` as the master switch and can independently configure **send** and **receive** policy for `public-chat`, `event`, `dm`, and `profile`. Missing direction/class entries default to enabled for backward compatibility, and existing peer configs are physically supplemented during automatic config migration. Public reaction/typing follow `public-chat`; DM reaction/typing/read/delete follow `dm`.
+- Chat Event relay announcements use a distinct `server-relay.sources.event` source instead of ordinary `system`, allowing remote event traffic to be filtered independently.
+- `direct-message.confirm-hide` and `group-chat.confirm-hide` are retired and migrate to `confirm-delete` with their boolean values preserved. DM/group no longer create new message-level “hide for me” state; historical hidden-state data remains read-compatible only.
+- User-facing game command hints and clickable DM/reply actions use canonical `/kchat`; `/kc` and `/kwc` remain accepted aliases.
+- Public/DM/group windows share transparent edge resizing without resize-lock state. Desktop DM/group list and conversation windows use common z-order, drag, resize, and maximize/restore behavior; inner DM/group titles can also toggle maximize by double-click.
+- The public header is responsive without overlapping `KOKOTO WebChat`: the four chat/event/notification controls use the wrapped-row footprint as their normal size, shrink down to the PIP/minimize footprint before wrapping, and return to one row as soon as that compact footprint fits again. Account names reserve no fixed 16-character width and ellipsize only past 16 characters, unread badges remain visible in wrapped mode, and the authenticated-user count uses `👤`; key glyph/text sizes are slightly larger for readability.
+- Public and group pinned-by attribution follows the global Display name / Real name mode. New public pins persist structured pinner identity while legacy `pinnedBy`-only records remain readable.
+- Public-chat delete confirmation now says **Delete** rather than **Hide** in all four built-in locales. Exact historical bundled “hide” values in external language files are migrated without overwriting administrator-customized translations.
+- Deleted Chat Event cards become non-actionable tombstones instead of opening a missing event and producing HTTP 404; normal permission failures no longer clear an otherwise valid authenticated session.
+- Resize work and geometry persistence are coalesced to reduce resize-time UI work.
+- Detached multi-window DM and group conversation windows accept file drag-and-drop directly. The drop target activates the exact thread/room that received the files before handing them to the shared upload pipeline, while the original DM/group list-window drop behavior remains available.
+- Persisted bearer tokens remain unverified until `/auth/me` succeeds; expired/invalid cached credentials no longer expose authenticated controls or private state before verification. Account-scoped DM/group/notification/presence/admin state is cleared on logout or authentication expiry.
+- Presence-driven online counts and group-room UI update immediately, including a valid visible count of `0` when all connected accounts choose Offline.
+- Web `@` mention keyboard selection, saved conversation-view restoration, BlueMap/map-wrapper notification preference synchronization, and adapter-specific CSS/embedded-bundle parity were hardened against observed UI regressions.
+
 ## 5.2.1
 
-5.2.1 is a focused web-frontend hotfix release over 5.2.0. It does not change the configuration schema or Relay protocol revision.
+5.2.1 is a frontend hotfix release over 5.2.0.
 
-### Fixed
-- Fixed an intermittent BlueMap refresh race where `chat.js` could initialize before the generated `config.js`, freeze the fallback site-root `/api` URL, and keep retrying incorrect endpoints instead of recovering. The BlueMap wrapper now defers startup until its generated API base is available and can reload the addon config before re-bootstrapping the chat.
-- Kept the notification preference label explicitly formatted as `@Mention` / `@멘션` / `@メンション` / `@提及`, including upgrades with older or customized language files whose mention label omitted the leading `@`.
-- Matched the custom-emoji horizontal category scrollbar to the themed vertical scrollbar colors and thumb treatment while retaining a 12px horizontal scrollbar height.
+- Fixed a BlueMap addon refresh race where `chat.js` could initialize before `config.js`, lock the API base to site-root `/api`, and keep retrying the wrong path after an SSE/bootstrap failure. The addon now recovers the config/base and retries bootstrap after transient failure.
+- Ensured the user notification setting displays `@Mention` / `@멘션` / `@メンション` / `@提及`, including upgrades that retain an older external language file without the `@`.
+- Kept the custom-emoji horizontal scrollbar at 12 px while matching the theme-aware vertical scrollbar thumb/hover colors and shape.
 
 ## 5.2.0
 
@@ -118,7 +151,7 @@
 
 ### Platform and map expansion
 
-- Standardized the project identity as **KOKOTO WebChat (KWC)**. `/kchat` and `/kc` are the canonical commands and `/chat` is the default public web path.
+- Standardized the project identity as **KOKOTO WebChat (KWC)**. `/kchat` and `/kchat` are the canonical commands and `/chat` is the default public web path.
 - Added server builds for **Bukkit/Paper/Spigot**, **Fabric (16 exact targets)**, **NeoForge (12 exact targets)**, and **Forge (16 exact targets)**, covering supported Minecraft versions up to 26.2.
 - Expanded frontend integration beyond BlueMap with **squaremap, Dynmap, Pl3xMap, LiveAtlas, uNmINeD, Minecraft Overviewer**, and a **standalone WebChat** mode.
 - Improved multi-server operation for public relay, cross-server DM/group chat, remote-user handling, delivery/read status, relay failure backoff, and mixed-version transition deployments.

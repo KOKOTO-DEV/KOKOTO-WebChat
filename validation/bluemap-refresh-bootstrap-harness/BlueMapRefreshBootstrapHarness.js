@@ -1,3 +1,9 @@
+// KWC 파일 안내 / KWC file guide
+// BlueMapRefreshBootstrapHarness.js는 KWC 개발/배포 과정에서 사용하는 JavaScript 보조 코드다.
+// BlueMapRefreshBootstrapHarness.js is JavaScript support code used by the KWC development or packaging workflow.
+// 배포 runtime 코드와 생성 코드를 구분하고, generated 산출물을 수동 편집하지 않도록 source-of-truth 경로를 유지한다.
+// Keep runtime source separate from generated artifacts and preserve the source-of-truth path instead of manually editing generated output.
+
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
@@ -16,7 +22,7 @@ function makeContext() {
   const location = {origin:'https://example.test', href:'https://example.test/maps/', protocol:'https:', hostname:'example.test'};
   const window = {location};
   const document = {
-    currentScript: {src:'https://example.test/addons/kokoto-webchat/chat.js?v=5.2.1-test'},
+    currentScript: {src:'https://example.test/addons/kokoto-webchat/chat.js?v=5.3.0-test'},
     createElement(tag) { return {tagName:String(tag).toUpperCase(), src:'', async:true, onload:null, onerror:null}; },
     head: {appendChild(node) { appended.push(node); return node; }},
     documentElement: {appendChild(node) { appended.push(node); return node; }}

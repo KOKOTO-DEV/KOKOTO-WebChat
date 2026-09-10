@@ -1,11 +1,11 @@
-# KOKOTO WebChat 5.2.0 完整用户与运维手册
+# KOKOTO WebChat 5.3.0 完整用户与运维手册
 
 
 ## 可视化资料
 
 | 范围 | 图示 |
 | --- | --- |
-| 架构 | [PNG](../assets/architecture-5.2.0.png) · [SVG](../assets/architecture-5.2.0.svg) |
+| 架构 | [PNG](../assets/architecture-5.3.0.png) · [SVG](../assets/architecture-5.3.0.svg) |
 | Relay Protocol v2 | [Animated GIF](../assets/relay-v2-flow.gif) · [PNG](../assets/relay-v2-flow.png) · [SVG](../assets/relay-v2-flow.svg) |
 | DM/群组 Reply | [PNG](../assets/private-reply-flow.png) · [SVG](../assets/private-reply-flow.svg) |
 | 配置迁移 | [Animated GIF](../assets/config-language-migration.gif) · [PNG](../assets/config-language-migration.png) · [SVG](../assets/config-language-migration.svg) |
@@ -15,11 +15,22 @@
 
 本文引用的一手标准与第三方官方文档统一列在 [REFERENCES.md](REFERENCES.md) 中。
 
-> **5.2.0 运维：** Web Admin **Filter** 管理公开聊天/群聊/可选私信的 block/mask/replace 规则与不发送测试，**Settings** 只管理受支持的实时安全设置：访客/CAPTCHA、会话、用户资料、公开聊天/DM/群聊 typing-indicator 策略、管理员提醒、上传与内容过滤。5 个 moderation 策略设置仅允许在 `config.yml` 中配置，不会暴露到 Web Admin。游戏侧使用 `/kchat filter` / `/kchat settings`。会话期限变更按创建时间重算现有目标会话，且不会复活已经过期的会话。`upload.filename-mode: original` 为新上传保留安全的 Unicode 原名并在重名时自动编号。
+> **5.3.0 运维：** Web Admin **Filter** 管理公开聊天/群聊/可选私信的 block/mask/replace 规则与不发送测试，**Settings** 只管理受支持的实时安全设置：访客/CAPTCHA、会话、用户资料、公开聊天/DM/群聊 typing-indicator 策略、管理员提醒、上传与内容过滤。5 个 moderation 策略设置仅允许在 `config.yml` 中配置，不会暴露到 Web Admin。游戏侧使用 `/kchat filter` / `/kchat settings`。会话期限变更按创建时间重算现有目标会话，且不会复活已经过期的会话。`upload.filename-mode: original` 为新上传保留安全的 Unicode 原名并在重名时自动编号。
 
 
-本文从普通用户和服务器管理员两个角度说明 KOKOTO WebChat 5.2.0 的全部功能。逐项配置说明请参阅 `CONFIGURATION.md`，服务器中继请参阅 `SERVER_RELAY.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS.md` 与 `NGINX_HTTPS.md`。
+本文从普通用户和服务器管理员两个角度说明 KOKOTO WebChat 5.3.0 的全部功能。逐项配置说明请参阅 `CONFIGURATION.md`，服务器中继请参阅 `SERVER_RELAY.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS.md` 与 `NGINX_HTTPS.md`。
 
+
+## 5.3.0 新增功能
+
+- **私聊：** DM/群聊可搜索完整已保存历史。DM 的“仅对我隐藏”已移除。启用普通用户自删后，只有发送者能删除自己发送的 DM，删除后会从双方会话中移除。群组房间新增 room-local `owner/admin/member` 角色、置顶管理、全房间删除，以及同时受全局自删设置约束的普通成员自删策略。
+- **Chat Event：** 可通过 Web 或 `/kchat game` 同时运行多个先到先得/抽奖活动。先到先得只使用获奖人数作为容量，满额后自动完成；抽奖分别设置参与人数和获奖人数。活动公告可选择仅当前服务器或通过 Relay 发送。
+- **用户资料与在线状态：** 用户资料支持 Minecraft Head/自定义头像、280 字 About、角色、个人屏蔽列表及 Game/Web 连接状态。用户可选择 Online/Busy/Offline；Offline 会在服务器端向其他查看者隐藏真实 Game/Web 状态。
+- **管理权限：** ADMIN 可设置账号聊天/上传限制、删除自定义资料图片、更改本地角色，并可按 moderator 委派部分管理 capability。
+- **CAPTCHA 与提及：** 访客 CAPTCHA 支持 off/math/text/mixed 和数学难度；公共/DM/群聊 Web 输入框共享兼容 IME 的 `@` 自动完成。
+- **Relay 2.2：** 在 protocol major 2 内通过 capability 控制发送者本人 DM 删除、Chat Event 路由和远程公开资料查询。每个 peer 可分别控制 `public-chat`、`event`、`dm`、`profile` 的 send/receive。
+- **窗口/UI 与适配器：** 统一 public/DM/group 窗口的 drag/resize/maximize，并让全部适配器/standalone wrapper 从相同 frontend fragment 与 CSS 生成，避免显示差异。
+- **图片隐私：** 上传/资料图片会在存储前移除支持的 EXIF/IPTC/comment/XMP 元数据。
 
 ## 5.2.0 新增功能
 
@@ -32,7 +43,7 @@
 
 ## 1. 插件概述
 
-KOKOTO WebChat 用于把 Minecraft 服务器聊天连接到浏览器。5.2.0 提供 Bukkit/Paper/Spigot，以及 Fabric 1.18.2～26.2、NeoForge 1.20.2～26.2、Forge 1.18.2～26.2 exact-target 构建。
+KOKOTO WebChat 用于把 Minecraft 服务器聊天连接到浏览器。5.3.0 提供 Bukkit/Paper/Spigot，以及 Fabric 1.18.2～26.2、NeoForge 1.20.2～26.2、Forge 1.18.2～26.2 exact-target 构建。
 
 支持：
 
@@ -74,7 +85,7 @@ KOKOTO WebChat 用于把 Minecraft 服务器聊天连接到浏览器。5.2.0 提
 7. 重启服务器或执行 `/kchat reload`。
 
 ```yaml
-config-version: "5.2.0"
+config-version: "5.3.0"
 enabled: false
 ```
 
@@ -87,7 +98,7 @@ enabled: false
 当前版本的完整 reference 始终写入：
 
 ```text
-<KWC data dir>/config-reference-5.2.0.yml
+<KWC data dir>/config-reference-5.3.0.yml
 ```
 
 它是当前默认设置的管理员可读参考文件，展示语言与 `ui.language` 选择的内置语言（`en-US`、`ko-KR`、`ja-JP`、`zh-CN`）一致；不受支持或自定义的 UI 语言使用英文展示。reference 文件不会作为迁移输入。`/kchat reload` 会在替换正在运行的服务之前验证 YAML；无效 YAML 会保留此前正在运行的配置。
@@ -99,12 +110,12 @@ enabled: false
 - 不继承旧注释、顺序、空白和缩进。
 - 如果旧版本标记不是 `*_auto_migration`，真正进行版本升级前会完整备份原 `config.yml`。
 - 已存在设置的内置默认值若在新版本发生变化，不会静默覆盖，而是保留为审核项目。
-- 实际文件会标记为 `config-version: "5.2.0_auto_migration"`。
+- 实际文件会标记为 `config-version: "5.3.0_auto_migration"`。
 
 随后生成：
 
 ```text
-<KWC data dir>/config-migration-5.2.0.yml
+<KWC data dir>/config-migration-5.3.0.yml
 ```
 
 它不再是让管理员复制缺失设置的 fragment，而是**审核报告**。其中记录自动插入数量、仍需管理员判断的默认值变化、最终确认用的精确版本标记，以及 current-vs-reference 的**设置值语义差异**。Difference 只比较已解析的 YAML path/value；注释、空行、缩进、引号格式、行位置和键顺序都会被忽略。每个 Difference 块只显示该设置的实际 YAML 值块，不重复复制说明注释，list/map 仍保持多行结构。由于缺失设置和注释已经放进真实 config 的正确位置，不会再作为大块 reference-only 内容堆在 diff 顶部。
@@ -113,18 +124,18 @@ enabled: false
 
 | 真实 `config.yml` 状态 | 行为 |
 |---|---|
-| `config-version` 缺失或为旧/其他版本 | 执行迁移，写入 `5.2.0_auto_migration` 并生成迁移/审核报告 |
-| `config-version: "5.2.0_auto_migration"` | 启用自动迁移；每次启动/reload 都从最新内置 `config.yml` 重建并覆盖当前值，然后刷新报告/差异 |
-| `config-version: "5.2.0"` | 停止当前版本的自动迁移；跳过同版本迁移/补全，并删除旧迁移提示 |
+| `config-version` 缺失或为旧/其他版本 | 执行迁移，写入 `5.3.0_auto_migration` 并生成迁移/审核报告 |
+| `config-version: "5.3.0_auto_migration"` | 启用自动迁移；每次启动/reload 都从最新内置 `config.yml` 重建并覆盖当前值，然后刷新报告/差异 |
+| `config-version: "5.3.0"` | 停止当前版本的自动迁移；跳过同版本迁移/补全，并删除旧迁移提示 |
 
 该版本标记表示**是否启用自动迁移，而不是审核状态**。
 
 ```yaml
 # 即使已经审核，也继续自动 migration
-config-version: "5.2.0_auto_migration"
+config-version: "5.3.0_auto_migration"
 
 # 停止同版本自动 migration
-config-version: "5.2.0"
+config-version: "5.3.0"
 ```
 
 以后真正升级到新的插件版本时，会再次进入该新版本的 `_auto_migration` 状态。
@@ -408,7 +419,7 @@ chat:
 
 ### 8.5 消息令牌
 
-KOKOTO WebChat 5.2.0 可以在消息保存或中继前替换管理员配置的 `:alias:` 令牌。内置 alias 只提供英文默认值，管理员可以改成或追加任意语言的 alias。
+KOKOTO WebChat 可以在消息保存或中继前替换管理员配置的 `:alias:` 令牌。内置 alias 只提供英文默认值，管理员可以改成或追加任意语言的 alias。
 
 - `:enter:`, `:newline:`, `:nextline:`, `:linebreak:`, `:br:` → 换行 1 次
 - `:blankline:`, `:emptyline:`, `:paragraphbreak:` → 留 1 个空行
@@ -596,10 +607,13 @@ guest:
 ```yaml
 captcha:
   mode: "math"
+  math-complexity: "normal"
   expire-seconds: 120
   require-on-each-message: false
   pass-valid-minutes: 120
 ```
+
+`captcha.mode` 支持 `off` / `math` / `text` / `mixed`。算术题不显示 `Solve:` 等语言相关前缀，只显示 `7 + 5 = ?` 形式的表达式。`captcha.math-complexity` 可选 `easy`（一位数加减）、`normal`（加减乘）、`hard`（更大数值并包含可整除的除法）。字符验证码的“输入代码”提示会随 KWC 语言本地化。
 
 游客/IP 禁言命令：
 
@@ -658,7 +672,7 @@ reply:
 点击 KWC 在 Minecraft 中渲染的消息正文中非 URL 部分，会在输入框准备：
 
 ```text
-/kchat reply <messageId> 
+/kchat reply <messageId>
 ```
 
 发送回复：
@@ -698,10 +712,12 @@ direct-message:
   notify-on-login: true
   notify-on-message: true
   web-unread-badge: true
-  confirm-hide: true
+  confirm-delete: true
 ```
 
 收件人必须能够通过 UUID 识别。除了本地加入记录与已绑定账号之外，只要 relay 过来的游戏消息或已绑定 Web 消息包含 `playerUuid`，KWC 就会把发送者的显示名与真实 Minecraft 名称登记到新建私信的收件人搜索中。因此，在公开聊天中见过的其他服务器玩家也可以通过普通私信搜索找到。最新身份保存在 `known-display-names.yml` 中，重启后仍可搜索。没有玩家 UUID 的访客或 Discord 消息不会登记。`storage: auto` 仅在公开聊天存储为 JSONL 时让私信也使用 JSONL，否则使用 SQLite；也可以明确指定 `sqlite` 或 `jsonl`。
+
+5.3.0 的 DM 不再提供消息级 **仅对我隐藏**。用户只能删除自己发送的 DM；删除后会从双方会话中移除，并清除仍引用该消息的 Reply snapshot。`direct-message.confirm-delete` 控制删除确认框。接收者不能删除收到的 DM。跨服务器删除只有在目标 peer 确认成功后才会移除源服务器副本。
 
 游戏命令：
 
@@ -715,7 +731,7 @@ direct-message:
 /kchat dm read <player> [pageSize]
 /kchat dm next
 /kchat dm prev
-/kchat dm hide <messageId>
+/kchat dm delete <messageId>
 ```
 
 权限：
@@ -762,7 +778,7 @@ group-chat:
   sqlite-file: "group-messages.db"
 ```
 
-Web 功能包括：创建公开/私有房间、以 PBKDF2 哈希保存的可选房间密码、邀请与接受/拒绝、离开、隐藏/恢复、房间设置、未读追踪、按用户隐藏消息、踢出/屏蔽/解除屏蔽成员，以及转移所有权。
+Web 功能包括：创建公开/私有房间、以 PBKDF2 哈希保存的可选房间密码、邀请与接受/拒绝、离开、隐藏/恢复房间、房间设置、未读追踪、room-local owner/admin/member 角色、置顶消息、全房间消息删除、普通成员自删策略、踢出/屏蔽/解除屏蔽成员，以及转移所有权。
 
 每条群聊消息都会显示接收者已读状态。数字表示“发送时已经是成员、当前仍是房间成员且尚未阅读”的接收者人数，发送者本人不计入。未读人数降为 0 后显示 `✓`。正常成功送达本身不额外显示状态标签。
 
@@ -814,7 +830,7 @@ pinned:
   preserve-uploads: true
 ```
 
-置顶消息独立于普通历史。引用的上传文件可避免被清理。管理按钮需要在管理面板临时开启。
+置顶消息独立于普通历史。引用的上传文件可避免被清理。管理按钮需要在管理面板临时开启。公共聊天和群组聊天中的 **置顶者** 会与普通用户名称一样遵循显示名 / 实际账号名切换。对于没有结构化置顶者信息的旧公共置顶记录，会继续使用已保存的名称作为 fallback。
 
 ## 19. 文件和剪贴板上传
 
@@ -839,6 +855,8 @@ upload:
 默认支持 PNG/JPG/JPEG/GIF/WEBP、MP4/WEBM、MP3/M4A/OGG/WAV/FLAC。
 
 `max-total-size-mb: 0` 表示不限总量。剪贴板模式为 `insert` 或 `send`。
+
+在桌面多窗口布局中，每个已分离的 DM/群聊会话窗口也都是独立的拖放上传目标。把文件拖到子窗口后，KWC 会先激活对应的 DM 线程/群聊房间，再把上传 URL 插入该会话的输入框；原来的 DM/群聊列表父窗口仍然可以作为拖放目标。
 
 即使使用 `filename-mode: original`，剪贴板上传也会优先采用 `clipboardData.files` 提供的长文件名。当 Windows/Chromium 的其他剪贴板条目返回 `202608~1.JPG` 这类 DOS 8.3 别名时，只要能够取得长文件名，KWC 就会使用原来的长文件名。如果浏览器只公开 8.3 别名，则不会把这个误导性的别名当作原文件名保存，而会改用 `clipboard-...` 形式的文件名。
 
@@ -1121,7 +1139,7 @@ discordsrv:
 
 ## 26. 多服务器中继
 
-KOKOTO WebChat 5.2.0 对 public chat 与跨服务器 1:1 DM/read receipt 使用保留 Relay v2 信任/加密模型的 **Relay Protocol 2.1**。group chat room 仍为本地功能。
+KOKOTO WebChat 5.3.0 使用保留 Relay v2 信任/加密模型的 **Relay Protocol 2.2**。public chat、跨服务器 1:1 DM/read/delete/reaction/typing、远程活动查询/参加以及远程公开 profile 查询通过 2.x capability 处理；group chat room 仍为本地功能。每个 peer 都可以独立允许或阻止 `public-chat`、`event`、`dm`、`profile` 的发送与接收。
 
 Relay v2 采用 `groups -> peers`。每个 group 只有一个 shared secret，peer 只保存 server ID、API URL 与 enabled 状态。首次设置时，可只在一台服务器上保留 `shared-secret: ""` 并启动/重载，然后把其 `config.yml` 中自动生成的值复制到同一 group 的其他服务器。已有的非空 secret 不会自动重新生成；手工 secret 不足 32 字符时保持 invalid。双方必须在同一个 group 中互相登记 peer，同一个 peer ID 不能登记到多个本地 group。
 
@@ -1192,9 +1210,11 @@ moderation:
 
 功能包括：
 
-- 隐藏/删除消息
+- 消息删除与公共聊天置顶/删除操作显示
 - 管理置顶
 - 游客/IP 禁言
+- 按用户设置聊天/上传限制并删除自定义资料图片
+- 按 moderator 设置委派 capability
 - 查看和撤销会话
 - Emoji 文件管理
 - 上传与存储用量
@@ -1211,7 +1231,7 @@ private-chat-super-admins:
 
 元数据视图可显示私信/群组的标题与参与者、消息数、大致存储占用、保留状态、清理预览、锁定/自动删除排除等元数据管理功能。
 
-`direct-message.admin-audit.enabled` 是默认关闭的只读私信正文审计开关。只有明确列在 `private-chat-super-admins` 中的账号可以使用，审计视图不能发送、回复、隐藏消息或更新已读状态。每次分页读取都会记录为 `admin.dm-audit-read`。`group-chat.admin-audit.enabled` 是独立的只读群聊正文审计开关。
+`direct-message.admin-audit.enabled` 是默认关闭的只读私信正文审计开关。只有明确列在 `private-chat-super-admins` 中的账号可以使用，审计视图不能发送、回复、删除消息或更新已读状态。每次分页读取都会记录为 `admin.dm-audit-read`。`group-chat.admin-audit.enabled` 是独立的只读群聊正文审计开关。
 
 ### 28.2 审计日志
 
@@ -1301,7 +1321,7 @@ ui:
 /kchat dm read <player> [pageSize]
 /kchat dm next
 /kchat dm prev
-/kchat dm hide <messageId>
+/kchat dm delete <messageId>
 /kchat reply <messageId> <message>
 /kchat group list
 /kchat group <room> <message>
@@ -1328,7 +1348,7 @@ ui:
 根命令别名：
 
 ```text
-/kc
+/kchat
 ```
 
 群聊别名：
@@ -1486,7 +1506,7 @@ kwc.update.notify
 
 
 ### 管理员群聊正文审计（4.6.3）
-需要设置 `group-chat.admin-audit.enabled: true`，并把准确的 Minecraft 名或 UUID 列入 `private-chat-super-admins`；两个条件都必须满足。符合条件的管理员即使不是房间成员，也可以从管理员房间元数据列表中只读打开群聊正文。审计视图不会加入房间、更新已读/未读状态、发送/上传/隐藏消息或修改成员关系。每次分页读取都会记录为 `admin.group-audit-read`，消息正文不会复制到审计日志。
+需要设置 `group-chat.admin-audit.enabled: true`，并把准确的 Minecraft 名或 UUID 列入 `private-chat-super-admins`；两个条件都必须满足。符合条件的管理员即使不是房间成员，也可以从管理员房间元数据列表中只读打开群聊正文。审计视图不会加入房间、更新已读/未读状态、发送/上传/删除消息或修改成员关系。每次分页读取都会记录为 `admin.group-audit-read`，消息正文不会复制到审计日志。
 
 
 
