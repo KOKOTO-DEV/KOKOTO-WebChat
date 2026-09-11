@@ -46,6 +46,8 @@ has(games, 'return Math.max(0, Number(game.winnerCount || 0));', 'firstcome disp
 has(games, 'maxInput.value = String(Math.max(1, Number(winnerInput?.value || 1)))', 'hidden firstcome participant value mirrors winners');
 has(games, 'winnerInput?.addEventListener("input", syncGameCapacityFields)', 'firstcome mirror updates when winner count changes');
 notHas(games, 't("game.type", "Type")', 'event form no longer depends on English Type fallback');
+has(games, 'winners.map(item => directMessageIdentityHtml({displayName:item.displayName || item.label || item.username || item.uuid || "", username:item.username || "", uuid:item.uuid || ""}, "kwc-sender"))', 'event winner rows use the shared display/real-name identity renderer');
+has(games, 'username:item.username || ""', 'event participant rows pass the real username into the identity renderer');
 
 const history = read('frontend/inner/50-public-history-virtual-scroll.js');
 has(history, 'chatGameDeletedNotice()', 'deleted public-chat event card uses localized notice');
@@ -60,6 +62,12 @@ has(pins, 'data-real-sender=', 'pinned-by carries real account name');
 const server = read('kwc-core/src/main/java/dev/kokoto/webchat/WebChatServer.java');
 has(server, 'storage.findKnownLocalPlayer(legacyPinner)', 'legacy public pins attempt local identity enrichment');
 has(server, 'storage.findKnownPlayerByUuid(pinnerUuid)', 'structured pinner identity can refresh without a web account lookup');
+has(server, 'actorUsername', 'remote event join forwards the real username');
+check(!server.includes('enrichChatGameIdentities'), 'final event identity path has no intermediate RC enrichment');
+const manager = read('kwc-core/src/main/java/dev/kokoto/webchat/ChatGameManager.java');
+has(manager, 'participantUsernames', 'event persistence keeps real usernames separately from display labels');
+has(manager, 'participant.put("username"', 'event participant snapshots expose the real username');
+has(manager, 'winner.put("username"', 'event winner snapshots expose the real username');
 
 const revision = read('kwc-core/src/main/java/dev/kokoto/webchat/BuiltinLanguageRevision.java');
 check((revision.match(/"game\.deletedNotice", "This event has been deleted and can no longer be opened\."/g) || []).length >= 3,

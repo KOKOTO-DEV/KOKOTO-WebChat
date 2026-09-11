@@ -10,7 +10,7 @@
 
 ## 5.3.0 リリース
 
-5.3.0 は 5.2.1 を基準に、DM/group の保存済み全履歴検索と送信者所有メッセージ削除、room-local の group role/pin/delete policy、複数同時運用できる First come/Lottery Chat Event、user profile と Game/Web presence・Offline privacy、personal block、moderator ごとの委任権限、拡張 built-in CAPTCHA、Web `@` autocomplete、画像 metadata 除去を追加します。Relay Protocol **2.2** は protocol major 2 互換性を維持し、DM delete、event routing、remote profile lookup と peer ごとの `public-chat` / `event` / `dm` / `profile` send/receive policy を capability で制御します。desktop の public/DM/group window は drag/resize/maximize 動作を統一し、8 種類の adapter/standalone は同じ frontend fragment と CSS から生成され、responsive header と最小化 frame も同期されます。
+5.3.0 は 5.2.1 を基準に、DM/group の保存済み全履歴検索と送信者所有メッセージ削除、room-local の group role/pin/delete policy、複数同時運用できる First come/Lottery Chat Event、user profile と Game/Web presence・Offline privacy、personal block、moderator ごとの委任権限、拡張 built-in CAPTCHA、Web `@` autocomplete、画像 metadata 除去を追加します。Relay Protocol **2.2** は protocol major 2 互換性を維持し、DM delete、event routing、remote profile lookup と peer ごとの `public-chat` / `event` / `dm` / `profile` send/receive policy を capability で制御します。**Standalone のデスクトップモード**では、DM/group の一覧と複数の個別会話を独立ウィンドウとして開き、drag/resize/maximize できます。8 種類の adapter/standalone は同じ frontend fragment と CSS から生成され、public chat の responsive header と最小化 frame 動作は adapter 側でも同期されます。
 
 
 
@@ -50,7 +50,7 @@ Bukkit/Paper/Spigot では BlueMap、squaremap、Dynmap、Pl3xMap、LiveAtlas、
 - group 単位の公開チャットとサーバー間 DM/既読 receipt を扱う Relay Protocol 2.2：Relay v2 の trust/暗号化モデルを維持しながら reaction/typing と sender-authoritative DM delete capability をサポートし、request 単位 peer 認証、HKDF-SHA256/AES-256-GCM の hop-by-hop 認証付き暗号化、replay 防御、HTTPS 専用 forwarding に対応
 - 公開/DM/group の範囲を保存するアカウント単位の保存済み会話 snapshot、管理者の削除/ロック方針優先、ブラウザー PDF export
 - polling/永続化なしの 5 秒 window を使うイベント駆動 public/DM/group typing indicator
-- ログインユーザー向け公開/DM/group メッセージ reaction：Unicode/KWC custom emoji、空状態では `+` button の高さだけを最小限確保し実 reaction が付くと通常行へ拡張する message 下部 UI、位置を維持して外側 click で閉じる category/search picker、reactor 表示名 hover list、**Admin > Emojis > Reaction icons** の機能 ON/OFF と catalog 管理に対応。公開 reaction は origin authority で Relay 同期し、cross-server DM reaction は相手 participant server のみに送信、group reaction は local のまま
+- ログインユーザー向け公開/DM/group メッセージ reaction：Unicode/KWC custom emoji、空状態では `+` button の高さだけを最小限確保し実 reaction が付くと通常行へ拡張する message 下部 UI、位置を維持して外側 click で閉じる category/search picker、reactor 表示名 hover list、**Admin > Emojis > Reaction icons** の機能 ON/OFF、catalog 管理、検索 alias 編集に対応。検索 alias は reaction picker の検索専用です。公開 reaction は origin authority で Relay 同期し、cross-server DM reaction は相手 participant server のみに送信、group reaction は local のまま
 - Minecraft クリック返信(`/kchat reply`)と Web 送信者クリック KWC DM(`/kchat dm`)
 - ゲーム `/w`/`/msg`/`/tell` 系 whisper の両ユーザー Web DM への任意複製
 - ゲストチャット、計算 captcha、クールダウン、分間制限

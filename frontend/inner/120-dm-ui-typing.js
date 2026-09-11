@@ -177,7 +177,7 @@
 
   function chatViewNearBottom(box) {
     if (!box) return true;
-    return Number(box.scrollHeight || 0) - Number(box.scrollTop || 0) - Number(box.clientHeight || 0) <= 80;
+    return isAutoFollowBottom(box);
   }
 
   function captureChatViewAnchor(type) {
@@ -206,6 +206,9 @@
 
   function saveConversationView(type, conversationId = "") {
     if (state.chatViewRestoreInProgress) return false;
+    // A minimized public viewport has no meaningful geometry. Persisting an anchor
+    // from that hidden state causes cumulative upward drift after each restore.
+    if (type === "public" && state.minimized) return false;
     if ((type === "dm" && state.dmAuditMode) || (type === "group" && state.groupAuditMode)) return false;
     const key = chatViewConversationKey(type, conversationId);
     if (!key) return false;
@@ -415,9 +418,6 @@
     const save = () => saveCurrentChatViewPosition();
     window.addEventListener("pagehide", save, true);
     window.addEventListener("beforeunload", save, true);
-    // RC6 이전의 reload 전용 sessionStorage 위치 데이터는 더 이상 사용하지 않는다.
-    // RC6 no longer uses the old reload-only sessionStorage position record.
-    try { sessionStorage.removeItem("kwc.privateReloadView.v1"); } catch (_) {}
   }
 
   function reconcilePrivateMessageList(box, messages, type, conversationKey, auditNoticeHtml, emptyHtml) {
@@ -1302,9 +1302,10 @@
     if (!wrap || !modal || wrap.dataset.kwcTransparentResizeInstalled === "1") return;
     wrap.dataset.kwcTransparentResizeInstalled = "1";
     const directions = ["nw","n","ne","e","se","s","sw","w"];
-    const edgeSize = 12;
+    const edgeOutset = 16;
+    const edgeOverlap = 3;
     const edgeInset = 3;
-    const cornerInset = 5;
+    const cornerOverlap = 5;
     const handles = directions.map(direction => {
       const handle = document.createElement("div");
       handle.className = "kwc-window-resize-zone kwc-window-resize-zone-" + direction;
@@ -1332,26 +1333,39 @@
         let left, top, width, height;
         if (d === "n" || d === "s") {
           left = rect.left + edgeInset;
-          top = d === "n" ? rect.top - edgeSize : rectBottom;
+          top = d === "n" ? rect.top - edgeOutset : rectBottom - edgeOverlap;
           width = Math.max(1, rect.width - (edgeInset * 2));
-          height = edgeSize;
+          height = edgeOutset + edgeOverlap;
         } else if (d === "e" || d === "w") {
-          left = d === "w" ? rect.left - edgeSize : rectRight;
+          left = d === "w" ? rect.left - edgeOutset : rectRight - edgeOverlap;
           top = rect.top + edgeInset;
-          width = edgeSize;
+          width = edgeOutset + edgeOverlap;
           height = Math.max(1, rect.height - (edgeInset * 2));
         } else {
           const isLeft = d === "nw" || d === "sw";
           const isTop = d === "nw" || d === "ne";
-          left = isLeft ? rect.left - edgeSize + cornerInset : rectRight - cornerInset;
-          top = isTop ? rect.top - edgeSize + cornerInset : rectBottom - cornerInset;
-          width = edgeSize;
-          height = edgeSize;
+          left = isLeft ? rect.left - edgeOutset : rectRight - cornerOverlap;
+          top = isTop ? rect.top - edgeOutset : rectBottom - cornerOverlap;
+          width = edgeOutset + cornerOverlap;
+          height = edgeOutset + cornerOverlap;
         }
-        handle.style.left = Math.round(Math.max(0, Math.min(window.innerWidth - width, left))) + "px";
-        handle.style.top = Math.round(Math.max(0, Math.min(window.innerHeight - height, top))) + "px";
-        handle.style.width = Math.round(width) + "px";
-        handle.style.height = Math.round(height) + "px";
+        // Keep a small inward overlap so the edge can still be grabbed when the
+        // window touches the viewport boundary. Most of the target remains outside
+        // the conversation, leaving the scrollbar usable.
+        const clippedLeft = Math.max(0, left);
+        const clippedTop = Math.max(0, top);
+        const clippedRight = Math.min(window.innerWidth, left + width);
+        const clippedBottom = Math.min(window.innerHeight, top + height);
+        const clippedWidth = Math.max(0, clippedRight - clippedLeft);
+        const clippedHeight = Math.max(0, clippedBottom - clippedTop);
+        if (clippedWidth <= 0 || clippedHeight <= 0) {
+          handle.style.display = "none";
+          return;
+        }
+        handle.style.left = Math.round(clippedLeft) + "px";
+        handle.style.top = Math.round(clippedTop) + "px";
+        handle.style.width = Math.round(clippedWidth) + "px";
+        handle.style.height = Math.round(clippedHeight) + "px";
       });
     };
     const applyGeometry = geometry => {

@@ -57,7 +57,7 @@ has(dmUi, 'update(geometry);', 'private resize reuses computed geometry without 
 const frame = read('frontend/inner/30-reply-identity-frame.js');
 has(frame, 'resizeFrame = requestAnimationFrame(flushGeometry)', 'public standalone resize writes are frame-coalesced');
 has(frame, 'update(geometry);', 'public standalone resize reuses computed geometry');
-has(frame, 'width: state.minimized ? 48 : state.frameNormalWidth', 'child requests a 48px minimized public frame');
+has(frame, 'width: state.minimized ? 124 : state.frameNormalWidth', 'child requests the title-plus-restore minimized public width');
 for (const rel of [
   'kwc-adapter-bluemap/src/main/resources/web/chat.js',
   'kwc-adapter-dynmap/src/main/resources/dynmap/chat.js',
@@ -67,7 +67,7 @@ for (const rel of [
   'kwc-adapter-squaremap/src/main/resources/squaremap/chat.js',
   'kwc-adapter-unmined/src/main/resources/unmined/chat.js'
 ]) {
-  has(read(rel), 'frameMinimized ? 48', rel + ' parent frame also collapses to 48px');
+  has(read(rel), 'const requestedWidth = frameMinimized ? 124 :', rel + ' parent frame reserves title-plus-restore minimized width');
 }
 
 const langRevision = read('kwc-core/src/main/java/dev/kokoto/webchat/BuiltinLanguageRevision.java');
@@ -90,11 +90,12 @@ const css = read('kwc-standalone-frontend/src/main/resources/standalone/chat.css
 has(css, '.kwc-game-list-actions > .kwc-button {\n  width: 52px !important;', 'event Open/Delete buttons use the same fixed column width');
 has(css, '.kwc-game-list-delete {\n  position: static !important;', 'event Delete no longer inherits message-delete positioning');
 has(css, 'Do not add an audit-only pixel offset', 'DM audit back action intentionally inherits common title-row inset');
-const finalMin = css.lastIndexOf('5.3.0 RC33: final public minimized chrome contract');
-const oldMin = css.lastIndexOf('5.3.0 RC21');
-check(finalMin > oldMin, 'final minimized + only rule is later than conflicting historical minimized CSS');
-has(css.slice(finalMin), '.kwc-actions-primary > :not(#kwc-min)', 'final minimized rule hides every primary action except restore');
-has(css.slice(finalMin), 'width: 48px !important;', 'final minimized public root is 48px wide');
+const rc33Min = css.lastIndexOf('5.3.0 RC33: final public minimized chrome contract');
+const finalMin = css.lastIndexOf('5.3.0 RC38 window hotfix: minimized title + restore button contract.');
+check(finalMin > rc33Min, 'current minimized title-plus-restore rule overrides the older RC33 + only rule');
+has(css.slice(finalMin), '.kwc-actions-primary > :not(#kwc-min)', 'current minimized rule hides every primary action except restore');
+has(css.slice(finalMin), 'width: 124px !important;', 'current minimized public root reserves title plus restore width');
+has(css.slice(finalMin), '.kwc-header-identity', 'current minimized public root restores the title identity');
 
 const migration = read('kwc-core/src/main/java/dev/kokoto/webchat/PortableConfigMigration.java');
 has(migration, 'augmentRelayPeerPolicies(actual)', 'same-version existing configs physically augment peer policies');

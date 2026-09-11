@@ -48,6 +48,7 @@ public final class PortableConfigMigration {
             "notifications.notify-own-messages",
             "notifications.show-message-preview",
             "server-relay.forward-received-public-chat",
+            "ui.auto-follow-bottom-threshold-px",
             "direct-message.confirm-hide",
             "group-chat.confirm-hide"
     );
@@ -122,7 +123,7 @@ public final class PortableConfigMigration {
         // controls comments/layout/reference/report language; the parsed setting values are
         // always overlaid back onto the selected template and therefore remain authoritative.
         Map<String,Object> actual = loadSnapshot(loader, Files.newInputStream(configPath));
-        // 5.3.0 RC31/RC32 added asymmetric per-peer Relay policy inside the groups YAML list.
+        // 5.3.0 adds asymmetric per-peer Relay policy inside the groups YAML list.
         // A flat canonical default cannot express keys for an operator-created peer, so ordinary
         // missing-setting comparison cannot insert these nested values. Augment existing peer maps
         // explicitly while preserving scalar send/receive shortcuts and every operator value.

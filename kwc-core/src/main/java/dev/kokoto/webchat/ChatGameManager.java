@@ -3,9 +3,6 @@ package dev.kokoto.webchat;
 /* KWC 파일 안내 / KWC file guide
  * ChatGameManager는 웹과 게임에서 함께 사용하는 선착순/추첨 이벤트 목록과 참가자·당첨자를 저장한다.
  * ChatGameManager persists the list of first-come/lottery events, participants, and winners shared by web and game clients.
- *
- * 5.3.0 RC26부터 이벤트는 단일 current.properties가 아니라 이벤트 ID별 properties로 저장한다.
- * Since 5.3.0 RC26 events are stored per event ID instead of one current.properties singleton.
  */
 
 import java.io.InputStream;
@@ -31,7 +28,6 @@ public final class ChatGameManager {
     public record Result(boolean ok, String error, Map<String,Object> game, boolean changed) {}
 
     private final Path directory;
-    private final Path legacyFile;
     private final java.util.Random random = new java.security.SecureRandom();
     private final LinkedHashMap<String,Game> games = new LinkedHashMap<>();
 
@@ -46,12 +42,13 @@ public final class ChatGameManager {
         String createdBy = "";
         long createdAt;
         final LinkedHashMap<String,String> participants = new LinkedHashMap<>();
+        // Keep the immutable Minecraft/account username separately from the presentation label.
+        final LinkedHashMap<String,String> participantUsernames = new LinkedHashMap<>();
         final List<String> winners = new ArrayList<>();
     }
 
     public ChatGameManager(Path dataDirectory) {
         this.directory = dataDirectory.resolve("chat-games");
-        this.legacyFile = directory.resolve("current.properties");
         load();
     }
 
@@ -107,21 +104,23 @@ public final class ChatGameManager {
         return changed(next, "");
     }
 
-    public synchronized Result join(String uuid, String label) {
+    public synchronized Result join(String uuid, String username, String label) {
         Game game = defaultJoinableGame();
-        return game == null ? fail("game_not_found", uuid) : join(game.id, uuid, label);
+        return game == null ? fail("game_not_found", uuid) : join(game.id, uuid, username, label);
     }
 
-    public synchronized Result join(String gameId, String uuid, String label) {
+    public synchronized Result join(String gameId, String uuid, String username, String label) {
         Game game = games.get(clean(gameId));
         uuid = clean(uuid).toLowerCase(Locale.ROOT);
+        username = plain(username);
         label = plain(label);
         if (game == null) return fail("game_not_found", uuid);
         if (!game.status.equals("open")) return fail(game, "game_not_open", uuid);
-        if (uuid.isBlank()) return fail(game, "invalid_user", uuid);
+        if (uuid.isBlank() || username.isBlank()) return fail(game, "invalid_user", uuid);
         if (game.participants.containsKey(uuid)) return new Result(true, "already_joined", snapshotMap(game, uuid), false);
         if (game.participants.size() >= game.maxParticipants) return fail(game, "game_full", uuid);
-        game.participants.put(uuid, label.isBlank() ? uuid : label);
+        game.participants.put(uuid, label.isBlank() ? username : label);
+        game.participantUsernames.put(uuid, username);
         if (game.type.equals("firstcome") && game.winners.size() < game.winnerCount) game.winners.add(uuid);
         if (game.type.equals("firstcome") && game.winners.size() >= game.winnerCount) game.status = "completed";
         else if (game.type.equals("lottery") && game.participants.size() >= game.maxParticipants) game.status = "ready";
@@ -227,9 +226,26 @@ public final class ChatGameManager {
         out.put("createdAt", game.createdAt);
         out.put("joined", game.participants.containsKey(clean(viewerUuid).toLowerCase(Locale.ROOT)));
         List<Map<String,Object>> participants = new ArrayList<>();
-        for (Map.Entry<String,String> entry : game.participants.entrySet()) participants.add(Map.of("uuid", entry.getKey(), "label", entry.getValue()));
+        for (Map.Entry<String,String> entry : game.participants.entrySet()) {
+            LinkedHashMap<String,Object> participant = new LinkedHashMap<>();
+            String uuid = entry.getKey();
+            String displayName = entry.getValue();
+            participant.put("uuid", uuid);
+            participant.put("label", displayName);
+            participant.put("displayName", displayName);
+            participant.put("username", game.participantUsernames.getOrDefault(uuid, ""));
+            participants.add(participant);
+        }
         List<Map<String,Object>> winners = new ArrayList<>();
-        for (String uuid : game.winners) winners.add(Map.of("uuid", uuid, "label", game.participants.getOrDefault(uuid, uuid)));
+        for (String uuid : game.winners) {
+            LinkedHashMap<String,Object> winner = new LinkedHashMap<>();
+            String displayName = game.participants.getOrDefault(uuid, uuid);
+            winner.put("uuid", uuid);
+            winner.put("label", displayName);
+            winner.put("displayName", displayName);
+            winner.put("username", game.participantUsernames.getOrDefault(uuid, ""));
+            winners.add(winner);
+        }
         out.put("participants", participants);
         out.put("winners", winners);
         return out;
@@ -254,7 +270,9 @@ public final class ChatGameManager {
         p.setProperty("maxParticipants", String.valueOf(game.maxParticipants)); p.setProperty("winnerCount", String.valueOf(game.winnerCount));
         p.setProperty("relayAnnouncements", String.valueOf(game.relayAnnouncements));
         p.setProperty("status", game.status); p.setProperty("createdBy", enc(game.createdBy)); p.setProperty("createdAt", String.valueOf(game.createdAt));
-        p.setProperty("participants", encodeParticipants(game.participants)); p.setProperty("winners", String.join(",", game.winners));
+        p.setProperty("participants", encodeParticipants(game.participants));
+        p.setProperty("participantUsernames", encodeParticipants(game.participantUsernames));
+        p.setProperty("winners", String.join(",", game.winners));
         return p;
     }
 
@@ -263,18 +281,9 @@ public final class ChatGameManager {
             Files.createDirectories(directory);
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "*.properties")) {
                 for (Path file : stream) {
-                    if (file.equals(legacyFile)) continue;
                     Game loaded = loadFile(file);
                     if (loaded != null) games.put(loaded.id, loaded);
                 }
-            }
-            if (Files.isRegularFile(legacyFile)) {
-                Game legacy = loadFile(legacyFile);
-                if (legacy != null && !games.containsKey(legacy.id)) {
-                    games.put(legacy.id, legacy);
-                    save(legacy);
-                }
-                try { Files.deleteIfExists(legacyFile); } catch (Exception ignored) {}
             }
         } catch (Exception ignored) {}
     }
@@ -289,6 +298,8 @@ public final class ChatGameManager {
             loaded.relayAnnouncements = Boolean.parseBoolean(p.getProperty("relayAnnouncements", "true"));
             loaded.status = p.getProperty("status", "closed"); loaded.createdBy = plain(dec(p.getProperty("createdBy", ""))); loaded.createdAt = longValue(p.getProperty("createdAt"));
             decodeParticipants(p.getProperty("participants", ""), loaded.participants);
+            decodeParticipants(p.getProperty("participantUsernames", ""), loaded.participantUsernames);
+            if (!loaded.participantUsernames.keySet().equals(loaded.participants.keySet())) return null;
             for (String winner : p.getProperty("winners", "").split(",")) if (!clean(winner).isBlank()) loaded.winners.add(clean(winner));
             if ("firstcome".equalsIgnoreCase(loaded.type) && ("open".equals(loaded.status) || "ready".equals(loaded.status))
                     && loaded.winners.size() >= loaded.winnerCount) loaded.status = "completed";

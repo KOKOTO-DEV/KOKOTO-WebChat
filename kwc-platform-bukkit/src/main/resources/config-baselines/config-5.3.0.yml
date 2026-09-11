@@ -1084,8 +1084,9 @@ ui:
     # Minimum pixel threshold for history preload. Allowed range: 0-1000.
     min-px: 200
 
-  # Distance from the bottom that still counts as following the latest messages. Allowed range: 2-300.
-  auto-follow-bottom-threshold-px: 32
+  # Remaining distance from the bottom that still counts as following the latest messages, measured in rendered text lines.
+  # The default 2 means automatic follow is allowed only while the remaining gap is less than two active line heights. Allowed range: 0.25-10.
+  auto-follow-bottom-threshold-lines: 2
   # After direct user scrolling, wait this many ms before automatic scroll handling. Allowed range: 50-1000.
   scroll-interaction-idle-ms: 160
 

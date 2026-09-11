@@ -188,7 +188,7 @@ public class ReactionRelayHarness {
         managed.put("enabled", "true");
         managed.put("customEmojiEnabled", "false");
         managed.put("showActorList", "false");
-        managed.put("searchAliases", "😂 = laugh tears 웃음\n🦖 = dinosaur 공룡 恐竜 恐龙");
+        managed.put("searchAliases", "😂 = laugh tears 웃음 duplicate\n🦖 = dinosaur 공룡 恐竜 恐龙 duplicate");
         catalog.save(managed);
         check(catalog.enabled(),"catalog master enabled");
         check(catalog.allows("😂"),"catalog managed unicode allowed");
@@ -200,7 +200,7 @@ public class ReactionRelayHarness {
         check(catalogReload.allows("😂") && !catalogReload.allows("👍"),"catalog persistence");
         check(!catalogReload.snapshot().customEmojiEnabled,"catalog custom setting persistence");
         check(!catalogReload.snapshot().showActorList,"catalog actor list setting persistence");
-        check("dinosaur 공룡 恐竜 恐龙".equals(catalogReload.snapshot().searchAliases.get("🦖")),"catalog alias file persistence");
+        check("dinosaur 공룡 恐竜 恐龙 duplicate".equals(catalogReload.snapshot().searchAliases.get("🦖")),"catalog alias file persistence");
         Map<String,String> disabled=new LinkedHashMap<>();
         for (String id : ReactionCatalogStore.CATEGORY_IDS) disabled.put(id, String.join(" ", catalogReload.snapshot().categories.get(id)));
         disabled.put("enabled", "false");

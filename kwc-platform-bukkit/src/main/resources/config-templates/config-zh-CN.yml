@@ -966,9 +966,9 @@ ui:
     # 与 history-preload 屏幕距离配合使用的最小像素阈值，使历史加载可在到达边缘前开始。
     # 运行时范围为 0-1000，超出范围会钳制到边界值。
     min-px: 200
-  # 自动跟随最新消息时，仍视为处于底部跟随状态的底部距离（px）。
-  # 运行时范围为 2-300，超出范围会钳制到边界值。
-  auto-follow-bottom-threshold-px: 32
+  # 自动跟随最新消息时，以实际渲染文本的行数指定仍视为位于底部的剩余距离。
+  # 默认值 2 表示仅当剩余间距小于当前 line-height 的两行时才自动跟随。运行时范围为 0.25-10。
+  auto-follow-bottom-threshold-lines: 2
   # 用户直接滚动后，自动 scroll/follow 逻辑可恢复前的静默时间（ms）。
   # 运行时范围为 50-1000，超出范围会钳制到边界值。
   scroll-interaction-idle-ms: 160

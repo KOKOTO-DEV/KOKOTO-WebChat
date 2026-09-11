@@ -1,11 +1,15 @@
 // [KWC 유지보수 주석 / KWC maintenance notes]
-// 넓은 화면에서는 DM/그룹 목록을 부모 창으로 유지하고 각 대화를 독립 자식 창으로 띄운다.
-// On wide viewports, DM/group lists remain parent windows while each conversation can live in an independent child window.
+// Standalone의 넓은 데스크톱 화면에서만 DM/그룹 목록을 부모 창으로 유지하고 각 대화를 독립 자식 창으로 띄운다.
+// Only Standalone on a sufficiently large desktop viewport keeps DM/group lists as parent windows with independent conversation children.
 // 네트워크 연결과 전역 메시지 state는 기존 하나를 공유한다. 비활성 자식 창은 마지막 렌더 스냅샷을 보관하고 다시 활성화될 때 최신 데이터를 불러온다.
 // Network connections and global message state stay shared. Inactive child windows keep a last-render snapshot and refresh when reactivated.
 
   function privateMultiWindowSupported() {
-    return window.innerWidth >= Number(state.privateMultiWindowMinWidth || 900)
+    // Detached private child windows are a Standalone-only desktop feature.
+    // Embedded map adapters keep the single-pane private-chat presentation even
+    // when the iframe/page happens to have enough viewport space.
+    return state.isStandalone === true
+      && window.innerWidth >= Number(state.privateMultiWindowMinWidth || 900)
       && window.innerHeight >= Number(state.privateMultiWindowMinHeight || 480);
   }
 
@@ -421,7 +425,7 @@
     if (window.visualViewport) window.visualViewport.addEventListener("resize", syncSettled, {passive:true});
   }
 
-  // RC22 mobile viewport guard. DM/group backdrops live on document.body, so a
+  // Mobile viewport guard. DM/group backdrops live on document.body, so a
   // plain 100vh/100% can extend below the actually visible mobile viewport when
   // browser chrome or the virtual keyboard changes height. Follow visualViewport
   // directly and keep the composer inside the visible region.

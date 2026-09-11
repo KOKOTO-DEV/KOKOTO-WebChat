@@ -138,8 +138,8 @@ public final class GameCommandService {
             return 1;
         }
         if (action.equals("join")) {
-            result = rest.isBlank() ? server.joinChatGame(sender.uuid().toString(), sender.displayName())
-                    : server.joinChatGame(resolveGameId(server, sender, rest), sender.uuid().toString(), sender.displayName());
+            result = rest.isBlank() ? server.joinChatGame(sender.uuid().toString(), sender.username(), sender.displayName())
+                    : server.joinChatGame(resolveGameId(server, sender, rest), sender.uuid().toString(), sender.username(), sender.displayName());
             if (!result.ok()) return fail(sender, gameError(result.error()));
             sender.send(result.error().equals("already_joined") ? msg("gameAlreadyJoined", "You already joined this event.") : msg("gameJoined", "You joined the event."));
             sendGameStatus(sender, result.game());
@@ -276,7 +276,15 @@ public final class GameCommandService {
         if (game == null) return msg("gameNoWinners", "No winners.");
         List<String> names = new ArrayList<>();
         if (game.get("winners") instanceof List<?> winners) for (Object item : winners) {
-            if (item instanceof Map<?,?> map) names.add(String.valueOf(map.get("label")));
+            if (item instanceof Map<?,?> map) {
+                Object displayValue = map.containsKey("displayName") ? map.get("displayName") : map.get("label");
+                Object usernameValue = map.containsKey("username") ? map.get("username") : "";
+                String displayName = clean(String.valueOf(displayValue == null ? "" : displayValue));
+                String username = clean(String.valueOf(usernameValue == null ? "" : usernameValue));
+                if (displayName.isBlank()) displayName = username;
+                if (displayName.isBlank()) continue;
+                names.add(!username.isBlank() && !username.equalsIgnoreCase(displayName) ? displayName + " (" + username + ")" : displayName);
+            }
         }
         return names.isEmpty() ? msg("gameNoWinners", "No winners.") : msg("gameWinners", "Winners: {names}", "names", String.join(", ", names));
     }

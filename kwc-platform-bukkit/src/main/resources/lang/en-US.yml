@@ -1155,7 +1155,7 @@ web:
     noParticipants: No participants yet.
     winners: Winners
     chat.created: 'Event opened: {title} ({type}, {participants} participants, {winners} winners)'
-    chat.results: 'Event result: {title} - Winners: {winners}'
+    chat.results: '🏆 Event result: {title} - Winners: {winners}'
     none: There is no current event.
     type.firstcome: First come
     type.lottery: Lottery

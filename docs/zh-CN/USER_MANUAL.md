@@ -24,21 +24,21 @@
 ## 5.3.0 新增功能
 
 - **私聊：** DM/群聊可搜索完整已保存历史。DM 的“仅对我隐藏”已移除。启用普通用户自删后，只有发送者能删除自己发送的 DM，删除后会从双方会话中移除。群组房间新增 room-local `owner/admin/member` 角色、置顶管理、全房间删除，以及同时受全局自删设置约束的普通成员自删策略。
-- **Chat Event：** 可通过 Web 或 `/kchat game` 同时运行多个先到先得/抽奖活动。先到先得只使用获奖人数作为容量，满额后自动完成；抽奖分别设置参与人数和获奖人数。活动公告可选择仅当前服务器或通过 Relay 发送。
+- **Chat Event：** 可通过 Web 或 `/kchat game` 同时运行多个先到先得/抽奖活动。先到先得只使用获奖人数作为容量，满额后自动完成；抽奖分别设置参与人数和获奖人数。活动公告可选择仅当前服务器或通过 Relay 发送。参与者/获奖者列表遵循全局 **显示名 / 真实名** 模式；结果公告以 `🏆` 开头，当两者不同时显示为 `显示名 (真实名)`。
 - **用户资料与在线状态：** 用户资料支持 Minecraft Head/自定义头像、280 字 About、角色、个人屏蔽列表及 Game/Web 连接状态。用户可选择 Online/Busy/Offline；Offline 会在服务器端向其他查看者隐藏真实 Game/Web 状态。
 - **管理权限：** ADMIN 可设置账号聊天/上传限制、删除自定义资料图片、更改本地角色，并可按 moderator 委派部分管理 capability。
 - **CAPTCHA 与提及：** 访客 CAPTCHA 支持 off/math/text/mixed 和数学难度；公共/DM/群聊 Web 输入框共享兼容 IME 的 `@` 自动完成。
 - **Relay 2.2：** 在 protocol major 2 内通过 capability 控制发送者本人 DM 删除、Chat Event 路由和远程公开资料查询。每个 peer 可分别控制 `public-chat`、`event`、`dm`、`profile` 的 send/receive。
-- **窗口/UI 与适配器：** 统一 public/DM/group 窗口的 drag/resize/maximize，并让全部适配器/standalone wrapper 从相同 frontend fragment 与 CSS 生成，避免显示差异。
+- **窗口/UI 与适配器：** 公共聊天窗口的 drag/resize/minimize 行为在地图适配器与 Standalone 中保持同步；移动端/小屏嵌入式适配器也保留最小化按钮。多个 DM/群聊独立子窗口仅在足够大的 **Standalone 桌面** viewport 中支持。全部 wrapper 仍由相同 frontend fragment 与 CSS 生成。
 - **图片隐私：** 上传/资料图片会在存储前移除支持的 EXIF/IPTC/comment/XMP 元数据。
 
 ## 5.2.0 新增功能
 
-- **消息 reaction：** 登录用户可以在公共聊天、DM 与普通群聊消息中添加/取消 Unicode 或 KWC 自定义表情 reaction；群聊加入/离开事件不支持 reaction。没有实际 reaction 时，32 × 16px 的 `+` 按钮与当前正文和下一条消息各保留 1px 的视觉间距，不覆盖文字；reaction OFF 时继续使用原来的 8px 消息间距，出现实际 reaction 后才使用正常的 in-flow row/chip 间距。picker 支持表情字符、服务器生成的 Unicode 名称、管理员搜索别名、自定义表情 ID/名称/表情包。别名在 **Admin > Emojis > Reaction icons** 中按 `表情 = 搜索词` 编辑，并保存到 `reaction-search-aliases.txt`。分类/搜索重新渲染后仍保持位置与外部点击关闭。反应悬停列表中的用户名称使用与普通聊天发送者相同的显示名称 ↔ 原始名称切换。总开关和 KWC 自定义表情允许开关使用与其他 Admin settings 相同的圆角主题行。关闭功能后已有数据保留并只读显示，同时拒绝所有本地/Relay mutation。
+- **消息 reaction：** 登录用户可以在公共聊天、DM 与普通群聊消息中添加/取消 Unicode 或 KWC 自定义表情 reaction；群聊加入/离开事件不支持 reaction。没有实际 reaction 时，32 × 16px 的 `+` 按钮与当前正文和下一条消息各保留 1px 的视觉间距，不覆盖文字；reaction OFF 时继续使用原来的 8px 消息间距，出现实际 reaction 后才使用正常的 in-flow row/chip 间距。picker 支持表情字符、服务器生成的 Unicode 名称、管理员搜索别名、自定义表情 ID/名称/表情包。别名在 **Admin > Emojis > Reaction icons** 中按 `表情 = 搜索词` 编辑，并保存到 `reaction-search-aliases.txt`。搜索别名仅用于 picker 搜索，不会转换公共聊天、DM 或群聊输入。分类/搜索重新渲染后仍保持位置与外部点击关闭。反应悬停列表中的用户名称使用与普通聊天发送者相同的显示名称 ↔ 原始名称切换。总开关和 KWC 自定义表情允许开关使用与其他 Admin settings 相同的圆角主题行。关闭功能后已有数据保留并只读显示，同时拒绝所有本地/Relay mutation。
 - **对话存档：** `chat.conversation-archive.enabled: true`（默认）时可用；服务器关闭后不会生成保存相关 DOM，不注册 archive API，也不打开或新建 archive DB。可指定公共/DM/群聊范围的第一条与最后一条消息，保存为私有 snapshot。普通 retention 删除原始历史后 snapshot 仍保留，但管理员强制删除原消息/房间以及私聊房间锁定策略始终优先。附件字节不会复制；原图仍可用时可显示在打印/PDF 中，其他文件保留链接，原件不存在时标记为不可用。PDF 使用用户当前的 KWC 外观设置。 服务器端保存容量由 `chat.conversation-archive` 下的 `max-archives-per-user`、`max-messages-per-archive` 和 `max-messages-per-user` 限制。
 - **“正在输入…”：** 公共/DM/群聊 typing 完全由事件驱动。服务器管理员可在 Web Admin **Settings** 或 `chat.typing-indicator.*` 中分别控制公开聊天、DM 与群聊，默认值为 OFF / ON / ON。`chat.typing-indicator.user-display-control` 默认 OFF；管理员启用后，登录用户会获得一个按账号保存的 **输入中提示** 选项。个人关闭只隐藏自己屏幕上的接收提示，不影响发送自己的 typing 状态。首次输入事件开启 5 秒显示窗口，窗口期间不重复发送；没有 polling、消息数据库写入或常驻 typing worker。提示以高不透明度圆角 pill 浮在当前输入框上方一行，使用与普通消息相同的显示名称 ↔ 原始名称切换，并去除名称中的 formatting tag。字体约为用户聊天字体的 80%，但不会小于服务器基础 UI 字体。多个长名称无法在一行显示时自动折叠为人数。
 - **私聊房间标题栏：** 仅长标题使用省略号，在线人数、Settings 与 Leave 保持固定宽度。Invite、对话存档、隐藏与房间管理按权限集中到 Settings。
-- **自动跟随底部：** 公共、DM、群聊统一使用 32px 阈值。emoji/icon/attachment 面板引起的布局移动会保留 viewport，不会仅因布局变化立即强制滚到底部。
+- **自动跟随底部与浏览位置恢复：** 公共聊天、DM、群聊都按当前实际渲染文本的 line-height 计算；只有距离底部 **小于 2 行文本**时才自动跟随最新消息。若正在更上方阅读，新消息或 emoji/icon/attachment 面板的布局变化不会把视图强制拉到底部。刷新/重新连接后也会在可能的情况下恢复已保存的原浏览位置。
 - **Relay 2.1：** KWC 产品版本与 relay protocol revision 分离。Protocol major 2 是 wire compatibility 边界；2.1 公告 `public`、`dm`、`read`、`reaction`、`reaction-authority`、`typing` capability。
 
 ## 1. 插件概述
@@ -856,7 +856,7 @@ upload:
 
 `max-total-size-mb: 0` 表示不限总量。剪贴板模式为 `insert` 或 `send`。
 
-在桌面多窗口布局中，每个已分离的 DM/群聊会话窗口也都是独立的拖放上传目标。把文件拖到子窗口后，KWC 会先激活对应的 DM 线程/群聊房间，再把上传 URL 插入该会话的输入框；原来的 DM/群聊列表父窗口仍然可以作为拖放目标。
+在 **Standalone 桌面多窗口模式**中，每个已分离的 DM/群聊会话窗口也都是独立的拖放上传目标。把文件拖到子窗口后，KWC 会先激活对应的 DM 线程/群聊房间，再把上传 URL 插入该会话的输入框；原来的 DM/群聊列表父窗口仍然可以作为拖放目标。嵌入式地图适配器页面不作为受支持的多窗口部署模式进行说明。
 
 即使使用 `filename-mode: original`，剪贴板上传也会优先采用 `clipboardData.files` 提供的长文件名。当 Windows/Chromium 的其他剪贴板条目返回 `202608~1.JPG` 这类 DOS 8.3 别名时，只要能够取得长文件名，KWC 就会使用原来的长文件名。如果浏览器只公开 8.3 别名，则不会把这个误导性的别名当作原文件名保存，而会改用 `clipboard-...` 形式的文件名。
 

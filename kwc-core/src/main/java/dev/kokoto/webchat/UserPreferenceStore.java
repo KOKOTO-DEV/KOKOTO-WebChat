@@ -226,32 +226,23 @@ public final class UserPreferenceStore {
         return id;
     }
 
-    // 계정의 수동 표시 상태(online/busy/offline)를 저장한다. 실제 Game/Web 접속 여부는 런타임 상태이고, offline은 기존 Invisible과 같은 privacy 의미로 동작한다.
-    // Stores the account's manual visible status (online/busy/offline). Actual Game/Web connectivity remains runtime state, while offline has the same privacy semantics as legacy Invisible.
+    // 계정의 수동 표시 상태(online/busy/offline)를 저장한다. 실제 Game/Web 접속 여부는 런타임 상태이고, offline은 다른 사용자에게 두 접속 상태를 숨기는 privacy 모드다.
+    // Stores the account's manual visible status (online/busy/offline). Actual Game/Web connectivity remains runtime state, while offline masks both connection states from other viewers.
     public synchronized Map<String,Object> presencePreferences(Account account) {
         Properties p = load(account);
-        String status = normalizePresenceStatus(p.getProperty("presence.status", ""));
-        if (status.isBlank()) status = bool(p, "presence.invisible", false) ? "offline" : "online";
+        String status = normalizePresenceStatus(p.getProperty("presence.status", "online"));
+        if (status.isBlank()) status = "online";
         LinkedHashMap<String,Object> out = new LinkedHashMap<>();
         out.put("status", status);
-        out.put("invisible", "offline".equals(status));
         return out;
     }
 
     public synchronized SaveResult savePresencePreferences(Account account, Map<String,String> raw) {
         Properties p = load(account);
         try {
-            String status = "";
-            if (raw.containsKey("status")) {
-                status = normalizePresenceStatus(raw.get("status"));
-                if (status.isBlank()) return SaveResult.error("invalid_presence_status");
-            } else if (raw.containsKey("invisible")) {
-                status = parseBoolean(raw.get("invisible")) ? "offline" : "online";
-            }
-            if (!status.isBlank()) {
-                p.setProperty("presence.status", status);
-                p.setProperty("presence.invisible", Boolean.toString("offline".equals(status)));
-            }
+            String status = normalizePresenceStatus(raw.get("status"));
+            if (status.isBlank()) return SaveResult.error("invalid_presence_status");
+            p.setProperty("presence.status", status);
         } catch (IllegalArgumentException ex) {
             return SaveResult.error(ex.getMessage());
         }

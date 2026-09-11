@@ -12133,3 +12133,91 @@ body.kwc-standalone-mode {
   padding-left: 6px !important;
   padding-right: 6px !important;
 }
+
+/* 5.3.0 RC38 window hotfix: minimized title + restore button contract.
+   Keep the collapsed chat identifiable. The title remains visible and the +
+   button is the only action; later RC33 restore-only rules are overridden here. */
+#kwc-root.kwc-minimized,
+#kwc-root.kwc-guest-hidden.kwc-minimized,
+#kwc-root.kwc-minimized .kwc-panel,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-panel,
+#kwc-root.kwc-minimized .kwc-header,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-header {
+  width: 124px !important;
+  min-width: 124px !important;
+  max-width: 124px !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  max-height: 48px !important;
+}
+#kwc-root.kwc-minimized .kwc-header,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-header {
+  padding: 0 8px 0 11px !important;
+  gap: 4px !important;
+  justify-content: space-between !important;
+}
+#kwc-root.kwc-minimized .kwc-header-primary,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-header-primary {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  flex: 1 1 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+}
+#kwc-root.kwc-minimized .kwc-header-identity,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-header-identity {
+  display: flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  align-items: center !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+#kwc-root.kwc-minimized .kwc-title,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-title {
+  display: inline-flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+#kwc-root.kwc-minimized .kwc-status,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-status,
+#kwc-root.kwc-minimized .kwc-actions-secondary,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-actions-secondary,
+#kwc-root.kwc-minimized .kwc-actions-primary > :not(#kwc-min),
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-actions-primary > :not(#kwc-min) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+#kwc-root.kwc-minimized .kwc-actions-primary,
+#kwc-root.kwc-guest-hidden.kwc-minimized .kwc-actions-primary {
+  display: flex !important;
+  width: 30px !important;
+  min-width: 30px !important;
+  max-width: 30px !important;
+  flex: 0 0 30px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+#kwc-root.kwc-minimized #kwc-min,
+#kwc-root.kwc-guest-hidden.kwc-minimized #kwc-min {
+  display: inline-flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  width: 30px !important;
+  min-width: 30px !important;
+  max-width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+}
+

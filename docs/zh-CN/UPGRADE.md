@@ -393,6 +393,6 @@ KWC 5.3.0 整个版本线都保持 Relay Protocol 2.2。在同一 revision 内�
 
 DM 不再提供消息级“仅对我隐藏”，只有发送者可以删除自己发送的消息。群聊消息删除对整个房间生效；普通 member 只能删除自己的普通消息，room-local owner/admin 可以管理房间消息。群组置顶按房间保存，所有成员可查看，pin/reorder/unpin 仅限 owner/admin。DM/群聊保存历史搜索采用公共聊天搜索的交互模式。
 
-Presence 区分 Game 与 Web。compact 列表按 Game > Web > Offline 只显示一个代表状态，用户资料中分别显示 Game/Web；账号级 Offline 状态会在服务器端向其他用户隐藏两种真实状态（旧 `invisible` preference 数据会迁移为 Offline）。
+Presence 区分 Game 与 Web。compact 列表按 Game > Web > Offline 只显示一个代表状态，用户资料中分别显示 Game/Web；账号级 Offline 状态会在服务器端向其他用户隐藏两种真实状态。
 
 升级后请检查 BlueMap 刷新恢复、DM/群聊搜索与删除、群组置顶/角色、Game/Web presence、Offline 隐私，以及所有相关 peer 升级后的跨服务器 DM 删除。

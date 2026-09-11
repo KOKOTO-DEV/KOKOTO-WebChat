@@ -421,6 +421,6 @@ KWC 5.3.0 전체는 Relay Protocol 2.2를 유지합니다. 같은 revision 안�
 
 DM에는 메시지 단위 ‘나에게만 숨김’이 더 이상 없고 발신자만 자신의 메시지를 삭제할 수 있습니다. 그룹 메시지 삭제는 방 전체에 적용되며 일반 멤버는 자신의 일반 메시지만 삭제하고 room-local owner/admin은 방 메시지를 관리할 수 있습니다. 그룹 핀은 방별로 저장되고 모든 멤버가 볼 수 있으며 pin/순서 변경/unpin은 owner/admin만 가능합니다. DM/그룹 저장 기록 검색은 공개채팅 검색 UI 패턴을 사용합니다.
 
-Presence는 Game과 Web 접속을 구분합니다. compact 목록은 Game > Web > Offline 순서로 하나의 대표 상태를 표시하고, 프로필은 Game/Web을 따로 보여줍니다. 계정별 오프라인 상태는 다른 사용자에게 두 상태를 서버 단계에서 모두 숨깁니다(기존 `invisible` 설정 데이터는 오프라인으로 승계됩니다).
+Presence는 Game과 Web 접속을 구분합니다. compact 목록은 Game > Web > Offline 순서로 하나의 대표 상태를 표시하고, 프로필은 Game/Web을 따로 보여줍니다. 계정별 오프라인 상태는 다른 사용자에게 두 상태를 서버 단계에서 모두 숨깁니다.
 
 업그레이드 후 BlueMap 새로고침 복구, DM/그룹 검색·삭제, 그룹 핀/역할, Game/Web presence, 오프라인 개인정보 보호, 그리고 관련 relay peer를 모두 올린 뒤 서버 간 DM 삭제를 확인하세요.

@@ -15,16 +15,17 @@
 - [ ] Web Reply 保留完整原文，并正确、可读地呈现 URL 与自定义表情。
 - [ ] 游戏内 DM/group 名称点击会准备现有命令，消息正文点击会准备 Reply，URL 片段仍执行打开 URL。
 - [ ] 被篡改的 `dm-...`/`group-...` Reply target，若发送者不是实际 DM 参与者或当前 group member，必须被拒绝。
+- [ ] Chat Event 可同时保留多个先到先得/抽奖活动；先到先得在获奖人数容量满额时自动完成；参与者/获奖者列表遵循显示名 / 真实名模式；结果公告以 `🏆` 开头，名称不同时显示为 `显示名 (真实名)`。
 
-- [ ] 公共消息 reaction 可持久化，Relay 2.2 传播正常，且 reaction-only SSE 更新不会重启正在播放的媒体；32 × 16px empty-state `+` 与正文/下一条消息各保留 1px 视觉间距，reaction OFF 保持原来的 8px spacing，实际 reaction 使用正常 in-flow row；分类/搜索重绘后 picker 位置和外部点击关闭正常；**Admin > Emojis > Reaction icons** 使用与其他 Admin settings 相同的圆角主题行，并提供 `表情 = 搜索词` 别名编辑器，保存到 `reaction-search-aliases.txt`。
-- [ ] 公开聊天/DM/群聊“正在输入…”使用 5 秒 event-driven window，排除本人/audit viewer，多个过长名称会折叠为人数，并且不产生 polling 或持久 typing 状态。Web Admin Settings/config.yml 分别执行服务器级默认值：公开聊天 OFF / DM ON / 群聊 ON，个人聊天设置中不得出现 typing 开关。
+- [ ] 公共消息 reaction 可持久化，Relay 2.2 传播正常，且 reaction-only SSE 更新不会重启正在播放的媒体；32 × 16px empty-state `+` 与正文/下一条消息各保留 1px 视觉间距，reaction OFF 保持原来的 8px spacing，实际 reaction 使用正常 in-flow row；分类/搜索重绘后 picker 位置和外部点击关闭正常；**Admin > Emojis > Reaction icons** 使用与其他 Admin settings 相同的圆角主题行，并提供 `表情 = 搜索词` 别名编辑器，保存到 `reaction-search-aliases.txt`。 搜索别名仅用于 picker 搜索，不转换聊天输入。
+- [ ] 公开聊天/DM/群聊“正在输入…”使用 5 秒 event-driven window，排除本人/audit viewer，多个过长名称会折叠为人数，并且不产生 polling 或持久 typing 状态。Web Admin Settings/config.yml 分别执行服务器级默认值：公开聊天 OFF / DM ON / 群聊 ON。`chat.typing-indicator.user-display-control` 默认关闭；管理员启用后，按账号保存的个人开关只隐藏接收到的 typing 提示，不停止发送自己的 typing 状态。
 - [ ] 对话存档由服务器重新验证范围，执行 archive quota 与私聊房间 lock 策略，在普通 retention 后仍保留 snapshot，但管理员删除源消息时会 cascade 清理。
 - [ ] 对话存档 PDF/打印视图同时显示 display name + real name，使用当前 KWC appearance，仅嵌入仍存在原件的图片，video/audio/其他文件保留 link，原件丢失时标记 unavailable。
 - [ ] `chat.conversation-archive.enabled: false` 时不注册 archive API，不打开或新建 `conversation-archives.db`，并且 Web UI 不生成保存对话相关 DOM。
 - [ ] 将 `max-archives-per-user`、`max-messages-per-archive`、`max-messages-per-user` 设置为非默认值时，服务器实际执行这些限制，且 `/archive/list` 返回生效值。
 - [ ] 打开的 DM 中，Back/标题 hover 背景应无缝覆盖整个标题栏直到内缩的 Settings 按钮区域，同时 Settings 按钮自身的 hover 状态仍独立生效。
 - [ ] 单个表情反应通知复选框同时控制实时浏览器反应通知与后台/移动 Web Push 反应通知，不受支持的投递路径保持不工作。
-- [ ] 公共/DM/群聊 bottom-follow 统一使用 32px；compose panel 布局变化保留 viewport，不会仅因该变化立即强制滚到底部。
+- [ ] 公共/DM/群聊 latest-follow 仅在距离底部 **小于 2 行实际渲染文本**时生效；更上方阅读时不会因新消息/compose panel 布局变化被强制拉到底部，刷新/重连后会在可能的情况下恢复已保存的浏览位置。
 
 ## Relay / 安全
 - [ ] 可选的 signed `/relay/v2/handshake` identity/health probe 在双方以相同 group ID 与 group shared secret 互相登记时成功；probe 不创建 route 状态，direct relay 会逐请求独立认证。

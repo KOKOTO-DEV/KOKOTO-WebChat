@@ -35,7 +35,7 @@ for (const lang of langs) {
   lacks(text, 'error.game_already_open:', `${lang} obsolete singleton event error removed`);
 }
 
-// Exact missing UI keys called out in RC26 audit: dm.open and reply.reply must exist in all languages.
+// Exact DM/reply UI keys must exist in all languages.
 for (const lang of langs) {
   const text = read(`kwc-platform-bukkit/src/main/resources/lang/${lang}.yml`);
   const dmBlock = text.match(/\n  dm:\n([\s\S]*?)(?=\n  [a-zA-Z0-9_-]+:\n)/);
@@ -49,8 +49,8 @@ has(manager, 'dataDirectory.resolve("chat-games")', 'event directory persistence
 has(manager, 'DirectoryStream<Path>', 'multi-event directory scan');
 has(manager, 'public synchronized List<Map<String,Object>> list', 'event list API');
 has(manager, 'games.put(next.id, next)', 'multiple event insertion');
-has(manager, 'legacyFile', 'legacy current.properties migration handle');
-has(manager, 'StandardCopyOption', 'legacy migration/archive handling');
+ok(!manager.includes('current.properties') && !manager.includes('legacyFile'), 'final event store has no intermediate single-event migration');
+has(manager, 'StandardCopyOption', 'atomic event persistence handling');
 lacks(manager, 'game_already_open', 'multi-event create has no singleton-open rejection');
 
 const command = read('kwc-core/src/main/java/dev/kokoto/webchat/GameCommandService.java');

@@ -109,7 +109,6 @@
     typingUserDisplayControl: false,
     typingDisplayEnabled: true,
     typingPreferenceLoaded: false,
-    presenceInvisible: false,
     presenceStatus: "online",
     presencePreferenceLoaded: false,
     presenceRefreshTimer: null,
@@ -121,6 +120,7 @@
     typingDmEnabled: true,
     typingGroupChatEnabled: true,
     frameMinimizedHeight: 48,
+    publicMinimizeViewAnchor: null,
     frameNormalWidth: 372,
     frameNormalHeight: 462,
     resizeStart: null,
@@ -4056,6 +4056,14 @@
   }
 
 
+  function uiResizeEnabled() {
+    // ui.resizable defaults to enabled. During refresh the map addon can start
+    // before /api/config has fully recovered, so an unavailable/not-yet-loaded
+    // config must not temporarily disable every resize hit target. Only an
+    // explicit false from the loaded config disables resizing.
+    return !state.config || state.config.uiResizable !== false;
+  }
+
   function updateFrameSize() {
     if (state.isPip) {
       const title = document.querySelector(".kwc-title");
@@ -4077,8 +4085,8 @@
     postFrame("resize", {
       minimized: state.minimized,
       height: state.minimized ? state.frameMinimizedHeight : state.frameNormalHeight,
-      width: state.minimized ? 48 : state.frameNormalWidth,
-      resizable: !!(state.config && state.config.uiResizable),
+      width: state.minimized ? 124 : state.frameNormalWidth,
+      resizable: uiResizeEnabled(),
       minW: state.config ? state.config.uiMinWidth : 280,
       minH: state.config ? state.config.uiMinHeight : 240,
       maxW: state.config ? state.config.uiMaxWidth : 640,
@@ -4626,37 +4634,53 @@
       const rect = geometry || root.getBoundingClientRect();
       const rectRight = Number.isFinite(Number(rect.right)) ? Number(rect.right) : Number(rect.left) + Number(rect.width);
       const rectBottom = Number.isFinite(Number(rect.bottom)) ? Number(rect.bottom) : Number(rect.top) + Number(rect.height);
-      const hidden = standaloneMobileWindowLocked() || state.minimized || root.dataset.kwcMaximized === "1" || !!root.querySelector(":scope > .kwc-window-owned-overlay") || !(state.config && state.config.uiResizable === true);
-      const edgeSize = 12, edgeInset = 3, cornerInset = 5;
+      const hidden = standaloneMobileWindowLocked() || state.minimized || root.dataset.kwcMaximized === "1" || !!root.querySelector(":scope > .kwc-window-owned-overlay") || !uiResizeEnabled();
+      const edgeOutset = 16, edgeOverlap = 3, edgeInset = 3, cornerOverlap = 5;
       const rootZ = Math.max(1000, Number.parseInt(root.style.zIndex || "", 10) || Number(state.chatWindowZ) || 1000);
       handles.forEach(handle => {
         const d = handle.dataset.resizeDirection || "se";
-        handle.style.zIndex = String(rootZ);
+        // Resize zones must paint above the chat root. Otherwise the inward
+        // overlap is visually transparent but pointer-inaccessible.
+        handle.style.zIndex = String(rootZ + 1);
         handle.style.display = hidden ? "none" : "block";
         if (hidden) return;
         let left, top, width, height;
         if (d === "n" || d === "s") {
           left = rect.left + edgeInset;
-          top = d === "n" ? rect.top - edgeSize : rectBottom;
+          top = d === "n" ? rect.top - edgeOutset : rectBottom - edgeOverlap;
           width = Math.max(1, rect.width - (edgeInset * 2));
-          height = edgeSize;
+          height = edgeOutset + edgeOverlap;
         } else if (d === "e" || d === "w") {
-          left = d === "w" ? rect.left - edgeSize : rectRight;
+          left = d === "w" ? rect.left - edgeOutset : rectRight - edgeOverlap;
           top = rect.top + edgeInset;
-          width = edgeSize;
+          width = edgeOutset + edgeOverlap;
           height = Math.max(1, rect.height - (edgeInset * 2));
         } else {
           const isLeft = d === "nw" || d === "sw";
           const isTop = d === "nw" || d === "ne";
-          left = isLeft ? rect.left - edgeSize + cornerInset : rectRight - cornerInset;
-          top = isTop ? rect.top - edgeSize + cornerInset : rectBottom - cornerInset;
-          width = edgeSize;
-          height = edgeSize;
+          left = isLeft ? rect.left - edgeOutset : rectRight - cornerOverlap;
+          top = isTop ? rect.top - edgeOutset : rectBottom - cornerOverlap;
+          width = edgeOutset + cornerOverlap;
+          height = edgeOutset + cornerOverlap;
         }
-        handle.style.left = Math.round(Math.max(0, Math.min(window.innerWidth - width, left))) + "px";
-        handle.style.top = Math.round(Math.max(0, Math.min(window.innerHeight - height, top))) + "px";
-        handle.style.width = Math.round(width) + "px";
-        handle.style.height = Math.round(height) + "px";
+        // Keep only a small 3px inward edge overlap (5px at corners) so the
+        // scrollbar remains usable, while providing the requested 16px target
+        // outside the window. At viewport edges the outside portion is clipped;
+        // the inward overlap remains available instead of the resize target vanishing.
+        const clippedLeft = Math.max(0, left);
+        const clippedTop = Math.max(0, top);
+        const clippedRight = Math.min(window.innerWidth, left + width);
+        const clippedBottom = Math.min(window.innerHeight, top + height);
+        const clippedWidth = Math.max(0, clippedRight - clippedLeft);
+        const clippedHeight = Math.max(0, clippedBottom - clippedTop);
+        if (clippedWidth <= 0 || clippedHeight <= 0) {
+          handle.style.display = "none";
+          return;
+        }
+        handle.style.left = Math.round(clippedLeft) + "px";
+        handle.style.top = Math.round(clippedTop) + "px";
+        handle.style.width = Math.round(clippedWidth) + "px";
+        handle.style.height = Math.round(clippedHeight) + "px";
       });
     };
     const applyGeometry = geometry => {
@@ -4683,7 +4707,7 @@
     };
     const begin = event => {
       if (standaloneMobileWindowLocked()) { forceStandaloneMobileMaximized(root); return; }
-      if (state.minimized || root.dataset.kwcMaximized === "1" || !(state.config && state.config.uiResizable === true)) return;
+      if (state.minimized || root.dataset.kwcMaximized === "1" || !uiResizeEnabled()) return;
       const point = independentWindowPoint(event);
       const rect = root.getBoundingClientRect();
       resize = {direction:String(event.currentTarget.dataset.resizeDirection || "se"), x:point.x, y:point.y, left:rect.left, top:rect.top, width:rect.width, height:rect.height, bounds:resizeBounds()};
@@ -4739,7 +4763,7 @@
     };
 
     const begin = event => {
-      if (state.minimized || (!state.isStandalone && (!state.config || !state.config.uiResizable))) return;
+      if (state.minimized || (!state.isStandalone && !uiResizeEnabled())) return;
       if (state.resizeStart) return;
 
       const p = pointFromEvent(event);
@@ -5112,8 +5136,8 @@
       let width = headerOuterWidth(child);
       const chatAction = child.closest && child.closest(".kwc-action-cluster-chat");
       if (chatAction) {
-        // RC37: use the same 46px normal footprint as the wrapped second-row
-        // menu controls, while still allowing the one-row buttons to compress
+        // Use the same 46px normal footprint as the wrapped second-row menu
+        // controls, while still allowing the one-row buttons to compress
         // to the PIP/minimize footprint before wrapping.
         width = Math.max(46, width);
         if (compactChatWidth > 0) width = Math.min(width, compactChatWidth);
@@ -5536,6 +5560,12 @@
 
   function publicChatMinimizeAvailable() {
     if (state.isPip) return false;
+    // Embedded map/add-on chat must remain minimizable even on phones/tablets.
+    // The 900x480 threshold belongs only to Standalone detached DM/group
+    // multi-window behavior; reusing it here incorrectly removed the minimize
+    // button from mobile add-ons. Standalone keeps the existing mobile/fullscreen
+    // policy so its small viewport is not collapsed into an unusable floating pill.
+    if (!state.isStandalone) return true;
     const viewport = publicChatMinimizeViewport();
     const minW = Number(state.privateMultiWindowMinWidth || 900);
     const minH = Number(state.privateMultiWindowMinHeight || 480);
@@ -5543,9 +5573,9 @@
   }
 
   function reconcileMinimizeAvailability() {
-    // If a viewport becomes too small (or an old localStorage value says minimized
-    // on a runtime that cannot support detached private windows), restore first and
-    // then hide the control. This prevents a hidden restore button / stuck compact UI.
+    // Standalone may disable minimize on a small/mobile viewport. Embedded map/add-on
+    // runtimes remain minimizable at every viewport size. If an old Standalone state
+    // is no longer valid, restore before hiding the control so the UI cannot get stuck.
     if (!publicChatMinimizeAvailable() && state.minimized) {
       toggleMin({persist: true, availabilityRestore: true});
       return;
@@ -5613,6 +5643,14 @@
       const viewportMid = Math.max(0, Number(window.innerWidth) || 0) / 2;
       root.dataset.kwcMinimizedSide = (rect.left + (rect.width / 2)) < viewportMid ? "left" : "right";
     }
+    // Minimize changes the message viewport height to zero/near-zero. Capture a
+    // durable message anchor before changing the layout so restore can return to
+    // exactly the same visible message/offset instead of accumulating scroll drift.
+    if (willMinimize && typeof captureChatViewAnchor === "function") {
+      state.publicMinimizeViewAnchor = captureChatViewAnchor("public");
+      if (typeof saveConversationView === "function") saveConversationView("public", "");
+    }
+
     state.minimized = willMinimize;
     if (options.persist !== false) localStorage.setItem("kwc.minimized", state.minimized ? "1" : "0");
 
@@ -5638,7 +5676,37 @@
     updateNotificationInboxButton();
     scheduleResponsiveHeaderLayout();
     if (!state.minimized) {
-      scheduleVirtualRender();
+      const restoreAnchor = state.publicMinimizeViewAnchor && typeof state.publicMinimizeViewAnchor === "object"
+        ? Object.assign({}, state.publicMinimizeViewAnchor)
+        : null;
+      state.publicMinimizeViewAnchor = null;
+      if (restoreAnchor && restoreAnchor.atBottom !== true) {
+        state.autoFollowLatest = false;
+        state.explicitLatestFollowUntil = 0;
+        state.explicitLatestFollowReason = "";
+        state.forceLatestJumpUntil = 0;
+        state.preventBottomStickUntil = Math.max(Number(state.preventBottomStickUntil || 0), Date.now() + 1400);
+      }
+      scheduleVirtualRender({
+        preserveScroll: true,
+        preserveVisualAnchor: true,
+        stickToBottom: !!(restoreAnchor && restoreAnchor.atBottom === true),
+        suppressBottomStick: !!(restoreAnchor && restoreAnchor.atBottom !== true),
+        forcePreservePosition: !!(restoreAnchor && restoreAnchor.atBottom !== true)
+      });
+      // The iframe/root regains its normal height asynchronously. Re-apply the same
+      // message anchor after layout settles; repeated minimize/restore cycles must
+      // therefore be idempotent instead of moving the reader upward each time.
+      const restoreMinimizedPublicView = () => {
+        if (state.minimized || !restoreAnchor || typeof restoreChatViewAnchorNow !== "function") return;
+        restoreChatViewAnchorNow("public", restoreAnchor);
+        scheduleScrollAffordanceRefresh("unminimize-anchor");
+      };
+      requestAnimationFrame(() => {
+        restoreMinimizedPublicView();
+        requestAnimationFrame(restoreMinimizedPublicView);
+      });
+      setTimeout(restoreMinimizedPublicView, 120);
       protectHistoryEndNotice("unminimize", 8000);
       state.forceHistoryEndNoticeUntil = Math.max(Number(state.forceHistoryEndNoticeUntil || 0), Date.now() + 8000);
       scheduleScrollAffordanceRefresh("unminimize");
@@ -5655,7 +5723,6 @@
     state.role = "";
     state.typingDisplayEnabled = true;
     state.typingPreferenceLoaded = false;
-    state.presenceInvisible = false;
     state.presenceStatus = "online";
     state.loggedInCount = 0;
     state.presencePreferenceLoaded = false;
@@ -6730,17 +6797,35 @@
     return remaining <= tolerance;
   }
 
+  function activeChatLineHeightPx(box) {
+    if (!box) return Math.max(16, Number(state.config && state.config.uiMessageFontSize || 13) * 1.4);
+    const candidates = [];
+    try {
+      const rendered = box.querySelector(".kwc-text, .kwc-dm-message-body, .kwc-msg");
+      if (rendered) candidates.push(rendered);
+    } catch (_) {}
+    candidates.push(box);
+    for (const el of candidates) {
+      try {
+        const style = getComputedStyle(el);
+        const lineHeight = Number.parseFloat(style.lineHeight);
+        if (Number.isFinite(lineHeight) && lineHeight > 0) return lineHeight;
+        const fontSize = Number.parseFloat(style.fontSize);
+        if (Number.isFinite(fontSize) && fontSize > 0) return fontSize * 1.4;
+      } catch (_) {}
+    }
+    return Math.max(16, Number(state.config && state.config.uiMessageFontSize || 13) * 1.4);
+  }
+
   function autoFollowBottomThresholdPx(box) {
     const c = state.config || {};
-    const configured = Number(c.uiAutoFollowBottomThresholdPx);
-    const base = Number.isFinite(configured) ? Math.max(2, Math.min(300, configured)) : 32;
-    const viewport = Math.max(1, box && box.clientHeight ? box.clientHeight : 1);
-    // Do not let the near-bottom zone become too large on very small or mobile windows.
-    return Math.max(2, Math.min(base, Math.round(viewport * 0.35)));
+    const configured = Number(c.uiAutoFollowBottomThresholdLines);
+    const lines = Number.isFinite(configured) ? Math.max(0.25, Math.min(10, configured)) : 2;
+    return Math.max(1, activeChatLineHeightPx(box) * lines);
   }
 
   function isAutoFollowBottom(box) {
-    return isNearBottom(box, autoFollowBottomThresholdPx(box));
+    return !!box && bottomGapPx(box) < autoFollowBottomThresholdPx(box);
   }
 
   function markExplicitLatestFollow(reason = "", ms = 4500) {
@@ -6793,7 +6878,7 @@
     // not restore an old scrollTop and create a gap from the bottom. Older-history
     // prepends are the only normal case that may intentionally move away from the
     // bottom via scroll preservation.
-    if (!options.allowAwayFromBottom && beforeGap <= threshold && requestedGap > threshold) {
+    if (!options.allowAwayFromBottom && beforeGap < threshold && requestedGap >= threshold) {
       requested = maxTop;
       state.autoFollowLatest = true;
     }
@@ -11051,7 +11136,6 @@
     state.uploadCancelRequested = false;
     state.uploadActive = true;
     const uploadIntoModal = state.activeComposeInputId === "kwc-dm-input" || state.activeComposeInputId === "kwc-group-input";
-    if (!uploadIntoModal) markExplicitLatestFollow("upload", 8000);
     setUploadControlsBusy(true);
     updateUploadProgress(t("upload.preparing", "Preparing upload..."), 0, true);
 
@@ -11110,7 +11194,6 @@
       const dmTargetActive = state.activeComposeInputId === "kwc-dm-input" && !!document.getElementById("kwc-dm-input");
       const groupTargetActive = state.activeComposeInputId === "kwc-group-input" && !!document.getElementById("kwc-group-input");
       const modalTargetActive = dmTargetActive || groupTargetActive;
-      if (!modalTargetActive) forceLatestChatView("upload");
       const text = normalizeInsertedMediaLinks(uploaded.join(" "));
       const mode = String((state.config && state.config.uploadClipboardSendMode) || "insert").toLowerCase();
       if (!modalTargetActive && source === "clipboard" && mode === "send") {
@@ -11119,7 +11202,6 @@
       } else {
         appendToMessage(text, {mediaLinks: true});
       }
-      if (!modalTargetActive) forceLatestChatView("upload-complete");
       hideUploadProgressSoon(t("upload.complete", "Upload complete."));
     } else if (state.uploadCancelRequested) {
       hideUploadProgressSoon(t("upload.canceled", "Upload canceled."));
@@ -11495,8 +11577,10 @@
     if (inputToClear) inputToClear.value = "";
     clearReplyTarget();
 
+    const publicMessageBox = document.getElementById("kwc-messages");
+    const followLatestAfterSend = !!publicMessageBox && !state.historyHasAfter && isAutoFollowBottom(publicMessageBox);
     try {
-      markExplicitLatestFollow(options.forceLatest ? "send-forced" : "send", 4500);
+      if (followLatestAfterSend) markExplicitLatestFollow(options.forceLatest ? "send-forced" : "send", 4500);
       const res = await api("/send", {method: "POST", body: JSON.stringify(payload), returnHttpErrorResponse: true});
       if (!res.ok) {
         if (res.captchaPass) {
@@ -11529,9 +11613,9 @@
         state.captchaPass = res.captchaPass;
         localStorage.setItem("kwc.captchaPass", state.captchaPass);
       }
-      forceLatestChatView(options.forceLatest ? "send-forced" : "send");
+      if (followLatestAfterSend) forceLatestChatView(options.forceLatest ? "send-forced" : "send");
       setTimeout(() => {
-        if (state.autoFollowLatest) loadHistory(false, {skipIfUnchanged: true});
+        if (followLatestAfterSend && state.autoFollowLatest) loadHistory(false, {skipIfUnchanged: true});
       }, 180);
       await refreshCaptcha();
       return true;
@@ -13970,10 +14054,10 @@
   const NOTIFICATION_INBOX_KEY = "kwc.notificationInbox";
   const NOTIFICATION_INBOX_READ_AT_KEY = "kwc.notificationInboxReadAt";
 // [KWC 유지보수 주석 / KWC maintenance notes]
-// RC26: 이벤트는 서버별 단일 current 상태가 아니라 ID가 있는 목록이다. 공지 링크는 eventId + originServerId를 보존해
-// Relay 공지를 눌렀을 때 현재 서버의 이벤트가 아니라 원본 서버의 정확한 이벤트를 조회한다.
-// RC26: events are an ID-addressable list rather than one current singleton. Announcement links preserve eventId +
-// originServerId so a relayed notice opens the exact event on its origin server instead of the local current event.
+// 이벤트는 ID가 있는 목록으로 관리되고 공지 링크는 eventId + originServerId를 보존해
+// Relay 공지를 눌렀을 때 현재 서버가 아니라 원본 서버의 정확한 이벤트를 조회한다.
+// Events are managed as an ID-addressable list. Announcement links preserve eventId + originServerId
+// so a relayed notice opens the exact event on its origin server.
 
   function chatGameLocalePrefix() {
     const raw = String(state.selectedLanguage || localStorage.getItem("kwc.language") || (state.config && state.config.language) || navigator.language || "en-US").toLowerCase();
@@ -14280,8 +14364,8 @@
       <div class="kwc-game-summary"><strong>${esc(game.title || "")}</strong><span>${esc(chatGameTypeLabel(game.type))} · ${participants.length}/${esc(chatGameDisplayCapacity(game))} · ${esc(fmt("game.winnerCount", "{count} winners", {count:game.winnerCount || 0}))} · ${esc(chatGameStatusLabel(game.status))} · ${esc(t("game.server", "Server"))}: ${esc(serverName || serverId)}</span></div>
       <div class="kwc-game-actions">${canJoin ? `<button class="kwc-button" id="kwc-game-join">${esc(t("game.join", "Join"))}</button>` : ""}${game.joined ? `<span>${esc(t("game.joined", "Joined"))}</span>` : ""}${canFinish ? `<button class="kwc-button" id="kwc-game-finish">${esc(t(game.type === "lottery" ? "game.finishLottery" : "game.finish", game.type === "lottery" ? "Close and draw" : "Close registration"))}</button>` : ""}${canClose ? `<button class="kwc-button" id="kwc-game-end">${esc(t("game.close", "Close event"))}</button>` : ""}</div>
       ${remote ? `<small>${esc(t("game.remoteReadOnly", "Management is available only on the event origin server."))}</small>` : ""}
-      ${winners.length ? `<section><h4>${esc(t("game.winners", "Winners"))}</h4><div class="kwc-game-winners">${winners.map(item => `<span>${esc(item.label || item.uuid || "")}</span>`).join("")}</div></section>` : ""}
-      <section class="kwc-game-participants"><h4>${esc(fmt("game.participantHeading", "Participants ({count})", {count:participants.length}))}</h4><div class="kwc-game-participant-list">${participants.map((item, index) => `<div class="kwc-game-participant"><span class="kwc-game-participant-number">${index + 1}</span>${directMessageIdentityHtml({displayName:item.label || item.uuid || "", username:"", uuid:item.uuid || ""}, "kwc-sender")}</div>`).join("") || `<em>${esc(t("game.noParticipants", "No participants yet."))}</em>`}</div></section>
+      ${winners.length ? `<section><h4>${esc(t("game.winners", "Winners"))}</h4><div class="kwc-game-winners">${winners.map(item => directMessageIdentityHtml({displayName:item.displayName || item.label || item.username || item.uuid || "", username:item.username || "", uuid:item.uuid || ""}, "kwc-sender")).join("")}</div></section>` : ""}
+      <section class="kwc-game-participants"><h4>${esc(fmt("game.participantHeading", "Participants ({count})", {count:participants.length}))}</h4><div class="kwc-game-participant-list">${participants.map((item, index) => `<div class="kwc-game-participant"><span class="kwc-game-participant-number">${index + 1}</span>${directMessageIdentityHtml({displayName:item.displayName || item.label || item.username || item.uuid || "", username:item.username || "", uuid:item.uuid || ""}, "kwc-sender")}</div>`).join("") || `<em>${esc(t("game.noParticipants", "No participants yet."))}</em>`}</div></section>
       <div class="kwc-admin-result" id="kwc-game-result"></div>`;
     installSenderIdentityToggle(content);
     const act = async action => {
@@ -15892,7 +15976,6 @@
 
   async function loadAccountPresencePreferences() {
     if (!state.token) {
-      state.presenceInvisible = false;
       state.presenceStatus = "online";
       state.presencePreferenceLoaded = false;
       return false;
@@ -15900,9 +15983,8 @@
     try {
       const res = await api("/preferences/presence", {timeoutMs: 8000});
       const prefs = res && res.preferences && typeof res.preferences === "object" ? res.preferences : res;
-      const status = String(prefs && prefs.status || (prefs && prefs.invisible === true ? "offline" : "online")).toLowerCase();
+      const status = String(prefs && prefs.status || "online").toLowerCase();
       state.presenceStatus = status === "busy" ? "busy" : status === "offline" ? "offline" : "online";
-      state.presenceInvisible = state.presenceStatus === "offline";
       state.presencePreferenceLoaded = true;
       return true;
     } catch (_) {
@@ -15916,9 +15998,7 @@
     status = String(status || "online").toLowerCase();
     if (status !== "busy" && status !== "offline") status = "online";
     const previousStatus = state.presenceStatus || "online";
-    const previousInvisible = state.presenceInvisible === true;
     state.presenceStatus = status;
-    state.presenceInvisible = status === "offline";
     try {
       const res = await api("/preferences/presence", {
         method: "POST",
@@ -15928,15 +16008,13 @@
       });
       if (!res || res.ok === false) throw new Error(String(res && res.error || "presence_preferences_save_failed"));
       const prefs = res.preferences && typeof res.preferences === "object" ? res.preferences : res;
-      const saved = String(prefs && prefs.status || (prefs && prefs.invisible === true ? "offline" : "online")).toLowerCase();
+      const saved = String(prefs && prefs.status || "online").toLowerCase();
       state.presenceStatus = saved === "busy" ? "busy" : saved === "offline" ? "offline" : "online";
-      state.presenceInvisible = state.presenceStatus === "offline";
       state.presencePreferenceLoaded = true;
       refreshPresenceSurfaces().catch(() => {});
       return true;
     } catch (_) {
       state.presenceStatus = previousStatus;
-      state.presenceInvisible = previousInvisible;
       return false;
     }
   }
@@ -17770,15 +17848,14 @@
   function presenceData(item) {
     const p = item && item.presence && typeof item.presence === "object" ? item.presence : {};
     const source = String(p.source || (p.gameOnline ? "game" : p.webOnline ? "web" : "offline")).toLowerCase();
-    const statusRaw = String(p.status || (p.invisible ? "offline" : "online")).toLowerCase();
+    const statusRaw = String(p.status || (source === "offline" ? "offline" : "online")).toLowerCase();
     const status = statusRaw === "busy" ? "busy" : statusRaw === "offline" ? "offline" : "online";
     return {
       source: source === "game" || source === "web" ? source : "offline",
       status,
       online: p.online === true || p.gameOnline === true || p.webOnline === true,
       gameOnline: p.gameOnline === true,
-      webOnline: p.webOnline === true,
-      invisible: p.invisible === true || status === "offline"
+      webOnline: p.webOnline === true
     };
   }
 
@@ -19001,7 +19078,7 @@
 
   function privateMessageNearBottom(box) {
     if (!box) return true;
-    return bottomGapPx(box) <= autoFollowBottomThresholdPx(box);
+    return isAutoFollowBottom(box);
   }
 
   function privateMessageMetaHtml(msg, mine, type = "dm") {
@@ -19220,13 +19297,17 @@
     return el;
   }
 // [KWC 유지보수 주석 / KWC maintenance notes]
-// 넓은 화면에서는 DM/그룹 목록을 부모 창으로 유지하고 각 대화를 독립 자식 창으로 띄운다.
-// On wide viewports, DM/group lists remain parent windows while each conversation can live in an independent child window.
+// Standalone의 넓은 데스크톱 화면에서만 DM/그룹 목록을 부모 창으로 유지하고 각 대화를 독립 자식 창으로 띄운다.
+// Only Standalone on a sufficiently large desktop viewport keeps DM/group lists as parent windows with independent conversation children.
 // 네트워크 연결과 전역 메시지 state는 기존 하나를 공유한다. 비활성 자식 창은 마지막 렌더 스냅샷을 보관하고 다시 활성화될 때 최신 데이터를 불러온다.
 // Network connections and global message state stay shared. Inactive child windows keep a last-render snapshot and refresh when reactivated.
 
   function privateMultiWindowSupported() {
-    return window.innerWidth >= Number(state.privateMultiWindowMinWidth || 900)
+    // Detached private child windows are a Standalone-only desktop feature.
+    // Embedded map adapters keep the single-pane private-chat presentation even
+    // when the iframe/page happens to have enough viewport space.
+    return state.isStandalone === true
+      && window.innerWidth >= Number(state.privateMultiWindowMinWidth || 900)
       && window.innerHeight >= Number(state.privateMultiWindowMinHeight || 480);
   }
 
@@ -19642,7 +19723,7 @@
     if (window.visualViewport) window.visualViewport.addEventListener("resize", syncSettled, {passive:true});
   }
 
-  // RC22 mobile viewport guard. DM/group backdrops live on document.body, so a
+  // Mobile viewport guard. DM/group backdrops live on document.body, so a
   // plain 100vh/100% can extend below the actually visible mobile viewport when
   // browser chrome or the virtual keyboard changes height. Follow visualViewport
   // directly and keep the composer inside the visible region.
@@ -19931,7 +20012,7 @@
 
   function chatViewNearBottom(box) {
     if (!box) return true;
-    return Number(box.scrollHeight || 0) - Number(box.scrollTop || 0) - Number(box.clientHeight || 0) <= 80;
+    return isAutoFollowBottom(box);
   }
 
   function captureChatViewAnchor(type) {
@@ -19960,6 +20041,9 @@
 
   function saveConversationView(type, conversationId = "") {
     if (state.chatViewRestoreInProgress) return false;
+    // A minimized public viewport has no meaningful geometry. Persisting an anchor
+    // from that hidden state causes cumulative upward drift after each restore.
+    if (type === "public" && state.minimized) return false;
     if ((type === "dm" && state.dmAuditMode) || (type === "group" && state.groupAuditMode)) return false;
     const key = chatViewConversationKey(type, conversationId);
     if (!key) return false;
@@ -20169,9 +20253,6 @@
     const save = () => saveCurrentChatViewPosition();
     window.addEventListener("pagehide", save, true);
     window.addEventListener("beforeunload", save, true);
-    // RC6 이전의 reload 전용 sessionStorage 위치 데이터는 더 이상 사용하지 않는다.
-    // RC6 no longer uses the old reload-only sessionStorage position record.
-    try { sessionStorage.removeItem("kwc.privateReloadView.v1"); } catch (_) {}
   }
 
   function reconcilePrivateMessageList(box, messages, type, conversationKey, auditNoticeHtml, emptyHtml) {
@@ -21056,9 +21137,10 @@
     if (!wrap || !modal || wrap.dataset.kwcTransparentResizeInstalled === "1") return;
     wrap.dataset.kwcTransparentResizeInstalled = "1";
     const directions = ["nw","n","ne","e","se","s","sw","w"];
-    const edgeSize = 12;
+    const edgeOutset = 16;
+    const edgeOverlap = 3;
     const edgeInset = 3;
-    const cornerInset = 5;
+    const cornerOverlap = 5;
     const handles = directions.map(direction => {
       const handle = document.createElement("div");
       handle.className = "kwc-window-resize-zone kwc-window-resize-zone-" + direction;
@@ -21086,26 +21168,39 @@
         let left, top, width, height;
         if (d === "n" || d === "s") {
           left = rect.left + edgeInset;
-          top = d === "n" ? rect.top - edgeSize : rectBottom;
+          top = d === "n" ? rect.top - edgeOutset : rectBottom - edgeOverlap;
           width = Math.max(1, rect.width - (edgeInset * 2));
-          height = edgeSize;
+          height = edgeOutset + edgeOverlap;
         } else if (d === "e" || d === "w") {
-          left = d === "w" ? rect.left - edgeSize : rectRight;
+          left = d === "w" ? rect.left - edgeOutset : rectRight - edgeOverlap;
           top = rect.top + edgeInset;
-          width = edgeSize;
+          width = edgeOutset + edgeOverlap;
           height = Math.max(1, rect.height - (edgeInset * 2));
         } else {
           const isLeft = d === "nw" || d === "sw";
           const isTop = d === "nw" || d === "ne";
-          left = isLeft ? rect.left - edgeSize + cornerInset : rectRight - cornerInset;
-          top = isTop ? rect.top - edgeSize + cornerInset : rectBottom - cornerInset;
-          width = edgeSize;
-          height = edgeSize;
+          left = isLeft ? rect.left - edgeOutset : rectRight - cornerOverlap;
+          top = isTop ? rect.top - edgeOutset : rectBottom - cornerOverlap;
+          width = edgeOutset + cornerOverlap;
+          height = edgeOutset + cornerOverlap;
         }
-        handle.style.left = Math.round(Math.max(0, Math.min(window.innerWidth - width, left))) + "px";
-        handle.style.top = Math.round(Math.max(0, Math.min(window.innerHeight - height, top))) + "px";
-        handle.style.width = Math.round(width) + "px";
-        handle.style.height = Math.round(height) + "px";
+        // Keep a small inward overlap so the edge can still be grabbed when the
+        // window touches the viewport boundary. Most of the target remains outside
+        // the conversation, leaving the scrollbar usable.
+        const clippedLeft = Math.max(0, left);
+        const clippedTop = Math.max(0, top);
+        const clippedRight = Math.min(window.innerWidth, left + width);
+        const clippedBottom = Math.min(window.innerHeight, top + height);
+        const clippedWidth = Math.max(0, clippedRight - clippedLeft);
+        const clippedHeight = Math.max(0, clippedBottom - clippedTop);
+        if (clippedWidth <= 0 || clippedHeight <= 0) {
+          handle.style.display = "none";
+          return;
+        }
+        handle.style.left = Math.round(clippedLeft) + "px";
+        handle.style.top = Math.round(clippedTop) + "px";
+        handle.style.width = Math.round(clippedWidth) + "px";
+        handle.style.height = Math.round(clippedHeight) + "px";
       });
     };
     const applyGeometry = geometry => {

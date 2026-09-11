@@ -1054,9 +1054,9 @@ ui:
     # 端へ到達する前に履歴読み込みを開始できます。
     # runtime 範囲は 0-1000 で、範囲外は境界値へ補正します。
     min-px: 200
-  # 自動最新メッセージ追従で、まだ bottom 追従中と判断する下端距離(px)です。
-  # runtime 範囲は 2-300 で、範囲外は境界値へ補正します。
-  auto-follow-bottom-threshold-px: 32
+  # 最新メッセージ自動追従で bottom とみなす残り距離を、実際に描画されるテキスト行数で指定します。
+  # 既定値 2 は、残りの間隔が現在の line-height 2 行分未満の場合だけ自動追従します。runtime 範囲は 0.25-10 です。
+  auto-follow-bottom-threshold-lines: 2
   # ユーザー直接スクロール後、自動 scroll/follow 処理を再開できるまでの idle
   # 時間(ms)です。
   # runtime 範囲は 50-1000 で、範囲外は境界値へ補正します。

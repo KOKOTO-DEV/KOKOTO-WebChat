@@ -298,7 +298,7 @@ public final class FabricConfigValuesLoader {
         v.uiVirtualScrollMinRenderedMessages = Math.max(0, c.getInt("ui.virtual-scroll.min-rendered-messages", 30));
         v.uiHistoryPreloadScreens = Math.max(0.0, Math.min(5.0, c.getDouble("ui.history-preload.screens", 0.70)));
         v.uiHistoryPreloadMinPx = Math.max(0, Math.min(1000, c.getInt("ui.history-preload.min-px", 200)));
-        v.uiAutoFollowBottomThresholdPx = Math.max(2, Math.min(300, c.getInt("ui.auto-follow-bottom-threshold-px", 32)));
+        v.uiAutoFollowBottomThresholdLines = Math.max(0.25, Math.min(10.0, c.getDouble("ui.auto-follow-bottom-threshold-lines", 2.0)));
         v.uiScrollInteractionIdleMs = Math.max(50, Math.min(1000, c.getInt("ui.scroll-interaction-idle-ms", 160)));
         v.uiResumeRefreshEnabled = c.getBoolean("ui.resume-refresh.enabled", true);
         v.uiResumeRefreshMinIntervalSeconds = Math.max(1, Math.min(300, c.getInt("ui.resume-refresh.min-interval-seconds", 5)));

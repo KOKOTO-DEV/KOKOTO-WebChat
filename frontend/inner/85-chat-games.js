@@ -1,8 +1,8 @@
 // [KWC 유지보수 주석 / KWC maintenance notes]
-// RC26: 이벤트는 서버별 단일 current 상태가 아니라 ID가 있는 목록이다. 공지 링크는 eventId + originServerId를 보존해
-// Relay 공지를 눌렀을 때 현재 서버의 이벤트가 아니라 원본 서버의 정확한 이벤트를 조회한다.
-// RC26: events are an ID-addressable list rather than one current singleton. Announcement links preserve eventId +
-// originServerId so a relayed notice opens the exact event on its origin server instead of the local current event.
+// 이벤트는 ID가 있는 목록으로 관리되고 공지 링크는 eventId + originServerId를 보존해
+// Relay 공지를 눌렀을 때 현재 서버가 아니라 원본 서버의 정확한 이벤트를 조회한다.
+// Events are managed as an ID-addressable list. Announcement links preserve eventId + originServerId
+// so a relayed notice opens the exact event on its origin server.
 
   function chatGameLocalePrefix() {
     const raw = String(state.selectedLanguage || localStorage.getItem("kwc.language") || (state.config && state.config.language) || navigator.language || "en-US").toLowerCase();
@@ -309,8 +309,8 @@
       <div class="kwc-game-summary"><strong>${esc(game.title || "")}</strong><span>${esc(chatGameTypeLabel(game.type))} · ${participants.length}/${esc(chatGameDisplayCapacity(game))} · ${esc(fmt("game.winnerCount", "{count} winners", {count:game.winnerCount || 0}))} · ${esc(chatGameStatusLabel(game.status))} · ${esc(t("game.server", "Server"))}: ${esc(serverName || serverId)}</span></div>
       <div class="kwc-game-actions">${canJoin ? `<button class="kwc-button" id="kwc-game-join">${esc(t("game.join", "Join"))}</button>` : ""}${game.joined ? `<span>${esc(t("game.joined", "Joined"))}</span>` : ""}${canFinish ? `<button class="kwc-button" id="kwc-game-finish">${esc(t(game.type === "lottery" ? "game.finishLottery" : "game.finish", game.type === "lottery" ? "Close and draw" : "Close registration"))}</button>` : ""}${canClose ? `<button class="kwc-button" id="kwc-game-end">${esc(t("game.close", "Close event"))}</button>` : ""}</div>
       ${remote ? `<small>${esc(t("game.remoteReadOnly", "Management is available only on the event origin server."))}</small>` : ""}
-      ${winners.length ? `<section><h4>${esc(t("game.winners", "Winners"))}</h4><div class="kwc-game-winners">${winners.map(item => `<span>${esc(item.label || item.uuid || "")}</span>`).join("")}</div></section>` : ""}
-      <section class="kwc-game-participants"><h4>${esc(fmt("game.participantHeading", "Participants ({count})", {count:participants.length}))}</h4><div class="kwc-game-participant-list">${participants.map((item, index) => `<div class="kwc-game-participant"><span class="kwc-game-participant-number">${index + 1}</span>${directMessageIdentityHtml({displayName:item.label || item.uuid || "", username:"", uuid:item.uuid || ""}, "kwc-sender")}</div>`).join("") || `<em>${esc(t("game.noParticipants", "No participants yet."))}</em>`}</div></section>
+      ${winners.length ? `<section><h4>${esc(t("game.winners", "Winners"))}</h4><div class="kwc-game-winners">${winners.map(item => directMessageIdentityHtml({displayName:item.displayName || item.label || item.username || item.uuid || "", username:item.username || "", uuid:item.uuid || ""}, "kwc-sender")).join("")}</div></section>` : ""}
+      <section class="kwc-game-participants"><h4>${esc(fmt("game.participantHeading", "Participants ({count})", {count:participants.length}))}</h4><div class="kwc-game-participant-list">${participants.map((item, index) => `<div class="kwc-game-participant"><span class="kwc-game-participant-number">${index + 1}</span>${directMessageIdentityHtml({displayName:item.displayName || item.label || item.username || item.uuid || "", username:item.username || "", uuid:item.uuid || ""}, "kwc-sender")}</div>`).join("") || `<em>${esc(t("game.noParticipants", "No participants yet."))}</em>`}</div></section>
       <div class="kwc-admin-result" id="kwc-game-result"></div>`;
     installSenderIdentityToggle(content);
     const act = async action => {

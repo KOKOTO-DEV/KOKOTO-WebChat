@@ -24,21 +24,21 @@
 ## 5.3.0 の追加機能
 
 - **プライベートチャット:** DM/group は保存済み全履歴を検索できます。DM の「自分だけ非表示」は廃止されました。一般ユーザーの自己削除を有効にした場合、送信者だけが自分の DM を削除でき、削除すると両参加者の会話から消えます。group room には room-local `owner/admin/member` role、pin 管理、room 全体の削除と、global の自己削除設定にも従う member 自己削除 policy が追加されます。
-- **Chat Event:** Web または `/kchat game` から First come/抽選 event を複数同時に運用できます。First come は当選人数だけを定員とし、満員になると自動完了します。抽選は参加人数と当選人数を別に設定します。event 通知は local-only または Relay を選択できます。
+- **Chat Event:** Web または `/kchat game` から First come/抽選 event を複数同時に運用できます。First come は当選人数だけを定員とし、満員になると自動完了します。抽選は参加人数と当選人数を別に設定します。event 通知は local-only または Relay を選択できます。参加者/当選者一覧は global **表示名 / 実名** mode に従い、結果通知は `🏆` で始まり、2 つの名前が異なる場合は `表示名 (実名)` と表示します。
 - **Profile / presence:** user profile で Minecraft Head/custom image、280 文字の About、role、personal block list、Game/Web 接続状態を扱います。ユーザーは Online/Busy/Offline を選択でき、Offline は他の viewer に対して実際の Game/Web 状態を server-side で隠します。
 - **Moderation:** ADMIN は account chat/upload 制限、custom profile image 削除、local role 変更を行え、moderator ごとに一部の管理 capability を委任できます。
 - **CAPTCHA / mention:** guest CAPTCHA は off/math/text/mixed と math complexity に対応し、public/DM/group Web composer は IME-safe な `@` autocomplete を共有します。
 - **Relay 2.2:** protocol major 2 の中で sender-owned DM delete、Chat Event routing、remote public-profile lookup を capability-gate します。peer ごとに `public-chat`, `event`, `dm`, `profile` の send/receive を独立制御できます。
-- **Window/UI / adapter:** public/DM/group window の drag/resize/maximize を統一し、全 adapter/standalone wrapper を同じ frontend fragment と CSS から生成して表示差を防ぎます。
+- **Window/UI / adapter:** public chat の drag/resize/minimize 動作を map adapter と Standalone で同期し、mobile/小さい embedded adapter でも minimize button を維持します。複数の DM/group 会話を独立 window で開く multi-window は、十分に広い **Standalone desktop** viewport のみで対応します。全 wrapper は同じ frontend fragment と CSS から生成します。
 - **画像 privacy:** upload/profile image は対応する EXIF/IPTC/comment/XMP metadata を保存前に除去します。
 
 ## 5.2.0 の追加機能
 
-- **メッセージ reaction:** ログインユーザーは公開 chat、DM、通常の group-chat message に Unicode または KWC custom emoji reaction を追加/解除できます。group の join/leave event は対象外です。実 reaction がない場合、32 × 16px の `+` button は本文の下と次の message の前にそれぞれ 1px の視覚的余白を取り、文字を覆いません。reaction OFF では元の 8px message spacing を維持し、実 reaction が付いた時だけ通常の in-flow row/chip spacing を使います。picker は emoji 文字、server-generated Unicode name、admin-managed search alias、custom emoji ID/name/pack を検索します。alias は **Admin > Emojis > Reaction icons** で `emoji = search words` として編集し `reaction-search-aliases.txt` に保存します。category/search 再描画後も位置と outside-click close を維持し、hover chip では反応者名を scroll list で表示し、通常のチャット送信者と同じ表示名 ↔ 元の名前の切り替えを使用します。master ON/OFF と custom emoji 許可は他の Admin settings と同じ rounded themed row を使います。機能 OFF では既存 data を保持して read-only 表示し、すべての local/Relay mutation を拒否します。
+- **メッセージ reaction:** ログインユーザーは公開 chat、DM、通常の group-chat message に Unicode または KWC custom emoji reaction を追加/解除できます。group の join/leave event は対象外です。実 reaction がない場合、32 × 16px の `+` button は本文の下と次の message の前にそれぞれ 1px の視覚的余白を取り、文字を覆いません。reaction OFF では元の 8px message spacing を維持し、実 reaction が付いた時だけ通常の in-flow row/chip spacing を使います。picker は emoji 文字、server-generated Unicode name、admin-managed search alias、custom emoji ID/name/pack を検索します。alias は **Admin > Emojis > Reaction icons** で `emoji = search words` として編集し `reaction-search-aliases.txt` に保存します。検索 alias は reaction picker の検索専用で、chat 入力は変換しません。category/search 再描画後も位置と outside-click close を維持し、hover chip では反応者名を scroll list で表示し、通常のチャット送信者と同じ表示名 ↔ 元の名前の切り替えを使用します。master ON/OFF と custom emoji 許可は他の Admin settings と同じ rounded themed row を使います。機能 OFF では既存 data を保持して read-only 表示し、すべての local/Relay mutation を拒否します。
 - **保存済み会話:** `chat.conversation-archive.enabled: true`（既定）の場合、公開/DM/group の先頭・末尾メッセージを指定して private snapshot として保存します。server が無効化すると保存関連 DOM を生成せず archive API も登録せず、archive DB も開く/新規作成しません。通常 retention で原本が消えても snapshot は残りますが、管理者による原本/room 強制削除と private room lock policy が常に優先されます。attachment bytes は複製せず、原本 image が残っていれば印刷/PDF に表示し、その他の file は link、原本がなければ unavailable と表示します。PDF は現在の KWC appearance を使用します。server 側の保存上限は `chat.conversation-archive` 配下の `max-archives-per-user`、`max-messages-per-archive`、`max-messages-per-user` で制限します。
 - **typing indicator:** public/DM/group typing は event-driven です。サーバー管理者が Web Admin **Settings** または `chat.typing-indicator.*` で Open chat / DM / Group chat を個別に切り替え、既定値は OFF / ON / ON です。`chat.typing-indicator.user-display-control` は既定 OFF で、管理者が有効にするとログインユーザーの Chat settings にアカウント保存の **入力中表示** が 1 個現れます。個人 OFF は自分の画面で受信した表示だけを隠し、自分の typing 送信には影響しません。最初の input event で 5 秒表示し、その window 中は追加送信せず、polling・message DB write・常駐 typing worker はありません。表示は composer の 1 行上に rounded high-opacity pill として浮き、通常 chat と同じ表示名 ↔ 元の名前切替を使い、名前の formatting tag は除去します。font は user chat font の約 80% に追従しつつ base UI font より小さくなりません。複数の長い名前が 1 行に収まらない場合は人数表示へ自動短縮します。
 - **private room header:** 長い title のみ ellipsis し、member count・Settings・Leave の幅を保持します。Invite、保存済み会話、hide、room management は権限に応じて Settings 内へ集約します。
-- **auto-follow:** 公開/DM/group 共通で 32px bottom threshold を使います。emoji/icon/attachment panel による layout 移動は viewport を保持し、その変化だけでは即時に最下部へ強制 scroll しません。
+- **auto-follow と閲覧位置の復元:** 公開/DM/group は現在実際に描画されている text line-height を基準にし、最下部までの残り間隔が **2行未満**の場合だけ最新メッセージを自動追従します。それより上を閲覧している場合、新着 message や emoji/icon/attachment panel の layout 変化だけで最下部へ引き戻しません。更新/再接続後も可能な場合は保存済みの元の閲覧位置を復元します。
 - **Relay 2.1:** KWC product version と relay protocol revision を分離しました。Protocol major 2 が wire compatibility 境界で、2.1 は `public`, `dm`, `read`, `reaction`, `reaction-authority`, `typing` capability を通知します。
 
 ## 1. 概要
@@ -854,7 +854,7 @@ upload:
 
 `max-total-size-mb: 0` は無制限です。Clipboard mode は `insert` または `send` です。
 
-デスクトップのマルチウィンドウでは、分離した各 DM/グループ会話ウィンドウ自体がドラッグ＆ドロップのアップロード先になります。子ウィンドウへファイルをドロップすると、その DM スレッド/グループルームを有効化してから、その会話の入力欄へアップロード URL を挿入します。従来どおり DM/グループ一覧の親ウィンドウへドロップすることもできます。
+**Standalone のデスクトップ・マルチウィンドウモード**では、分離した各 DM/グループ会話ウィンドウ自体がドラッグ＆ドロップのアップロード先になります。子ウィンドウへファイルをドロップすると、その DM スレッド/グループルームを有効化してから、その会話の入力欄へアップロード URL を挿入します。従来どおり DM/グループ一覧の親ウィンドウへドロップすることもできます。埋め込み map adapter 表示はサポート対象のマルチウィンドウ配備モードとして文書化しません。
 
 `filename-mode: original` でも、クリップボードアップロードは `clipboardData.files` から取得できる長いファイル名を優先します。Windows/Chromium が別のクリップボード項目で `202608~1.JPG` のような DOS 8.3 別名を返しても、長い名前を取得できる場合は元の長い名前を使用します。ブラウザーが 8.3 別名しか公開しない場合は、その別名を元ファイル名として保存せず `clipboard-...` 形式の名前へ置き換えます。
 

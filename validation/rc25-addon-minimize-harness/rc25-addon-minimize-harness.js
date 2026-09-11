@@ -17,8 +17,9 @@ check(ui.includes('target = window.parent'), 'adapter/add-on minimize does not u
 check(ui.includes('target.visualViewport || null'), 'parent visualViewport is not preferred');
 check(ui.includes('Number(target.innerWidth)'), 'parent innerWidth fallback missing');
 check(ui.includes('Number(target.innerHeight)'), 'parent innerHeight fallback missing');
-check(ui.includes('const viewport = publicChatMinimizeViewport();'), 'minimize availability does not use host viewport helper');
-check(ui.includes('viewport.width >= minW && viewport.height >= minH'), 'minimize threshold is not applied to host viewport');
+check(ui.includes('if (!state.isStandalone) return true;'), 'embedded map/add-on minimize must remain available on mobile/small viewports');
+check(ui.includes('const viewport = publicChatMinimizeViewport();'), 'Standalone minimize availability does not use viewport helper');
+check(ui.includes('viewport.width >= minW && viewport.height >= minH'), 'Standalone minimize threshold is not applied to its viewport');
 check(!ui.includes('typeof privateMultiWindowSupported === "function" && privateMultiWindowSupported()'), 'public minimize is still coupled directly to detached private-window capability');
 check(multi.includes('window.innerWidth >= Number(state.privateMultiWindowMinWidth || 900)'), 'detached DM/group width must remain iframe/runtime based');
 check(multi.includes('window.innerHeight >= Number(state.privateMultiWindowMinHeight || 480)'), 'detached DM/group height must remain iframe/runtime based');

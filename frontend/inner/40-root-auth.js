@@ -307,6 +307,12 @@
 
   function publicChatMinimizeAvailable() {
     if (state.isPip) return false;
+    // Embedded map/add-on chat must remain minimizable even on phones/tablets.
+    // The 900x480 threshold belongs only to Standalone detached DM/group
+    // multi-window behavior; reusing it here incorrectly removed the minimize
+    // button from mobile add-ons. Standalone keeps the existing mobile/fullscreen
+    // policy so its small viewport is not collapsed into an unusable floating pill.
+    if (!state.isStandalone) return true;
     const viewport = publicChatMinimizeViewport();
     const minW = Number(state.privateMultiWindowMinWidth || 900);
     const minH = Number(state.privateMultiWindowMinHeight || 480);
@@ -314,9 +320,9 @@
   }
 
   function reconcileMinimizeAvailability() {
-    // If a viewport becomes too small (or an old localStorage value says minimized
-    // on a runtime that cannot support detached private windows), restore first and
-    // then hide the control. This prevents a hidden restore button / stuck compact UI.
+    // Standalone may disable minimize on a small/mobile viewport. Embedded map/add-on
+    // runtimes remain minimizable at every viewport size. If an old Standalone state
+    // is no longer valid, restore before hiding the control so the UI cannot get stuck.
     if (!publicChatMinimizeAvailable() && state.minimized) {
       toggleMin({persist: true, availabilityRestore: true});
       return;
@@ -384,6 +390,14 @@
       const viewportMid = Math.max(0, Number(window.innerWidth) || 0) / 2;
       root.dataset.kwcMinimizedSide = (rect.left + (rect.width / 2)) < viewportMid ? "left" : "right";
     }
+    // Minimize changes the message viewport height to zero/near-zero. Capture a
+    // durable message anchor before changing the layout so restore can return to
+    // exactly the same visible message/offset instead of accumulating scroll drift.
+    if (willMinimize && typeof captureChatViewAnchor === "function") {
+      state.publicMinimizeViewAnchor = captureChatViewAnchor("public");
+      if (typeof saveConversationView === "function") saveConversationView("public", "");
+    }
+
     state.minimized = willMinimize;
     if (options.persist !== false) localStorage.setItem("kwc.minimized", state.minimized ? "1" : "0");
 
@@ -409,7 +423,37 @@
     updateNotificationInboxButton();
     scheduleResponsiveHeaderLayout();
     if (!state.minimized) {
-      scheduleVirtualRender();
+      const restoreAnchor = state.publicMinimizeViewAnchor && typeof state.publicMinimizeViewAnchor === "object"
+        ? Object.assign({}, state.publicMinimizeViewAnchor)
+        : null;
+      state.publicMinimizeViewAnchor = null;
+      if (restoreAnchor && restoreAnchor.atBottom !== true) {
+        state.autoFollowLatest = false;
+        state.explicitLatestFollowUntil = 0;
+        state.explicitLatestFollowReason = "";
+        state.forceLatestJumpUntil = 0;
+        state.preventBottomStickUntil = Math.max(Number(state.preventBottomStickUntil || 0), Date.now() + 1400);
+      }
+      scheduleVirtualRender({
+        preserveScroll: true,
+        preserveVisualAnchor: true,
+        stickToBottom: !!(restoreAnchor && restoreAnchor.atBottom === true),
+        suppressBottomStick: !!(restoreAnchor && restoreAnchor.atBottom !== true),
+        forcePreservePosition: !!(restoreAnchor && restoreAnchor.atBottom !== true)
+      });
+      // The iframe/root regains its normal height asynchronously. Re-apply the same
+      // message anchor after layout settles; repeated minimize/restore cycles must
+      // therefore be idempotent instead of moving the reader upward each time.
+      const restoreMinimizedPublicView = () => {
+        if (state.minimized || !restoreAnchor || typeof restoreChatViewAnchorNow !== "function") return;
+        restoreChatViewAnchorNow("public", restoreAnchor);
+        scheduleScrollAffordanceRefresh("unminimize-anchor");
+      };
+      requestAnimationFrame(() => {
+        restoreMinimizedPublicView();
+        requestAnimationFrame(restoreMinimizedPublicView);
+      });
+      setTimeout(restoreMinimizedPublicView, 120);
       protectHistoryEndNotice("unminimize", 8000);
       state.forceHistoryEndNoticeUntil = Math.max(Number(state.forceHistoryEndNoticeUntil || 0), Date.now() + 8000);
       scheduleScrollAffordanceRefresh("unminimize");
@@ -426,7 +470,6 @@
     state.role = "";
     state.typingDisplayEnabled = true;
     state.typingPreferenceLoaded = false;
-    state.presenceInvisible = false;
     state.presenceStatus = "online";
     state.loggedInCount = 0;
     state.presencePreferenceLoaded = false;

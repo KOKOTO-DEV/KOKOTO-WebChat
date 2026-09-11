@@ -1155,7 +1155,7 @@ web:
     noParticipants: 参加者はまだいません。
     winners: 当選者
     chat.created: 'イベント開始: {title}（{type}、参加 {participants}人、当選 {winners}人）'
-    chat.results: 'イベント結果: {title} - 当選者: {winners}'
+    chat.results: '🏆 イベント結果: {title} - 当選者: {winners}'
     none: 開催中のイベントはありません。
     type.firstcome: 先着順
     type.lottery: 抽選

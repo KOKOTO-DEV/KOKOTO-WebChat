@@ -136,7 +136,7 @@ check(group.includes('saveConversationView("dm", state.dmActiveThreadId)') && gr
 check(dm.includes('await restoreChatViewAnchor("dm", state.dmActiveThreadId)'), 'switching DM threads restores each thread position');
 check(rooms.includes('await restoreChatViewAnchor("group", roomId)'), 'switching group rooms restores each room position');
 check(privateUi.includes('CHAT_VIEW_STATE_MAX_ENTRIES = 256'), 'local view-state cache is bounded');
-check(privateUi.includes('sessionStorage.removeItem("kwc.privateReloadView.v1")'), 'legacy reload-only session state is cleaned up');
+check(!privateUi.includes('kwc.privateReloadView.v1'), 'intermediate reload-only session key is absent from final source');
 
 
 check(!read('frontend/inner/60-theme-config-stream.js').includes('document.querySelectorAll(".kwc-user-profile-modal").forEach'), 'presence stream updates keep an open profile modal alive');

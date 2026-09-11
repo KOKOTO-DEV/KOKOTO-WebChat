@@ -15,16 +15,17 @@
 - [ ] Web Reply は元メッセージ全文を保持し、URL/custom emoji を読みやすく表示する。
 - [ ] ゲーム内 DM/group の名前クリックは既存コマンドを入力欄へ準備し、本文クリックは Reply を準備し、URL 部分は URL を開く。
 - [ ] 改ざんした `dm-...`/`group-...` Reply target は、実際の DM 参加者または現在の group member でない限り拒否される。
+- [ ] Chat Event は First come/抽選を複数同時に保持し、First come は当選人数の定員到達で自動完了し、参加者/当選者一覧は表示名 / 実名 mode に従い、結果通知は `🏆` で始まり名前が異なる場合は `表示名 (実名)` と表示する。
 
-- [ ] 公開 message reaction が永続化され Relay 2.2 伝播が動作し、reaction-only SSE 更新で再生中 media が再起動しない。32 × 16px empty-state `+` は本文下/次 message 前に各 1px の視覚的余白を取り、reaction OFF は元の 8px spacing、実 reaction は通常の in-flow row を使う。category/search 再描画後も picker 位置と outside-click close が維持され、**Admin > Emojis > Reaction icons** は他の Admin settings と同じ rounded themed row と `emoji = search words` alias editor を提供し、alias は `reaction-search-aliases.txt` に保存される。
-- [ ] public/DM/group typing は 5 秒の event-driven window で動作し、自分自身/audit viewer を除外し、長い複数 user 名は人数表示へ縮約し、polling/永続 typing state を作らない。Web Admin Settings/config.yml で server-wide の既定値 Open chat OFF / DM ON / Group ON を個別制御し、個人の Chat settings に typing switch が存在しないこと。
+- [ ] 公開 message reaction が永続化され Relay 2.2 伝播が動作し、reaction-only SSE 更新で再生中 media が再起動しない。32 × 16px empty-state `+` は本文下/次 message 前に各 1px の視覚的余白を取り、reaction OFF は元の 8px spacing、実 reaction は通常の in-flow row を使う。category/search 再描画後も picker 位置と outside-click close が維持され、**Admin > Emojis > Reaction icons** は他の Admin settings と同じ rounded themed row と `emoji = search words` alias editor を提供し、alias は `reaction-search-aliases.txt` に保存される。 検索 alias は picker 検索専用で chat 入力を変換しない。
+- [ ] public/DM/group typing は 5 秒の event-driven window で動作し、自分自身/audit viewer を除外し、長い複数 user 名は人数表示へ縮約し、polling/永続 typing state を作らない。Web Admin Settings/config.yml で server-wide の既定値 Open chat OFF / DM ON / Group ON を個別制御する。`chat.typing-indicator.user-display-control` は既定 OFF で、管理者が有効にした場合はアカウント保存の個人 switch が受信表示だけを隠し、自分の typing 送信は継続する。
 - [ ] 保存済み会話は server 側で range を再検証し、archive quota と private-room lock policy を適用し、通常 retention 後も snapshot を保持する一方、管理者による元 message 削除は cascade する。
 - [ ] 保存済み会話 PDF/print view は display name + real name を表示し、現在の KWC appearance を使用し、原本が残る image だけを含め、video/audio/その他 file は link とし、失われた原本は unavailable と表示する。
 - [ ] `chat.conversation-archive.enabled: false` では archive API を登録せず、`conversation-archives.db` を開く/作成せず、Web UI に保存済み会話関連 DOM を生成しない。
 - [ ] `max-archives-per-user`、`max-messages-per-archive`、`max-messages-per-user` を既定値以外に設定した場合も server 側で実際の上限が適用され、`/archive/list` が適用値を返す。
 - [ ] 開いている DM では Back/title hover の背景が inset された Settings button 領域まで header 全体を継ぎ目なく覆い、Settings button 自身の hover state は独立して維持される。
 - [ ] 絵文字リアクション通知 checkbox 1 個がライブ browser notification と background/mobile Web Push の reaction 通知を共通制御し、未対応の配信経路は動作しない。
-- [ ] 公開/DM/group bottom-follow は 32px を使用し、compose panel の layout change は viewport を保持し、その変化だけで即座に最下部へ強制 scroll しない。
+- [ ] 公開/DM/group latest-follow は実際の line-height 基準で **最下部 2 行未満**の場合だけ動作し、それより上では新着 message / compose panel layout change で最下部へ強制 scroll せず、更新/再接続後は可能な場合に保存済みの閲覧位置を復元する。
 
 ## Relay / セキュリティ
 - [ ] 任意の signed `/relay/v2/handshake` identity/health probe は、双方が同じ group ID と group shared secret で互いを登録した場合に成功し、probe は route 状態を作らず direct relay は各 request を独立認証する。

@@ -1155,7 +1155,7 @@ web:
     noParticipants: 暂无参与者。
     winners: 获奖者
     chat.created: '活动已开始：{title}（{type}，参与 {participants}人，获奖 {winners}人）'
-    chat.results: '活动结果：{title} - 获奖者：{winners}'
+    chat.results: '🏆 活动结果：{title} - 获奖者：{winners}'
     none: 当前没有活动。
     type.firstcome: 先到先得
     type.lottery: 抽奖

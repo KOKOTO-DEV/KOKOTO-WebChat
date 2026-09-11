@@ -92,7 +92,7 @@ Chat settings の **絵文字リアクション** checkbox は reaction 追加�
 
 通常の message 間隔は 8px です。reaction が ON でログイン user が `+` を使える empty state では、通常の 8px margin に 10px の empty reaction space を追加します。`+` button は 32 × 16px で、message 本文の下に 1px、次の message の前にも 1px の余白を確保するため、文字に重なりません。reaction OFF の場合は empty affordance 自体を描画しないため元の 8px のままです。実 reaction が付いた場合のみ通常の in-flow reaction row を使用します。
 
-picker は emoji 文字そのもの、server が生成する Unicode 名、管理者が編集できる検索 alias、custom emoji の ID/name/pack を検索できます。**Admin > Emojis > Reaction icons** には `emoji = search words` 形式の検索 alias editor があり、runtime list は `reaction-search-aliases.txt` に保存されます。新しい Unicode icon に任意の検索語を追加できるため frontend code の変更は不要です。reaction ON/OFF と KWC custom emoji 許可は他の Admin settings と同じ rounded form/row を使い、checkbox も row 内に配置されます。
+picker は emoji 文字そのもの、server が生成する Unicode 名、管理者が編集できる検索 alias、custom emoji の ID/name/pack を検索できます。**Admin > Emojis > Reaction icons** には `emoji = search words` 形式の検索 alias editor があり、runtime list は `reaction-search-aliases.txt` に保存されます。新しい Unicode icon に任意の検索語を追加できるため frontend code の変更は不要です。検索 alias は reaction picker の検索専用で、chat の `:token:` 構文を作成・変換しません。reaction ON/OFF と KWC custom emoji 許可は他の Admin settings と同じ rounded form/row を使い、checkbox も row 内に配置されます。
 
 関連: [SERVER_RELAY.md](SERVER_RELAY.md), [USER_GUIDE.md](USER_GUIDE.md), [TECHNICAL_REFERENCE.md](TECHNICAL_REFERENCE.md)
 

@@ -1389,7 +1389,6 @@
     state.uploadCancelRequested = false;
     state.uploadActive = true;
     const uploadIntoModal = state.activeComposeInputId === "kwc-dm-input" || state.activeComposeInputId === "kwc-group-input";
-    if (!uploadIntoModal) markExplicitLatestFollow("upload", 8000);
     setUploadControlsBusy(true);
     updateUploadProgress(t("upload.preparing", "Preparing upload..."), 0, true);
 
@@ -1448,7 +1447,6 @@
       const dmTargetActive = state.activeComposeInputId === "kwc-dm-input" && !!document.getElementById("kwc-dm-input");
       const groupTargetActive = state.activeComposeInputId === "kwc-group-input" && !!document.getElementById("kwc-group-input");
       const modalTargetActive = dmTargetActive || groupTargetActive;
-      if (!modalTargetActive) forceLatestChatView("upload");
       const text = normalizeInsertedMediaLinks(uploaded.join(" "));
       const mode = String((state.config && state.config.uploadClipboardSendMode) || "insert").toLowerCase();
       if (!modalTargetActive && source === "clipboard" && mode === "send") {
@@ -1457,7 +1455,6 @@
       } else {
         appendToMessage(text, {mediaLinks: true});
       }
-      if (!modalTargetActive) forceLatestChatView("upload-complete");
       hideUploadProgressSoon(t("upload.complete", "Upload complete."));
     } else if (state.uploadCancelRequested) {
       hideUploadProgressSoon(t("upload.canceled", "Upload canceled."));
@@ -1833,8 +1830,10 @@
     if (inputToClear) inputToClear.value = "";
     clearReplyTarget();
 
+    const publicMessageBox = document.getElementById("kwc-messages");
+    const followLatestAfterSend = !!publicMessageBox && !state.historyHasAfter && isAutoFollowBottom(publicMessageBox);
     try {
-      markExplicitLatestFollow(options.forceLatest ? "send-forced" : "send", 4500);
+      if (followLatestAfterSend) markExplicitLatestFollow(options.forceLatest ? "send-forced" : "send", 4500);
       const res = await api("/send", {method: "POST", body: JSON.stringify(payload), returnHttpErrorResponse: true});
       if (!res.ok) {
         if (res.captchaPass) {
@@ -1867,9 +1866,9 @@
         state.captchaPass = res.captchaPass;
         localStorage.setItem("kwc.captchaPass", state.captchaPass);
       }
-      forceLatestChatView(options.forceLatest ? "send-forced" : "send");
+      if (followLatestAfterSend) forceLatestChatView(options.forceLatest ? "send-forced" : "send");
       setTimeout(() => {
-        if (state.autoFollowLatest) loadHistory(false, {skipIfUnchanged: true});
+        if (followLatestAfterSend && state.autoFollowLatest) loadHistory(false, {skipIfUnchanged: true});
       }, 180);
       await refreshCaptcha();
       return true;

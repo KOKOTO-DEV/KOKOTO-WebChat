@@ -106,6 +106,7 @@ public final class ReactionCatalogStore {
         return showActorList;
     }
 
+
     public synchronized boolean allows(String reaction) {
         if (!enabled) return false;
         String value = clean(reaction, 240);
@@ -307,6 +308,7 @@ public final class ReactionCatalogStore {
         }
         return base;
     }
+
 
     private static boolean parseBoolean(String raw, boolean fallback) {
         String value = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.ROOT);

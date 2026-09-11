@@ -393,6 +393,6 @@ KWC 5.3.0 全体は Relay Protocol 2.2 を維持します。同じ revision の 
 
 DM には message 単位の「自分だけ非表示」はなく、sender だけが自分の message を削除できます。group message delete は room 全体へ適用され、通常 member は自分の通常 message、room-local owner/admin は room message を管理できます。group pin は room-local で全 member が閲覧でき、pin/reorder/unpin は owner/admin のみです。DM/group の保存済み履歴検索は public search UI pattern を使用します。
 
-Presence は Game と Web を分離します。compact list は Game > Web > Offline の代表状態を 1 つ表示し、profile は Game/Web を別々に表示します。account-level Offline は他ユーザーに対して両状態を server-side で mask します（legacy `invisible` preference data は Offline へ移行します）。
+Presence は Game と Web を分離します。compact list は Game > Web > Offline の代表状態を 1 つ表示し、profile は Game/Web を別々に表示します。account-level Offline は他ユーザーに対して両状態を server-side で mask します。
 
 upgrade 後は BlueMap refresh recovery、DM/group search/delete、group pin/role、Game/Web presence、Offline privacy、関連 peer を更新した後の cross-server DM delete を確認してください。

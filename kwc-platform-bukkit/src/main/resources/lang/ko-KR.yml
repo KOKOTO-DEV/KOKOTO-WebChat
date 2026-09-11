@@ -1155,7 +1155,7 @@ web:
     noParticipants: 아직 참가자가 없습니다.
     winners: 당첨자
     chat.created: '이벤트가 시작되었습니다: {title} ({type}, 참가 {participants}명, 당첨 {winners}명)'
-    chat.results: '이벤트 결과: {title} - 당첨자: {winners}'
+    chat.results: '🏆 이벤트 결과: {title} - 당첨자: {winners}'
     none: 진행 중인 이벤트가 없습니다.
     type.firstcome: 선착순
     type.lottery: 추첨

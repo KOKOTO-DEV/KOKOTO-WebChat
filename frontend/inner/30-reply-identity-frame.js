@@ -934,6 +934,14 @@
   }
 
 
+  function uiResizeEnabled() {
+    // ui.resizable defaults to enabled. During refresh the map addon can start
+    // before /api/config has fully recovered, so an unavailable/not-yet-loaded
+    // config must not temporarily disable every resize hit target. Only an
+    // explicit false from the loaded config disables resizing.
+    return !state.config || state.config.uiResizable !== false;
+  }
+
   function updateFrameSize() {
     if (state.isPip) {
       const title = document.querySelector(".kwc-title");
@@ -955,8 +963,8 @@
     postFrame("resize", {
       minimized: state.minimized,
       height: state.minimized ? state.frameMinimizedHeight : state.frameNormalHeight,
-      width: state.minimized ? 48 : state.frameNormalWidth,
-      resizable: !!(state.config && state.config.uiResizable),
+      width: state.minimized ? 124 : state.frameNormalWidth,
+      resizable: uiResizeEnabled(),
       minW: state.config ? state.config.uiMinWidth : 280,
       minH: state.config ? state.config.uiMinHeight : 240,
       maxW: state.config ? state.config.uiMaxWidth : 640,
@@ -1504,37 +1512,53 @@
       const rect = geometry || root.getBoundingClientRect();
       const rectRight = Number.isFinite(Number(rect.right)) ? Number(rect.right) : Number(rect.left) + Number(rect.width);
       const rectBottom = Number.isFinite(Number(rect.bottom)) ? Number(rect.bottom) : Number(rect.top) + Number(rect.height);
-      const hidden = standaloneMobileWindowLocked() || state.minimized || root.dataset.kwcMaximized === "1" || !!root.querySelector(":scope > .kwc-window-owned-overlay") || !(state.config && state.config.uiResizable === true);
-      const edgeSize = 12, edgeInset = 3, cornerInset = 5;
+      const hidden = standaloneMobileWindowLocked() || state.minimized || root.dataset.kwcMaximized === "1" || !!root.querySelector(":scope > .kwc-window-owned-overlay") || !uiResizeEnabled();
+      const edgeOutset = 16, edgeOverlap = 3, edgeInset = 3, cornerOverlap = 5;
       const rootZ = Math.max(1000, Number.parseInt(root.style.zIndex || "", 10) || Number(state.chatWindowZ) || 1000);
       handles.forEach(handle => {
         const d = handle.dataset.resizeDirection || "se";
-        handle.style.zIndex = String(rootZ);
+        // Resize zones must paint above the chat root. Otherwise the inward
+        // overlap is visually transparent but pointer-inaccessible.
+        handle.style.zIndex = String(rootZ + 1);
         handle.style.display = hidden ? "none" : "block";
         if (hidden) return;
         let left, top, width, height;
         if (d === "n" || d === "s") {
           left = rect.left + edgeInset;
-          top = d === "n" ? rect.top - edgeSize : rectBottom;
+          top = d === "n" ? rect.top - edgeOutset : rectBottom - edgeOverlap;
           width = Math.max(1, rect.width - (edgeInset * 2));
-          height = edgeSize;
+          height = edgeOutset + edgeOverlap;
         } else if (d === "e" || d === "w") {
-          left = d === "w" ? rect.left - edgeSize : rectRight;
+          left = d === "w" ? rect.left - edgeOutset : rectRight - edgeOverlap;
           top = rect.top + edgeInset;
-          width = edgeSize;
+          width = edgeOutset + edgeOverlap;
           height = Math.max(1, rect.height - (edgeInset * 2));
         } else {
           const isLeft = d === "nw" || d === "sw";
           const isTop = d === "nw" || d === "ne";
-          left = isLeft ? rect.left - edgeSize + cornerInset : rectRight - cornerInset;
-          top = isTop ? rect.top - edgeSize + cornerInset : rectBottom - cornerInset;
-          width = edgeSize;
-          height = edgeSize;
+          left = isLeft ? rect.left - edgeOutset : rectRight - cornerOverlap;
+          top = isTop ? rect.top - edgeOutset : rectBottom - cornerOverlap;
+          width = edgeOutset + cornerOverlap;
+          height = edgeOutset + cornerOverlap;
         }
-        handle.style.left = Math.round(Math.max(0, Math.min(window.innerWidth - width, left))) + "px";
-        handle.style.top = Math.round(Math.max(0, Math.min(window.innerHeight - height, top))) + "px";
-        handle.style.width = Math.round(width) + "px";
-        handle.style.height = Math.round(height) + "px";
+        // Keep only a small 3px inward edge overlap (5px at corners) so the
+        // scrollbar remains usable, while providing the requested 16px target
+        // outside the window. At viewport edges the outside portion is clipped;
+        // the inward overlap remains available instead of the resize target vanishing.
+        const clippedLeft = Math.max(0, left);
+        const clippedTop = Math.max(0, top);
+        const clippedRight = Math.min(window.innerWidth, left + width);
+        const clippedBottom = Math.min(window.innerHeight, top + height);
+        const clippedWidth = Math.max(0, clippedRight - clippedLeft);
+        const clippedHeight = Math.max(0, clippedBottom - clippedTop);
+        if (clippedWidth <= 0 || clippedHeight <= 0) {
+          handle.style.display = "none";
+          return;
+        }
+        handle.style.left = Math.round(clippedLeft) + "px";
+        handle.style.top = Math.round(clippedTop) + "px";
+        handle.style.width = Math.round(clippedWidth) + "px";
+        handle.style.height = Math.round(clippedHeight) + "px";
       });
     };
     const applyGeometry = geometry => {
@@ -1561,7 +1585,7 @@
     };
     const begin = event => {
       if (standaloneMobileWindowLocked()) { forceStandaloneMobileMaximized(root); return; }
-      if (state.minimized || root.dataset.kwcMaximized === "1" || !(state.config && state.config.uiResizable === true)) return;
+      if (state.minimized || root.dataset.kwcMaximized === "1" || !uiResizeEnabled()) return;
       const point = independentWindowPoint(event);
       const rect = root.getBoundingClientRect();
       resize = {direction:String(event.currentTarget.dataset.resizeDirection || "se"), x:point.x, y:point.y, left:rect.left, top:rect.top, width:rect.width, height:rect.height, bounds:resizeBounds()};
@@ -1617,7 +1641,7 @@
     };
 
     const begin = event => {
-      if (state.minimized || (!state.isStandalone && (!state.config || !state.config.uiResizable))) return;
+      if (state.minimized || (!state.isStandalone && !uiResizeEnabled())) return;
       if (state.resizeStart) return;
 
       const p = pointFromEvent(event);
@@ -1990,8 +2014,8 @@
       let width = headerOuterWidth(child);
       const chatAction = child.closest && child.closest(".kwc-action-cluster-chat");
       if (chatAction) {
-        // RC37: use the same 46px normal footprint as the wrapped second-row
-        // menu controls, while still allowing the one-row buttons to compress
+        // Use the same 46px normal footprint as the wrapped second-row menu
+        // controls, while still allowing the one-row buttons to compress
         // to the PIP/minimize footprint before wrapping.
         width = Math.max(46, width);
         if (compactChatWidth > 0) width = Math.min(width, compactChatWidth);

@@ -58,7 +58,6 @@ public class WebChatServer {
     private static final long STREAM_TICKET_TTL_MILLIS = 30_000L;
     private static final long ADMIN_FILTER_REQUEST_BODY_LIMIT_BYTES = 32L * 1024L * 1024L;
     private final ConcurrentHashMap<String, StreamTicket> streamTickets = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Boolean> presenceInvisibleCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> presenceStatusCache = new ConcurrentHashMap<>();
     // HttpExchange attributes are backed by the HttpContext attribute map in the
     // JDK HTTP server and can therefore survive into later requests on the same
@@ -825,20 +824,17 @@ public class WebChatServer {
         if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
             Map<String,Object> prefs = userPreferences.presencePreferences(ctx.account);
             String uuid = normalizePresenceUuid(ctx.account.uuid);
-            String status = String.valueOf(prefs.getOrDefault("status", Boolean.TRUE.equals(prefs.get("invisible")) ? "offline" : "online"));
+            String status = String.valueOf(prefs.getOrDefault("status", "online"));
             presenceStatusCache.put(uuid, status);
-            presenceInvisibleCache.put(uuid, "offline".equals(status));
             sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "preferences", prefs)));
             return;
         }
         if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex, 405, "{\"ok\":false,\"error\":\"method_not_allowed\"}"); return; }
         UserPreferenceStore.SaveResult result = userPreferences.savePresencePreferences(ctx.account, parsedBody(ex));
         if (!result.ok()) { sendJson(ex, 400, "{\"ok\":false,\"error\":" + JsonUtil.quote(result.error()) + "}"); return; }
-        String status = String.valueOf(result.value().getOrDefault("status", Boolean.TRUE.equals(result.value().get("invisible")) ? "offline" : "online"));
-        boolean invisible = "offline".equals(status);
+        String status = String.valueOf(result.value().getOrDefault("status", "online"));
         String uuid = normalizePresenceUuid(ctx.account.uuid);
         presenceStatusCache.put(uuid, status);
-        presenceInvisibleCache.put(uuid, invisible);
         broadcastPresenceUpdate(uuid);
         sendJson(ex, 200, JsonUtil.obj(Map.of("ok", true, "preferences", result.value())));
     }
@@ -1427,7 +1423,7 @@ public class WebChatServer {
         m.put("uiVirtualScrollMinRenderedMessages", c.uiVirtualScrollMinRenderedMessages);
         m.put("uiHistoryPreloadScreens", c.uiHistoryPreloadScreens);
         m.put("uiHistoryPreloadMinPx", c.uiHistoryPreloadMinPx);
-        m.put("uiAutoFollowBottomThresholdPx", c.uiAutoFollowBottomThresholdPx);
+        m.put("uiAutoFollowBottomThresholdLines", c.uiAutoFollowBottomThresholdLines);
         m.put("uiScrollInteractionIdleMs", c.uiScrollInteractionIdleMs);
         m.put("uiResumeRefreshEnabled", c.uiResumeRefreshEnabled);
         m.put("uiResumeRefreshMinIntervalSeconds", c.uiResumeRefreshMinIntervalSeconds);
@@ -3020,15 +3016,10 @@ public class WebChatServer {
         if (cached != null && !cached.isBlank()) return cached;
         Account account = accountByUuid(target);
         Map<String,Object> prefs = account == null ? Map.of() : userPreferences.presencePreferences(account);
-        String status = String.valueOf(prefs.getOrDefault("status", Boolean.TRUE.equals(prefs.get("invisible")) ? "offline" : "online"));
+        String status = String.valueOf(prefs.getOrDefault("status", "online"));
         if (!("online".equals(status) || "busy".equals(status) || "offline".equals(status))) status = "online";
         presenceStatusCache.put(target, status);
-        presenceInvisibleCache.put(target, "offline".equals(status));
         return status;
-    }
-
-    private boolean presenceInvisible(String uuid) {
-        return "offline".equals(presenceStatus(uuid));
     }
 
     private boolean presenceGameOnline(String uuid) {
@@ -3047,8 +3038,8 @@ public class WebChatServer {
         return false;
     }
 
-    // Game 접속과 Web heartbeat를 모은 뒤 Invisible 정책을 viewer 기준으로 적용하는 단일 진입점이다. 목록/프로필/count가 서로 다른 privacy 규칙을 쓰지 않도록 모두 이 함수를 거친다.
-    // Single presence entry point combining Game connectivity and Web heartbeat before applying viewer-specific Invisible policy. Lists, profiles, and counts all use this function so privacy rules cannot drift.
+    // Game 접속과 Web heartbeat를 모은 뒤 Offline privacy 정책을 viewer 기준으로 적용하는 단일 진입점이다. 목록/프로필/count가 서로 다른 privacy 규칙을 쓰지 않도록 모두 이 함수를 거친다.
+    // Single presence entry point combining Game connectivity and Web heartbeat before applying viewer-specific Offline privacy. Lists, profiles, and counts all use this function so privacy rules cannot drift.
     private PresencePolicy.Result presenceSnapshot(String viewerUuid, String targetUuid) {
         String viewer = normalizePresenceUuid(viewerUuid);
         String target = normalizePresenceUuid(targetUuid);
@@ -3091,17 +3082,16 @@ public class WebChatServer {
     private void broadcastPresenceUpdate(String uuid) {
         String target = normalizePresenceUuid(uuid);
         if (target.isBlank()) return;
-        boolean invisible = presenceInvisible(target);
+        boolean privacyMasked = "offline".equals(presenceStatus(target));
         for (SseConnection client : sseHub.snapshot()) {
             if (client == null) continue;
             String viewer = normalizePresenceUuid(client.accountUuid());
             if (viewer.isBlank()) continue;
             boolean selfView = viewer.equals(target);
-            // Do not reveal which invisible account changed its Game/Web state to
-            // another signed-in user. Other viewers receive only a generic
-            // refresh signal so stale Online UI is removed without exposing the
-            // hidden account UUID as presence metadata.
-            String visibleUuid = invisible && !selfView ? "" : target;
+            // Do not reveal which account using Offline privacy changed its Game/Web state
+            // to another signed-in user. Other viewers receive only a generic refresh
+            // signal so stale Online UI is removed without exposing the hidden account UUID.
+            String visibleUuid = privacyMasked && !selfView ? "" : target;
             String data = "event: presence-update\ndata: {\"uuid\":" + JsonUtil.quote(visibleUuid) + "}\n\n";
             try { client.sendRaw(data); }
             catch (IOException ex) { sseHub.remove(client); client.close(); }
@@ -7459,6 +7449,7 @@ public class WebChatServer {
                         "action", gameId.isBlank() ? "list" : "snapshot",
                         "gameId", gameId,
                         "actorUuid", String.valueOf(ctx.account.uuid == null ? "" : ctx.account.uuid),
+                        "actorUsername", ctx.account.safeUsername(),
                         "actorLabel", host.displayNameForAccount(ctx.account))));
                 return;
             }
@@ -7491,13 +7482,14 @@ public class WebChatServer {
                     "action", "join".equals(action) ? "join" : "snapshot",
                     "gameId", gameId,
                     "actorUuid", String.valueOf(ctx.account.uuid == null ? "" : ctx.account.uuid),
+                    "actorUsername", ctx.account.safeUsername(),
                     "actorLabel", host.displayNameForAccount(ctx.account))));
             return;
         }
         boolean canManage = canManageChatGame(ctx.account.uuid);
         ChatGameManager.Result result;
         if ("join".equals(action)) {
-            result = joinChatGame(gameId, ctx.account.uuid, host.displayNameForAccount(ctx.account));
+            result = joinChatGame(gameId, ctx.account.uuid, ctx.account.safeUsername(), host.displayNameForAccount(ctx.account));
         } else if ("create".equals(action)) {
             if (!canManage) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
             boolean relayAnnouncements = !"local".equalsIgnoreCase(String.valueOf(body.getOrDefault("notificationScope", "relay")))
@@ -7584,12 +7576,13 @@ public class WebChatServer {
         String action = String.valueOf(body.getOrDefault("action", "snapshot")).trim().toLowerCase(Locale.ROOT);
         String gameId = stripControl(body.get("gameId"), 80).trim();
         String actorUuid = RemotePlayerRef.normalizePlayerUuid(body.get("actorUuid"));
+        String actorUsername = stripControl(body.get("actorUsername"), 64).trim();
         String actorLabel = stripControl(body.get("actorLabel"), 96).trim();
         String remoteViewer = RemotePlayerRef.key(originServerId, actorUuid);
         ChatGameManager.Result result;
         if ("join".equals(action)) {
             if (gameId.isBlank() || remoteViewer.isBlank()) result = new ChatGameManager.Result(false, "invalid_user", null, false);
-            else result = joinChatGame(gameId, remoteViewer, actorLabel);
+            else result = joinChatGame(gameId, remoteViewer, actorUsername, actorLabel);
         } else if ("list".equals(action)) {
             result = chatGames.snapshot(remoteViewer);
         } else {
@@ -7636,16 +7629,16 @@ public class WebChatServer {
         }
         return result;
     }
-    public ChatGameManager.Result joinChatGame(String uuid, String label) {
-        ChatGameManager.Result result = chatGames.join(uuid, label);
+    public ChatGameManager.Result joinChatGame(String uuid, String username, String label) {
+        ChatGameManager.Result result = chatGames.join(uuid, username, label);
         if (result.changed()) {
             publishChatGameUpdate("join", result);
             if (result.game() != null && "completed".equals(String.valueOf(result.game().get("status")))) announceChatGameResult(result.game());
         }
         return result;
     }
-    public ChatGameManager.Result joinChatGame(String gameId, String uuid, String label) {
-        ChatGameManager.Result result = chatGames.join(gameId, uuid, label);
+    public ChatGameManager.Result joinChatGame(String gameId, String uuid, String username, String label) {
+        ChatGameManager.Result result = chatGames.join(gameId, uuid, username, label);
         if (result.changed()) {
             publishChatGameUpdate("join", result);
             if (result.game() != null && "completed".equals(String.valueOf(result.game().get("status")))) announceChatGameResult(result.game());
@@ -7713,8 +7706,15 @@ public class WebChatServer {
         List<String> names = new ArrayList<>();
         if (game.get("winners") instanceof List<?> winners) for (Object value : winners) {
             if (value instanceof Map<?,?> item) {
-                String name = LegacyText.stripColor(String.valueOf(item.get("label")));
-                if (name != null && !name.isBlank()) names.add(name);
+                Object displayValue = item.containsKey("displayName") ? item.get("displayName") : item.get("label");
+                Object usernameValue = item.containsKey("username") ? item.get("username") : "";
+                String displayName = LegacyText.stripColor(String.valueOf(displayValue == null ? "" : displayValue));
+                String username = LegacyText.stripColor(String.valueOf(usernameValue == null ? "" : usernameValue));
+                if (displayName == null || displayName.isBlank()) displayName = username;
+                if (displayName == null || displayName.isBlank()) continue;
+                String shown = displayName;
+                if (username != null && !username.isBlank() && !username.equalsIgnoreCase(displayName)) shown += " (" + username + ")";
+                names.add(shown);
             }
         }
         String winnerNames = names.isEmpty() ? "none" : String.join(", ", names);
@@ -7724,12 +7724,12 @@ public class WebChatServer {
         Map<String,String> vars = Map.of("title", title, "winners", winnerNames, "eventId", eventId,
                 "serverId", serverId, "serverName", serverName, "type", String.valueOf(game.getOrDefault("type", "lottery")),
                 "participants", String.valueOf(game.getOrDefault("maxParticipants", 0)), "status", String.valueOf(game.getOrDefault("status", "completed")));
-        String fallback = "Event result: " + title + " - Winners: " + winnerNames;
+        String fallback = "🏆 Event result: " + title + " - Winners: " + winnerNames;
         String text = host.language().text("game.chat.results", fallback, vars);
         boolean relayAnnouncements = !Boolean.FALSE.equals(game.get("relayAnnouncements"));
         publishChatGameEvent("Game", text, "game.chat.results", JsonUtil.obj(vars), relayAnnouncements);
         String view = "[View event]";
-        String line = LegacyText.AQUA + "[KWC Event] " + LegacyText.RESET + title + LegacyText.GRAY
+        String line = LegacyText.LIGHT_PURPLE + "🏆 " + LegacyText.AQUA + "[KWC Event] " + LegacyText.RESET + title + LegacyText.GRAY
                 + " - Winners: " + LegacyText.AQUA + winnerNames + " " + view;
         host.platformAdapter().broadcastInteractiveMessage(new PlatformGameMessage(line, false, "", "", "", view,
                 "Click to enter /kchat game status " + eventId, "/kchat game status " + eventId));
@@ -9344,6 +9344,7 @@ public class WebChatServer {
             return fallback;
         }
     }
+
 
     private String canonicalizeKnownEmojiTokens(String text, ConfigValues config) {
         String raw = String.valueOf(text == null ? "" : text);
@@ -11023,9 +11024,9 @@ public class WebChatServer {
     private String publicPinnedJson(PinnedMessage pin) {
         if (pin == null) return "{}";
         String pinnerUuid = normalizePresenceUuid(pin.pinnedByUuid);
-        // RC34: older pinned.yml entries stored only the visible pinnedBy label.
-        // Resolve that legacy label through the local identity index when possible so
-        // existing pins can participate in Display name / Real name switching too.
+        // 5.2.1 pins may contain only the visible pinnedBy label. Resolve that label
+        // through the local identity index when possible so upgraded pins can participate
+        // in Display name / Real name switching too.
         if (pinnerUuid.isBlank() && pin.pinnedBy != null && !pin.pinnedBy.isBlank()) {
             String legacyPinner = String.valueOf(LegacyText.stripColor(pin.pinnedBy)).replace("**", "").trim();
             PlayerIdentity legacyIdentity = storage.findKnownLocalPlayer(legacyPinner);

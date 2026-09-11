@@ -1049,9 +1049,9 @@ ui:
     # runtime 범위는 0-1000이며 범위를 벗어나면 경계값으로 보정합니다.
     min-px: 200
   # 자동 최신 메시지 따라가기에서 아직 bottom을 따라가는 상태로 판단할 하단
-  # 거리(px)입니다.
-  # runtime 범위는 2-300이며 범위를 벗어나면 경계값으로 보정합니다.
-  auto-follow-bottom-threshold-px: 32
+  # 자동 최신 메시지 따라가기에서 최하단으로 판단할 남은 거리를 실제 렌더링 글자 줄 수로 지정합니다.
+  # 기본값 2는 남은 간격이 현재 line-height 2줄보다 작은 경우에만 자동 추종합니다. runtime 범위는 0.25-10입니다.
+  auto-follow-bottom-threshold-lines: 2
   # 사용자가 직접 스크롤한 뒤 자동 scroll/follow 처리를 다시 허용하기까지의 idle
   # 시간(ms)입니다.
   # runtime 범위는 50-1000이며 범위를 벗어나면 경계값으로 보정합니다.

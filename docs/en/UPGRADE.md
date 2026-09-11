@@ -421,6 +421,6 @@ KWC 5.3.0 keeps Relay Protocol 2.2 for the entire release line. Within that same
 
 DM no longer has a message-level hide-for-me operation: only the sender may delete their own message. Group message deletion is room-wide; ordinary members may delete their own normal messages while room-local owner/admin roles can manage room messages. Group pins are room-local and visible to all members, with pin/reorder/unpin restricted to owner/admin. DM and group stored-history search now use the public-search interaction pattern.
 
-Presence now distinguishes Game and Web connections. Compact lists show Game > Web > Offline, profiles show Game/Web separately, and the account-level Offline status masks both states from other viewers server-side (legacy `invisible` preference data migrates to Offline).
+Presence now distinguishes Game and Web connections. Compact lists show Game > Web > Offline, profiles show Game/Web separately, and the account-level Offline status masks both states from other viewers server-side.
 
 Retest BlueMap refresh/recovery, DM/group search and deletion, group pins/roles, Game/Web presence, Offline privacy, and any cross-server DM delete path after all relevant peers are upgraded.

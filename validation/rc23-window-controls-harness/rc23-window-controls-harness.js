@@ -17,7 +17,8 @@ const profile = read('frontend/inner/110-auth-dm-core.js');
 const multi = read('frontend/inner/115-private-multiwindow.js');
 
 check(rootUi.includes('function publicChatMinimizeAvailable()'), 'minimize availability helper missing');
-check(rootUi.includes('const viewport = publicChatMinimizeViewport();'), 'minimize availability is not tied to the public-chat viewport policy');
+check(rootUi.includes('if (!state.isStandalone) return true;'), 'embedded map/add-on minimize must not be hidden by desktop multi-window thresholds');
+check(rootUi.includes('const viewport = publicChatMinimizeViewport();'), 'Standalone minimize availability is not tied to the public-chat viewport policy');
 check(!rootUi.includes('if (state.minimized) return true;'), 'stale minimized state still bypasses the capability gate');
 check(rootUi.includes('function reconcileMinimizeAvailability()'), 'minimize capability reconciliation missing');
 check(rootUi.includes('toggleMin({persist: true, availabilityRestore: true})'), 'unsupported stale minimized state is not restored');

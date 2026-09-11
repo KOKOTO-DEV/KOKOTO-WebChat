@@ -285,7 +285,7 @@ public class ConfigValues implements MessageTokenConfig {
     public int uiVirtualScrollMinRenderedMessages;
     public double uiHistoryPreloadScreens;
     public int uiHistoryPreloadMinPx;
-    public int uiAutoFollowBottomThresholdPx;
+    public double uiAutoFollowBottomThresholdLines;
     public int uiScrollInteractionIdleMs;
     public boolean uiResumeRefreshEnabled;
     public int uiResumeRefreshMinIntervalSeconds;

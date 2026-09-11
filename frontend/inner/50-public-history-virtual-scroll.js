@@ -793,17 +793,35 @@
     return remaining <= tolerance;
   }
 
+  function activeChatLineHeightPx(box) {
+    if (!box) return Math.max(16, Number(state.config && state.config.uiMessageFontSize || 13) * 1.4);
+    const candidates = [];
+    try {
+      const rendered = box.querySelector(".kwc-text, .kwc-dm-message-body, .kwc-msg");
+      if (rendered) candidates.push(rendered);
+    } catch (_) {}
+    candidates.push(box);
+    for (const el of candidates) {
+      try {
+        const style = getComputedStyle(el);
+        const lineHeight = Number.parseFloat(style.lineHeight);
+        if (Number.isFinite(lineHeight) && lineHeight > 0) return lineHeight;
+        const fontSize = Number.parseFloat(style.fontSize);
+        if (Number.isFinite(fontSize) && fontSize > 0) return fontSize * 1.4;
+      } catch (_) {}
+    }
+    return Math.max(16, Number(state.config && state.config.uiMessageFontSize || 13) * 1.4);
+  }
+
   function autoFollowBottomThresholdPx(box) {
     const c = state.config || {};
-    const configured = Number(c.uiAutoFollowBottomThresholdPx);
-    const base = Number.isFinite(configured) ? Math.max(2, Math.min(300, configured)) : 32;
-    const viewport = Math.max(1, box && box.clientHeight ? box.clientHeight : 1);
-    // Do not let the near-bottom zone become too large on very small or mobile windows.
-    return Math.max(2, Math.min(base, Math.round(viewport * 0.35)));
+    const configured = Number(c.uiAutoFollowBottomThresholdLines);
+    const lines = Number.isFinite(configured) ? Math.max(0.25, Math.min(10, configured)) : 2;
+    return Math.max(1, activeChatLineHeightPx(box) * lines);
   }
 
   function isAutoFollowBottom(box) {
-    return isNearBottom(box, autoFollowBottomThresholdPx(box));
+    return !!box && bottomGapPx(box) < autoFollowBottomThresholdPx(box);
   }
 
   function markExplicitLatestFollow(reason = "", ms = 4500) {
@@ -856,7 +874,7 @@
     // not restore an old scrollTop and create a gap from the bottom. Older-history
     // prepends are the only normal case that may intentionally move away from the
     // bottom via scroll preservation.
-    if (!options.allowAwayFromBottom && beforeGap <= threshold && requestedGap > threshold) {
+    if (!options.allowAwayFromBottom && beforeGap < threshold && requestedGap >= threshold) {
       requested = maxTop;
       state.autoFollowLatest = true;
     }

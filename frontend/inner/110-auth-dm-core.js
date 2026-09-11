@@ -349,15 +349,14 @@
   function presenceData(item) {
     const p = item && item.presence && typeof item.presence === "object" ? item.presence : {};
     const source = String(p.source || (p.gameOnline ? "game" : p.webOnline ? "web" : "offline")).toLowerCase();
-    const statusRaw = String(p.status || (p.invisible ? "offline" : "online")).toLowerCase();
+    const statusRaw = String(p.status || (source === "offline" ? "offline" : "online")).toLowerCase();
     const status = statusRaw === "busy" ? "busy" : statusRaw === "offline" ? "offline" : "online";
     return {
       source: source === "game" || source === "web" ? source : "offline",
       status,
       online: p.online === true || p.gameOnline === true || p.webOnline === true,
       gameOnline: p.gameOnline === true,
-      webOnline: p.webOnline === true,
-      invisible: p.invisible === true || status === "offline"
+      webOnline: p.webOnline === true
     };
   }
 
@@ -1580,7 +1579,7 @@
 
   function privateMessageNearBottom(box) {
     if (!box) return true;
-    return bottomGapPx(box) <= autoFollowBottomThresholdPx(box);
+    return isAutoFollowBottom(box);
   }
 
   function privateMessageMetaHtml(msg, mine, type = "dm") {

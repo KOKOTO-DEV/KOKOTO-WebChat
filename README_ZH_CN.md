@@ -10,7 +10,7 @@
 
 ## 5.3.0 版本
 
-5.3.0 以 5.2.1 为基线，新增 DM/群聊完整已保存历史搜索与发送者本人删除、房间级群组角色/置顶/删除策略、可同时运行多个的先到先得/抽奖 Chat Event、用户资料与 Game/Web 在线状态及 Offline 隐私、个人屏蔽、按版主委派权限、扩展的内置 CAPTCHA、Web `@` 自动完成和图片元数据清除。Relay Protocol **2.2** 保持 protocol major 2 兼容，并通过 capability 支持 DM 删除、活动路由、远程资料查询，以及每个 peer 对 `public-chat` / `event` / `dm` / `profile` 的独立发送/接收策略。桌面公共/DM/群组窗口统一 drag/resize/maximize 行为，8 个适配器/standalone 由相同的 frontend fragment 与 CSS 生成，因此 responsive 标题栏和最小化外框保持一致。
+5.3.0 以 5.2.1 为基线，新增 DM/群聊完整已保存历史搜索与发送者本人删除、房间级群组角色/置顶/删除策略、可同时运行多个的先到先得/抽奖 Chat Event、用户资料与 Game/Web 在线状态及 Offline 隐私、个人屏蔽、按版主委派权限、扩展的内置 CAPTCHA、Web `@` 自动完成和图片元数据清除。Relay Protocol **2.2** 保持 protocol major 2 兼容，并通过 capability 支持 DM 删除、活动路由、远程资料查询，以及每个 peer 对 `public-chat` / `event` / `dm` / `profile` 的独立发送/接收策略。在 **Standalone 桌面模式**中，DM/群组列表与多个独立会话可作为独立窗口进行 drag/resize/maximize。8 个适配器/standalone 仍由相同的 frontend fragment 与 CSS 生成，公共聊天的 responsive 标题栏与最小化外框行为在适配器中也保持同步。
 
 
 
@@ -50,7 +50,7 @@
 - 面向 group 隔离公共聊天和跨服务器私信/已读 receipt 的 Relay Protocol 2.2：在保留 Relay v2 信任/加密模型的基础上支持 reaction/typing 与 sender-authoritative DM delete capability，并提供逐请求 peer 认证、HKDF-SHA256/AES-256-GCM 逐跳认证加密、replay 防护与仅 HTTPS forwarding
 - 可保存公共/DM/群聊范围的账号级对话存档 snapshot，管理员删除/锁定策略优先，并支持浏览器 PDF 导出
 - 无 polling、无持久化、仅使用 5 秒窗口的事件驱动 DM/群聊“正在输入…”
-- 登录用户的公共/DM/群聊消息 reaction：支持 Unicode/KWC 自定义表情；无 reaction 时仅为 `+` 按钮保留最小高度，出现实际 reaction 后才扩展为正常行；分类/搜索 picker 保持打开位置并可在任意分类操作后通过外部点击关闭；支持 reactor 名称 hover 列表，以及 **Admin > Emojis > Reaction icons** 的功能 ON/OFF 与 catalog 管理。公共 reaction 按 origin authority 进行 Relay 同步，跨服务器 DM reaction 只发送到另一参与者服务器，群聊 reaction 保持本地
+- 登录用户的公共/DM/群聊消息 reaction：支持 Unicode/KWC 自定义表情；无 reaction 时仅为 `+` 按钮保留最小高度，出现实际 reaction 后才扩展为正常行；分类/搜索 picker 保持打开位置并可在任意分类操作后通过外部点击关闭；支持 reactor 名称 hover 列表，以及 **Admin > Emojis > Reaction icons** 的功能 ON/OFF、catalog 管理和搜索别名编辑。搜索别名仅用于 reaction picker 搜索。公共 reaction 按 origin authority 进行 Relay 同步，跨服务器 DM reaction 只发送到另一参与者服务器，群聊 reaction 保持本地
 - Minecraft 点击回复(`/kchat reply`)与 Web 发送者点击 KWC DM(`/kchat dm`)
 - 可选将游戏 `/w`/`/msg`/`/tell` 类私聊复制到双方 Web DM
 - 访客聊天、数学验证码、冷却与每分钟限制

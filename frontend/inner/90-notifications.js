@@ -1590,7 +1590,6 @@
 
   async function loadAccountPresencePreferences() {
     if (!state.token) {
-      state.presenceInvisible = false;
       state.presenceStatus = "online";
       state.presencePreferenceLoaded = false;
       return false;
@@ -1598,9 +1597,8 @@
     try {
       const res = await api("/preferences/presence", {timeoutMs: 8000});
       const prefs = res && res.preferences && typeof res.preferences === "object" ? res.preferences : res;
-      const status = String(prefs && prefs.status || (prefs && prefs.invisible === true ? "offline" : "online")).toLowerCase();
+      const status = String(prefs && prefs.status || "online").toLowerCase();
       state.presenceStatus = status === "busy" ? "busy" : status === "offline" ? "offline" : "online";
-      state.presenceInvisible = state.presenceStatus === "offline";
       state.presencePreferenceLoaded = true;
       return true;
     } catch (_) {
@@ -1614,9 +1612,7 @@
     status = String(status || "online").toLowerCase();
     if (status !== "busy" && status !== "offline") status = "online";
     const previousStatus = state.presenceStatus || "online";
-    const previousInvisible = state.presenceInvisible === true;
     state.presenceStatus = status;
-    state.presenceInvisible = status === "offline";
     try {
       const res = await api("/preferences/presence", {
         method: "POST",
@@ -1626,15 +1622,13 @@
       });
       if (!res || res.ok === false) throw new Error(String(res && res.error || "presence_preferences_save_failed"));
       const prefs = res.preferences && typeof res.preferences === "object" ? res.preferences : res;
-      const saved = String(prefs && prefs.status || (prefs && prefs.invisible === true ? "offline" : "online")).toLowerCase();
+      const saved = String(prefs && prefs.status || "online").toLowerCase();
       state.presenceStatus = saved === "busy" ? "busy" : saved === "offline" ? "offline" : "online";
-      state.presenceInvisible = state.presenceStatus === "offline";
       state.presencePreferenceLoaded = true;
       refreshPresenceSurfaces().catch(() => {});
       return true;
     } catch (_) {
       state.presenceStatus = previousStatus;
-      state.presenceInvisible = previousInvisible;
       return false;
     }
   }

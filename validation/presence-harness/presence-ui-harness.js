@@ -31,7 +31,7 @@ check(dm.includes('value="online"') && dm.includes('value="busy"') && dm.include
 check(notifications.includes('function setAccountPresenceStatus(status)'), 'presence status save function exists');
 check(notifications.includes('body: JSON.stringify({status})'), 'presence status POST uses status field');
 check(store.includes('"presence.status"') && store.includes('normalizePresenceStatus'), 'manual presence status persists server-side');
-check(store.includes('"presence.invisible"'), 'legacy invisible preference remains migration-compatible');
+check(!store.includes('presence.invisible'), 'intermediate invisible preference key is absent from final 5.3.0');
 check(dm.includes('function presenceCompactHtml'), 'compact presence renderer exists');
 check(dm.includes('function openUserPresenceProfile'), 'profile presence popup exists');
 check(dm.includes('presence.game') && dm.includes('presence.web'), 'profile shows separate game/web');
@@ -50,10 +50,10 @@ check(server.includes('presenceVisibleInLists(selfUuid)') && server.includes('pr
 check(server.includes('PresencePolicy.resolve(presenceGameOnline(target), presenceWebOnline(target), presenceStatus(target), false)'), 'online list privacy never uses self-view exception');
 check(dm.includes('function refreshLoggedInCount()'), 'frontend refreshes active authenticated Web user count');
 check(server.includes('PresencePolicy.resolve(game, web, manualStatus, selfView)'), 'server uses viewer-aware manual status policy');
-check(policy.includes('boolean invisible = "offline".equals(manual)'), 'offline status is privacy mode');
+check(policy.includes('boolean privacyMasked = "offline".equals(manual)'), 'offline status is privacy mode');
 check(policy.includes('connected && "busy".equals(manual) ? "busy"'), 'busy status remains visible while connected');
-check(policy.includes('if (invisible && !selfView)'), 'offline masks underlying presence for other viewers');
-check(server.includes('String visibleUuid = invisible && !selfView ? "" : target;'), 'offline SSE updates do not expose target UUID');
+check(policy.includes('if (privacyMasked && !selfView)'), 'offline masks underlying presence for other viewers');
+check(server.includes('String visibleUuid = privacyMasked && !selfView ? "" : target;'), 'offline SSE updates do not expose target UUID');
 check(dm.includes('renderAdminSummary(adminSummary)'), 'generic presence refresh updates admin online surface');
 check(dm.includes('loadGroupChatRooms(true).then(() => {') && dm.includes('renderGroupChatHeader();'), 'presence refresh rerenders active group header online count in real time');
 check(group.includes('id="kwc-account-profile-open"') && group.includes('openUserPresenceProfile(uuid)'), 'account/user modal has direct self-profile entry');

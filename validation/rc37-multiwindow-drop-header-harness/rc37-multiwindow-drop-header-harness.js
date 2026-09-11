@@ -11,6 +11,7 @@ function check(ok,msg){ assertions++; if(!ok) throw new Error(msg); }
 function has(t,n,m){ check(t.includes(n), `${m} [missing: ${n}]`); }
 
 const multi = read('frontend/inner/115-private-multiwindow.js');
+has(multi, 'return state.isStandalone === true', 'private multi-window runtime is Standalone-only');
 has(multi, 'function installPrivateChildDragAndDropUpload(record)', 'detached private child has its own drop installer');
 has(multi, 'wrap.addEventListener("dragenter", onEnterOrOver, {capture:true});', 'child dragenter is captured');
 has(multi, 'wrap.addEventListener("dragover", onEnterOrOver, {capture:true});', 'child dragover is captured');

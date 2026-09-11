@@ -10,7 +10,7 @@
 
 ## 5.3.0 릴리스
 
-5.3.0은 5.2.1을 기준으로 DM/그룹 전체 저장기록 검색과 발신자 소유 메시지 삭제, 방 내부 그룹 역할·고정·삭제 정책, 여러 개를 동시에 운영할 수 있는 선착순/추첨 Chat Event, 사용자 프로필과 Game/Web 접속 상태·Offline 개인정보 보호, 개인 차단, 모더레이터별 위임 권한, 확장된 내장 CAPTCHA, 웹 `@` 자동완성, 이미지 메타데이터 제거를 추가합니다. Relay Protocol **2.2**는 protocol major 2 호환성을 유지하면서 DM 삭제, 이벤트 라우팅, 원격 프로필 조회와 peer별 `public-chat`/`event`/`dm`/`profile` 송신·수신 정책을 capability 기반으로 지원합니다. 데스크톱 공개/DM/그룹 창은 drag/resize/maximize 동작을 통일했고, 8개 어댑터/standalone은 같은 frontend fragment와 CSS에서 생성되어 responsive 헤더와 최소화 프레임도 동일하게 유지됩니다.
+5.3.0은 5.2.1을 기준으로 DM/그룹 전체 저장기록 검색과 발신자 소유 메시지 삭제, 방 내부 그룹 역할·고정·삭제 정책, 여러 개를 동시에 운영할 수 있는 선착순/추첨 Chat Event, 사용자 프로필과 Game/Web 접속 상태·Offline 개인정보 보호, 개인 차단, 모더레이터별 위임 권한, 확장된 내장 CAPTCHA, 웹 `@` 자동완성, 이미지 메타데이터 제거를 추가합니다. Relay Protocol **2.2**는 protocol major 2 호환성을 유지하면서 DM 삭제, 이벤트 라우팅, 원격 프로필 조회와 peer별 `public-chat`/`event`/`dm`/`profile` 송신·수신 정책을 capability 기반으로 지원합니다. **Standalone 데스크톱 모드**에서는 DM/그룹 목록과 여러 개의 개별 대화를 독립 창으로 열어 drag/resize/maximize할 수 있습니다. 8개 어댑터/standalone은 같은 frontend fragment와 CSS에서 생성되며, 공개채팅 responsive 헤더와 최소화 프레임 동작은 어댑터에서도 동일하게 유지됩니다.
 
 
 
@@ -48,7 +48,7 @@ Bukkit/Paper/Spigot에서는 BlueMap, squaremap, Dynmap, Pl3xMap, LiveAtlas, uNm
 - BlueMap/squaremap/Dynmap/Pl3xMap/LiveAtlas/uNmINeD/Overviewer 지도 안 채팅 패널 또는 standalone 페이지 제공
 - 게임 ↔ 웹 채팅 양방향 전달
 - group 기반 공개채팅과 서버 간 DM/읽음 확인을 지원하는 Relay Protocol 2.2: Relay v2 신뢰/암호화 모델을 유지하면서 reaction/typing과 sender-authoritative DM delete capability를 지원하고, 요청별 peer 인증, HKDF-SHA256/AES-256-GCM 기반 hop-by-hop 인증 암호화, replay 방어, HTTPS 전용 forwarding 지원
-- 로그인 사용자 공개/DM/그룹 메시지 반응: 일반 Unicode/KWC 커스텀 이모지, 빈 상태에서는 `+` 버튼 높이만 최소 확보하고 실제 반응이 생기면 정상 행으로 확장되는 하단 UI, 위치가 유지되고 바깥 클릭으로 닫히는 카테고리/검색 선택창, **관리자 > 이모지 > 반응 아이콘**의 전체 기능 ON/OFF 및 아이콘 관리. 공개 반응은 origin authority 기준으로 Relay 동기화하고, 타 서버 DM 반응은 상대 참가자 서버로만 전달하며, 그룹 반응은 로컬로 유지
+- 로그인 사용자 공개/DM/그룹 메시지 반응: 일반 Unicode/KWC 커스텀 이모지, 빈 상태에서는 `+` 버튼 높이만 최소 확보하고 실제 반응이 생기면 정상 행으로 확장되는 하단 UI, 위치가 유지되고 바깥 클릭으로 닫히는 카테고리/검색 선택창, **관리자 > 이모지 > 반응 아이콘**의 전체 기능 ON/OFF, 아이콘 관리 및 검색 별칭 편집. 이 검색 별칭은 반응 picker 검색에만 사용됩니다. 공개 반응은 origin authority 기준으로 Relay 동기화하고, 타 서버 DM 반응은 상대 참가자 서버로만 전달하며, 그룹 반응은 로컬로 유지
 - Minecraft 메시지 클릭 댓글(`/kchat reply`)과 웹 발신자 클릭 KWC DM(`/kchat dm`)
 - 게임 `/w`/`/msg`/`/tell`류 귓속말을 양쪽 사용자의 웹 DM으로 선택적 복제
 - 게스트 채팅, 수학 캡차, 쿨다운/분당 제한

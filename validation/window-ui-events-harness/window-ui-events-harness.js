@@ -51,6 +51,9 @@ has(windowing, 'modal.style.setProperty("height", "100vh", "important")', 'DM/gr
 has(windowing, 'modal.dataset.kwcMaximized', 'DM/group maximize state is tracked');
 has(windowing, 'wrap.__kwcWindowChromeCleanup', 'child window chrome has teardown hook');
 has(windowing, 'overlayObserver.observe(modal, {childList:true})', 'resize zones react to owned popup lifetime');
+has(windowing, 'const edgeOutset = 16;', 'DM/group resize hit target expands outward to 16px');
+has(windowing, 'const edgeOverlap = 3;', 'DM/group resize target retains a 3px inward overlap');
+has(windowing, 'const clippedWidth = Math.max(0, clippedRight - clippedLeft);', 'DM/group viewport-edge resize target is clipped instead of shifted inward');
 
 const rootWindowing = read('frontend/inner/30-reply-identity-frame.js');
 has(rootWindowing, 'header.addEventListener("dblclick"', 'public header double-click maximize is installed');
@@ -62,12 +65,38 @@ has(rootWindowing, 'root.style.setProperty("--kwc-standalone-left", "0px")', 'st
 has(rootWindowing, 'root.style.setProperty("--kwc-standalone-top", "0px")', 'standalone maximize reaches top edge');
 has(rootWindowing, 'root.style.setProperty("--kwc-standalone-width", "100vw")', 'standalone maximize fills viewport width');
 has(rootWindowing, 'root.style.setProperty("--kwc-standalone-height", "100vh")', 'standalone maximize fills viewport height');
-has(rootWindowing, 'state.config && state.config.uiResizable === true', 'standalone resize obeys the same uiResizable gate as adapters');
-has(rootWindowing, 'width: state.minimized ? 48 : state.frameNormalWidth', 'minimized public frame requests only the restore-button width');
-has(rootWindowing, 'handle.style.zIndex = String(rootZ)', 'public resize zones track the public root stacking level');
+has(rootWindowing, 'function uiResizeEnabled()', 'shared resize-enabled helper exists');
+has(rootWindowing, 'return !state.config || state.config.uiResizable !== false;', 'resize stays enabled while config is unavailable and disables only on explicit false');
+has(rootWindowing, 'resizable: uiResizeEnabled()', 'parent resize bridge does not transiently send resizable false during config recovery');
+has(rootWindowing, 'width: state.minimized ? 124 : state.frameNormalWidth', 'minimized public frame reserves title plus restore-button width');
+has(rootWindowing, 'handle.style.zIndex = String(rootZ + 1)', 'standalone public resize zones stay above the public root for inward hit testing');
+has(rootWindowing, 'const edgeOutset = 16, edgeOverlap = 3, edgeInset = 3, cornerOverlap = 5;', 'standalone public resize target uses 16px outside plus 3px inward overlap');
+has(rootWindowing, 'const clippedWidth = Math.max(0, clippedRight - clippedLeft);', 'standalone public viewport-edge target is clipped instead of shifted over content');
+
+const wrapperFiles = [
+  'kwc-adapter-bluemap/src/main/resources/web/chat.js',
+  'kwc-adapter-dynmap/src/main/resources/dynmap/chat.js',
+  'kwc-adapter-liveatlas/src/main/resources/liveatlas/chat.js',
+  'kwc-adapter-overviewer/src/main/resources/overviewer/chat.js',
+  'kwc-adapter-pl3xmap/src/main/resources/pl3xmap/chat.js',
+  'kwc-adapter-squaremap/src/main/resources/squaremap/chat.js',
+  'kwc-adapter-unmined/src/main/resources/unmined/chat.js',
+  'kwc-standalone-frontend/src/main/resources/standalone/chat.js'
+];
+for (const rel of wrapperFiles) {
+  const wrapper = read(rel);
+  has(wrapper, 'const edgeOutset = 16;', `${rel}: parent resize target expands 16px outside`);
+  has(wrapper, 'const edgeOverlap = 3;', `${rel}: parent resize target keeps 3px inside overlap`);
+  has(wrapper, '"z-index:2147483645"', `${rel}: chat frame leaves top stacking slots for resize handles`);
+  has(wrapper, '"z-index:2147483647"', `${rel}: parent resize handles can sit above the iframe`);
+  check(!wrapper.includes('restorePositionUntil'), `${rel}: old 3.5-second time-based geometry guard is removed`);
+  has(wrapper, 'savedFramePositionApplied = false;', `${rel}: user resize owns geometry after refresh`);
+  has(wrapper, 'const clippedWidth = Math.max(0, clippedRight - clippedLeft);', `${rel}: parent edge target clips at viewport instead of covering content`);
+}
 
 
 const rootAuth = read('frontend/inner/40-root-auth.js');
+has(rootAuth, 'if (!state.isStandalone) return true;', 'mobile/small embedded add-ons keep the minimize control');
 has(rootAuth, '${!state.isPip ? `<button class=\"kwc-button\" id=\"kwc-min\">_</button>` : ""}', 'standalone renders the same minimize control as adapter mode');
 has(rootAuth, 'if (willMinimize && state.isStandalone && root && root.dataset.kwcMaximized === "1")', 'standalone minimize first restores a maximized window like adapter mode');
 has(rootAuth, 'raiseIndependentChatWindow(root)', 'public chat participates in shared click-to-front z ordering');
@@ -78,6 +107,9 @@ has(rootAuth, '!authenticatedSession()', 'guest-hidden policy treats unverified 
 has(rootAuth, 'btn.textContent = headerAccountDisplayName(accountButtonName, 16)', 'authenticated account button replaces Login text and truncates only names over 16 code points');
 has(rootAuth, 'root.dataset.kwcMinimizedSide', 'standalone minimize records left/right side from pre-minimize geometry');
 has(rootAuth, 'rect.left + (rect.width / 2)', 'standalone minimize side is selected by window center');
+has(rootAuth, 'state.publicMinimizeViewAnchor = captureChatViewAnchor("public")', 'minimize captures public message anchor before viewport collapse');
+has(rootAuth, 'restoreChatViewAnchorNow("public", restoreAnchor)', 'restore reapplies the same public message anchor after unminimize');
+has(windowing, 'if (type === "public" && state.minimized) return false;', 'hidden minimized public viewport cannot overwrite saved chat position');
 check(!state.includes('resizeLocked'), 'resize-lock state is removed');
 check(!rootAuth.includes('kwc-resize-lock'), 'public resize-lock button is removed');
 check(!windowing.includes('resizeLocked'), 'private resize-lock behavior is removed');
@@ -123,8 +155,8 @@ has(css, '5.3.0 RC21: restore the legacy compact minimized pill and guest-only c
 has(css, '#kwc-root.kwc-minimized .kwc-header-identity,', 'minimized title/identity has an explicit RC21 rule');
 has(css, 'display: flex !important;', 'minimized title/identity is restored');
 has(css, '#kwc-root.kwc-minimized .kwc-actions-primary > :not(#kwc-min)', 'minimized primary actions hide everything except restore');
-has(css, '5.3.0 RC33: final public minimized chrome contract', 'final minimized public-chat override exists');
-has(css, 'width: 48px !important;', 'minimized public chat is a compact restore-only width');
+has(css, '5.3.0 RC38 window hotfix: minimized title + restore button contract.', 'final minimized title-plus-restore override exists');
+has(css, 'width: 124px !important;', 'minimized public chat reserves title plus restore-button width');
 has(css, '#kwc-root.kwc-guest-hidden:not(.kwc-minimized) #kwc-pip', 'guest-hidden mode explicitly hides PiP');
 has(css, 'data-kwc-minimized-side="left"', 'standalone left-bottom minimized snap rule exists');
 has(css, 'data-kwc-minimized-side="right"', 'standalone right-bottom minimized snap rule exists');
