@@ -15,7 +15,7 @@ KOKOTO WebChat 5.3.0 expands **5.2.1** with improved DM/group management, Chat E
 - Event announcements can be limited to the current server or sent across Relay-connected servers.
 - Relay event links are routed back to the exact server where the event was created.
 - Participant and winner names follow the global **Display Name / Real Name** setting.
-- Event result announcements in chat use the `🏆` prefix and display winners as **Display Name (Real Name)** when the two names differ.
+- Event result announcements display winners as **Display Name (Real Name)** when the two names differ.
 
 #### Full DM and Group History Search
 
