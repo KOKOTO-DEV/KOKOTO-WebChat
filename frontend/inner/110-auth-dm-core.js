@@ -196,7 +196,7 @@
   function directMessageAdminIdentityHtml(item) {
     const a = {displayName: item.userADisplayName || item.userALabel || "", username: item.userAUsername || "", uuid: item.userAUuid || ""};
     const b = {displayName: item.userBDisplayName || item.userBLabel || "", username: item.userBUsername || "", uuid: item.userBUuid || ""};
-    return `<span class="kwc-admin-meta-identities">${directMessageIdentityHtml(a, "kwc-admin-meta-user")} <span class="kwc-admin-meta-separator">↔</span> ${directMessageIdentityHtml(b, "kwc-admin-meta-user")}</span>`;
+    return `<span class="kwc-admin-meta-identities">${directMessageIdentityHtml(a, "kwc-admin-meta-user")} <span class="kwc-admin-meta-separator">${kwcFaIcon("arrows-left-right")}</span> ${directMessageIdentityHtml(b, "kwc-admin-meta-user")}</span>`;
   }
 
   async function deleteAdminDmThread(threadId) {
@@ -1099,7 +1099,7 @@
     const adminTitle = state.privateChatContentAccess
       ? t("admin.privateContentAccess", "Admin DM audit (contents available)")
       : t("admin.privateMetaOnly", "Admin metadata only");
-    const adminHtml = adminThreads.length ? `<div class="kwc-admin-meta-title">🛡 ${esc(adminTitle)}</div>` + adminThreads.map(item => {
+    const adminHtml = adminThreads.length ? `<div class="kwc-admin-meta-title">${kwcFaIcon("shield-halved")} ${esc(adminTitle)}</div>` + adminThreads.map(item => {
       const retention = retentionRemainingText(item.retentionBaseAt || item.latestMessageAt || item.updatedAt, item.retentionDays ?? state.directMessageRetentionDays, "dm", item.retentionExpiresAt);
       const flags = `${item.locked ? esc(t("admin.locked", "locked")) + " · " : ""}${item.retentionExempt ? esc(t("admin.retentionExempt", "auto-delete excluded")) + " · " : ""}`;
       const meta = `${esc(retention)} · ${flags}${esc(t("admin.messages", "messages"))}: ${esc(item.messageCount || 0)} · ${esc(t("admin.storage", "storage"))}: ${esc(formatBytes(item.storageBytes || 0))}`;
@@ -1111,7 +1111,7 @@
       const openTitle = state.privateChatContentAccess ? t("admin.openDmAudit", "Open this DM session in read-only audit view.") : t("admin.noContentAccess", "Message contents are not accessible from this view.");
       const openAttrs = state.privateChatContentAccess ? ` data-dm-admin-open-thread="${esc(item.id || "")}" role="button" tabindex="0"` : "";
       const openClass = state.privateChatContentAccess ? " kwc-admin-meta-open" : "";
-      return `<div class="kwc-dm-thread kwc-admin-meta-row${openClass}"${openAttrs} title="${esc(openTitle)}"><span class="kwc-dm-thread-name">🛡 ${directMessageAdminIdentityHtml(item)}</span><span class="kwc-admin-meta-actions"><button type="button" class="kwc-button" data-dm-admin-lock-thread="${esc(item.id || "")}" data-next-locked="${item.locked ? "false" : "true"}" title="${esc(lockTitle)}" aria-label="${esc(lockTitle)}">${esc(lockLabel)}</button><button type="button" class="kwc-button" data-dm-admin-retention-thread="${esc(item.id || "")}" data-next-exempt="${item.retentionExempt ? "false" : "true"}" title="${esc(exemptTitle)}" aria-label="${esc(exemptTitle)}">${esc(exemptLabel)}</button><button type="button" class="kwc-button kwc-admin-meta-danger" data-dm-admin-delete-thread="${esc(item.id || "")}" title="${esc(deleteTitle)}" aria-label="${esc(deleteTitle)}">${esc(t("admin.deleteThread", "Delete"))}</button></span><span class="kwc-dm-thread-preview" title="${esc(meta.replace(/<[^>]*>/g, ""))}">${meta}</span></div>`;
+      return `<div class="kwc-dm-thread kwc-admin-meta-row${openClass}"${openAttrs} title="${esc(openTitle)}"><span class="kwc-dm-thread-name">${kwcFaIcon("shield-halved")} ${directMessageAdminIdentityHtml(item)}</span><span class="kwc-admin-meta-actions"><button type="button" class="kwc-button" data-dm-admin-lock-thread="${esc(item.id || "")}" data-next-locked="${item.locked ? "false" : "true"}" title="${esc(lockTitle)}" aria-label="${esc(lockTitle)}">${esc(lockLabel)}</button><button type="button" class="kwc-button" data-dm-admin-retention-thread="${esc(item.id || "")}" data-next-exempt="${item.retentionExempt ? "false" : "true"}" title="${esc(exemptTitle)}" aria-label="${esc(exemptTitle)}">${esc(exemptLabel)}</button><button type="button" class="kwc-button kwc-admin-meta-danger" data-dm-admin-delete-thread="${esc(item.id || "")}" title="${esc(deleteTitle)}" aria-label="${esc(deleteTitle)}">${esc(t("admin.deleteThread", "Delete"))}</button></span><span class="kwc-dm-thread-preview" title="${esc(meta.replace(/<[^>]*>/g, ""))}">${meta}</span></div>`;
     }).join("") : "";
     const previewHtml = state.privateChatSuperAdmin ? cleanupPreviewHtml(state.dmCleanupPreview, "dm") : "";
     list.innerHTML = userHtml + previewHtml + adminHtml;
@@ -1190,7 +1190,7 @@
     const target = thread || state.dmDraftTarget || null;
     const value = label || (target ? directMessageLabel(target) : t("dm.selectThread", "Select a thread"));
     if (state.dmAuditMode && state.dmAuditThread) {
-      title.innerHTML = `<span class="kwc-private-audit-badge">🛡 ${esc(t("admin.dmAuditView", "DM audit"))}</span><span class="kwc-dm-audit-identity">${directMessageAdminIdentityHtml(state.dmAuditThread)}</span>`;
+      title.innerHTML = `<span class="kwc-private-audit-badge">${kwcFaIcon("shield-halved")} ${esc(t("admin.dmAuditView", "DM audit"))}</span><span class="kwc-dm-audit-identity">${directMessageAdminIdentityHtml(state.dmAuditThread)}</span>`;
       title.dataset.dmPlainTitle = directMessagePlainLabel(value);
     } else if (target) {
       title.innerHTML = directMessageHeaderIdentityHtml(target, "kwc-dm-title-name");
@@ -1277,7 +1277,7 @@
         : (msg.readByOther === true ? 0 : 1);
       if (count <= 0) {
         const label = t("receipt.read", "Read");
-        return `<span class="kwc-read-receipt kwc-read-receipt-dm" title="${esc(label)}" aria-label="${esc(label)}">✓</span>`;
+        return `<span class="kwc-read-receipt kwc-read-receipt-dm" title="${esc(label)}" aria-label="${esc(label)}">${kwcFaIcon("check")}</span>`;
       }
       const label = t("receipt.unread", "Unread");
       return `<span class="kwc-read-receipt kwc-read-receipt-dm" title="${esc(label)}" aria-label="${esc(label)}">${esc(label)}</span>`;
@@ -1286,7 +1286,7 @@
       const count = Math.max(0, Number(msg.unreadMemberCount || 0));
       if (count <= 0) {
         const label = t("receipt.readAll", "Read by everyone");
-        return `<span class="kwc-read-receipt kwc-read-receipt-group" title="${esc(label)}" aria-label="${esc(label)}">✓</span>`;
+        return `<span class="kwc-read-receipt kwc-read-receipt-group" title="${esc(label)}" aria-label="${esc(label)}">${kwcFaIcon("check")}</span>`;
       }
       const label = fmt("receipt.unreadCount", "{count} people have not read this message", {count: String(count)});
       return `<span class="kwc-read-receipt kwc-read-receipt-group" title="${esc(label)}" aria-label="${esc(label)}">${esc(String(count))}</span>`;
@@ -1683,7 +1683,7 @@
       el.dataset.kwcPrivateBody = body;
       el.dataset.kwcPrivateEventType = eventType;
       el.dataset.groupMessageId = rawMessageId;
-      const eventDelete = /^\d+$/.test(rawMessageId) && groupMessageDeletionAllowed(msg) && (groupCanManage() || moderatorCanDeleteMessages()) ? `<button type="button" class="kwc-private-message-delete kwc-group-message-delete" data-group-delete-message="${esc(rawMessageId)}" title="${esc(t("button.delete", "delete"))}" aria-label="${esc(t("button.delete", "delete"))}">×</button>` : "";
+      const eventDelete = /^\d+$/.test(rawMessageId) && groupMessageDeletionAllowed(msg) && (groupCanManage() || moderatorCanDeleteMessages()) ? `<button type="button" class="kwc-private-message-delete kwc-group-message-delete" data-group-delete-message="${esc(rawMessageId)}" title="${esc(t("button.delete", "delete"))}" aria-label="${esc(t("button.delete", "delete"))}">${kwcFaIcon("xmark")}</button>` : "";
       el.innerHTML = `<span class="kwc-group-membership-event-text">${groupMembershipEventHtml(msg)}</span><span class="kwc-group-membership-event-time kwc-time" data-time="${esc(msg.time || "")}" title="${esc(timeToggleTitle(msg.time))}" role="button" tabindex="0">${esc(formatMessageTime(msg.time))}</span>${eventDelete}`;
       return el;
     }
@@ -1695,8 +1695,8 @@
     const persisted = /^\d+$/.test(rawMessageId);
     const deleteLabel = t("button.delete", "delete");
     const deleteButton = type === "group"
-      ? (persisted && groupMessageDeletionAllowed(msg) ? `<button type="button" class="kwc-private-message-delete kwc-group-message-delete" data-group-delete-message="${esc(rawMessageId)}" title="${esc(deleteLabel)}" aria-label="${esc(deleteLabel)}">×</button>` : "")
-      : (!state.dmAuditMode && persisted && (moderatorCanDeleteMessages() || (mine && selfMessageDeletionAllowed(msg))) ? `<button type="button" class="kwc-private-message-delete kwc-dm-message-delete" data-dm-delete-message="${esc(rawMessageId)}" title="${esc(t("dm.deleteOwnMessage", "Delete message"))}" aria-label="${esc(t("dm.deleteOwnMessage", "Delete message"))}">×</button>` : "");
+      ? (persisted && groupMessageDeletionAllowed(msg) ? `<button type="button" class="kwc-private-message-delete kwc-group-message-delete" data-group-delete-message="${esc(rawMessageId)}" title="${esc(deleteLabel)}" aria-label="${esc(deleteLabel)}">${kwcFaIcon("xmark")}</button>` : "")
+      : (!state.dmAuditMode && persisted && (moderatorCanDeleteMessages() || (mine && selfMessageDeletionAllowed(msg))) ? `<button type="button" class="kwc-private-message-delete kwc-dm-message-delete" data-dm-delete-message="${esc(rawMessageId)}" title="${esc(t("dm.deleteOwnMessage", "Delete message"))}" aria-label="${esc(t("dm.deleteOwnMessage", "Delete message"))}">${kwcFaIcon("xmark")}</button>` : "");
     el.dataset.kwcPrivateReplySignature = privateReplySignature(msg);
     el.innerHTML = `<div class="kwc-meta kwc-dm-message-meta">${privateMessageMetaHtml(msg, mine, type)}</div>${deleteButton}${privateReplyReferenceHtml(msg, type)}<div class="kwc-text kwc-dm-message-body">${directMessageBodyHtml(body)}</div>${directMessagePreviewHtml(body, rawMessageId, type)}${reactionBarHtml(msg)}`;
     installReactionHandlers(el, msg);
@@ -1731,7 +1731,7 @@
     button.setAttribute(attr, rawMessageId);
     button.title = title;
     button.setAttribute("aria-label", title);
-    button.textContent = "×";
+    setKwcFaIcon(button, "xmark");
     const meta = el.querySelector(":scope > .kwc-dm-message-meta");
     if (meta && meta.nextSibling) el.insertBefore(button, meta.nextSibling);
     else if (meta) el.appendChild(button);

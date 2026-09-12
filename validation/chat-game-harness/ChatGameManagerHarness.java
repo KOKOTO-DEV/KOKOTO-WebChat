@@ -85,6 +85,43 @@ public final class ChatGameManagerHarness {
         long files;
         try (var stream = Files.list(root.resolve("chat-games"))) { files = stream.filter(p -> p.getFileName().toString().endsWith(".properties")).count(); }
         check(files == 2, "deleted event properties file is removed while other history remains");
+
+        // 5.3.1 poll + recruitment coverage is isolated so the legacy event-count assertions above stay stable.
+        Path specialRoot = Files.createTempDirectory("kwc-chat-game-531-");
+        ChatGameManager special = new ChatGameManager(specialRoot);
+        ChatGameManager.Result poll = special.createPoll("Where next?", "Nether|End|Overworld", "admin", true);
+        check(poll.ok() && "poll".equals(poll.game().get("type")), "poll can be created");
+        String pollId = String.valueOf(poll.game().get("id"));
+        check(special.vote(pollId, "p1", "player1", "Player One", 2).ok(), "poll vote accepted");
+        check(Integer.valueOf(2).equals(special.snapshot(pollId, "p1").game().get("pollSelectedOption")), "viewer sees own selected option");
+        check(special.vote(pollId, "p1", "player1", "Player One", 3).changed(), "poll vote may change while open");
+        check(Integer.valueOf(1).equals(special.snapshot(pollId, "").game().get("voteCount")), "changing a vote does not duplicate voter count");
+        check(!special.vote(pollId, "p2", "player2", "Player Two", 9).ok(), "invalid poll option rejected");
+        check(special.finish(pollId).ok(), "poll can be finalized");
+        check(!special.vote(pollId, "p2", "player2", "Player Two", 1).ok(), "finalized poll rejects new votes");
+
+        ChatGameManager.Result recruitment = special.createRecruitment("Raid party", "Tank:1|Healer:1|DPS:2", "admin", false);
+        check(recruitment.ok() && Integer.valueOf(4).equals(recruitment.game().get("maxParticipants")), "recruitment capacity is sum of role slots");
+        String recruitmentId = String.valueOf(recruitment.game().get("id"));
+        ChatGameManager.Result tankA = special.applyRecruitment(recruitmentId, "r1", "tank1", "Tank One", "Tank");
+        check(tankA.ok() && "accepted".equals(tankA.error()), "first role applicant is accepted");
+        ChatGameManager.Result tankB = special.applyRecruitment(recruitmentId, "r2", "tank2", "Tank Two", "tank");
+        check(tankB.ok() && "waiting".equals(tankB.error()), "overflow applicant enters role wait queue");
+        check(Integer.valueOf(1).equals(tankB.game().get("recruitmentQueuePosition")), "wait queue position is exposed to applicant");
+        check(special.applyRecruitment(recruitmentId, "r3", "healer", "Healer", "Healer").ok(), "independent role capacity accepts applicant");
+        check(special.withdrawRecruitment(recruitmentId, "r1").ok(), "accepted applicant can withdraw");
+        Map<String,Object> promoted = special.snapshot(recruitmentId, "r2").game();
+        check("accepted".equals(promoted.get("recruitmentState")), "oldest waiter is automatically promoted into released role slot");
+        check(Integer.valueOf(0).equals(promoted.get("recruitmentQueuePosition")), "promoted applicant leaves wait queue");
+        check(special.applyRecruitment(recruitmentId, "r2", "tank2", "Tank Two", "DPS").changed(), "applicant may switch roles while recruitment is open");
+        Map<String,Object> switched = special.snapshot(recruitmentId, "r2").game();
+        check("DPS".equals(switched.get("recruitmentRole")) && "accepted".equals(switched.get("recruitmentState")), "role switch updates accepted state");
+
+        ChatGameManager specialRestored = new ChatGameManager(specialRoot);
+        check(Integer.valueOf(3).equals(specialRestored.snapshot(pollId, "p1").game().get("pollSelectedOption")), "poll vote persists across restart");
+        check("DPS".equals(specialRestored.snapshot(recruitmentId, "r2").game().get("recruitmentRole")), "recruitment role persists across restart");
+        check(Integer.valueOf(0).equals(specialRestored.snapshot(recruitmentId, "").game().get("waitingCount")), "recruitment queue state persists across restart");
+
         System.out.println("CHAT_GAME_MANAGER_HARNESS_PASS assertions=" + assertions);
     }
 

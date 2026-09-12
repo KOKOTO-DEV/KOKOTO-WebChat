@@ -608,7 +608,7 @@
       overlay = document.createElement("div");
       overlay.className = "kwc-emoji-search-overlay";
       overlay.dataset.emojiSearchKind = kind;
-      overlay.innerHTML = `<span class="kwc-emoji-search-float-icon" aria-hidden="true">🔍</span><input type="search" class="kwc-input kwc-emoji-search-input" data-emoji-search-input maxlength="80" placeholder="${esc(t("emoji.searchPlaceholder", "Search emojis"))}">`;
+      overlay.innerHTML = `<span class="kwc-emoji-search-float-icon" aria-hidden="true">${kwcFaIcon("magnifying-glass")}</span><input type="search" class="kwc-input kwc-emoji-search-input" data-emoji-search-input maxlength="80" placeholder="${esc(t("emoji.searchPlaceholder", "Search emojis"))}">`;
       host.appendChild(overlay);
       const input = overlay.querySelector("[data-emoji-search-input]");
       if (input) {
@@ -735,7 +735,7 @@
       })
     ].join("");
     const shown = emojiPanelShownItems(items, selectedPack, ctx.searchOpen, ctx.query);
-    panel.innerHTML = `<div class="kwc-emoji-toolbar"><button type="button" class="kwc-emoji-search-toggle${ctx.searchOpen ? " kwc-active" : ""}" data-emoji-search-toggle title="${esc(t("button.search", "Search"))}" aria-label="${esc(t("button.search", "Search"))}">🔍</button><div class="kwc-emoji-tabs">${tabs}</div></div>`
+    panel.innerHTML = `<div class="kwc-emoji-toolbar"><button type="button" class="kwc-emoji-search-toggle${ctx.searchOpen ? " kwc-active" : ""}" data-emoji-search-toggle title="${esc(t("button.search", "Search"))}" aria-label="${esc(t("button.search", "Search"))}">${kwcFaIcon("magnifying-glass")}</button><div class="kwc-emoji-tabs">${tabs}</div></div>`
       + `<div class="kwc-emoji-scroll">${emojiPanelGridHtml(shown, selectedPack, ctx.searchOpen, ctx.query)}</div>`;
     panel.classList.remove("kwc-hidden");
     const renderedTabs = panel.querySelector(".kwc-emoji-tabs");

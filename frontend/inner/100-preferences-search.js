@@ -947,7 +947,7 @@
       <div class="kwc-modal kwc-search-modal" role="dialog" aria-modal="true" aria-label="${t("search.title", "Search messages")}">
         <div class="kwc-search-head">
           <h3>${t("search.title", "Search messages")}</h3>
-          <button class="kwc-button kwc-search-x" id="kwc-search-close-x" type="button" aria-label="${t("button.close", "Close")}">×</button>
+          <button class="kwc-button kwc-search-x" id="kwc-search-close-x" type="button" aria-label="${t("button.close", "Close")}">${kwcFaIcon("xmark")}</button>
         </div>
         <div class="kwc-search-row">
           <input class="kwc-input" id="kwc-search-query" maxlength="120" placeholder="${t("search.placeholder", "Search message text or sender")}">
@@ -1160,7 +1160,7 @@
       : directMessageHeaderPlainLabel((state.dmThreads || []).find(item => item.id === contextId) || state.dmDraftTarget || {}, "");
     wrap.innerHTML = `
       <div class="kwc-modal kwc-search-modal" role="dialog" aria-modal="true" aria-label="${esc(t("search.title", "Search messages"))}">
-        <div class="kwc-search-head"><div><h3>${esc(t("search.title", "Search messages"))}</h3><div class="kwc-private-search-scope">${esc(scopeLabel)}</div></div><button class="kwc-button kwc-search-x" id="kwc-private-search-close-x" type="button" aria-label="${esc(t("button.close", "Close"))}">×</button></div>
+        <div class="kwc-search-head"><div><h3>${esc(t("search.title", "Search messages"))}</h3><div class="kwc-private-search-scope">${esc(scopeLabel)}</div></div><button class="kwc-button kwc-search-x" id="kwc-private-search-close-x" type="button" aria-label="${esc(t("button.close", "Close"))}">${kwcFaIcon("xmark")}</button></div>
         <div class="kwc-search-row"><input class="kwc-input" id="kwc-private-search-query" maxlength="120" placeholder="${esc(t("search.placeholder", "Search message text or sender"))}"><button class="kwc-button" id="kwc-private-search-run" type="button">${esc(t("button.search", "Search"))}</button></div>
         <details class="kwc-search-options"><summary>${esc(t("search.options", "Options"))}</summary><div class="kwc-search-options-grid">
           <label><span>${esc(t("search.from", "From"))}</span><input class="kwc-input" id="kwc-private-search-from" type="datetime-local"></label>

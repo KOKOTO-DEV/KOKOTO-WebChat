@@ -34,7 +34,7 @@ final class ConfigMigrationManager {
         try {
             PortableConfigMigration.Result result = PortableConfigMigration.reconcile(
                     plugin.getDataFolder().toPath(),
-                    String.valueOf(plugin.getDescription().getVersion()).trim(),
+                    PortableConfigMigration.CONFIG_SCHEMA_VERSION,
                     plugin::getResource,
                     ConfigMigrationManager::loadSnapshot,
                     message -> plugin.getLogger().info(message)

@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.3.0 — メッセージの反応
+# KOKOTO WebChat 5.3.1 — メッセージの反応
 
 反応は公開 chat、1:1 DM、通常の group-chat message に保存される永続的な message state です。Relay された公開 message は **元メッセージを作成したサーバー**がその公開 reaction state の authority になります。cross-server DM reaction は相手 participant の server だけへ直接送られ、無関係な Relay peer へ broadcast しません。group-chat room は local のままで、join/leave event は reaction 対象ではありません。
 

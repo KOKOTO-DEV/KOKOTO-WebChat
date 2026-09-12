@@ -1,6 +1,6 @@
 # KOKOTO WebChat 升级指南
 
-本文档整合了从 4.5.5 到 5.3.0 的升级说明。跨多个版本升级时，请按版本顺序依次检查各节。
+本文档整合了从 4.5.5 到 5.3.1 的升级说明。跨多个版本升级时，请按版本顺序依次检查各节。
 
 ## 从 4.5.5 升级到 4.6.0
 
@@ -396,3 +396,12 @@ DM 不再提供消息级“仅对我隐藏”，只有发送者可以删除自�
 Presence 区分 Game 与 Web。compact 列表按 Game > Web > Offline 只显示一个代表状态，用户资料中分别显示 Game/Web；账号级 Offline 状态会在服务器端向其他用户隐藏两种真实状态。
 
 升级后请检查 BlueMap 刷新恢复、DM/群聊搜索与删除、群组置顶/角色、Game/Web presence、Offline 隐私，以及所有相关 peer 升级后的跨服务器 DM 删除。
+
+
+## 从 KOKOTO WebChat 5.3.0 升级到 5.3.1
+
+先备份 KWC 数据目录，再替换为对应的 5.3.1 运行时 JAR。**配置架构不升级。** `config-version` 和管理员 reference 继续使用 5.3.0，因此会保留现有 5.3.0 管理员值以及 Relay 2.2 信任/策略配置。
+
+5.3.1 完成 Poll/Recruitment 活动生命周期和自动结束策略持久化，修复移动端 add-on 管理员按钮点击、被遮挡 private window 再次唤起以及 Font Awesome Free 图标一致性。Minecraft `/kchat game` 自动补全由 Bukkit/Fabric/NeoForge/Forge 共用服务提供，可补全活动操作、活动 ID、Poll 选项编号、Recruitment 角色和自动结束条件、实时 settings/filter/admin/guest 控制以及基本 DM/群组导航。Bukkit 中文档已有但 dispatcher 遗漏的 `/kchat filter` 与 `/kchat settings` 也会恢复。
+
+活动公告范围根据 Relay topology 决定。若至少配置一个允许 `send.event` 的已启用 peer，则默认使用 Relay，并可选择仅本地；若没有此类 peer，则隐藏范围 UI/命令并强制规范为仅本地。判断基于配置 topology 而非瞬时连接状态，Relay Protocol 仍为 2.2。

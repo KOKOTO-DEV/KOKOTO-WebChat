@@ -19,8 +19,8 @@ def fabricApiVersion = requiredPin('kwc.fabric_api')
 def targetJava = providers.gradleProperty('kwc.java').get()
 
 group='dev.kokoto.webchat'
-version='5.3.0'
-base { archivesName='KOKOTO-WebChat-5.3.0-Fabric-26.3' }
+version='5.3.1'
+base { archivesName='KOKOTO-WebChat-5.3.1-Fabric-26.3' }
 
 repositories { mavenCentral(); maven { url 'https://repo.bluecolored.de/releases' } }
 // 26.2의 modern compatibility source set을 우선 재사용하되 정식 26.3 매핑에서 반드시 재컴파일 검증한다.
@@ -40,11 +40,11 @@ dependencies {
 def metadata=tasks.register('generateModMetadata',Copy) {
     from('../../src/common/templates')
     into(layout.buildDirectory.dir('generated/resources'))
-    expand(version:'5.3.0',minecraft_version:minecraftVersion,loader_version:loaderVersion,java_version:targetJava)
+    expand(version:'5.3.1',minecraft_version:minecraftVersion,loader_version:loaderVersion,java_version:targetJava)
 }
 tasks.named('processResources').configure { dependsOn(metadata); from(layout.buildDirectory.dir('generated/resources')); from('../../../kwc-platform-bukkit/src/main/resources') { include 'config.yml'; include 'config-baselines/**'; include 'config-templates/**'; include 'lang/**'; include 'filter-lists-default/**' } }
 
 tasks.withType(JavaCompile).configureEach { options.release=Integer.parseInt(targetJava); options.encoding='UTF-8' }
 java { sourceCompatibility=JavaVersion.toVersion(targetJava); targetCompatibility=JavaVersion.toVersion(targetJava); withSourcesJar() }
-tasks.withType(AbstractArchiveTask).configureEach { archiveBaseName.set('KOKOTO-WebChat-5.3.0-Fabric-26.3'); archiveVersion.set('') }
+tasks.withType(AbstractArchiveTask).configureEach { archiveBaseName.set('KOKOTO-WebChat-5.3.1-Fabric-26.3'); archiveVersion.set('') }
 jar { from('../../../LICENSE') { rename { 'LICENSE_KOKOTO-WebChat' } } }

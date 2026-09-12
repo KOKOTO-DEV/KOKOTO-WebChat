@@ -1134,7 +1134,7 @@
     const miniActionsHtml = (canReply || canReact || canPin)
       ? `<span class="kwc-mini-actions">${canReply ? `<button class="kwc-mini-action kwc-reply-action" data-reply="${esc(msg.id)}">${t("button.reply", "reply")}</button>` : ""}${canReact ? `<button class="kwc-mini-action kwc-reaction-action" data-reaction-open="${esc(msg.id)}" title="${esc(t("reaction.add", "Add reaction"))}" aria-label="${esc(t("reaction.add", "Add reaction"))}">${t("button.react", "React")}</button>` : ""}${canPin ? `<button class="kwc-mini-action" data-pin="${esc(msg.id)}">${t("button.pin", "pin")}</button>` : ""}</span>`
       : "";
-    const deleteButtonHtml = canDelete ? `<button type="button" class="kwc-private-message-delete kwc-public-message-delete" data-delete="${esc(msg.id)}" title="${esc(t("button.delete", "delete"))}" aria-label="${esc(t("button.delete", "delete"))}">×</button>` : "";
+    const deleteButtonHtml = canDelete ? `<button type="button" class="kwc-private-message-delete kwc-public-message-delete" data-delete="${esc(msg.id)}" title="${esc(t("button.delete", "delete"))}" aria-label="${esc(t("button.delete", "delete"))}">${kwcFaIcon("xmark")}</button>` : "";
     const gameTarget = String(msg.i18nKey || "").startsWith("game.chat.") ? chatGameMessageTarget(msg) : null;
     const gameUnavailable = !!(gameTarget && gameTarget.gameId && chatGameUnavailable(gameTarget.serverId, gameTarget.gameId));
     const gameLinkHtml = gameTarget && gameTarget.gameId
@@ -1387,7 +1387,7 @@
       del.setAttribute("data-delete", String(msg.id));
       del.title = t("button.delete", "delete");
       del.setAttribute("aria-label", t("button.delete", "delete"));
-      del.textContent = "×";
+      setKwcFaIcon(del, "xmark");
       el.appendChild(del);
     }
     timeActions.appendChild(wrap);

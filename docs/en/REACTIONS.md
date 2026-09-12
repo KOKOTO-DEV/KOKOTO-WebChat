@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.3.0 — Message Reactions
+# KOKOTO WebChat 5.3.1 — Message Reactions
 
 Reactions are persistent message state for public chat, 1:1 DM, and normal group-chat messages. The server that originally created a relayed public message remains the **authoritative owner** for that public reaction state. Cross-server DM reactions are sent only to the other participant server and are never broadcast to unrelated Relay peers. Group-chat rooms remain local, and membership join/leave events are not reaction targets.
 

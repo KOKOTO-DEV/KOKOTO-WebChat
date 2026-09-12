@@ -1,4 +1,5 @@
 00-bootstrap-state.js
+05-fontawesome-icons.js
 10-text-media-api.js
 20-emoji-reactions.js
 30-reply-identity-frame.js

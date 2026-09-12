@@ -100,6 +100,10 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
                 return sessions(sender);
             case "revoke":
                 return revoke(sender, args);
+            case "filter":
+                return sharedAdminCommand(sender, args);
+            case "settings":
+                return sharedAdminCommand(sender, args);
             default:
                 help(sender);
                 return true;
@@ -108,8 +112,13 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
 
     private boolean game(CommandSender sender, String[] args) {
         String raw = args.length <= 1 ? "game" : "game " + String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length));
+        gameCommands.execute(sharedSender(sender), raw);
+        return true;
+    }
+
+    private GameCommandService.Sender sharedSender(CommandSender sender) {
         Player player = sender instanceof Player p ? p : null;
-        GameCommandService.Sender shared = new GameCommandService.Sender() {
+        return new GameCommandService.Sender() {
             @Override public boolean isPlayer() { return player != null; }
             @Override public UUID uuid() { return player == null ? null : player.getUniqueId(); }
             @Override public String username() { return player == null ? sender.getName() : player.getName(); }
@@ -117,7 +126,11 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
             @Override public String actorName() { return sender.getName(); }
             @Override public void send(String message) { sender.sendMessage(message); }
         };
-        gameCommands.execute(shared, raw);
+    }
+
+    private boolean sharedAdminCommand(CommandSender sender, String[] args) {
+        String raw = String.join(" ", args);
+        gameCommands.execute(sharedSender(sender), raw);
         return true;
     }
 
@@ -1727,17 +1740,10 @@ public class KwcCommand implements CommandExecutor, TabCompleter {
                 out.add("sessions");
                 out.add("revoke");
             }
-        } else if (args.length == 2 && "game".equalsIgnoreCase(args[0]) && sender instanceof Player) {
-            out.add("status");
-            out.add("participants");
-            out.add("join");
-            out.add("create");
-            out.add("finish");
-            out.add("draw");
-            out.add("close");
-        } else if (args.length == 3 && "game".equalsIgnoreCase(args[0]) && "create".equalsIgnoreCase(args[1])) {
-            out.add("firstcome");
-            out.add("lottery");
+            if (PermissionCompat.has(sender, "kwc.admin.filter")) out.add("filter");
+            if (PermissionCompat.has(sender, "kwc.admin.settings")) out.add("settings");
+        } else if (args.length >= 2 && "game".equalsIgnoreCase(args[0]) && sender instanceof Player) {
+            out.addAll(gameCommands.suggest(sharedSender(sender), String.join(" ", args)));
         } else if (args.length >= 3 && "reply".equalsIgnoreCase(args[0]) && sender instanceof Player) {
             out.addAll(emojiTokenTabSuggestions(args[args.length - 1]));
         } else if (args.length == 2 && "dm".equalsIgnoreCase(args[0]) && sender instanceof Player) {

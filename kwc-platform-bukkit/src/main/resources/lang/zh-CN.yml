@@ -50,6 +50,8 @@ web:
     groupChats: 群组聊天
     directMessages: 消息
     pip: PIP
+    minimize: 最小化
+    restore: 恢复
     run: 运行
     jumpLatest: 跳到最新消息
     createPack: 创建文件夹
@@ -730,12 +732,12 @@ web:
     youtubeTitle: YouTube 视频
     youtubeShorts: YouTube Shorts
     youtubeShortsTitle: YouTube Shorts
-    loadTikTok: ▶ TikTok
-    loadXPost: ▶ X 帖子
+    loadTikTok: TikTok
+    loadXPost: X 帖子
     openTikTok: 在 TikTok 打开
     tiktok: TikTok
-    loadVideo: ▶ 视频
-    loadAudio: ▶ 音频
+    loadVideo: 视频
+    loadAudio: 音频
   error:
     unknown: 未知错误
     content_blocked: '消息包含被禁止的内容，无法发送。'
@@ -994,11 +996,45 @@ web:
     gameListEntry: '- {id} | {title} | {status} | {participants}/{max}'
     gameTypeFirstCome: '先到先得'
     gameTypeLottery: '抽签'
+    gameAlreadyVoted: '你已经投给该选项。'
+    gameVoted: '投票已记录。'
+    gameRecruitmentWaiting: '该角色已满，已加入候补队列第 #{position} 位。'
+    gameRecruitmentAccepted: '招募申请已确认。'
+    gameRecruitmentWithdrawn: '已撤回招募申请。'
+    gameWaitingCount: '候补: {count}人'
+    gameYourRecruitment: '我的申请: {role} / {state}{extra}'
+    gameTypePoll: '投票'
+    gameTypeRecruitment: '招募'
+    gameRecruitmentStateAccepted: '已确认'
+    gameRecruitmentStateWaiting: '候补'
+    gameNotPoll: '该活动不是投票。'
+    gameNotRecruitment: '该活动不是招募。'
+    gameVoteRequired: '投票活动请使用 vote 命令。'
+    gameRoleRequired: '请选择招募角色。'
+    gameInvalidPollOptions: '请至少输入两个不同的投票选项。'
+    gameInvalidPollOption: '请选择有效的投票选项编号。'
+    gameInvalidRecruitmentRoles: '请至少按 角色:人数 格式输入一个角色。'
+    gameInvalidRecruitmentRole: '请选择有效的招募角色。'
+    gameNotApplied: '你尚未申请该招募活动。'
+    gameAutoEndNotApplicable: '此活动类型不支持该自动结束条件。'
+    gameAutoEndRequired: "先到先得活动在获奖名额填满时始终自动结束。"
+    gameScopeUnavailable: '此服务器未配置可传递活动的 Relay。'
+    gameAutoEndSummary: '自动结束：{value}'
+    gameAutoEndOff: '关闭'
+    gameAutoEndCapacity: '达到人数上限'
+    gameAutoEndRolesFull: '所有角色名额已满'
+    gameAutoEndResponses: '{count} 人已响应'
+    gameAutoEndTime: '于 {time} 结束'
+    gameScopeSummary: '公告范围：{scope}'
+    gameScopeRelay: 'Relay'
+    gameScopeLocal: '仅当前服务器'
+    gameInvalidAutoEndCount: '自动结束响应人数必须为 0～500。'
+    gameInvalidAutoEndTime: '自动结束时间必须是未来时间或关闭。'
     gameStatusOpen: '报名中'
     gameStatusReady: '已满'
     gameStatusCompleted: '已结束'
     gameStatusClosed: '已关闭'
-    gameInvalidType: '活动类型必须为 firstcome 或 lottery。'
+    gameInvalidType: '活动类型必须是 firstcome、lottery、poll 或 recruitment。'
     gameInvalidTitle: '请输入不超过80个字符的活动标题。'
     gameInvalidParticipantCount: '参与人数必须至少为2。'
     gameInvalidWinnerCount: '获奖人数至少为1且不能超过参与人数。'
@@ -1131,7 +1167,9 @@ web:
     error.remote_game_manage_not_allowed: '可以参加远程活动，但必须在来源服务器进行管理。'
     error.permission_denied: '你没有管理此活动的权限。'
     error.not_lottery: '此活动不是抽奖类型。'
-    error.invalid_type: '请选择先到先得或抽奖。'
+    error.invalid_type: '请选择先到先得、抽奖、投票或招募。'
+    error.invalid_auto_end_time: '自动结束时间必须晚于当前时间。'
+    error.invalid_auto_end_count: '自动结束响应人数必须为1到500，或关闭该条件。'
     title: 活动
     type: 类型
     eventTitle: 标题
@@ -1141,6 +1179,17 @@ web:
     notificationScope: 通知范围
     scopeLocal: 仅当前服务器
     scopeRelay: 同时发送到 Relay 服务器
+    autoEnd: '自动结束'
+    autoEndWhenFull: '达到参与人数上限时结束'
+    autoEndWhenFirstComeFull: '获奖名额填满时结束（先到先得始终启用）'
+    autoEndWhenRolesFull: '所有角色名额填满时结束'
+    autoEndResponseCount: '达到此响应人数后结束'
+    autoEndDateTime: '结束日期/时间（可选）'
+    autoEndFirstMatch: '启用多个条件时，最先满足的条件会结束活动。'
+    autoEndAtResponses: '达到 {count} 个响应'
+    autoEndAtTime: '于 {time} 结束'
+    autoEndOff: '自动结束：关闭'
+    autoEndSummary: '自动结束：{conditions}'
     create: 创建活动
     join: 参加
     joined: 已参加
@@ -1159,6 +1208,40 @@ web:
     none: 当前没有活动。
     type.firstcome: 先到先得
     type.lottery: 抽奖
+    type.poll: 投票
+    type.recruitment: 招募
+    pollOptions: 投票选项
+    pollOptionsHelp: 每行输入一个选项，至少需要两个选项。
+    recruitmentRoles: 招募角色
+    recruitmentRolesHelp: '每行按 角色:人数 格式输入。角色满员后继续进入候补队列。'
+    voteCount: '{count}票'
+    recruitmentMetric: '确认 {accepted}/{capacity} · 候补 {waiting}'
+    recruitmentRoleMetric: '确认 {accepted}/{capacity} · 候补 {waiting}'
+    recruitmentAccepted: 已确认
+    recruitmentWaiting: 候补
+    vote: 投票
+    voted: 已投票
+    apply: 申请
+    applied: 已申请
+    withdraw: 撤回申请
+    myRecruitment: '我的申请: {role} · {state}{queue}'
+    voterHeading: '投票者 ({count})'
+    applicantHeading: '申请者 ({count})'
+    noVoters: 暂无投票。
+    noApplicants: 暂无申请者。
+    chat.pollCreated: '投票开始: {title}（{options} 个选项）'
+    chat.recruitmentCreated: '招募开始: {title}（名额 {participants}，角色 {roles} 个）'
+    chat.pollResults: '投票结果: {title} - {results}'
+    chat.recruitmentResults: '招募确定: {title} - 确认 {accepted}人，候补 {waiting}人'
+    error.not_poll: '该活动不是投票。'
+    error.not_recruitment: '该活动不是招募。'
+    error.vote_required: '请选择投票选项。'
+    error.role_required: '请选择招募角色。'
+    error.invalid_poll_options: '请至少输入两个不同的投票选项。'
+    error.invalid_poll_option: '请选择有效的投票选项。'
+    error.invalid_recruitment_roles: '请至少按 角色:人数 格式输入一个角色。'
+    error.invalid_recruitment_role: '请选择有效的招募角色。'
+    error.not_applied: '你尚未申请该招募活动。'
     status.open: 报名中
     status.ready: 报名已满
     status.completed: 已结束

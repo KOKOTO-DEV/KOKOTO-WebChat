@@ -908,7 +908,7 @@
       if (!href || !player) return "";
       if (socialClickToLoadEnabled() && !state.mediaOpen.has(key)) {
         return `<div class="kwc-social-card kwc-tiktok-card" data-social-kind="tiktok" data-social-src="${esc(href)}" data-tiktok-id="${esc(id)}" data-preview-key="${esc(key)}" style="${socialVerticalLoadCardStyle()}">
-          <button type="button" class="kwc-media-load kwc-button">${esc(t("media.loadTikTok", "▶ TikTok"))}</button>
+          <button type="button" class="kwc-media-load kwc-button">${kwcFaIcon("play")}<span>${esc(t("media.loadTikTok", "TikTok"))}</span></button>
         </div>`;
       }
       return `<div class="kwc-social-embed kwc-tiktok-embed" data-preview-key="${esc(key)}" style="${tiktokPlayerShellStyle()}">
@@ -923,7 +923,7 @@
       if (!href) return "";
       if (socialClickToLoadEnabled() && !state.mediaOpen.has(key)) {
         return `<div class="kwc-social-card kwc-x-card" data-social-kind="x" data-social-src="${esc(href)}" data-preview-key="${esc(key)}" style="${maxHeightCss}">
-          <button type="button" class="kwc-media-load kwc-button">${esc(t("media.loadXPost", "▶ X post"))}</button>
+          <button type="button" class="kwc-media-load kwc-button">${kwcFaIcon("play")}<span>${esc(t("media.loadXPost", "X post"))}</span></button>
         </div>`;
       }
       const theme = xThemeValue();
@@ -1120,7 +1120,7 @@
           </div>`;
         }
         return `<button type="button" class="kwc-youtube-card${isShorts ? " kwc-youtube-shorts-card" : ""}" data-youtube-embed="${esc(embed)}" data-youtube-key="${esc(key)}" data-youtube-shorts="${isShorts ? "1" : "0"}" style="${shellStyle}border:0;background-size:cover;background-position:center;cursor:pointer;color:#fff;background-image:url('${esc(thumb)}')">
-          <span class="kwc-youtube-play" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:34px;text-shadow:0 2px 8px rgba(0,0,0,.85);">▶</span>
+          <span class="kwc-youtube-play" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:34px;text-shadow:0 2px 8px rgba(0,0,0,.85);">${kwcFaIcon("play")}</span>
           <span class="kwc-youtube-label" style="position:absolute;left:8px;bottom:8px;font-size:12px;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,.85);">${esc(isShorts ? t("media.youtubeShorts", "YouTube Shorts") : t("media.youtube", "YouTube"))}</span>
         </button>`;
       }
@@ -1134,7 +1134,7 @@
         if (!src) return "";
         if (mediaClickToLoadEnabled() && !state.mediaOpen.has(key)) {
           return `<div class="kwc-media-card kwc-video-card" data-media-kind="video" data-media-src="${esc(src)}" data-media-open="${esc(openHref)}" data-preview-key="${esc(key)}" style="${maxHeightStyle}">
-            <button type="button" class="kwc-media-load kwc-button">${esc(t("media.loadVideo", "▶ Video"))}</button>
+            <button type="button" class="kwc-media-load kwc-button">${kwcFaIcon("play")}<span>${esc(t("media.loadVideo", "Video"))}</span></button>
           </div>`;
         }
         return `<div class="kwc-video-wrap" data-preview-key="${esc(key)}">
@@ -1148,7 +1148,7 @@
         if (!src) return "";
         if (mediaClickToLoadEnabled() && !state.mediaOpen.has(key)) {
           return `<div class="kwc-media-card kwc-audio-card" data-media-kind="audio" data-media-src="${esc(src)}" data-media-open="${esc(openHref)}" data-preview-key="${esc(key)}">
-            <button type="button" class="kwc-media-load kwc-button">${esc(t("media.loadAudio", "▶ Audio"))}</button>
+            <button type="button" class="kwc-media-load kwc-button">${kwcFaIcon("play")}<span>${esc(t("media.loadAudio", "Audio"))}</span></button>
           </div>`;
         }
         return `<div class="kwc-audio-wrap" data-preview-key="${esc(key)}">

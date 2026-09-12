@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.3.0 — Technical Reference
+# KOKOTO WebChat 5.3.1 — Technical Reference
 
 For reaction authority, direct/multi-hop delivery, offline outbox behavior and notification diagrams, see [REACTIONS.md](REACTIONS.md).
 

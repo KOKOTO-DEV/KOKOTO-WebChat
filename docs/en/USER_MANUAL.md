@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.3.0 Complete User and Operations Manual
+# KOKOTO WebChat 5.3.1 Complete User and Operations Manual
 
 
 ## Visual map
@@ -15,16 +15,17 @@
 
 See [REFERENCES.md](REFERENCES.md) for the primary standards and official third-party documentation cited by this manual.
 
-> **5.3.0 operations:** Web Admin **Filter** manages shared public/group/optional-DM block/mask/replace rules and no-send testing; **Settings** exposes only the supported live-safe guest/CAPTCHA, session, profile, server-wide typing-indicator policy, administrator-alert, upload, and content-filter values. The five moderation policy switches remain `config.yml`-only and are not exposed by Web Admin. `/kchat filter` and `/kchat settings` provide game-side controls. Session lifetime changes recalculate existing affected sessions from their creation time without resurrecting already-expired sessions. `upload.filename-mode: original` preserves safe Unicode original names for new uploads with collision suffixes.
+> **5.3.1 operations:** Web Admin **Filter** manages shared public/group/optional-DM block/mask/replace rules and no-send testing; **Settings** exposes only the supported live-safe guest/CAPTCHA, session, profile, server-wide typing-indicator policy, administrator-alert, upload, and content-filter values. The five moderation policy switches remain `config.yml`-only and are not exposed by Web Admin. `/kchat filter` and `/kchat settings` provide game-side controls. Session lifetime changes recalculate existing affected sessions from their creation time without resurrecting already-expired sessions. `upload.filename-mode: original` preserves safe Unicode original names for new uploads with collision suffixes.
 
 
-This manual describes all KOKOTO WebChat 5.3.0 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION.md`. For relay protocol details, see `SERVER_RELAY.md`. For HTTPS deployment, also see `CADDY_HTTPS.md` and `NGINX_HTTPS.md`.
+This manual describes all KOKOTO WebChat 5.3.1 features from both the user and server-operator perspectives. For an option-by-option reference, see `CONFIGURATION.md`. For relay protocol details, see `SERVER_RELAY.md`. For HTTPS deployment, also see `CADDY_HTTPS.md` and `NGINX_HTTPS.md`.
 
 
-## 5.3.0 additions
+## 5.3.1 additions
 
 - **Private chat:** DM and group rooms can search full retained history. DM “hide for me” is removed. When ordinary-user self-delete is enabled, only the sender can delete their own DM and deletion removes it for both participants. Group rooms add room-local `owner/admin/member` roles, pinned-message management, room-wide deletion, and a room-local member self-delete policy that works together with the global self-delete setting.
-- **Chat Events:** multiple First come and Lottery events can run at once from Web or `/kchat game`. First come uses winner count as its only capacity and completes automatically when full; Lottery keeps separate participant and winner counts. Event announcements may stay local or use Relay. Participant/winner rows follow the global **Display name / Real name** mode, and result announcements begin with `🏆` and show `Display name (Real name)` when the two names differ.
+- **Chat Events:** Web and `/kchat game` support First come, Lottery, Poll, and role-based Recruitment. First come always completes at winner capacity. Lottery can optionally auto-draw at participant capacity, Poll can finish at a configured unique-response count, Recruitment can finish when all role slots are accepted, and every type can use an absolute end date/time; when multiple conditions are enabled, the first one reached ends the event. When an Event-capable Relay peer is configured, event scope defaults to Relay and can be changed to local-only; without such a peer the scope control is hidden and events remain local. Participant/result identity follows the global **Display name / Real name** mode.
+  Minecraft command completion covers Event actions, event IDs, Poll option numbers, Recruitment roles, and automatic-end controls on all loaders. Event scope is only shown when Event-capable Relay topology exists.
 - **Profiles and presence:** user profile cards expose Minecraft Head/custom avatar, a 280-character About field, role, personal block list, and Game/Web connection state. Users choose Online/Busy/Offline; Offline masks actual Game/Web state from other viewers server-side.
 - **Moderation:** administrators can apply account chat/upload restrictions, remove custom profile images, change local roles, and delegate selected capabilities per moderator.
 - **CAPTCHA and mentions:** guest CAPTCHA supports off/math/text/mixed plus math complexity, and public/DM/group Web composers share IME-safe `@` autocomplete.
@@ -43,7 +44,7 @@ This manual describes all KOKOTO WebChat 5.3.0 features from both the user and s
 
 ## 1. Overview
 
-KOKOTO WebChat connects Minecraft server chat to a browser-based chat interface. Version 5.3.0 provides Bukkit/Paper/Spigot plus exact-target Fabric 1.18.2–26.2, NeoForge 1.20.2–26.2, and Forge 1.18.2–26.2 builds.
+KOKOTO WebChat connects Minecraft server chat to a browser-based chat interface. Version 5.3.1 provides Bukkit/Paper/Spigot plus exact-target Fabric 1.18.2–26.2, NeoForge 1.20.2–26.2, and Forge 1.18.2–26.2 builds.
 
 Supported deployment and feature areas:
 
@@ -65,7 +66,7 @@ Required:
 - A Java runtime supported by that Minecraft/server target. The Bukkit artifact is compiled for Java 17. Fabric/NeoForge/Forge exact-target helpers select JDK 17, 21, or 25 according to the Minecraft target; 26.x targets use Java 25.
 - Permission to install the platform JAR in `plugins/` (Bukkit family) or `mods/` (Fabric/NeoForge/Forge)
 
-KOKOTO WebChat 5.3.0 declares `api-version: '1.18'` and compiles against `spigot-api:1.18.2-R0.1-SNAPSHOT`. Minecraft 1.17 and older are not claimed by this release.
+KOKOTO WebChat 5.3.1 declares `api-version: '1.18'` and compiles against `spigot-api:1.18.2-R0.1-SNAPSHOT`. Minecraft 1.17 and older are not claimed by this release.
 
 Optional integrations:
 
@@ -1227,7 +1228,7 @@ discordsrv:
 
 ## 26. Multi-Server Relay
 
-KOKOTO WebChat 5.3.0 uses **Relay Protocol 2.2** over the Relay v2 trust/encryption model. Public chat, cross-server 1:1 DM/read/delete/reaction/typing, targeted event lookup/join, and remote public-profile lookup use capability-negotiated 2.x traffic; group-chat rooms remain local. Each peer can independently allow sending and receiving `public-chat`, `event`, `dm`, and `profile` traffic.
+KOKOTO WebChat 5.3.1 uses **Relay Protocol 2.2** over the Relay v2 trust/encryption model. Public chat, cross-server 1:1 DM/read/delete/reaction/typing, targeted event lookup/join, and remote public-profile lookup use capability-negotiated 2.x traffic; group-chat rooms remain local. Each peer can independently allow sending and receiving `public-chat`, `event`, `dm`, and `profile` traffic.
 
 Relay v2 is configured as `groups -> peers`. Each group has one shared secret, and its peer entries contain only server ID, API URL and enabled state. For first setup, use `shared-secret: ""` on one server, start/reload KWC, then copy the generated value from that server's `config.yml` to the other servers in the same group. Existing non-empty secrets are never regenerated; a non-empty manual secret shorter than 32 characters remains invalid. Both servers must list each other in the same group, and the same peer ID cannot be registered in multiple local groups.
 

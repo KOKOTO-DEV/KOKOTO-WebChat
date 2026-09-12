@@ -17,8 +17,8 @@ def minecraftVersion = providers.gradleProperty('kwc.minecraft').get()
 def neoVersion = requiredPin('kwc.neoforge')
 def targetJava = providers.gradleProperty('kwc.java').get()
 
-version='5.3.0'; group='dev.kokoto.webchat'
-base { archivesName='KOKOTO-WebChat-5.3.0-NeoForge-26.3' }
+version='5.3.1'; group='dev.kokoto.webchat'
+base { archivesName='KOKOTO-WebChat-5.3.1-NeoForge-26.3' }
 java.toolchain.languageVersion=JavaLanguageVersion.of(Integer.parseInt(targetJava))
 repositories { mavenCentral(); maven { url 'https://repo.bluecolored.de/releases' } }
 // 26.2 modern event compatibility layer를 준비 기준으로 사용하지만 최종 26.3 API에서 반드시 재검증한다.
@@ -36,4 +36,4 @@ def metadata=tasks.register('generateModMetadata',Copy) { from('../../src/common
 tasks.named('processResources').configure { dependsOn(metadata); from(layout.buildDirectory.dir('generated/resources')); from('../../../kwc-platform-bukkit/src/main/resources') { include 'config.yml'; include 'config-baselines/**'; include 'config-templates/**'; include 'lang/**'; include 'filter-lists-default/**' } }
 tasks.withType(JavaCompile).configureEach { options.release=Integer.parseInt(targetJava); options.encoding='UTF-8' }
 jar { duplicatesStrategy=DuplicatesStrategy.EXCLUDE; from({ configurations.kwcEmbed.collect { it.isDirectory()?it:zipTree(it) } }); exclude 'META-INF/*.SF','META-INF/*.RSA','META-INF/*.DSA'; from('../../../LICENSE') { rename { 'LICENSE_KOKOTO-WebChat' } } }
-tasks.withType(AbstractArchiveTask).configureEach { archiveBaseName.set('KOKOTO-WebChat-5.3.0-NeoForge-26.3'); archiveVersion.set('') }
+tasks.withType(AbstractArchiveTask).configureEach { archiveBaseName.set('KOKOTO-WebChat-5.3.1-NeoForge-26.3'); archiveVersion.set('') }

@@ -65,7 +65,7 @@ function Write-WorkerFile([object]$state) {
         )
         [System.IO.File]::WriteAllLines($state.WorkerPath, $workerLines, [System.Text.Encoding]::Default)
 
-        $title = "KWC 5.3.0 - $($state.FullLabel) build"
+        $title = "KWC 5.3.1 - $($state.FullLabel) build"
         $windowLines = @(
             '@echo off',
             ('title {0}' -f $title),
@@ -100,7 +100,7 @@ function Start-State([object]$state) {
         $state.Process = Start-Process -FilePath $env:ComSpec -ArgumentList $arg -WorkingDirectory $Root -PassThru
     } else {
         if (-not (Test-Path -LiteralPath $WorkerRunner)) { throw "Worker runner not found: $WorkerRunner" }
-        $title = "KWC 5.3.0 - $($state.FullLabel) build"
+        $title = "KWC 5.3.1 - $($state.FullLabel) build"
         $runnerArgs = '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "{0}" -WorkerPath "{1}" -LogPath "{2}" -ExitCodePath "{3}" -WindowTitle "{4}" -ProjectRoot "{5}" -Platform "{6}"' -f $WorkerRunner, $state.WorkerPath, $state.LogPath, $state.ExitCodePath, $title, $Root, $state.Name
         $state.Process = Start-Process -FilePath 'powershell.exe' -ArgumentList $runnerArgs -PassThru -NoNewWindow
     }

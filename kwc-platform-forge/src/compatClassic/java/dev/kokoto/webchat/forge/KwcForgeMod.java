@@ -19,7 +19,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
 @Mod(KwcForgeMod.MOD_ID) public final class KwcForgeMod {
- public static final String MOD_ID="kokoto_webchat"; public static final String VERSION="5.3.0"; private static final KwcForgeRuntime R=new KwcForgeRuntime(); private final ForgeCommandBridge commands=new ForgeCommandBridge(R);
+ public static final String MOD_ID="kokoto_webchat"; public static final String VERSION="5.3.1"; private static final KwcForgeRuntime R=new KwcForgeRuntime(); private final ForgeCommandBridge commands=new ForgeCommandBridge(R);
  public KwcForgeMod(){ R.initializeBlueMapIntegration(ModList.get().isLoaded("bluemap")); MinecraftForge.EVENT_BUS.register(this); }
  @SubscribeEvent public void started(ServerStartedEvent e){R.start(e.getServer());}
  @SubscribeEvent public void stopping(ServerStoppingEvent e){R.stop();}

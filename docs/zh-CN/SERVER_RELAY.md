@@ -12,7 +12,7 @@
 
 > **安全边界：** Relay v2 不是端到端加密，而是**逐跳认证加密（hop-by-hop authenticated encryption）**。参与转发的 KWC 服务器属于信任边界内的参与者。
 
-KOKOTO WebChat 5.3.0 整个版本线固定使用 **Relay Protocol 2.2**。Protocol major `2` 仍是 wire compatibility 边界；2.2 公告 `public`、`dm`、`read`、`delete`、`reaction`、`reaction-authority`、`typing`、`game`、`profile` capability，KWC 产品版本仅用于诊断而不是兼容性判断。reaction/reaction-authority/typing 与 2.1 功能集兼容；5.3.0 的 `delete`、`game`、`profile` 在 revision 2.2 内通过 capability negotiation 使用，不再提升 revision。群聊房间仍保持本地。
+KOKOTO WebChat 5.3.1 继续使用 **Relay Protocol 2.2**。Protocol major `2` 仍是 wire compatibility 边界；2.2 公告 `public`、`dm`、`read`、`delete`、`reaction`、`reaction-authority`、`typing`、`game`、`profile` capability，KWC 产品版本仅用于诊断而不是兼容性判断。reaction/reaction-authority/typing 与 2.1 功能集兼容；5.3.0 的 `delete`、`game`、`profile` 在 revision 2.2 内通过 capability negotiation 使用，不再提升 revision。群聊房间仍保持本地。
 
 
 ## 安全升级优先范围
@@ -113,6 +113,8 @@ server-relay:
 
 `sources.event` 与 `sources.system` 已分离，因此可以转发活动通知而让普通系统通知保持本地。创建活动时选择的**通知范围**仍决定该活动的创建/结果通知是仅限本机还是可进入 Relay，而 peer 的 `send.event` / `receive.event` 是更上层的路由限制。
 
+5.3.1 仅在至少配置一个允许 `send.event` 的已启用 peer 时显示每个活动的**通知范围**，默认使用 Relay。若没有此类 peer，则隐藏范围 UI/命令并规范为仅本地。判断依据是已配置的 topology，而不是瞬时在线状态，因此短暂断线不会改变界面。
+
 ## 逐请求认证与可选 identity/health probe
 
 direct relay 采用与 5.0.0 相同的运行方式：每个 `/relay/v2/message` request 都独立完成认证。接收端仍必须在同一 group 中以相同 shared secret 配置发送端，并使用这些信息认证/解密请求；反向连接彼此独立。`/relay/v2/handshake` 只是无状态的诊断 identity/health probe，不会创建、保留、启用或禁用 direct route。可选 probe request 会绑定：
@@ -139,7 +141,7 @@ Endpoint：
 
 ## Protocol revision 与 capability
 
-Relay 兼容性不再绑定 KWC 产品版本。`X-KWC-Relay-Version: 2` 表示兼容的 major wire family，`X-KWC-Relay-Protocol: 2.2` 与 `X-KWC-Relay-Capabilities` 描述当前 revision 和可选扩展。KWC 5.3.0 不论 RC 都保持 revision 2.2，并用 capability 区分 `delete`、`game`、`profile`。目标 peer 不支持所需 capability 时，仅该扩展安全失败，不会把整个 peer 判定为不兼容。handshake 中的 `serverVersion` 仅用于诊断。
+Relay 兼容性不再绑定 KWC 产品版本。`X-KWC-Relay-Version: 2` 表示兼容的 major wire family，`X-KWC-Relay-Protocol: 2.2` 与 `X-KWC-Relay-Capabilities` 描述当前 revision 和可选扩展。KWC 5.3.1 保持 revision 2.2，并用 capability 区分 `delete`、`game`、`profile`。目标 peer 不支持所需 capability 时，仅该扩展安全失败，不会把整个 peer 判定为不兼容。handshake 中的 `serverVersion` 仅用于诊断。
 
 
 ### Event Relay 路由（2.2）

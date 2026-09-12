@@ -73,7 +73,7 @@ check(publicHistory.includes('data-user-profile-uuid'), 'public sender carries p
 const sourceHtml = fn(identity, 'messageOriginSourceHtml');
 check(sourceHtml.includes('kwc-source-label'), 'Web/Game remains a source label');
 check(sourceHtml.includes('kwc-message-dm-target') && sourceHtml.includes('directMessageTargetDataAttributes(target)'), 'Web/Game source is a DM button when a target UUID exists');
-check(rootAuth.includes('status.textContent = "👤 " + String(loggedInCount)'), 'header user count has visible user icon');
+check(rootAuth.includes('kwcFaIcon("user", "kwc-status-icon")'), 'header user count has visible shared user icon');
 check(server.includes('if (!selfUuid.isBlank() && presenceVisibleInLists(selfUuid)) users.add(selfUuid);'), 'offline self is excluded from header visible-user count');
 check(server.includes('PresencePolicy.Result presence = presenceListSnapshot(uuid);'), 'online-user list uses privacy-filtered presence snapshot');
 check(pinsAdmin.includes('pinnedByDetailHtml(pin)') && pinsAdmin.includes('pinnedByDisplayName') && pinsAdmin.includes('pinnedByUsername'), 'group pinned-by detail consumes display+real identity fields');

@@ -302,6 +302,9 @@
 .kwc-game-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 10px 0; }
 .kwc-game-create-form, .kwc-game-create-form label { display: flex; flex-direction: column; gap: 6px; }
 .kwc-game-create-form { gap: 10px; }
+/* Event create fields use the native hidden contract for type-specific controls.
+ * The generic label/grid display rules above must never force hidden fields visible. */
+.kwc-game-create-form [hidden] { display: none !important; }
 .kwc-game-number-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .kwc-game-participants h4 { margin-bottom: 7px; }
 .kwc-game-participant-list { max-height: 220px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 5px 12px; padding: 7px; border-radius: 7px; background: rgba(255,255,255,.045); scrollbar-gutter: stable; }
@@ -12221,3 +12224,178 @@ body.kwc-standalone-mode {
   max-height: 30px !important;
 }
 
+
+/* 5.3.1 CP2: event automatic-end creation controls. */
+.kwc-game-auto-end-card {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+}
+.kwc-game-create-form .kwc-game-auto-end-card > label {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+.kwc-game-auto-end-card #kwc-game-auto-response-field > .kwc-row {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 6px !important;
+}
+.kwc-game-auto-end-card #kwc-game-auto-response-count {
+  width: 92px !important;
+  min-width: 72px !important;
+}
+
+/* Font Awesome Free 6.7.2 icon normalization.
+ * Artwork: CC BY 4.0; see THIRD_PARTY_NOTICES.md.
+ * Keep presentation copies byte-identical. */
+/* Font Awesome SVGs are used in both #kwc-root and detached DM/group/admin
+ * modals appended directly to document.body. Keep the normalization global to
+ * KWC-owned class names so every presentation uses the same geometry. */
+.kwc-fa-icon {
+  width: 1em;
+  height: 1em;
+  display: inline-block;
+  flex: 0 0 auto;
+  vertical-align: -0.125em;
+  overflow: hidden;
+  color: currentColor;
+}
+
+.kwc-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kwc-icon-button > .kwc-fa-icon,
+.kwc-actions .kwc-fa-icon,
+.kwc-private-window-tool .kwc-fa-icon,
+.kwc-emoji-search-toggle .kwc-fa-icon {
+  width: 1.08em;
+  height: 1.08em;
+}
+
+.kwc-pinned-icon,
+.kwc-jump-latest-icon,
+.kwc-emoji-search-float-icon,
+.kwc-admin-meta-title,
+.kwc-admin-audit-notice,
+.kwc-private-audit-badge,
+.kwc-group-audit-badge,
+.kwc-dm-thread-name,
+.kwc-group-password-badge,
+.kwc-read-receipt,
+.kwc-status {
+  align-items: center;
+}
+
+.kwc-pinned-icon .kwc-fa-icon,
+.kwc-jump-latest-icon .kwc-fa-icon,
+.kwc-status-icon {
+  width: 0.95em;
+  height: 0.95em;
+}
+
+/* Audit/admin shields are compact badges beside text, never action artwork.
+ * Use a fixed small box so inherited modal/title font sizes cannot inflate them. */
+.kwc-private-audit-badge,
+.kwc-group-audit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.kwc-admin-meta-title .kwc-fa-icon,
+.kwc-admin-audit-notice .kwc-fa-icon {
+  margin-right: 4px;
+}
+.kwc-admin-meta-title .kwc-fa-icon,
+.kwc-admin-audit-notice .kwc-fa-icon,
+.kwc-private-audit-badge .kwc-fa-icon,
+.kwc-group-audit-badge .kwc-fa-icon {
+  width: 11px;
+  height: 11px;
+  max-width: 11px;
+  max-height: 11px;
+  vertical-align: 0;
+}
+
+/* Detached private-chat controls match the public-chat action geometry. */
+.kwc-private-search-float {
+  overflow: hidden;
+}
+.kwc-private-search-float .kwc-fa-icon {
+  width: 15px;
+  height: 15px;
+  max-width: 15px;
+  max-height: 15px;
+  vertical-align: 0;
+}
+.kwc-private-message-delete {
+  overflow: hidden;
+}
+.kwc-private-message-delete .kwc-fa-icon {
+  width: 14px;
+  height: 14px;
+  max-width: 14px;
+  max-height: 14px;
+  vertical-align: 0;
+}
+.kwc-dm-compose .kwc-icon-button {
+  min-width: 34px;
+  width: 34px;
+  max-width: 34px;
+  height: 30px;
+  min-height: 30px;
+  max-height: 30px;
+  padding: 0 !important;
+  box-sizing: border-box;
+  overflow: hidden;
+  line-height: 1 !important;
+}
+/* Public compose uses 17px Emoji and 16px Attach artwork. Keep DM and Group
+ * exactly on those visual sizes even though their base button font is 12px. */
+.kwc-dm-compose .kwc-dm-emoji-button {
+  font-size: max(17px, var(--kwc-button-font-size, 12px)) !important;
+}
+.kwc-dm-compose .kwc-dm-upload {
+  font-size: max(16px, var(--kwc-button-font-size, 12px)) !important;
+}
+.kwc-dm-compose .kwc-dm-emoji-button .kwc-fa-icon {
+  width: 17px;
+  height: 17px;
+  max-width: 17px;
+  max-height: 17px;
+  vertical-align: 0;
+}
+.kwc-dm-compose .kwc-dm-upload .kwc-fa-icon {
+  width: 16px;
+  height: 16px;
+  max-width: 16px;
+  max-height: 16px;
+  vertical-align: 0;
+}
+/* Group pin uses the same compact pin vocabulary as public pinned messages. */
+.kwc-group-modal .kwc-pinned-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.kwc-group-modal .kwc-pinned-icon .kwc-fa-icon {
+  width: 0.95em;
+  height: 0.95em;
+  vertical-align: -0.08em;
+}
+
+.kwc-media-load .kwc-fa-icon {
+  margin-right: 0.35em;
+}
+
+.kwc-youtube-play .kwc-fa-icon {
+  width: 1em;
+  height: 1em;
+}

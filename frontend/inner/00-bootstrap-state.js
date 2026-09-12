@@ -56,6 +56,15 @@
     pip: cfg.pip === true,
     standalone: cfg.standalone === true
   };
+  // Presentation is a rendering/capability concern only. Server config, account
+  // preferences, permissions, notification choices, and Event state stay canonical
+  // and must never fork by adapter, Standalone, PiP, or mobile/desktop layout.
+  const runtimePresentation = Object.freeze({
+    pip: runtimeMode.pip,
+    standalone: runtimeMode.standalone,
+    addon: !runtimeMode.pip && !runtimeMode.standalone,
+    mode: runtimeMode.pip ? "pip" : (runtimeMode.standalone ? "standalone" : "addon")
+  });
   // Capture the exact inner application source while this inline script is executing.
   // Standalone Document PiP can then bootstrap a second same-origin chat document
   // directly from the user click without depending on the BlueMap parent bridge.
@@ -80,8 +89,10 @@
     guestName: localStorage.getItem("kwc.guestName") || "",
     captcha: null,
     captchaPass: localStorage.getItem("kwc.captchaPass") || "",
-    isPip: runtimeMode.pip,
-    isStandalone: runtimeMode.standalone,
+    presentationMode: runtimePresentation.mode,
+    isPip: runtimePresentation.pip,
+    isStandalone: runtimePresentation.standalone,
+    isAddon: runtimePresentation.addon,
     hostPageVisible: true,
     hostPageFocused: true,
     minimized: runtimeMode.pip ? false : localStorage.getItem("kwc.minimized") === "1",
@@ -445,3 +456,23 @@
     notificationAccountDmViews: new Map(),
     notificationAccountGroupViews: new Map()
   };
+
+  function presentationCapabilities() {
+    const pip = state.isPip === true;
+    const standalone = state.isStandalone === true;
+    const addon = !pip && !standalone;
+    return Object.freeze({
+      mode: pip ? "pip" : (standalone ? "standalone" : "addon"),
+      pip,
+      standalone,
+      addon,
+      // PiP mirrors the opener and therefore must not create duplicate transports.
+      ownsRealtimeConnection: !pip,
+      ownsWebPushRegistration: !pip,
+      // Base presentation capabilities only. Viewport/config gates are evaluated
+      // by the feature itself without changing canonical settings or account state.
+      publicMinimizeBase: !pip,
+      privateMultiWindowBase: standalone && !pip,
+      draggableWindowBase: !pip
+    });
+  }

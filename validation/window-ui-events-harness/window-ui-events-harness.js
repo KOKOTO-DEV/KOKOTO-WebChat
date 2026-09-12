@@ -12,7 +12,8 @@ function check(value, message) { assertions++; if (!value) throw new Error(messa
 function has(text, needle, message) { check(text.includes(needle), message || `missing: ${needle}`); }
 
 const manifest = read('frontend/inner/manifest.txt').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-check(manifest.length === 18, 'RC21 must keep exactly 18 ordered inner fragments');
+check(manifest.length === 19, 'KWC 5.3.1 must keep exactly 19 ordered inner fragments');
+check(manifest.includes('05-fontawesome-icons.js'), 'shared Font Awesome icon registry must be in the inner manifest');
 check(manifest.includes('115-private-multiwindow.js'), 'multi-window fragment must be in the inner manifest');
 
 const state = read('frontend/inner/00-bootstrap-state.js');
@@ -96,8 +97,8 @@ for (const rel of wrapperFiles) {
 
 
 const rootAuth = read('frontend/inner/40-root-auth.js');
-has(rootAuth, 'if (!state.isStandalone) return true;', 'mobile/small embedded add-ons keep the minimize control');
-has(rootAuth, '${!state.isPip ? `<button class=\"kwc-button\" id=\"kwc-min\">_</button>` : ""}', 'standalone renders the same minimize control as adapter mode');
+has(rootAuth, 'if (presentation.addon) return true;', 'mobile/small embedded add-ons keep the minimize control');
+has(rootAuth, '${!state.isPip ? `<button class=\"kwc-button kwc-icon-button\" id=\"kwc-min\"', 'standalone renders the same minimize control as adapter mode');
 has(rootAuth, 'if (willMinimize && state.isStandalone && root && root.dataset.kwcMaximized === "1")', 'standalone minimize first restores a maximized window like adapter mode');
 has(rootAuth, 'raiseIndependentChatWindow(root)', 'public chat participates in shared click-to-front z ordering');
 check(!rootAuth.includes('updateResizeLockButton('), 'removed resize-lock callback must not remain and break updateLoginState');
@@ -134,10 +135,10 @@ has(pins, 'mountWindowOwnedOverlay(wrap, publicChatWindowOwner())', 'public pin 
 has(pins, 'mountPrivateWindowOwnedOverlay("group", wrap)', 'group pin popup is scoped to group chat');
 const games = read('frontend/inner/85-chat-games.js');
 has(games, 'mountWindowOwnedOverlay(wrap, publicChatWindowOwner())', 'event popup is scoped to public chat');
-has(games, 'id="kwc-game-notification-scope"', 'event form exposes notification scope');
+has(games, 'eventRelayTopology === true', 'event scope visibility is topology-aware');
 has(games, 'value="relay"', 'event scope defaults to Relay behavior');
 has(games, 'value="local"', 'event scope offers current-server only');
-has(games, 'notificationScope:content.querySelector', 'event creation sends notification scope');
+has(games, 'notificationScope:state.config && state.config.eventRelayTopology === true', 'event creation sends topology-aware notification scope');
 
 const css = read('kwc-standalone-frontend/src/main/resources/standalone/chat.css');
 has(css, '.kwc-chat-window-resize-handle { display: none !important; }', 'visible lower-right resize grip is hidden');
@@ -181,7 +182,7 @@ has(windowing, 'wrap.__kwcStandaloneResizeUpdate();', 'raising public root refre
 const emoji = read('frontend/inner/20-emoji-reactions.js');
 has(emoji, 't("game.type." + rawType', 'rendered event notification localizes internal type code');
 const server = read('kwc-core/src/main/java/dev/kokoto/webchat/WebChatServer.java');
-has(server, 'body.getOrDefault("notificationScope", "relay")', 'server defaults event scope to relay');
+has(server, 'chatGameRelayTopologyConfigured()', 'server normalizes event scope against configured Relay topology');
 has(server, 'publishChatGameEvent("Game", text, "game.chat.created", JsonUtil.obj(vars), relayAnnouncements)', 'created announcement honors relay scope');
 has(server, 'publishChatGameEvent("Game", text, "game.chat.results", JsonUtil.obj(vars), relayAnnouncements)', 'result announcement honors relay scope');
 has(server, 'if (relayAnnouncement) publishServerRelay(msg);', 'relay publication is gated');

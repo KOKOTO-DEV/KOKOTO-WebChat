@@ -1289,14 +1289,14 @@
   }
 
   function installDrag(root) {
-    if (state.isPip) return;
+    if (!presentationCapabilities().draggableWindowBase) return;
     forceStandaloneMobileMaximized(root);
     const header = root.querySelector(".kwc-header");
     if (!header) return;
     if (header.dataset.kwcMaximizeToggleInstalled !== "1") {
       header.dataset.kwcMaximizeToggleInstalled = "1";
       header.addEventListener("dblclick", event => {
-        if (event.target && event.target.closest && event.target.closest("button, input, select, textarea")) return;
+        if (event.target && event.target.closest && event.target.closest("button, input, select, textarea, a, [role=\"button\"]")) return;
         if (standaloneMobileWindowLocked()) { forceStandaloneMobileMaximized(root); return; }
         event.preventDefault(); event.stopPropagation();
         if (state.isStandalone) toggleStandaloneRootMaximize(root);
@@ -1331,7 +1331,7 @@
 
     const begin = event => {
       const target = event.target;
-      if (target && target.closest && target.closest("button, input, select, textarea")) return;
+      if (target && target.closest && target.closest("button, input, select, textarea, a, [role=\"button\"]")) return;
       // Mobile standalone is intentionally a fixed full-screen surface. Let OS/browser
       // edge-navigation gestures pass through instead of treating them as window drag.
       if (standaloneMobileWindowLocked()) { forceStandaloneMobileMaximized(root); return; }

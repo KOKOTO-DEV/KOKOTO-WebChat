@@ -239,7 +239,7 @@ direct-message:
 
 ## Important 0-value semantics
 
-`0` does not have one universal meaning. These behaviors are taken from the current 5.3.0 loader/runtime paths; do not infer “unlimited” where the documented behavior is different.
+`0` does not have one universal meaning. These behaviors are taken from the current 5.3.1 loader/runtime paths; do not infer “unlimited” where the documented behavior is different.
 
 - `chat.history-size`: Maximum number of public-chat history rows retained by count. This works alongside the age-retention policy. 0 removes the count limit.
 - `chat.history-retention-days`: Age-retention window in days for public-chat history. 0 disables age-based expiration.

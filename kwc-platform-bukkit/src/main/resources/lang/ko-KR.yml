@@ -50,6 +50,8 @@ web:
     groupChats: 그룹 채팅
     directMessages: 메시지함
     pip: PIP
+    minimize: 최소화
+    restore: 복원
     run: 실행
     jumpLatest: 최신 메시지로 이동
     createPack: 폴더 생성
@@ -730,12 +732,12 @@ web:
     youtubeTitle: YouTube 영상
     youtubeShorts: YouTube Shorts
     youtubeShortsTitle: YouTube Shorts
-    loadTikTok: ▶ TikTok
-    loadXPost: ▶ X 게시물
+    loadTikTok: TikTok
+    loadXPost: X 게시물
     openTikTok: TikTok에서 열기
     tiktok: TikTok
-    loadVideo: ▶ 영상
-    loadAudio: ▶ 오디오
+    loadVideo: 영상
+    loadAudio: 오디오
   error:
     unknown: 알 수 없는 오류
     content_blocked: '금지된 내용이 포함되어 있어 메시지를 보낼 수 없습니다.'
@@ -994,11 +996,45 @@ web:
     gameListEntry: '- {id} | {title} | {status} | {participants}/{max}'
     gameTypeFirstCome: '선착순'
     gameTypeLottery: '추첨'
+    gameAlreadyVoted: '이미 해당 항목에 투표했습니다.'
+    gameVoted: '투표가 반영되었습니다.'
+    gameRecruitmentWaiting: '해당 역할의 정원이 가득 차 대기열 #{position}번으로 등록되었습니다.'
+    gameRecruitmentAccepted: '모집 참가가 확정되었습니다.'
+    gameRecruitmentWithdrawn: '모집 참가 신청을 취소했습니다.'
+    gameWaitingCount: '대기: {count}명'
+    gameYourRecruitment: '내 신청: {role} / {state}{extra}'
+    gameTypePoll: '투표'
+    gameTypeRecruitment: '모집'
+    gameRecruitmentStateAccepted: '확정'
+    gameRecruitmentStateWaiting: '대기'
+    gameNotPoll: '투표 이벤트가 아닙니다.'
+    gameNotRecruitment: '모집 이벤트가 아닙니다.'
+    gameVoteRequired: '투표 이벤트는 vote 명령을 사용하세요.'
+    gameRoleRequired: '모집 역할을 선택하세요.'
+    gameInvalidPollOptions: '서로 다른 투표 항목을 2개 이상 입력하세요.'
+    gameInvalidPollOption: '올바른 투표 항목 번호를 선택하세요.'
+    gameInvalidRecruitmentRoles: '역할:인원 형식으로 역할을 1개 이상 입력하세요.'
+    gameInvalidRecruitmentRole: '올바른 모집 역할을 선택하세요.'
+    gameNotApplied: '이 모집 이벤트에 신청한 상태가 아닙니다.'
+    gameAutoEndNotApplicable: '이 이벤트 유형에서는 해당 자동 종료 조건을 사용할 수 없습니다.'
+    gameAutoEndRequired: "선착순 이벤트는 당첨 정원이 차면 항상 자동 종료됩니다."
+    gameScopeUnavailable: '이 서버에는 이벤트를 전달할 Relay 구성이 없습니다.'
+    gameAutoEndSummary: '자동 종료: {value}'
+    gameAutoEndOff: '사용 안 함'
+    gameAutoEndCapacity: '정원 충족'
+    gameAutoEndRolesFull: '모든 역할 정원 충족'
+    gameAutoEndResponses: '응답 {count}명'
+    gameAutoEndTime: '{time}에 종료'
+    gameScopeSummary: '공지 범위: {scope}'
+    gameScopeRelay: 'Relay'
+    gameScopeLocal: '현재 서버만'
+    gameInvalidAutoEndCount: '자동 종료 응답 인원은 0~500이어야 합니다.'
+    gameInvalidAutoEndTime: '자동 종료 시각은 미래 시각이거나 비활성화여야 합니다.'
     gameStatusOpen: '모집 중'
     gameStatusReady: '모집 완료'
     gameStatusCompleted: '종료'
     gameStatusClosed: '닫힘'
-    gameInvalidType: '이벤트 종류는 firstcome 또는 lottery여야 합니다.'
+    gameInvalidType: '이벤트 종류는 firstcome, lottery, poll, recruitment 중 하나여야 합니다.'
     gameInvalidTitle: '80자 이내의 이벤트 제목을 입력하세요.'
     gameInvalidParticipantCount: '참가 인원은 2명 이상이어야 합니다.'
     gameInvalidWinnerCount: '당첨 인원은 1명 이상이며 참가 인원 이하여야 합니다.'
@@ -1131,7 +1167,9 @@ web:
     error.remote_game_manage_not_allowed: '원격 이벤트는 참가할 수 있지만 관리는 원본 서버에서 해야 합니다.'
     error.permission_denied: '이 이벤트를 관리할 권한이 없습니다.'
     error.not_lottery: '추첨 이벤트가 아닙니다.'
-    error.invalid_type: '선착순 또는 추첨을 선택하세요.'
+    error.invalid_type: '선착순, 추첨, 투표, 모집 중 하나를 선택하세요.'
+    error.invalid_auto_end_time: '자동 종료 시각은 현재보다 이후로 지정하세요.'
+    error.invalid_auto_end_count: '자동 종료 응답 인원은 1~500명으로 지정하거나 사용하지 않도록 설정하세요.'
     title: 이벤트
     type: 방식
     eventTitle: 제목
@@ -1141,6 +1179,17 @@ web:
     notificationScope: 알림 범위
     scopeLocal: 현재 서버만
     scopeRelay: Relay 서버에도 전달
+    autoEnd: '자동 종료'
+    autoEndWhenFull: '참가 정원 도달 시 종료'
+    autoEndWhenFirstComeFull: '당첨 인원이 차면 종료 (선착순은 항상 사용)'
+    autoEndWhenRolesFull: '모든 역할 정원 충족 시 종료'
+    autoEndResponseCount: '응답 인원 도달 시 종료'
+    autoEndDateTime: '종료 날짜/시각 (선택)'
+    autoEndFirstMatch: '조건을 여러 개 사용하면 먼저 충족된 조건으로 이벤트를 종료합니다.'
+    autoEndAtResponses: '응답 {count}명 도달'
+    autoEndAtTime: '{time}에 종료'
+    autoEndOff: '자동 종료: 사용 안 함'
+    autoEndSummary: '자동 종료: {conditions}'
     create: 이벤트 생성
     join: 참가
     joined: 참가 완료
@@ -1159,6 +1208,40 @@ web:
     none: 진행 중인 이벤트가 없습니다.
     type.firstcome: 선착순
     type.lottery: 추첨
+    type.poll: 투표
+    type.recruitment: 모집
+    pollOptions: 투표 항목
+    pollOptionsHelp: 한 줄에 한 항목씩 입력하세요. 최소 2개가 필요합니다.
+    recruitmentRoles: 모집 역할
+    recruitmentRolesHelp: '한 줄에 역할:인원 형식으로 입력하세요. 정원이 찬 역할은 대기열로 이어집니다.'
+    voteCount: '{count}표'
+    recruitmentMetric: '확정 {accepted}/{capacity} · 대기 {waiting}'
+    recruitmentRoleMetric: '확정 {accepted}/{capacity} · 대기 {waiting}'
+    recruitmentAccepted: 확정
+    recruitmentWaiting: 대기
+    vote: 투표
+    voted: 투표함
+    apply: 신청
+    applied: 신청함
+    withdraw: 신청 취소
+    myRecruitment: '내 신청: {role} · {state}{queue}'
+    voterHeading: '투표자 ({count})'
+    applicantHeading: '신청자 ({count})'
+    noVoters: 아직 투표가 없습니다.
+    noApplicants: 아직 신청자가 없습니다.
+    chat.pollCreated: '투표 시작: {title} (항목 {options}개)'
+    chat.recruitmentCreated: '모집 시작: {title} (정원 {participants}명, 역할 {roles}개)'
+    chat.pollResults: '투표 결과: {title} - {results}'
+    chat.recruitmentResults: '모집 확정: {title} - 확정 {accepted}명, 대기 {waiting}명'
+    error.not_poll: '투표 이벤트가 아닙니다.'
+    error.not_recruitment: '모집 이벤트가 아닙니다.'
+    error.vote_required: '투표 항목을 선택하세요.'
+    error.role_required: '모집 역할을 선택하세요.'
+    error.invalid_poll_options: '서로 다른 투표 항목을 2개 이상 입력하세요.'
+    error.invalid_poll_option: '올바른 투표 항목을 선택하세요.'
+    error.invalid_recruitment_roles: '역할:인원 형식으로 역할을 1개 이상 입력하세요.'
+    error.invalid_recruitment_role: '올바른 모집 역할을 선택하세요.'
+    error.not_applied: '이 모집 이벤트에 신청한 상태가 아닙니다.'
     status.open: 모집 중
     status.ready: 모집 완료
     status.completed: 종료

@@ -34,16 +34,16 @@
               <span class="kwc-status" id="kwc-status">${t("status.connecting", "connecting...")}</span>
             </div>
             <div class="kwc-actions kwc-actions-primary">
-              ${state.config && state.config.uiPictureInPictureEnabled === true && !state.isPip && documentPictureInPictureSupported() ? `<button class="kwc-button kwc-pip" id="kwc-pip" title="${t("button.pip", "PIP")}">▣</button>` : ""}
-              ${!state.isPip ? `<button class="kwc-button" id="kwc-min">_</button>` : ""}
+              ${state.config && state.config.uiPictureInPictureEnabled === true && !state.isPip && documentPictureInPictureSupported() ? `<button class="kwc-button kwc-pip kwc-icon-button" id="kwc-pip" title="${t("button.pip", "PIP")}" aria-label="${t("button.pip", "PIP")}">${kwcFaIcon("window-restore")}</button>` : ""}
+              ${!state.isPip ? `<button class="kwc-button kwc-icon-button" id="kwc-min" title="${t("button.minimize", "Minimize")}" aria-label="${t("button.minimize", "Minimize")}">${kwcFaIcon("minus")}</button>` : ""}
             </div>
           </div>
           <div class="kwc-actions kwc-actions-secondary">
             <div class="kwc-action-cluster kwc-action-cluster-chat">
-              ${state.directMessageEnabled ? `<button class="kwc-button kwc-dm-button kwc-hidden" id="kwc-dm" title="${t("button.directMessages", "Messages")}">✉<span class="kwc-dm-badge kwc-hidden" id="kwc-dm-badge">0</span></button>` : ""}
-              ${state.groupChatEnabled ? `<button class="kwc-button kwc-group-button kwc-hidden" id="kwc-group" title="${t("group.title", "Group chats")}">👥<span class="kwc-dm-badge kwc-hidden" id="kwc-group-badge">0</span></button>` : ""}
-              <button class="kwc-button kwc-hidden" id="kwc-game" title="${t("game.title", "Events")}">🎲</button>
-              <button class="kwc-button kwc-notification-button" id="kwc-notifications" title="${t("notifications.inbox", "Notification inbox")}">🔔<span class="kwc-dm-badge kwc-hidden" id="kwc-notification-badge">0</span></button>
+              ${state.directMessageEnabled ? `<button class="kwc-button kwc-dm-button kwc-icon-button kwc-hidden" id="kwc-dm" title="${t("button.directMessages", "Messages")}" aria-label="${t("button.directMessages", "Messages")}">${kwcFaIcon("envelope")}<span class="kwc-dm-badge kwc-hidden" id="kwc-dm-badge">0</span></button>` : ""}
+              ${state.groupChatEnabled ? `<button class="kwc-button kwc-group-button kwc-icon-button kwc-hidden" id="kwc-group" title="${t("group.title", "Group chats")}" aria-label="${t("group.title", "Group chats")}">${kwcFaIcon("user-group")}<span class="kwc-dm-badge kwc-hidden" id="kwc-group-badge">0</span></button>` : ""}
+              <button class="kwc-button kwc-icon-button kwc-hidden" id="kwc-game" title="${t("game.title", "Events")}" aria-label="${t("game.title", "Events")}">${kwcFaIcon("calendar-days")}</button>
+              <button class="kwc-button kwc-notification-button kwc-icon-button" id="kwc-notifications" title="${t("notifications.inbox", "Notification inbox")}" aria-label="${t("notifications.inbox", "Notification inbox")}">${kwcFaIcon("bell")}<span class="kwc-dm-badge kwc-hidden" id="kwc-notification-badge">0</span></button>
             </div>
             <div class="kwc-action-cluster kwc-action-cluster-account">
               <button class="kwc-button" id="kwc-login">${t("button.login", "Login")}</button>
@@ -52,7 +52,7 @@
         </div>
         <div class="kwc-pinned-bar kwc-hidden" id="kwc-pinned-bar">
           <button class="kwc-pinned-open" id="kwc-pinned-open" type="button" data-open-pins="1">
-            <span class="kwc-pinned-icon">📌</span>
+            <span class="kwc-pinned-icon">${kwcFaIcon("thumbtack")}</span>
             <span id="kwc-pinned-label">${t("pinned.count", "Pinned messages: {count}").replace("{count}", "0")}</span>
           </button>
         </div>
@@ -62,10 +62,10 @@
           <div class="kwc-virtual-spacer kwc-virtual-bottom-spacer"></div>
         </div>
         <button class="kwc-jump-latest kwc-hidden" id="kwc-jump-latest" type="button" title="${t("button.jumpLatest", "Jump to latest")}">
-          <span class="kwc-jump-latest-icon">↓</span>
+          <span class="kwc-jump-latest-icon">${kwcFaIcon("arrow-down")}</span>
           <span id="kwc-jump-latest-label">${t("button.jumpLatest", "Jump to latest")}</span>
         </button>
-        <button class="kwc-button kwc-search-button kwc-search-float kwc-hidden" id="kwc-search-open" type="button" title="${t("button.search", "Search")}" aria-label="${t("button.search", "Search")}">⌕</button>
+        <button class="kwc-button kwc-search-button kwc-search-float kwc-icon-button kwc-hidden" id="kwc-search-open" type="button" title="${t("button.search", "Search")}" aria-label="${t("button.search", "Search")}">${kwcFaIcon("magnifying-glass")}</button>
         <div class="kwc-emoji-resize-handle kwc-hidden" id="kwc-emoji-resize" title="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}" aria-label="${t("button.resizeEmojiPanel", "Drag to resize emoji picker")}"></div>
         <div class="kwc-form">
           <div class="kwc-row" id="kwc-guest-row">
@@ -80,14 +80,14 @@
               <span class="kwc-reply-compose-label" id="kwc-reply-compose-label"></span>
               <span class="kwc-reply-compose-preview" id="kwc-reply-compose-preview"></span>
             </button>
-            <button type="button" class="kwc-mini-action kwc-reply-cancel" id="kwc-reply-cancel" title="${t("button.cancel", "Cancel")}">×</button>
+            <button type="button" class="kwc-mini-action kwc-reply-cancel kwc-icon-button" id="kwc-reply-cancel" title="${t("button.cancel", "Cancel")}" aria-label="${t("button.cancel", "Cancel")}">${kwcFaIcon("xmark")}</button>
           </div>
           <div class="kwc-row kwc-typing-anchor">
             <div class="kwc-typing-indicator kwc-hidden" id="kwc-public-typing" aria-live="polite"></div>
             <textarea class="kwc-input kwc-chat-composer" id="kwc-message" rows="1" autocomplete="off" enterkeyhint="send" maxlength="2048" placeholder="${t("placeholder.message", "message")}"></textarea>
             <button class="kwc-button kwc-command kwc-hidden" id="kwc-command" title="${t("button.commands", "Commands")}">/</button>
-            <button class="kwc-button kwc-emoji-button kwc-hidden" id="kwc-emoji" title="${t("button.emoji", "Emoji")}">☺</button>
-            <button class="kwc-button kwc-upload kwc-hidden" id="kwc-upload" title="${t("button.upload", "Attach")}">&#128206;</button>
+            <button class="kwc-button kwc-emoji-button kwc-icon-button kwc-hidden" id="kwc-emoji" title="${t("button.emoji", "Emoji")}" aria-label="${t("button.emoji", "Emoji")}">${kwcFaIcon("face-smile")}</button>
+            <button class="kwc-button kwc-upload kwc-icon-button kwc-hidden" id="kwc-upload" title="${t("button.upload", "Attach")}" aria-label="${t("button.upload", "Attach")}">${kwcFaIcon("paperclip")}</button>
             <button class="kwc-button kwc-send" id="kwc-send">${t("button.send", "Send")}</button>
             <input type="file" id="kwc-file" class="kwc-file-input" multiple hidden style="display:none !important;">
           </div>
@@ -272,8 +272,7 @@
       document.getElementById("kwc-messages").classList.add("kwc-hidden");
       document.querySelector(".kwc-form").classList.add("kwc-hidden");
     }
-    const minBtn = document.getElementById("kwc-min");
-    if (minBtn) minBtn.textContent = state.minimized ? "+" : "-";
+    updateMinimizeButtonAppearance();
     const title = document.querySelector(".kwc-title");
     if (title) title.textContent = state.minimized ? t("title.minimized", "Chat") : t("title.full", "KOKOTO WebChat");
 
@@ -292,7 +291,8 @@
     // a deliberately small iframe, so use the map page viewport rather than the
     // iframe dimensions; otherwise desktop add-ons incorrectly lose minimize.
     let target = window;
-    if (!state.isStandalone && !state.isPip) {
+    const presentation = presentationCapabilities();
+    if (presentation.addon) {
       try { if (window.parent && window.parent !== window) target = window.parent; } catch (_) {}
     }
     try {
@@ -306,13 +306,14 @@
   }
 
   function publicChatMinimizeAvailable() {
-    if (state.isPip) return false;
+    const presentation = presentationCapabilities();
+    if (!presentation.publicMinimizeBase) return false;
     // Embedded map/add-on chat must remain minimizable even on phones/tablets.
     // The 900x480 threshold belongs only to Standalone detached DM/group
     // multi-window behavior; reusing it here incorrectly removed the minimize
     // button from mobile add-ons. Standalone keeps the existing mobile/fullscreen
     // policy so its small viewport is not collapsed into an unusable floating pill.
-    if (!state.isStandalone) return true;
+    if (presentation.addon) return true;
     const viewport = publicChatMinimizeViewport();
     const minW = Number(state.privateMultiWindowMinWidth || 900);
     const minH = Number(state.privateMultiWindowMinHeight || 480);
@@ -328,6 +329,15 @@
       return;
     }
     updateMinimizeButtonVisibility();
+  }
+
+  function updateMinimizeButtonAppearance() {
+    const btn = document.getElementById("kwc-min");
+    if (!btn) return;
+    const label = state.minimized ? t("button.restore", "Restore") : t("button.minimize", "Minimize");
+    setKwcFaIcon(btn, state.minimized ? "plus" : "minus");
+    btn.title = label;
+    btn.setAttribute("aria-label", label);
   }
 
   function updateMinimizeButtonVisibility() {
@@ -411,8 +421,7 @@
     const form = document.querySelector(".kwc-form");
     if (form) form.classList.toggle("kwc-hidden", state.minimized);
     updateEmojiResizeHandleVisibility();
-    const minBtn = document.getElementById("kwc-min");
-    if (minBtn) minBtn.textContent = state.minimized ? "+" : "-";
+    updateMinimizeButtonAppearance();
     const title = document.querySelector(".kwc-title");
     if (title) title.textContent = state.minimized ? t("title.minimized", "Chat") : t("title.full", "KOKOTO WebChat");
     updateFrameSize();
@@ -717,7 +726,7 @@
       btn.title = `${accountButtonName} · ${t("preferences.title", "Chat settings")}`;
       btn.classList.add("kwc-login-user", "kwc-user-role-" + String(state.role || "USER"));
       const loggedInCount = Math.max(0, Number(state.loggedInCount || 0));
-      status.textContent = "👤 " + String(loggedInCount);
+      status.innerHTML = `${kwcFaIcon("user", "kwc-status-icon")} <span>${esc(String(loggedInCount))}</span>`;
       status.title = canUseAdminPanel ? `${t("button.admin", "Admin")} · ${fmt("status.loggedInCount", "{count} logged in", {count: loggedInCount})}` : fmt("status.loggedInCount", "{count} logged in", {count: loggedInCount});
       status.classList.add("kwc-status-role-" + String(state.role || "USER"));
       status.classList.toggle("kwc-status-admin-action", !!canUseAdminPanel);

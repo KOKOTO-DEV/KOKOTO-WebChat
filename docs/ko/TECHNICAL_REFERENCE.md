@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.3.0 — 기술 참고서
+# KOKOTO WebChat 5.3.1 — 기술 참고서
 
 반응 authority, 직결/다단 전달, 원문 서버 단절 outbox, 작성자 알림 그림은 [REACTIONS.md](REACTIONS.md)를 참고하세요.
 

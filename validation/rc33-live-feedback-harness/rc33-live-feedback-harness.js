@@ -32,7 +32,7 @@ const manager = read('kwc-core/src/main/java/dev/kokoto/webchat/ChatGameManager.
 has(manager, 'if (type.equals("firstcome")) maxParticipants = winnerCount;', 'server makes firstcome winner count authoritative');
 has(manager, 'else if (maxParticipants < 2)', 'lottery requires at least two participants');
 notHas(manager, 'maxParticipants > 500', 'lottery has no fixed 500 participant cap');
-has(manager, 'game.winners.size() >= game.winnerCount) game.status = "completed";', 'full firstcome auto-completes');
+has(manager, '"firstcome".equals(game.type) && game.winners.size() >= game.winnerCount', 'full firstcome auto-completes through shared lifecycle');
 
 const rootAuth = read('frontend/inner/40-root-auth.js');
 has(rootAuth, 'return status === 401;', 'only HTTP 401 is generic session expiry');

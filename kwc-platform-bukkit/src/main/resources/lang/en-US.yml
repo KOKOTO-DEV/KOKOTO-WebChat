@@ -50,6 +50,8 @@ web:
     groupChats: Group chats
     directMessages: Messages
     pip: PIP
+    minimize: Minimize
+    restore: Restore
     run: Run
     jumpLatest: Jump to latest
     createPack: Create folder
@@ -730,12 +732,12 @@ web:
     youtubeTitle: YouTube video
     youtubeShorts: YouTube Shorts
     youtubeShortsTitle: YouTube Shorts
-    loadTikTok: ▶ TikTok
-    loadXPost: ▶ X post
+    loadTikTok: TikTok
+    loadXPost: X post
     openTikTok: Open on TikTok
     tiktok: TikTok
-    loadVideo: ▶ Video
-    loadAudio: ▶ Audio
+    loadVideo: Video
+    loadAudio: Audio
   error:
     unknown: Unknown error
     content_blocked: 'This message cannot be sent because it contains blocked content.'
@@ -994,11 +996,45 @@ web:
     gameListEntry: '- {id} | {title} | {status} | {participants}/{max}'
     gameTypeFirstCome: 'First come'
     gameTypeLottery: 'Lottery'
+    gameAlreadyVoted: 'That option is already your vote.'
+    gameVoted: 'Your vote was recorded.'
+    gameRecruitmentWaiting: 'Role is full. Added to the wait queue at #{position}.'
+    gameRecruitmentAccepted: 'Recruitment application accepted.'
+    gameRecruitmentWithdrawn: 'Recruitment application withdrawn.'
+    gameWaitingCount: 'waiting: {count}'
+    gameYourRecruitment: 'Your application: {role} / {state}{extra}'
+    gameTypePoll: 'Poll'
+    gameTypeRecruitment: 'Recruitment'
+    gameRecruitmentStateAccepted: 'accepted'
+    gameRecruitmentStateWaiting: 'waiting'
+    gameNotPoll: 'This event is not a poll.'
+    gameNotRecruitment: 'This event is not recruitment.'
+    gameVoteRequired: 'Use the vote command for a poll.'
+    gameRoleRequired: 'Choose a recruitment role.'
+    gameInvalidPollOptions: 'A poll needs at least two unique options.'
+    gameInvalidPollOption: 'Choose a valid poll option number.'
+    gameInvalidRecruitmentRoles: 'Add at least one role as role:count.'
+    gameInvalidRecruitmentRole: 'Choose a valid recruitment role.'
+    gameNotApplied: 'You have not applied to this recruitment event.'
+    gameAutoEndNotApplicable: 'That automatic-end condition is not available for this event type.'
+    gameAutoEndRequired: "First-come events always end when winner capacity is filled."
+    gameScopeUnavailable: 'Relay event delivery is not configured on this server.'
+    gameAutoEndSummary: 'Automatic end: {value}'
+    gameAutoEndOff: 'off'
+    gameAutoEndCapacity: 'capacity reached'
+    gameAutoEndRolesFull: 'all role slots filled'
+    gameAutoEndResponses: '{count} responses'
+    gameAutoEndTime: 'at {time}'
+    gameScopeSummary: 'Announcement scope: {scope}'
+    gameScopeRelay: 'Relay'
+    gameScopeLocal: 'local only'
+    gameInvalidAutoEndCount: 'Automatic-end response count must be between 0 and 500.'
+    gameInvalidAutoEndTime: 'Automatic-end time must be in the future or disabled.'
     gameStatusOpen: 'Open'
     gameStatusReady: 'Full'
     gameStatusCompleted: 'Completed'
     gameStatusClosed: 'Closed'
-    gameInvalidType: 'Event type must be firstcome or lottery.'
+    gameInvalidType: 'Event type must be firstcome, lottery, poll, or recruitment.'
     gameInvalidTitle: 'Enter an event title up to 80 characters.'
     gameInvalidParticipantCount: 'Participant count must be at least 2.'
     gameInvalidWinnerCount: 'Winner count must be between 1 and the participant count.'
@@ -1131,7 +1167,9 @@ web:
     error.remote_game_manage_not_allowed: 'Remote events can be joined, but must be managed on their origin server.'
     error.permission_denied: 'You do not have permission to manage this event.'
     error.not_lottery: 'This event is not a lottery.'
-    error.invalid_type: 'Choose first come or lottery.'
+    error.invalid_type: 'Choose first come, lottery, poll, or recruitment.'
+    error.invalid_auto_end_time: 'Choose a future automatic end date/time.'
+    error.invalid_auto_end_count: 'Automatic-end response count must be between 1 and 500, or disabled.'
     title: Events
     type: Type
     eventTitle: Title
@@ -1141,6 +1179,17 @@ web:
     notificationScope: Notification scope
     scopeLocal: Current server only
     scopeRelay: Current server + Relay servers
+    autoEnd: 'Automatic end'
+    autoEndWhenFull: 'When participant capacity is reached'
+    autoEndWhenFirstComeFull: 'When winner slots are filled (always on for first come)'
+    autoEndWhenRolesFull: 'When all role slots are filled'
+    autoEndResponseCount: 'End after this many responses'
+    autoEndDateTime: 'End at date/time (optional)'
+    autoEndFirstMatch: 'If multiple conditions are enabled, the first one reached ends the event.'
+    autoEndAtResponses: 'at {count} responses'
+    autoEndAtTime: 'at {time}'
+    autoEndOff: 'Automatic end: Off'
+    autoEndSummary: 'Automatic end: {conditions}'
     create: Create event
     join: Join
     joined: Joined
@@ -1159,6 +1208,40 @@ web:
     none: There is no current event.
     type.firstcome: First come
     type.lottery: Lottery
+    type.poll: Poll
+    type.recruitment: Recruitment
+    pollOptions: Poll options
+    pollOptionsHelp: One option per line. At least two options.
+    recruitmentRoles: Recruitment roles
+    recruitmentRolesHelp: 'One role per line as Role:count. Full roles continue into a wait queue.'
+    voteCount: '{count} votes'
+    recruitmentMetric: '{accepted}/{capacity} accepted · {waiting} waiting'
+    recruitmentRoleMetric: '{accepted}/{capacity} accepted · {waiting} waiting'
+    recruitmentAccepted: Accepted
+    recruitmentWaiting: Waiting
+    vote: Vote
+    voted: Voted
+    apply: Apply
+    applied: Applied
+    withdraw: Withdraw
+    myRecruitment: 'My application: {role} · {state}{queue}'
+    voterHeading: 'Voters ({count})'
+    applicantHeading: 'Applicants ({count})'
+    noVoters: No votes yet.
+    noApplicants: No applicants yet.
+    chat.pollCreated: 'Poll opened: {title} ({options} options)'
+    chat.recruitmentCreated: 'Recruitment opened: {title} ({participants} slots, {roles} roles)'
+    chat.pollResults: 'Poll result: {title} - {results}'
+    chat.recruitmentResults: 'Recruitment finalized: {title} - {accepted} accepted, {waiting} waiting'
+    error.not_poll: 'This event is not a poll.'
+    error.not_recruitment: 'This event is not recruitment.'
+    error.vote_required: 'Choose a poll option to vote.'
+    error.role_required: 'Choose a recruitment role.'
+    error.invalid_poll_options: 'Add at least two unique poll options.'
+    error.invalid_poll_option: 'Choose a valid poll option.'
+    error.invalid_recruitment_roles: 'Add at least one role as Role:count.'
+    error.invalid_recruitment_role: 'Choose a valid recruitment role.'
+    error.not_applied: 'You have not applied to this recruitment event.'
     status.open: Open
     status.ready: Full
     status.completed: Completed

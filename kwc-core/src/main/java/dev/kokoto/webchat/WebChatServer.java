@@ -92,6 +92,7 @@ public class WebChatServer {
     private CoreHttpServer httpServer;
     private ExecutorService historyExecutor;
     private ScheduledExecutorService reactionOutboxExecutor;
+    private ScheduledExecutorService chatGameLifecycleExecutor;
     private volatile long lastSqlitePruneAt;
     private int sqliteWritesSincePrune;
     private volatile boolean running;
@@ -188,6 +189,7 @@ public class WebChatServer {
 
         running = true;
         startReactionOutbox();
+        startChatGameLifecycle();
         httpServer.start();
         host.logger().info("HTTP chat server started on " + config.httpHost + ":" + config.httpPort + config.pathPrefix);
         if (emitSecurityWarnings) logHttpSecurityWarning();
@@ -403,6 +405,10 @@ public class WebChatServer {
         if (reactionOutboxExecutor != null) {
             reactionOutboxExecutor.shutdownNow();
             reactionOutboxExecutor = null;
+        }
+        if (chatGameLifecycleExecutor != null) {
+            chatGameLifecycleExecutor.shutdownNow();
+            chatGameLifecycleExecutor = null;
         }
         pendingReactionRequestsInFlight.clear();
         if (historyExecutor != null) {
@@ -1381,7 +1387,7 @@ public class WebChatServer {
     private void handleRelayLegacyV1(HttpExchange ex) throws IOException {
         ServerRelay relay = host.serverRelay();
         if (relay == null) {
-            sendJson(ex, 426, "{\"ok\":false,\"error\":\"relay_protocol_upgrade_required\",\"protocol\":2,\"version\":\"5.3.0\"}");
+            sendJson(ex, 426, "{\"ok\":false,\"error\":\"relay_protocol_upgrade_required\",\"protocol\":2,\"version\":\"5.3.1\"}");
             return;
         }
         relay.handleLegacyV1(ex);
@@ -1396,6 +1402,7 @@ public class WebChatServer {
         m.put("serverVersion", host.version());
         m.put("serverRelayServerId", c.serverRelayServerId);
         m.put("serverRelayServerName", c.serverRelayServerName);
+        m.put("eventRelayTopology", chatGameRelayTopologyConfigured());
         m.put("guestEnabled", c.guestEnabled);
         m.put("guestAllowCustomName", c.guestAllowCustomName);
         m.put("guestNamePrefix", c.guestNamePrefix);
@@ -2372,6 +2379,27 @@ public class WebChatServer {
             changed |= publicReactions.apply(key, r.actorUuid, safeReactionActorLabel(r.actorLabel, ""), r.reaction, r.active);
         }
         if (changed) broadcastReactionUpdate(msg);
+    }
+
+    private void startChatGameLifecycle() {
+        if (chatGameLifecycleExecutor != null) return;
+        chatGameLifecycleExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "KOKOTO WebChat-EventLifecycle");
+            t.setDaemon(true);
+            return t;
+        });
+        chatGameLifecycleExecutor.scheduleWithFixedDelay(() -> {
+            if (!running) return;
+            try {
+                for (ChatGameManager.Result result : chatGames.finishDue(System.currentTimeMillis())) {
+                    if (result == null || !result.changed()) continue;
+                    publishChatGameUpdate("auto-finish", result);
+                    announceChatGameResult(result.game());
+                }
+            } catch (Throwable t) {
+                host.logger().warn("Event automatic-end lifecycle failed: " + String.valueOf(t.getMessage()));
+            }
+        }, 1L, 1L, TimeUnit.SECONDS);
     }
 
     private void startReactionOutbox() {
@@ -7475,26 +7503,44 @@ public class WebChatServer {
         String gameId = stripControl(body.get("gameId"), 80).trim();
         String targetServerId = stripControl(body.get("targetServerId"), 64).trim();
         if (!targetServerId.isBlank() && !isLocalChatGameServer(targetServerId)) {
-            if (!"join".equals(action) && !"status".equals(action) && !"snapshot".equals(action)) {
+            if (!"join".equals(action) && !"vote".equals(action) && !"apply".equals(action) && !"withdraw".equals(action)
+                    && !"status".equals(action) && !"snapshot".equals(action)) {
                 sendJson(ex, 403, "{\"ok\":false,\"error\":\"remote_game_manage_not_allowed\"}"); return;
             }
-            relayChatGameHttp(ex, targetServerId, JsonUtil.obj(Map.of(
-                    "action", "join".equals(action) ? "join" : "snapshot",
-                    "gameId", gameId,
-                    "actorUuid", String.valueOf(ctx.account.uuid == null ? "" : ctx.account.uuid),
-                    "actorUsername", ctx.account.safeUsername(),
-                    "actorLabel", host.displayNameForAccount(ctx.account))));
+            LinkedHashMap<String,Object> relayRequest = new LinkedHashMap<>();
+            relayRequest.put("action", ("status".equals(action) || "snapshot".equals(action)) ? "snapshot" : action);
+            relayRequest.put("gameId", gameId);
+            relayRequest.put("actorUuid", String.valueOf(ctx.account.uuid == null ? "" : ctx.account.uuid));
+            relayRequest.put("actorUsername", ctx.account.safeUsername());
+            relayRequest.put("actorLabel", host.displayNameForAccount(ctx.account));
+            if ("vote".equals(action)) relayRequest.put("option", body.getOrDefault("option", ""));
+            if ("apply".equals(action)) relayRequest.put("role", body.getOrDefault("role", ""));
+            relayChatGameHttp(ex, targetServerId, JsonUtil.obj(relayRequest));
             return;
         }
         boolean canManage = canManageChatGame(ctx.account.uuid);
         ChatGameManager.Result result;
         if ("join".equals(action)) {
             result = joinChatGame(gameId, ctx.account.uuid, ctx.account.safeUsername(), host.displayNameForAccount(ctx.account));
+        } else if ("vote".equals(action)) {
+            result = voteChatGame(gameId, ctx.account.uuid, ctx.account.safeUsername(), host.displayNameForAccount(ctx.account), parsePositiveInt(body.get("option")));
+        } else if ("apply".equals(action)) {
+            result = applyRecruitmentChatGame(gameId, ctx.account.uuid, ctx.account.safeUsername(), host.displayNameForAccount(ctx.account), stripControl(body.get("role"), 40));
+        } else if ("withdraw".equals(action)) {
+            result = withdrawRecruitmentChatGame(gameId, ctx.account.uuid);
         } else if ("create".equals(action)) {
             if (!canManage) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
-            boolean relayAnnouncements = !"local".equalsIgnoreCase(String.valueOf(body.getOrDefault("notificationScope", "relay")))
+            boolean relayAnnouncements = chatGameRelayTopologyConfigured()
+                    && !"local".equalsIgnoreCase(String.valueOf(body.getOrDefault("notificationScope", "relay")))
                     && Boolean.parseBoolean(String.valueOf(body.getOrDefault("relayAnnouncements", "true")));
-            result = createChatGame(body.get("type"), stripControl(body.get("title"), 80), parsePositiveInt(body.get("maxParticipants")), parsePositiveInt(body.get("winnerCount")), host.displayNameForAccount(ctx.account), relayAnnouncements);
+            String type = String.valueOf(body.getOrDefault("type", "")).trim().toLowerCase(Locale.ROOT);
+            String title = stripControl(body.get("title"), 80);
+            boolean autoEndOnCapacity = Boolean.parseBoolean(String.valueOf(body.getOrDefault("autoEndOnCapacity", "false")));
+            int autoEndResponseCount = Math.max(0, parsePositiveInt(body.get("autoEndResponseCount")));
+            long autoEndAt = Math.max(0L, parseLong(body.get("autoEndAt"), 0L));
+            if ("poll".equals(type)) result = createPollChatGame(title, stripControl(body.get("pollOptions"), 1600), host.displayNameForAccount(ctx.account), relayAnnouncements, autoEndResponseCount, autoEndAt);
+            else if ("recruitment".equals(type)) result = createRecruitmentChatGame(title, stripControl(body.get("recruitmentRoles"), 1600), host.displayNameForAccount(ctx.account), relayAnnouncements, autoEndOnCapacity, autoEndAt);
+            else result = createChatGame(type, title, parsePositiveInt(body.get("maxParticipants")), parsePositiveInt(body.get("winnerCount")), host.displayNameForAccount(ctx.account), relayAnnouncements, autoEndOnCapacity, autoEndAt);
         } else if ("draw".equals(action)) {
             if (!canManage) { sendJson(ex, 403, "{\"ok\":false,\"error\":\"permission_denied\"}"); return; }
             result = drawChatGame(gameId);
@@ -7583,6 +7629,15 @@ public class WebChatServer {
         if ("join".equals(action)) {
             if (gameId.isBlank() || remoteViewer.isBlank()) result = new ChatGameManager.Result(false, "invalid_user", null, false);
             else result = joinChatGame(gameId, remoteViewer, actorUsername, actorLabel);
+        } else if ("vote".equals(action)) {
+            if (gameId.isBlank() || remoteViewer.isBlank()) result = new ChatGameManager.Result(false, "invalid_user", null, false);
+            else result = voteChatGame(gameId, remoteViewer, actorUsername, actorLabel, parsePositiveInt(body.get("option")));
+        } else if ("apply".equals(action)) {
+            if (gameId.isBlank() || remoteViewer.isBlank()) result = new ChatGameManager.Result(false, "invalid_user", null, false);
+            else result = applyRecruitmentChatGame(gameId, remoteViewer, actorUsername, actorLabel, stripControl(body.get("role"), 40));
+        } else if ("withdraw".equals(action)) {
+            if (gameId.isBlank() || remoteViewer.isBlank()) result = new ChatGameManager.Result(false, "invalid_user", null, false);
+            else result = withdrawRecruitmentChatGame(gameId, remoteViewer);
         } else if ("list".equals(action)) {
             result = chatGames.snapshot(remoteViewer);
         } else {
@@ -7610,6 +7665,38 @@ public class WebChatServer {
     public ChatGameManager.Result chatGameSnapshot(String viewerUuid) { return chatGames.snapshot(viewerUuid); }
     public ChatGameManager.Result chatGameSnapshot(String gameId, String viewerUuid) { return chatGames.snapshot(gameId, viewerUuid); }
     public List<Map<String,Object>> chatGameList(String viewerUuid) { return chatGames.list(viewerUuid); }
+
+    /** True when Relay configuration contains at least one enabled peer allowed to receive Event traffic.
+     * This is configuration/topology based rather than live connection state so UI does not flicker during transient outages. */
+    public boolean chatGameRelayTopologyConfigured() {
+        ConfigValues c = host.configValues();
+        if (c == null || !c.serverRelayEnabled || !c.serverRelayEventAnnouncements || c.serverRelayGroups == null) return false;
+        for (ConfigValues.RelayGroup group : c.serverRelayGroups) {
+            if (group == null || group.peers == null) continue;
+            for (ConfigValues.RelayPeer peer : group.peers) {
+                if (peer == null || !peer.enabled) continue;
+                ConfigValues.RelayDirectionPolicy send = peer.send;
+                if (send != null && send.enabled && send.event) return true;
+            }
+        }
+        return false;
+    }
+
+    public ChatGameManager.Result setChatGameAutoEnd(String gameId, boolean autoEndOnCapacity, int autoEndResponseCount, long autoEndAt) {
+        ChatGameManager.Result result = chatGames.setAutoEnd(gameId, autoEndOnCapacity, autoEndResponseCount, autoEndAt);
+        if (result.changed()) {
+            publishChatGameUpdate("policy", result);
+            if (result.game() != null && "completed".equals(String.valueOf(result.game().get("status")))) announceChatGameResult(result.game());
+        }
+        return result;
+    }
+
+    public ChatGameManager.Result setChatGameRelayAnnouncements(String gameId, boolean relayAnnouncements) {
+        boolean normalized = chatGameRelayTopologyConfigured() && relayAnnouncements;
+        ChatGameManager.Result result = chatGames.setRelayAnnouncements(gameId, normalized);
+        if (result.changed()) publishChatGameUpdate("policy", result);
+        return result;
+    }
     public boolean canManageChatGame(String uuid) {
         String id = String.valueOf(uuid == null ? "" : uuid).trim();
         for (Account account : storage.listAccounts()) {
@@ -7622,7 +7709,35 @@ public class WebChatServer {
         return createChatGame(type, title, maxParticipants, winnerCount, createdBy, true);
     }
     public ChatGameManager.Result createChatGame(String type, String title, int maxParticipants, int winnerCount, String createdBy, boolean relayAnnouncements) {
-        ChatGameManager.Result result = chatGames.create(type, title, maxParticipants, winnerCount, createdBy, relayAnnouncements);
+        return createChatGame(type, title, maxParticipants, winnerCount, createdBy, relayAnnouncements, false, 0L);
+    }
+    public ChatGameManager.Result createChatGame(String type, String title, int maxParticipants, int winnerCount, String createdBy, boolean relayAnnouncements, boolean autoEndOnCapacity, long autoEndAt) {
+        relayAnnouncements = chatGameRelayTopologyConfigured() && relayAnnouncements;
+        ChatGameManager.Result result = chatGames.create(type, title, maxParticipants, winnerCount, createdBy, relayAnnouncements, autoEndOnCapacity, autoEndAt);
+        if (result.changed()) {
+            publishChatGameUpdate("create", result);
+            announceChatGameCreated(result.game());
+        }
+        return result;
+    }
+    public ChatGameManager.Result createPollChatGame(String title, String pollOptions, String createdBy, boolean relayAnnouncements) {
+        return createPollChatGame(title, pollOptions, createdBy, relayAnnouncements, 0, 0L);
+    }
+    public ChatGameManager.Result createPollChatGame(String title, String pollOptions, String createdBy, boolean relayAnnouncements, int autoEndResponseCount, long autoEndAt) {
+        relayAnnouncements = chatGameRelayTopologyConfigured() && relayAnnouncements;
+        ChatGameManager.Result result = chatGames.createPoll(title, pollOptions, createdBy, relayAnnouncements, autoEndResponseCount, autoEndAt);
+        if (result.changed()) {
+            publishChatGameUpdate("create", result);
+            announceChatGameCreated(result.game());
+        }
+        return result;
+    }
+    public ChatGameManager.Result createRecruitmentChatGame(String title, String recruitmentRoles, String createdBy, boolean relayAnnouncements) {
+        return createRecruitmentChatGame(title, recruitmentRoles, createdBy, relayAnnouncements, false, 0L);
+    }
+    public ChatGameManager.Result createRecruitmentChatGame(String title, String recruitmentRoles, String createdBy, boolean relayAnnouncements, boolean autoEndOnCapacity, long autoEndAt) {
+        relayAnnouncements = chatGameRelayTopologyConfigured() && relayAnnouncements;
+        ChatGameManager.Result result = chatGames.createRecruitment(title, recruitmentRoles, createdBy, relayAnnouncements, autoEndOnCapacity, autoEndAt);
         if (result.changed()) {
             publishChatGameUpdate("create", result);
             announceChatGameCreated(result.game());
@@ -7645,6 +7760,34 @@ public class WebChatServer {
         }
         return result;
     }
+    public ChatGameManager.Result voteChatGame(String gameId, String uuid, String username, String label, int option) {
+        ChatGameManager.Result result = gameId == null || gameId.isBlank()
+                ? chatGames.vote(uuid, username, label, option)
+                : chatGames.vote(gameId, uuid, username, label, option);
+        if (result.changed()) {
+            publishChatGameUpdate("vote", result);
+            if (result.game() != null && "completed".equals(String.valueOf(result.game().get("status")))) announceChatGameResult(result.game());
+        }
+        return result;
+    }
+    public ChatGameManager.Result applyRecruitmentChatGame(String gameId, String uuid, String username, String label, String role) {
+        ChatGameManager.Result result = gameId == null || gameId.isBlank()
+                ? chatGames.applyRecruitment(uuid, username, label, role)
+                : chatGames.applyRecruitment(gameId, uuid, username, label, role);
+        if (result.changed()) {
+            publishChatGameUpdate("apply", result);
+            if (result.game() != null && "completed".equals(String.valueOf(result.game().get("status")))) announceChatGameResult(result.game());
+        }
+        return result;
+    }
+    public ChatGameManager.Result withdrawRecruitmentChatGame(String gameId, String uuid) {
+        ChatGameManager.Result result = gameId == null || gameId.isBlank()
+                ? chatGames.withdrawRecruitment(uuid)
+                : chatGames.withdrawRecruitment(gameId, uuid);
+        if (result.changed()) publishChatGameUpdate("withdraw", result);
+        return result;
+    }
+
     public ChatGameManager.Result drawChatGame() { return drawChatGame(""); }
     public ChatGameManager.Result drawChatGame(String gameId) {
         ChatGameManager.Result result = gameId == null || gameId.isBlank() ? chatGames.draw() : chatGames.draw(gameId);
@@ -7678,60 +7821,119 @@ public class WebChatServer {
     private void announceChatGameCreated(Map<String,Object> game) {
         if (game == null) return;
         String title = LegacyText.stripColor(String.valueOf(game.getOrDefault("title", "")));
-        String type = String.valueOf(game.getOrDefault("type", "lottery"));
-        String localizedType = host.language().text("game.type." + type, type.equals("firstcome") ? "First come" : "Lottery");
-        String max = String.valueOf(game.getOrDefault("maxParticipants", 0));
-        String winners = String.valueOf(game.getOrDefault("winnerCount", 0));
+        String type = String.valueOf(game.getOrDefault("type", "lottery")).toLowerCase(Locale.ROOT);
+        String typeFallback = switch (type) {
+            case "firstcome" -> "First come";
+            case "poll" -> "Poll";
+            case "recruitment" -> "Recruitment";
+            default -> "Lottery";
+        };
+        String localizedType = host.language().text("game.type." + type, typeFallback);
         String eventId = String.valueOf(game.getOrDefault("id", ""));
         String serverId = localChatGameServerId();
         String serverName = localChatGameServerName();
         boolean relayAnnouncements = !Boolean.FALSE.equals(game.get("relayAnnouncements"));
-        Map<String,String> vars = Map.of("title", title, "type", type, "participants", max, "winners", winners,
-                "eventId", eventId, "serverId", serverId, "serverName", serverName, "status", String.valueOf(game.getOrDefault("status", "open")));
-        Map<String,String> localVars = Map.of("title", title, "type", localizedType, "participants", max, "winners", winners);
-        String fallback = "Event opened: " + title + " (" + localizedType + ", " + max + " participants, " + winners + " winners)";
-        String text = host.language().text("game.chat.created", fallback, localVars);
-        publishChatGameEvent("Game", text, "game.chat.created", JsonUtil.obj(vars), relayAnnouncements);
 
-        String join = "[Join]";
+        LinkedHashMap<String,String> vars = new LinkedHashMap<>();
+        vars.put("title", title); vars.put("type", type); vars.put("eventId", eventId);
+        vars.put("serverId", serverId); vars.put("serverName", serverName);
+        vars.put("status", String.valueOf(game.getOrDefault("status", "open")));
+        String text;
+        if ("poll".equals(type)) {
+            int optionCount = game.get("pollOptions") instanceof List<?> options ? options.size() : 0;
+            vars.put("options", String.valueOf(optionCount));
+            text = host.language().text("game.chat.pollCreated", "Poll opened: {title} ({options} options)", Map.of("title", title, "options", String.valueOf(optionCount)));
+        } else if ("recruitment".equals(type)) {
+            String capacity = String.valueOf(game.getOrDefault("maxParticipants", 0));
+            int roleCount = game.get("recruitmentRoles") instanceof List<?> roles ? roles.size() : 0;
+            vars.put("participants", capacity); vars.put("roles", String.valueOf(roleCount));
+            text = host.language().text("game.chat.recruitmentCreated", "Recruitment opened: {title} ({participants} slots, {roles} roles)",
+                    Map.of("title", title, "participants", capacity, "roles", String.valueOf(roleCount)));
+        } else {
+            String max = String.valueOf(game.getOrDefault("maxParticipants", 0));
+            String winners = String.valueOf(game.getOrDefault("winnerCount", 0));
+            vars.put("participants", max); vars.put("winners", winners);
+            text = host.language().text("game.chat.created", "Event opened: {title} ({type}, {participants} participants, {winners} winners)",
+                    Map.of("title", title, "type", localizedType, "participants", max, "winners", winners));
+        }
+        if ("poll".equals(type)) publishChatGameEvent("Game", text, "game.chat.pollCreated", JsonUtil.obj(vars), relayAnnouncements);
+        else if ("recruitment".equals(type)) publishChatGameEvent("Game", text, "game.chat.recruitmentCreated", JsonUtil.obj(vars), relayAnnouncements);
+        else publishChatGameEvent("Game", text, "game.chat.created", JsonUtil.obj(vars), relayAnnouncements);
+
+        String actionLabel = switch (type) {
+            case "poll" -> "[View poll]";
+            case "recruitment" -> "[View recruitment]";
+            default -> "[Join]";
+        };
+        String command = ("poll".equals(type) || "recruitment".equals(type)) ? "/kchat game status " + eventId : "/kchat game join " + eventId;
         String line = LegacyText.AQUA + "[KWC Event] " + LegacyText.RESET + title + LegacyText.GRAY
-                + " (" + localizedType + ", " + max + "/" + winners + ") " + LegacyText.AQUA + join;
-        host.platformAdapter().broadcastInteractiveMessage(new PlatformGameMessage(line, false, "", "", "", join,
-                "Click to enter /kchat game join " + eventId, "/kchat game join " + eventId));
+                + " (" + localizedType + ") " + LegacyText.AQUA + actionLabel;
+        host.platformAdapter().broadcastInteractiveMessage(new PlatformGameMessage(line, false, "", "", "", actionLabel,
+                "Click to enter " + command, command));
     }
 
     private void announceChatGameResult(Map<String,Object> game) {
         if (game == null) return;
         String title = LegacyText.stripColor(String.valueOf(game.getOrDefault("title", "")));
-        List<String> names = new ArrayList<>();
-        if (game.get("winners") instanceof List<?> winners) for (Object value : winners) {
-            if (value instanceof Map<?,?> item) {
-                Object displayValue = item.containsKey("displayName") ? item.get("displayName") : item.get("label");
-                Object usernameValue = item.containsKey("username") ? item.get("username") : "";
-                String displayName = LegacyText.stripColor(String.valueOf(displayValue == null ? "" : displayValue));
-                String username = LegacyText.stripColor(String.valueOf(usernameValue == null ? "" : usernameValue));
-                if (displayName == null || displayName.isBlank()) displayName = username;
-                if (displayName == null || displayName.isBlank()) continue;
-                String shown = displayName;
-                if (username != null && !username.isBlank() && !username.equalsIgnoreCase(displayName)) shown += " (" + username + ")";
-                names.add(shown);
-            }
-        }
-        String winnerNames = names.isEmpty() ? "none" : String.join(", ", names);
+        String type = String.valueOf(game.getOrDefault("type", "lottery")).toLowerCase(Locale.ROOT);
         String eventId = String.valueOf(game.getOrDefault("id", ""));
         String serverId = localChatGameServerId();
         String serverName = localChatGameServerName();
-        Map<String,String> vars = Map.of("title", title, "winners", winnerNames, "eventId", eventId,
-                "serverId", serverId, "serverName", serverName, "type", String.valueOf(game.getOrDefault("type", "lottery")),
-                "participants", String.valueOf(game.getOrDefault("maxParticipants", 0)), "status", String.valueOf(game.getOrDefault("status", "completed")));
-        String fallback = "🏆 Event result: " + title + " - Winners: " + winnerNames;
-        String text = host.language().text("game.chat.results", fallback, vars);
         boolean relayAnnouncements = !Boolean.FALSE.equals(game.get("relayAnnouncements"));
-        publishChatGameEvent("Game", text, "game.chat.results", JsonUtil.obj(vars), relayAnnouncements);
+        LinkedHashMap<String,String> vars = new LinkedHashMap<>();
+        vars.put("title", title); vars.put("eventId", eventId); vars.put("serverId", serverId); vars.put("serverName", serverName);
+        vars.put("type", type); vars.put("status", String.valueOf(game.getOrDefault("status", "completed")));
+        String text;
+        String line;
+        if ("poll".equals(type)) {
+            List<String> results = new ArrayList<>();
+            if (game.get("pollOptions") instanceof List<?> options) for (Object value : options) {
+                if (!(value instanceof Map<?,?> option)) continue;
+                String label = LegacyText.stripColor(String.valueOf(option.get("label")));
+                String count = String.valueOf(option.get("count"));
+                if (label != null && !label.isBlank()) results.add(label + " " + count);
+            }
+            String summary = results.isEmpty() ? "none" : String.join(", ", results);
+            vars.put("results", summary);
+            vars.put("votes", String.valueOf(game.getOrDefault("voteCount", 0)));
+            text = host.language().text("game.chat.pollResults", "Poll result: {title} - {results}", Map.of("title", title, "results", summary));
+            line = LegacyText.LIGHT_PURPLE + "[KWC Poll] " + LegacyText.RESET + title + LegacyText.GRAY + " - " + summary;
+        } else if ("recruitment".equals(type)) {
+            String accepted = String.valueOf(game.getOrDefault("acceptedCount", 0));
+            String waiting = String.valueOf(game.getOrDefault("waitingCount", 0));
+            vars.put("accepted", accepted); vars.put("waiting", waiting);
+            text = host.language().text("game.chat.recruitmentResults", "Recruitment finalized: {title} - {accepted} accepted, {waiting} waiting",
+                    Map.of("title", title, "accepted", accepted, "waiting", waiting));
+            line = LegacyText.LIGHT_PURPLE + "[KWC Recruitment] " + LegacyText.RESET + title + LegacyText.GRAY
+                    + " - " + accepted + " accepted, " + waiting + " waiting";
+        } else {
+            List<String> names = new ArrayList<>();
+            if (game.get("winners") instanceof List<?> winners) for (Object value : winners) {
+                if (value instanceof Map<?,?> item) {
+                    Object displayValue = item.containsKey("displayName") ? item.get("displayName") : item.get("label");
+                    Object usernameValue = item.containsKey("username") ? item.get("username") : "";
+                    String displayName = LegacyText.stripColor(String.valueOf(displayValue == null ? "" : displayValue));
+                    String username = LegacyText.stripColor(String.valueOf(usernameValue == null ? "" : usernameValue));
+                    if (displayName == null || displayName.isBlank()) displayName = username;
+                    if (displayName == null || displayName.isBlank()) continue;
+                    String shown = displayName;
+                    if (username != null && !username.isBlank() && !username.equalsIgnoreCase(displayName)) shown += " (" + username + ")";
+                    names.add(shown);
+                }
+            }
+            String winnerNames = names.isEmpty() ? "none" : String.join(", ", names);
+            vars.put("winners", winnerNames);
+            vars.put("participants", String.valueOf(game.getOrDefault("maxParticipants", 0)));
+            String fallback = "🏆 Event result: " + title + " - Winners: " + winnerNames;
+            text = host.language().text("game.chat.results", fallback, Map.of("title", title, "winners", winnerNames));
+            line = LegacyText.LIGHT_PURPLE + "🏆 " + LegacyText.AQUA + "[KWC Event] " + LegacyText.RESET + title + LegacyText.GRAY
+                    + " - Winners: " + LegacyText.AQUA + winnerNames;
+        }
+        if ("poll".equals(type)) publishChatGameEvent("Game", text, "game.chat.pollResults", JsonUtil.obj(vars), relayAnnouncements);
+        else if ("recruitment".equals(type)) publishChatGameEvent("Game", text, "game.chat.recruitmentResults", JsonUtil.obj(vars), relayAnnouncements);
+        else publishChatGameEvent("Game", text, "game.chat.results", JsonUtil.obj(vars), relayAnnouncements);
         String view = "[View event]";
-        String line = LegacyText.LIGHT_PURPLE + "🏆 " + LegacyText.AQUA + "[KWC Event] " + LegacyText.RESET + title + LegacyText.GRAY
-                + " - Winners: " + LegacyText.AQUA + winnerNames + " " + view;
-        host.platformAdapter().broadcastInteractiveMessage(new PlatformGameMessage(line, false, "", "", "", view,
+        host.platformAdapter().broadcastInteractiveMessage(new PlatformGameMessage(line + " " + view, false, "", "", "", view,
                 "Click to enter /kchat game status " + eventId, "/kchat game status " + eventId));
     }
 

@@ -11,7 +11,7 @@ function section53(text){ const s=text.indexOf('## 5.3.0'); const e=text.indexOf
 
 // Standalone-only private multi-window runtime boundary.
 const multi = read('frontend/inner/115-private-multiwindow.js');
-has(multi, 'return state.isStandalone === true', 'private multi-window is gated to Standalone at runtime');
+has(multi, 'return presentation.privateMultiWindowBase', 'private multi-window is gated to Standalone at runtime through presentation capability');
 
 // Two rendered-line latest-follow boundary and shared saved-position bottom test.
 const scroll = read('frontend/inner/50-public-history-virtual-scroll.js');
@@ -45,12 +45,12 @@ ok(!server.includes('applyReactionSearchAlias' + 'EmojiTokens'), 'server has no 
 ok(!admin.includes('reactionAlias' + 'EmojiTokens'), 'Admin UI has no alias-token option');
 ok(!admin.includes('kwc-reaction-alias-' + 'token-enabled'), 'Admin UI has no alias-token checkbox');
 ok(!c53.includes('Reaction search aliases as chat ' + 'emoji tokens'), 'changelog does not advertise withdrawn alias-token feature');
-has(c53, '`Display name (Real name)`', 'changelog documents event winner identity form');
+ok(c53.includes('`Display name (Real name)`') || c53.includes('표시명 (실제이름)'), 'changelog documents event winner identity form');
 
-// Distribution release notes stay byte-equal to the current 5.3.0 changelog section.
+// Distribution-facing release notes remain byte-equal to each other. The root CHANGELOG may be localized.
 const modrinth = read('distribution/modrinth/RELEASE_NOTES_5.3.0.md').trim();
 const curseforge = read('distribution/curseforge/CHANGELOG_5.3.0.md').trim();
-ok(modrinth === c53.trim(), 'Modrinth 5.3.0 release notes equal changelog 5.3.0 section');
-ok(curseforge === c53.trim(), 'CurseForge 5.3.0 changelog equals changelog 5.3.0 section');
+ok(modrinth === curseforge, 'Modrinth and CurseForge 5.3.0 release notes remain byte-equal');
+has(modrinth, '`🏆 Display name (Real name)`', 'distribution release notes document event winner identity form');
 
 console.log(`RC38_RELEASE_POLISH_PASS assertions=${assertions}`);

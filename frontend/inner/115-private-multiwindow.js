@@ -8,7 +8,8 @@
     // Detached private child windows are a Standalone-only desktop feature.
     // Embedded map adapters keep the single-pane private-chat presentation even
     // when the iframe/page happens to have enough viewport space.
-    return state.isStandalone === true
+    const presentation = presentationCapabilities();
+    return presentation.privateMultiWindowBase
       && window.innerWidth >= Number(state.privateMultiWindowMinWidth || 900)
       && window.innerHeight >= Number(state.privateMultiWindowMinHeight || 480);
   }
@@ -38,6 +39,18 @@
   function privateListLayout(type) {
     const modal = privateListModal(type);
     return modal && modal.querySelector(":scope > .kwc-dm-layout");
+  }
+
+  // Header DM/Group buttons are also explicit bring-to-front controls.
+  // A private list window may still be open but covered by public chat or by
+  // another detached private window. Reusing the existing window must raise it
+  // instead of returning early and leaving the user with an apparently dead button.
+  function raiseExistingPrivateListWindow(type) {
+    const wrap = privateListWrap(type);
+    if (!wrap || !document.body.contains(wrap)) return false;
+    wrap.classList.remove("kwc-hidden");
+    raiseIndependentChatWindow(wrap);
+    return true;
   }
 
   function privateLiveConversation(type) {
@@ -82,6 +95,15 @@
 
   function mountPrivateWindowOwnedOverlay(type, wrap) {
     return mountWindowOwnedOverlay(wrap, privateChildWindowOwner(type));
+  }
+
+  // List-level actions such as creating a new group room belong to the
+  // DM/group hub, not to whichever detached conversation child happens to be active.
+  // Keep a dedicated owner helper so conversation-local overlays (settings, members,
+  // pins, etc.) can still follow the active child window.
+  function mountPrivateListWindowOwnedOverlay(type, wrap) {
+    const owner = privateListModal(type) || privateChildWindowOwner(type);
+    return mountWindowOwnedOverlay(wrap, owner);
   }
 
   function privateCloneMessages(values) {

@@ -12,7 +12,7 @@ reaction authority、direct/multi-hop delivery、origin 障害時の outbox、�
 
 > **セキュリティ境界:** Relay v2 はエンドツーエンド暗号化ではなく、**hop-by-hop authenticated encryption** です。転送に参加する KWC サーバーは信頼境界内の参加者です。
 
-KOKOTO WebChat 5.3.0 全体は **Relay Protocol 2.2** を固定 revision として使用します。Protocol major `2` が wire compatibility 境界で、2.2 は `public`, `dm`, `read`, `delete`, `reaction`, `reaction-authority`, `typing`, `game`, `profile` capability を通知します。KWC product version は診断情報であり互換性 key ではありません。reaction/reaction-authority/typing は 2.1 の feature set と互換で、5.3.0 の `delete`, `game`, `profile` は revision を上げず 2.2 内の capability negotiation で使用します。group-chat room は local のままです。
+KOKOTO WebChat 5.3.1 は **Relay Protocol 2.2** を引き続き使用します。 を固定 revision として使用します。Protocol major `2` が wire compatibility 境界で、2.2 は `public`, `dm`, `read`, `delete`, `reaction`, `reaction-authority`, `typing`, `game`, `profile` capability を通知します。KWC product version は診断情報であり互換性 key ではありません。reaction/reaction-authority/typing は 2.1 の feature set と互換で、5.3.0 の `delete`, `game`, `profile` は revision を上げず 2.2 内の capability negotiation で使用します。group-chat room は local のままです。
 
 ## セキュリティ上、優先してアップグレードすべき構成
 
@@ -113,6 +113,8 @@ server-relay:
 
 `sources.event` は `sources.system` から分離されています。event 通知だけを Relay し、その他の system 通知を local に残せます。event 作成時の **通知範囲** は作成/結果通知を local-only にするか Relay 対象にするかを決め、peer の `send.event` / `receive.event` が上位の routing 制限として適用されます。
 
+5.3.1 では `send.event` を許可する enabled peer が 1 つ以上構成されている場合だけ event ごとの **通知範囲**を表示し、既定値を Relay にします。該当 peer がない場合は scope UI/command を表示せず local-only に正規化します。判定は一時的な接続状態ではなく構成済み topology に基づきます。
+
 ## Request 単位の認証と任意 identity/health probe
 
 direct relay は 5.0.0 と同じ運用モデルで、各 `/relay/v2/message` request を独立して認証します。受信側は送信元を同じ group・同じ shared secret で登録する必要があり、その情報で request を認証/復号します。逆方向は独立です。`/relay/v2/handshake` は状態を保持しない診断用 identity/health probe であり、direct route の作成・保持・有効化・無効化には使いません。任意 probe request には次の値が結び付けられます。
@@ -138,7 +140,7 @@ Endpoint:
 
 ## Protocol revision と capability
 
-Relay 互換性は KWC product version に結び付きません。`X-KWC-Relay-Version: 2` は major wire family、`X-KWC-Relay-Protocol: 2.2` と `X-KWC-Relay-Capabilities` は現在の revision と optional extension を示します。KWC 5.3.0 は RC に関係なく revision 2.2 を維持し、`delete`, `game`, `profile` を capability で区別します。必要な capability が相手 peer に無い場合、その extension だけ安全に失敗します。product version は診断情報のみです。
+Relay 互換性は KWC product version に結び付きません。`X-KWC-Relay-Version: 2` は major wire family、`X-KWC-Relay-Protocol: 2.2` と `X-KWC-Relay-Capabilities` は現在の revision と optional extension を示します。KWC 5.3.1 は revision 2.2 を維持し、`delete`, `game`, `profile` を capability で区別します。必要な capability が相手 peer に無い場合、その extension だけ安全に失敗します。product version は診断情報のみです。
 
 
 ### Event Relay routing (2.2)

@@ -8,6 +8,11 @@
 
 > 시각 매뉴얼, 움직이는 흐름도, 편집 가능한 다이어그램 원본, 참조 표준 목록은 `docs/assets/`, `docs/en/VISUAL_DOCUMENTATION.md`, `docs/en/REFERENCES.md`에 포함되어 있습니다.
 
+## 5.3.1 개발 버전
+
+5.3.1에서는 Chat Event에 **투표(Poll)**, **역할별 모집(Recruitment)**과 저장 가능한 **자동 종료 조건**을 추가합니다. 선착순은 당첨 정원이 차면 기존처럼 자동 완료되고, 추첨은 참가 정원 도달 시 자동 추첨, 투표는 고유 응답 인원 도달, 모집은 모든 역할 정원 충족을 선택 조건으로 사용할 수 있으며 네 종류 모두 종료 날짜/시각을 함께 지정할 수 있습니다. 여러 조건은 먼저 충족된 조건을 적용합니다. 모바일 지도 애드온 모드에서는 창 drag가 관리자 버튼의 터치를 가로채던 문제를 수정했고, Standalone DM/그룹 헤더 버튼도 가려진 기존 창을 최상단으로 다시 올립니다. 제품/runtime 버전은 5.3.1이며 config schema는 5.3.0을 유지합니다. Minecraft 명령 자동완성은 Bukkit/Fabric/NeoForge/Forge에서 Event 동작, 이벤트 ID, Poll 선택지 번호, Recruitment 역할, 자동 종료 제어를 공통으로 지원합니다. Event를 송신할 수 있는 Relay peer가 구성된 경우에만 전달 범위가 표시되고 기본값은 Relay이며, 그런 topology가 없는 서버는 local-only로 처리되어 불필요한 범위 설정을 노출하지 않습니다.
+
+
 ## 5.3.0 릴리스
 
 5.3.0은 5.2.1을 기준으로 DM/그룹 전체 저장기록 검색과 발신자 소유 메시지 삭제, 방 내부 그룹 역할·고정·삭제 정책, 여러 개를 동시에 운영할 수 있는 선착순/추첨 Chat Event, 사용자 프로필과 Game/Web 접속 상태·Offline 개인정보 보호, 개인 차단, 모더레이터별 위임 권한, 확장된 내장 CAPTCHA, 웹 `@` 자동완성, 이미지 메타데이터 제거를 추가합니다. Relay Protocol **2.2**는 protocol major 2 호환성을 유지하면서 DM 삭제, 이벤트 라우팅, 원격 프로필 조회와 peer별 `public-chat`/`event`/`dm`/`profile` 송신·수신 정책을 capability 기반으로 지원합니다. **Standalone 데스크톱 모드**에서는 DM/그룹 목록과 여러 개의 개별 대화를 독립 창으로 열어 drag/resize/maximize할 수 있습니다. 8개 어댑터/standalone은 같은 frontend fragment와 CSS에서 생성되며, 공개채팅 responsive 헤더와 최소화 프레임 동작은 어댑터에서도 동일하게 유지됩니다.
@@ -83,7 +88,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.1-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target
@@ -94,7 +99,7 @@ Fabric은 16개 Minecraft 버전별 exact-target JAR로 빌드합니다. 스크�
 kwc-platform-fabric\build-all.bat
 ```
 
-대상: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-Fabric-<Minecraft>.jar`입니다.
+대상: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.1-Fabric-<Minecraft>.jar`입니다.
 
 ### NeoForge exact-target
 
@@ -104,7 +109,7 @@ NeoForge는 12개 Minecraft 버전별 exact-target JAR로 빌드합니다. 1.20.
 kwc-platform-neoforge\build-all.bat
 ```
 
-대상: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-NeoForge-<Minecraft>.jar`입니다.
+대상: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 산출물은 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.1-NeoForge-<Minecraft>.jar`입니다.
 
 ### Forge exact-target
 
@@ -114,13 +119,13 @@ Forge는 범용 JAR 하나가 아니라 16개 Minecraft 버전별 exact-target J
 kwc-platform-forge\build-all.bat
 ```
 
-스크립트가 각 대상에 맞춰 JDK 17/21/25를 선택하고 `KOKOTO-WebChat-5.3.0-Forge-<Minecraft>.jar`을 각 target의 `build/libs/` 아래에 생성합니다.
+스크립트가 각 대상에 맞춰 JDK 17/21/25를 선택하고 `KOKOTO-WebChat-5.3.1-Forge-<Minecraft>.jar`을 각 target의 `build/libs/` 아래에 생성합니다.
 
 ### Windows 최종 릴리스 검증
 
-> **릴리스 빌드/검증 워크플로는 source 패키지에 포함되어 있습니다.** `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source에 함께 들어 있습니다. 별도의 `KWC-5.3.0-validation-tools.zip`에는 개발용 브라우저 회귀검증 도구만 들어 있으며 일반 빌드나 릴리스 빌드에는 필요하지 않습니다.
+> **릴리스 빌드/검증 워크플로는 source 패키지에 포함되어 있습니다.** `validate-release-windows.bat`와 이 파일이 필요로 하는 PowerShell helper는 source에 함께 들어 있습니다. 별도의 `KWC-5.3.1-validation-tools.zip`에는 개발용 브라우저 회귀검증 도구만 들어 있으며 일반 빌드나 릴리스 빌드에는 필요하지 않습니다.
 
-소스 루트에서 `validate-release-windows.bat`를 실행하면 Bukkit, Fabric 16개 target, NeoForge 12개 target, Forge 16개 target을 연속 빌드합니다. `FINAL RELEASE BUILD PASS`가 출력되고 `release-5.3.0/`에 배포용 JAR이 정확히 45개 모이며 `SHA256SUMS.txt`가 생성되어야 실제 빌드까지 최종 검증된 것으로 판정합니다.
+소스 루트에서 `validate-release-windows.bat`를 실행하면 Bukkit, Fabric 16개 target, NeoForge 12개 target, Forge 16개 target을 연속 빌드합니다. `FINAL RELEASE BUILD PASS`가 출력되고 `release-5.3.1/`에 배포용 JAR이 정확히 45개 모이며 `SHA256SUMS.txt`가 생성되어야 실제 빌드까지 최종 검증된 것으로 판정합니다.
 
 Windows 반복 빌드에서는 같은 스크립트로 플랫폼 선택, 증분 캐시, 플랫폼 병렬 빌드와 실시간 진행률을 사용할 수 있습니다.
 
@@ -131,7 +136,7 @@ validate-release-windows.bat --fabric --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-플랫폼 옵션은 조합할 수 있습니다. `--bukkit`은 Bukkit/Paper 산출물과 필요한 Maven reactor 의존 모듈만 빌드합니다. `--fast`는 `clean`을 생략하고 기존 Maven/Gradle 산출물과 dependency cache를 재사용하며 Gradle build cache를 활성화합니다. `--parallel`은 선택된 빌드 모드는 그대로 유지하면서 Bukkit이 선택되어 있으면 Bukkit을 먼저 빌드하고, Bukkit이 통과한 뒤 Fabric/NeoForge/Forge를 각각 별도 실시간 빌드 창으로 열어 병렬 실행합니다. 따라서 `validate-release-windows.bat --parallel`은 clean 45-target 최종 검증이며 성공하면 `FINAL RELEASE BUILD PASS`가 출력됩니다. 메인 콘솔에는 경과시간, 전체 완료 target 수, 플랫폼별 완료 수와 현재 Minecraft target이 계속 표시되고, 각 작업 창에는 실제 빌드 로그가 표시되며 전체 로그는 `validation-logs/`에 남습니다. 부분 빌드 또는 `--fast` 빌드는 `build-5.3.0/`에 저장되며 최종 릴리스 검증으로 취급하지 않습니다. 루트의 `mvn clean package`도 계속 Bukkit 전용 Maven 빌드입니다.
+플랫폼 옵션은 조합할 수 있습니다. `--bukkit`은 Bukkit/Paper 산출물과 필요한 Maven reactor 의존 모듈만 빌드합니다. `--fast`는 `clean`을 생략하고 기존 Maven/Gradle 산출물과 dependency cache를 재사용하며 Gradle build cache를 활성화합니다. `--parallel`은 선택된 빌드 모드는 그대로 유지하면서 Bukkit이 선택되어 있으면 Bukkit을 먼저 빌드하고, Bukkit이 통과한 뒤 Fabric/NeoForge/Forge를 각각 별도 실시간 빌드 창으로 열어 병렬 실행합니다. 따라서 `validate-release-windows.bat --parallel`은 clean 45-target 최종 검증이며 성공하면 `FINAL RELEASE BUILD PASS`가 출력됩니다. 메인 콘솔에는 경과시간, 전체 완료 target 수, 플랫폼별 완료 수와 현재 Minecraft target이 계속 표시되고, 각 작업 창에는 실제 빌드 로그가 표시되며 전체 로그는 `validation-logs/`에 남습니다. 부분 빌드 또는 `--fast` 빌드는 `build-5.3.1/`에 저장되며 최종 릴리스 검증으로 취급하지 않습니다. 루트의 `mvn clean package`도 계속 Bukkit 전용 Maven 빌드입니다.
 Loader 작업이 Gradle cache/workspace 손상 또는 cache 잠금으로 명확히 판별되는 오류(예: `caches/<Gradle>/transforms/.../metadata.bin` 읽기 실패)로 끝나면 검증 runner는 잠겨 있을 수 있는 기본 cache를 자동 삭제하지 않습니다. 대신 `.build-cache/gradle-recovery/` 아래의 새 격리 cache로 해당 플랫폼을 한 번만 다시 시도합니다. 소스 컴파일 오류나 일반적인 dependency/build 실패는 자동 재시도하지 않습니다. 복구 빌드가 성공해도 원래 cache는 그대로 두므로 탐색기, 백신 또는 다른 프로세스의 파일 잠금이 풀린 뒤 필요할 때 수동으로 정리할 수 있습니다.
 
 
@@ -174,7 +179,7 @@ Bukkit/Spigot API 기준을 1.21에서 1.18로 낮추고 Java 17은 그대로 �
 
 ## 4.6.3 관리자 그룹채팅 감사
 
-4.6.3은 그룹채팅 메시지 본문을 확인할 수 있는 선택적 읽기 전용 관리자 감사 기능을 추가했습니다. 현재 5.3.0에서도 DM과 그룹채팅 본문 감사를 독립적으로 제어합니다. DM은 `direct-message.admin-audit.enabled`, 그룹은 `group-chat.admin-audit.enabled`를 사용하며 둘 다 `private-chat-super-admins`에 정확히 지정된 계정만 접근할 수 있습니다. 감사 화면은 읽기 전용이고 전송·답글·삭제·읽음 처리나 방 참여를 수행하지 않으며 페이지 열람은 감사 로그에 기록됩니다.
+4.6.3은 그룹채팅 메시지 본문을 확인할 수 있는 선택적 읽기 전용 관리자 감사 기능을 추가했습니다. 현재 5.3.1에서도 DM과 그룹채팅 본문 감사를 독립적으로 제어합니다. DM은 `direct-message.admin-audit.enabled`, 그룹은 `group-chat.admin-audit.enabled`를 사용하며 둘 다 `private-chat-super-admins`에 정확히 지정된 계정만 접근할 수 있습니다. 감사 화면은 읽기 전용이고 전송·답글·삭제·읽음 처리나 방 참여를 수행하지 않으며 페이지 열람은 감사 로그에 기록됩니다.
 
 ```yaml
 private-chat-super-admins:
@@ -413,7 +418,7 @@ kwc.update.notify
 - `docs/ko/USER_MANUAL.md` - 전체 기능 사용자·운영자 통합 매뉴얼
 - `docs/ko/CONFIGURATION.md` - 설정 참고
 - `docs/ko/SERVER_RELAY.md` - Relay Protocol v2 공개채팅·서버 간 DM/읽음 확인·신뢰/forwarding 규칙
-- `docs/ko/UPGRADE.md` - 5.3.0까지의 통합 업그레이드 및 마이그레이션 가이드
+- `docs/ko/UPGRADE.md` - 5.3.1까지의 통합 업그레이드 및 마이그레이션 가이드
 - `docs/ko/CADDY_HTTPS.md` - HTTPS 리버스 프록시
 - `docs/ko/I18N.md` - 다국어 파일과 fallback
 - `docs/ko/INSTALL_TROUBLESHOOTING.md` - 설치/업그레이드/문제 해결
@@ -462,3 +467,7 @@ Forge는 Minecraft 1.18.2~26.2를 하나의 범용 JAR이 아니라 버전별 ex
 이 프로젝트의 개발 과정에서 코드 리뷰, 구현 및 패치 작성 보조, 문서 작성, 다국어 번역에 생성형 AI를 보조 도구로 사용했습니다. 프로젝트 요구사항, 아키텍처 및 설계 결정, 소스 통합, 테스트, 호환성 검증, 릴리스 검증과 최종 승인은 사람이 직접 주도하고 검토합니다. AI 보조 결과물은 검토와 검증 후에만 프로젝트에 반영합니다. 자세한 내용은 `AI_USAGE.md`를 참고하세요.
 
 > Relay 2.2은 targeted 이벤트(`game`) 라우팅을 추가합니다. 릴레이된 이벤트 링크는 로컬 이벤트를 대신 열지 않고 원본 서버의 해당 이벤트를 조회/참가합니다.
+
+## 서드파티 자산
+
+KWC Web UI의 일부 아이콘은 **Font Awesome Free 6.7.2** SVG를 사용합니다. 출처 및 라이선스는 `THIRD_PARTY_NOTICES.md`를 확인하세요.

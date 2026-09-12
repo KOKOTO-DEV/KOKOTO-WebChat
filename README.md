@@ -8,6 +8,10 @@
 
 > Visual manuals, animated flows, editable diagram sources, and standards references are included under `docs/assets/`, `docs/en/VISUAL_DOCUMENTATION.md`, and `docs/en/REFERENCES.md`.
 
+## 5.3.1 development
+
+5.3.1 extends Chat Events with **Poll**, **role-based Recruitment**, and persisted **automatic-end conditions**. First come still completes when winner capacity fills; Lottery may auto-draw at participant capacity, Poll may finish at a unique-response threshold, Recruitment may finish when all role slots fill, and every type may use an absolute end date/time with first-condition-wins behavior. Web and `/kchat game` retain Relay origin routing. The mobile map/add-on Administrator control no longer has its tap swallowed by window dragging, and Standalone DM/Group header buttons raise an already-open private list window when covered. Product/runtime version is 5.3.1; configuration schema remains 5.3.0. Minecraft command completion now covers Event actions, event IDs, Poll option numbers, Recruitment roles, and automatic-end controls across Bukkit/Fabric/NeoForge/Forge. Event announcement scope is shown only when an enabled Relay peer is configured to accept Event traffic; such multi-server setups default to Relay, while a server with no Event Relay topology is local-only and does not expose a redundant scope control.
+
 ## 5.3.0 release
 
 5.3.0 builds directly on 5.2.1 with retained-history search and sender-owned deletion for private chat, room-local group roles/pins/deletion policy, multi-event First come/Lottery Chat Events, user profiles and Game/Web presence privacy, personal blocking, delegated moderator capabilities, expanded built-in CAPTCHA, Web mention autocomplete, and image metadata stripping. Relay Protocol **2.2** keeps protocol-major-2 compatibility while adding capability-gated DM deletion, event routing, remote profile lookup, and independent per-peer send/receive policy for `public-chat`, `event`, `dm`, and `profile`. In **Standalone desktop mode**, DM/group list windows and multiple private conversations can use the independent drag/resize/maximize multi-window workflow. All eight adapter/standalone bundles are generated from the same frontend fragments/CSS, while responsive public-header and minimized-frame behavior remains synchronized across adapters.
@@ -86,7 +90,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.1-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target builds
@@ -101,7 +105,7 @@ kwc-platform-fabric\build-all.bat
 ./kwc-platform-fabric/build-all.sh
 ```
 
-Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-Fabric-<Minecraft>.jar`.
+Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.1-Fabric-<Minecraft>.jar`.
 
 ### NeoForge exact-target builds
 
@@ -115,7 +119,7 @@ kwc-platform-neoforge\build-all.bat
 ./kwc-platform-neoforge/build-all.sh
 ```
 
-Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-NeoForge-<Minecraft>.jar`.
+Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. Each artifact is written as `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.1-NeoForge-<Minecraft>.jar`.
 
 ### Forge exact-target builds
 
@@ -131,13 +135,13 @@ On Linux/macOS:
 ./kwc-platform-forge/build-all.sh
 ```
 
-The Forge build helpers select JDK 17/21/25 per target and produce `KOKOTO-WebChat-5.3.0-Forge-<Minecraft>.jar` under each target's `build/libs/` directory.
+The Forge build helpers select JDK 17/21/25 per target and produce `KOKOTO-WebChat-5.3.1-Forge-<Minecraft>.jar` under each target's `build/libs/` directory.
 
 ### Final Windows release acceptance
 
-> **The release build/validation workflow is included in the source package.** `validate-release-windows.bat` and the PowerShell helpers it requires are shipped with the source. The separate `KWC-5.3.0-validation-tools.zip` contains development-only browser regression tooling and is not required for normal or release builds.
+> **The release build/validation workflow is included in the source package.** `validate-release-windows.bat` and the PowerShell helpers it requires are shipped with the source. The separate `KWC-5.3.1-validation-tools.zip` contains development-only browser regression tooling and is not required for normal or release builds.
 
-Run `validate-release-windows.bat` from the source root to build Bukkit, all 16 Fabric targets, all 12 NeoForge targets, and all 16 Forge targets in one pass. A fully build-validated release must end with `FINAL RELEASE BUILD PASS`, collect exactly 45 deployable JARs under `release-5.3.0/`, and generate `SHA256SUMS.txt`. The same release gate also runs the loader-neutral security and Relay/reaction/typing regression harnesses, adapter/config migration harnesses, and a finished-Bukkit-JAR conversation-archive runtime smoke that opens the shaded SQLite driver and exercises save/read/rename/quota/admin-delete cascade behavior.
+Run `validate-release-windows.bat` from the source root to build Bukkit, all 16 Fabric targets, all 12 NeoForge targets, and all 16 Forge targets in one pass. A fully build-validated release must end with `FINAL RELEASE BUILD PASS`, collect exactly 45 deployable JARs under `release-5.3.1/`, and generate `SHA256SUMS.txt`. The same release gate also runs the loader-neutral security and Relay/reaction/typing regression harnesses, adapter/config migration harnesses, and a finished-Bukkit-JAR conversation-archive runtime smoke that opens the shaded SQLite driver and exercises save/read/rename/quota/admin-delete cascade behavior.
 
 For normal development builds on Windows, the same script supports platform selection, incremental cache reuse, parallel platform scheduling, and live progress:
 
@@ -148,7 +152,7 @@ validate-release-windows.bat --fabric --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-Platform flags may be combined. `--bukkit` builds only the Bukkit/Paper artifact and its required Maven reactor dependencies. `--fast` skips `clean`, reuses existing Maven/Gradle outputs and dependency caches, and enables the Gradle build cache. `--parallel` keeps the selected build mode, builds Bukkit first when it is selected, and after Bukkit passes opens separate live build windows for Fabric, NeoForge, and Forge and runs them concurrently; therefore `validate-release-windows.bat --parallel` is still a clean 45-target release validation and may print `FINAL RELEASE BUILD PASS`. The main console continuously shows elapsed time, overall completed targets, each platform count, and the current Minecraft target while each worker window shows its actual build log and full logs remain in `validation-logs/`. Partial or `--fast` builds are written under `build-5.3.0/` and never count as final release validation. Root `mvn clean package` remains a valid Bukkit-only Maven build and does not build Fabric/NeoForge/Forge.
+Platform flags may be combined. `--bukkit` builds only the Bukkit/Paper artifact and its required Maven reactor dependencies. `--fast` skips `clean`, reuses existing Maven/Gradle outputs and dependency caches, and enables the Gradle build cache. `--parallel` keeps the selected build mode, builds Bukkit first when it is selected, and after Bukkit passes opens separate live build windows for Fabric, NeoForge, and Forge and runs them concurrently; therefore `validate-release-windows.bat --parallel` is still a clean 45-target release validation and may print `FINAL RELEASE BUILD PASS`. The main console continuously shows elapsed time, overall completed targets, each platform count, and the current Minecraft target while each worker window shows its actual build log and full logs remain in `validation-logs/`. Partial or `--fast` builds are written under `build-5.3.1/` and never count as final release validation. Root `mvn clean package` remains a valid Bukkit-only Maven build and does not build Fabric/NeoForge/Forge.
 If a loader worker fails with a recognized Gradle cache/workspace corruption or cache-lock signature (for example an unreadable `caches/<Gradle>/transforms/.../metadata.bin`), the validation runner does not delete the possibly locked primary cache. It retries that platform once with a fresh isolated cache under `.build-cache/gradle-recovery/`. Source compilation and ordinary dependency/build failures are never retried. A successful recovery leaves the original cache untouched so it can be cleaned manually after Explorer, antivirus, or another locking process releases it.
 
 
@@ -452,7 +456,7 @@ kwc.update.notify
 - `docs/en/USER_MANUAL.md` - complete user and operator manual for all features
 - `docs/en/CONFIGURATION.md` - configuration reference
 - `docs/en/SERVER_RELAY.md` - Relay Protocol v2 public chat, cross-server DM/read receipts, trust and forwarding rules
-- `docs/en/UPGRADE.md` - consolidated upgrade and migration guide through 5.3.0
+- `docs/en/UPGRADE.md` - consolidated upgrade and migration guide through 5.3.1
 - `wiki/` - GitHub Wiki source pages using safe page names without `and` / `&`
 - `docs/en/CADDY_HTTPS.md` - HTTPS reverse proxy setup
 - `docs/en/I18N.md` - language files and fallback behavior
@@ -498,3 +502,7 @@ Forge uses exact-target server JARs for Minecraft 1.18.2 through 26.2. The Forge
 Generative AI was used as a development assistant for code review, implementation and patching, documentation drafting, and multilingual translation. Project requirements, architecture and design decisions, source integration, testing, compatibility verification, release validation, and final acceptance are directed and reviewed by the human maintainer. AI-assisted output is reviewed and validated before inclusion. See `AI_USAGE.md` for details.
 
 > Relay 2.2 adds targeted event (`game`) routing: relayed event links open/join the event on its origin server instead of substituting a local event.
+
+## Third-party assets
+
+KWC uses selected **Font Awesome Free 6.7.2** SVG icons for its Web UI. See `THIRD_PARTY_NOTICES.md` for attribution and license details.

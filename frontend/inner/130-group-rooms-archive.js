@@ -135,22 +135,22 @@
       const unread = Number(room.unread || 0);
       const badge = unread > 0 ? `<span class="kwc-dm-thread-badge">${esc(unread > 99 ? "99+" : String(unread))}</span>` : "";
       const visibility = room.visibility === "public" ? t("group.public", "public") : t("group.private", "private");
-      const privacyIcon = room.visibility === "public" ? "🌐" : "🔒";
-      const passwordIcon = room.passwordProtected ? " 🔑" : "";
+      const privacyIcon = room.visibility === "public" ? kwcFaIcon("globe") : kwcFaIcon("lock");
+      const passwordIcon = room.passwordProtected ? ` ${kwcFaIcon("key")}` : "";
       const join = room.member ? "" : ` <span class="kwc-group-join-hint">${esc(t("group.join", "join"))}</span>`;
       return `<button type="button" class="kwc-dm-thread kwc-group-room${active}" data-group-room="${esc(room.id)}"><span class="kwc-dm-thread-name"><span class="kwc-group-room-icon" aria-hidden="true">${privacyIcon}</span> ${esc(groupRoomLabel(room))}${passwordIcon}</span>${badge}<span class="kwc-dm-thread-preview">${esc(visibility)} · ${esc(room.memberCount || 0)} ${esc(t("group.membersShort", "members"))}${join}</span></button>`;
     }).join("");
     const hiddenHtml = hiddenRooms.length ? `<div class="kwc-admin-meta-title">${esc(t("group.hiddenRooms", "Hidden rooms"))}</div>` + hiddenRooms.map(room => {
-      const privacyIcon = room.visibility === "public" ? "🌐" : "🔒";
-      const passwordIcon = room.passwordProtected ? " 🔑" : "";
+      const privacyIcon = room.visibility === "public" ? kwcFaIcon("globe") : kwcFaIcon("lock");
+      const passwordIcon = room.passwordProtected ? ` ${kwcFaIcon("key")}` : "";
       return `<div class="kwc-dm-thread kwc-group-hidden-row"><span class="kwc-dm-thread-name"><span class="kwc-group-room-icon" aria-hidden="true">${privacyIcon}</span> ${esc(groupRoomLabel(room))}${passwordIcon}</span><span class="kwc-admin-meta-actions"><button type="button" class="kwc-button" data-group-unhide-room="${esc(room.id || "")}">${esc(t("group.showRoom", "Show"))}</button></span><span class="kwc-dm-thread-preview">${esc(t("group.hiddenRoomHint", "Hidden from your list"))}</span></div>`;
     }).join("") : "";
     const adminTitle = state.groupChatContentAccess
       ? t("admin.groupAuditTitle", "Admin group audit")
       : t("admin.groupMetaOnly", "Admin room metadata");
-    const adminHtml = adminRooms.length ? `<div class="kwc-admin-meta-title">🛡 ${esc(adminTitle)}</div>` + adminRooms.map(room => {
-      const privacyIcon = room.visibility === "public" ? "🌐" : "🔒";
-      const passwordIcon = room.passwordProtected ? " 🔑" : "";
+    const adminHtml = adminRooms.length ? `<div class="kwc-admin-meta-title">${kwcFaIcon("shield-halved")} ${esc(adminTitle)}</div>` + adminRooms.map(room => {
+      const privacyIcon = room.visibility === "public" ? kwcFaIcon("globe") : kwcFaIcon("lock");
+      const passwordIcon = room.passwordProtected ? ` ${kwcFaIcon("key")}` : "";
       const archived = room.archived ? ` · ${esc(t("admin.archived", "archived"))}` : "";
       const retention = retentionRemainingText(room.retentionBaseAt || room.latestMessageAt || room.updatedAt, room.retentionDays ?? state.groupChatRetentionDays, "group", room.retentionExpiresAt);
       const flags = `${room.locked ? esc(t("admin.locked", "locked")) + " · " : ""}${room.retentionExempt ? esc(t("admin.retentionExempt", "auto-delete excluded")) + " · " : ""}`;
@@ -163,7 +163,7 @@
       const openTitle = state.groupChatContentAccess ? t("admin.openGroupAudit", "Open this group chat in read-only audit view.") : t("admin.noContentAccess", "Message contents are not accessible from this view.");
       const openAttrs = state.groupChatContentAccess ? ` data-group-admin-open-room="${esc(room.id || "")}" role="button" tabindex="0"` : "";
       const openClass = state.groupChatContentAccess ? " kwc-admin-meta-open" : "";
-      return `<div class="kwc-dm-thread kwc-admin-meta-row${openClass}"${openAttrs}><span class="kwc-dm-thread-name" title="${esc(openTitle)}">🛡 ${privacyIcon} ${esc(room.name || t("group.untitled", "Untitled room"))}${passwordIcon}</span><span class="kwc-admin-meta-actions"><button type="button" class="kwc-button" data-group-admin-lock-room="${esc(room.id || "")}" data-next-locked="${room.locked ? "false" : "true"}" title="${esc(lockTitle)}" aria-label="${esc(lockTitle)}">${esc(lockLabel)}</button><button type="button" class="kwc-button" data-group-admin-retention-room="${esc(room.id || "")}" data-next-exempt="${room.retentionExempt ? "false" : "true"}" title="${esc(exemptTitle)}" aria-label="${esc(exemptTitle)}">${esc(exemptLabel)}</button><button type="button" class="kwc-button kwc-admin-meta-danger" data-group-admin-delete-room="${esc(room.id || "")}" title="${esc(deleteTitle)}" aria-label="${esc(deleteTitle)}">${esc(t("admin.deleteRoom", "Delete"))}</button></span><span class="kwc-dm-thread-preview" title="${esc(meta.replace(/<[^>]*>/g, ""))}">${meta}</span></div>`;
+      return `<div class="kwc-dm-thread kwc-admin-meta-row${openClass}"${openAttrs}><span class="kwc-dm-thread-name" title="${esc(openTitle)}">${kwcFaIcon("shield-halved")} ${privacyIcon} ${esc(room.name || t("group.untitled", "Untitled room"))}${passwordIcon}</span><span class="kwc-admin-meta-actions"><button type="button" class="kwc-button" data-group-admin-lock-room="${esc(room.id || "")}" data-next-locked="${room.locked ? "false" : "true"}" title="${esc(lockTitle)}" aria-label="${esc(lockTitle)}">${esc(lockLabel)}</button><button type="button" class="kwc-button" data-group-admin-retention-room="${esc(room.id || "")}" data-next-exempt="${room.retentionExempt ? "false" : "true"}" title="${esc(exemptTitle)}" aria-label="${esc(exemptTitle)}">${esc(exemptLabel)}</button><button type="button" class="kwc-button kwc-admin-meta-danger" data-group-admin-delete-room="${esc(room.id || "")}" title="${esc(deleteTitle)}" aria-label="${esc(deleteTitle)}">${esc(t("admin.deleteRoom", "Delete"))}</button></span><span class="kwc-dm-thread-preview" title="${esc(meta.replace(/<[^>]*>/g, ""))}">${meta}</span></div>`;
     }).join("") : "";
     const previewHtml = state.privateChatSuperAdmin ? cleanupPreviewHtml(state.groupCleanupPreview, "group") : "";
     list.innerHTML = roomHtml + hiddenHtml + previewHtml + adminHtml;
@@ -432,7 +432,7 @@
     if (state.groupAuditMode) {
       title.classList.add("kwc-group-title-audit");
       const privacyLabel = room.visibility === "public" ? t("group.public", "public") : t("group.private", "private");
-      title.innerHTML = `<span class="kwc-group-title-main"><span class="kwc-group-audit-badge">🛡 ${esc(t("admin.groupAuditView", "Group audit"))}</span><span class="kwc-group-visibility-badge">${esc(privacyLabel)}</span><span class="kwc-group-title-name">${esc(groupRoomLabel(room))}</span></span><span class="kwc-group-actions">${backButton}</span>`;
+      title.innerHTML = `<span class="kwc-group-title-main"><span class="kwc-group-audit-badge">${kwcFaIcon("shield-halved")} ${esc(t("admin.groupAuditView", "Group audit"))}</span><span class="kwc-group-visibility-badge">${esc(privacyLabel)}</span><span class="kwc-group-title-name">${esc(groupRoomLabel(room))}</span></span><span class="kwc-group-actions">${backButton}</span>`;
       const back = document.getElementById("kwc-group-back-to-list");
       if (back) back.onclick = event => { event.preventDefault(); event.stopPropagation(); returnGroupChatToList(); };
       const groupMessageSearch = document.getElementById("kwc-group-message-search-open");
@@ -444,7 +444,7 @@
     }
     title.classList.remove("kwc-group-title-audit");
     const privacyLabel = room.visibility === "public" ? t("group.public", "public") : t("group.private", "private");
-    const passwordBadge = room.passwordProtected ? `<span class="kwc-group-password-badge" title="${esc(t("group.passwordProtected", "password"))}" aria-label="${esc(t("group.passwordProtected", "password"))}">🔑</span>` : "";
+    const passwordBadge = room.passwordProtected ? `<span class="kwc-group-password-badge" title="${esc(t("group.passwordProtected", "password"))}" aria-label="${esc(t("group.passwordProtected", "password"))}">${kwcFaIcon("key")}</span>` : "";
     const memberCount = Math.max(0, Number(room.memberCount || 0));
     const onlineCount = Math.max(0, Number(room.onlineMemberCount || 0));
     const countText = fmt("group.memberOnlineCount", "{online}/{total} online", {online: onlineCount, total: memberCount});

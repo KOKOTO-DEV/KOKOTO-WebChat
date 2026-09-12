@@ -13,7 +13,7 @@
 
 > **보안 경계:** Relay v2는 종단간 암호화가 아니라 **hop-by-hop authenticated encryption**입니다. 전달에 참여하는 KWC 서버는 신뢰 경계 안의 참가자입니다.
 
-KOKOTO WebChat 5.3.0 전체는 **Relay Protocol 2.2**를 고정 revision으로 사용합니다. Protocol major `2`가 wire compatibility 경계이며, 2.2는 `public`, `dm`, `read`, `delete`, `reaction`, `reaction-authority`, `typing`, `game`, `profile` capability를 광고합니다. 제품 버전은 진단 정보일 뿐 호환성 기준이 아닙니다. reaction/reaction-authority/typing은 2.1 기능 집합과 호환되고, 5.3.0의 `delete`, `game`, `profile`은 revision을 올리지 않고 2.2 안에서 capability negotiation으로 사용합니다. 그룹채팅 방은 로컬로 유지됩니다.
+KOKOTO WebChat 5.3.1은 **Relay Protocol 2.2**를 계속 고정 revision으로 사용합니다. Protocol major `2`가 wire compatibility 경계이며, 2.2는 `public`, `dm`, `read`, `delete`, `reaction`, `reaction-authority`, `typing`, `game`, `profile` capability를 광고합니다. 제품 버전은 진단 정보일 뿐 호환성 기준이 아닙니다. reaction/reaction-authority/typing은 2.1 기능 집합과 호환되고, 5.3.0의 `delete`, `game`, `profile`은 revision을 올리지 않고 2.2 안에서 capability negotiation으로 사용합니다. 그룹채팅 방은 로컬로 유지됩니다.
 
 
 ## 보안상 우선 업그레이드 대상
@@ -114,6 +114,8 @@ server-relay:
 
 `sources.event`는 `sources.system`과 분리됩니다. 따라서 이벤트 알림은 Relay하면서 일반 시스템 공지는 로컬에만 둘 수 있습니다. 이벤트 생성 시 고르는 **알림 범위**는 해당 이벤트의 생성/결과 알림을 로컬 전용으로 할지 Relay 대상에 포함할지 결정하며, peer의 `send.event` / `receive.event`가 그보다 상위의 라우팅 제한으로 동작합니다.
 
+5.3.1에서는 Event 전송이 허용된 enabled peer가 하나 이상 구성된 경우에만 이벤트별 **알림 범위**를 표시하며 기본값은 Relay입니다. 해당 peer가 없으면 범위 UI/명령을 숨기고 local-only로 정규화합니다. 이 판정은 실시간 연결 여부가 아니라 설정된 topology를 기준으로 하므로 일시적인 Relay 단절로 UI가 바뀌지 않습니다.
+
 ## 요청별 인증과 선택적 identity/health probe
 
 direct relay는 5.0.0과 같은 동작 방식으로 각 `/relay/v2/message` 요청을 독립적으로 인증합니다. 수신 서버는 송신 서버를 같은 group에 같은 shared secret으로 등록해야 하며, 이 정보로 요청을 인증/복호화합니다. 반대 방향은 독립적입니다. `/relay/v2/handshake`는 상태를 저장하지 않는 진단용 identity/health probe일 뿐이며 direct route를 생성·유지·활성화·비활성화하지 않습니다. 선택적 probe 요청에는 다음이 포함됩니다.
@@ -139,7 +141,7 @@ Endpoint는 다음 두 개입니다.
 
 ## Protocol revision과 capability
 
-Relay 호환성은 KWC 제품 버전에 묶이지 않습니다. `X-KWC-Relay-Version: 2`는 major wire family이고, `X-KWC-Relay-Protocol: 2.2`와 `X-KWC-Relay-Capabilities`는 현재 revision과 선택 기능을 나타냅니다. KWC 5.3.0은 RC와 관계없이 revision 2.2를 유지하며 `delete`, `game`, `profile`을 capability로 구분합니다. 필요한 capability를 상대 peer가 지원하지 않으면 해당 extension만 안전하게 실패하며 peer 전체가 비호환이 되는 것은 아닙니다. handshake의 `serverVersion`은 진단용입니다.
+Relay 호환성은 KWC 제품 버전에 묶이지 않습니다. `X-KWC-Relay-Version: 2`는 major wire family이고, `X-KWC-Relay-Protocol: 2.2`와 `X-KWC-Relay-Capabilities`는 현재 revision과 선택 기능을 나타냅니다. KWC 5.3.1은 revision 2.2를 유지하며 `delete`, `game`, `profile`을 capability로 구분합니다. 필요한 capability를 상대 peer가 지원하지 않으면 해당 extension만 안전하게 실패하며 peer 전체가 비호환이 되는 것은 아닙니다. handshake의 `serverVersion`은 진단용입니다.
 
 ## 암호화와 인증
 

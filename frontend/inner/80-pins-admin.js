@@ -144,7 +144,7 @@
     const content = (pin.eventType === "member_join" || pin.eventType === "member_leave")
       ? `<div class="kwc-text">${groupMembershipEventHtml({eventType: pin.eventType, senderDisplayName: pin.senderDisplayName, senderUsername: pin.senderUsername, senderUuid: pin.senderUuid})}</div>`
       : `<div class="kwc-text kwc-dm-message-body">${directMessageBodyHtml(String(pin.body || ""))}</div>`;
-    const controls = state.groupPinsCanPin && groupCanManage() ? `<span class="kwc-mini-actions kwc-pinned-actions"><button class="kwc-mini-action kwc-pinned-action" data-group-pin-move="${esc(pin.pinId || "")}" data-direction="up" ${index <= 0 ? "disabled" : ""} title="${esc(t("button.moveUp", "Move up"))}">↑</button><button class="kwc-mini-action kwc-pinned-action" data-group-pin-move="${esc(pin.pinId || "")}" data-direction="down" ${index >= total - 1 ? "disabled" : ""} title="${esc(t("button.moveDown", "Move down"))}">↓</button><button class="kwc-mini-action kwc-pinned-action" data-group-unpin="${esc(pin.pinId || "")}">${esc(t("button.unpin", "unpin"))}</button></span>` : "";
+    const controls = state.groupPinsCanPin && groupCanManage() ? `<span class="kwc-mini-actions kwc-pinned-actions"><button class="kwc-mini-action kwc-pinned-action" data-group-pin-move="${esc(pin.pinId || "")}" data-direction="up" ${index <= 0 ? "disabled" : ""} title="${esc(t("button.moveUp", "Move up"))}" aria-label="${esc(t("button.moveUp", "Move up"))}">${kwcFaIcon("arrow-up")}</button><button class="kwc-mini-action kwc-pinned-action" data-group-pin-move="${esc(pin.pinId || "")}" data-direction="down" ${index >= total - 1 ? "disabled" : ""} title="${esc(t("button.moveDown", "Move down"))}" aria-label="${esc(t("button.moveDown", "Move down"))}">${kwcFaIcon("arrow-down")}</button><button class="kwc-mini-action kwc-pinned-action" data-group-unpin="${esc(pin.pinId || "")}">${esc(t("button.unpin", "unpin"))}</button></span>` : "";
     el.innerHTML = `<div class="kwc-meta">${senderIdentity}<span class="kwc-meta-sep" aria-hidden="true">·</span><span class="kwc-time" data-time="${esc(pin.time || "")}">${esc(formatMessageTime(pin.time))}</span><span class="kwc-meta-sep" aria-hidden="true">·</span><span class="kwc-pinned-detail">${detail}</span>${controls}</div>${content}`;
     installCustomEmojiImageRecovery(el);
     installSenderIdentityToggle(el);
@@ -351,7 +351,7 @@
         up.setAttribute("data-pin-move", pin.pinId);
         up.setAttribute("data-direction", "up");
         up.title = t("button.moveUp", "Move up");
-        up.textContent = "↑";
+        setKwcFaIcon(up, "arrow-up");
         if (index <= 0) up.disabled = true;
         controls.appendChild(up);
 
@@ -361,7 +361,7 @@
         down.setAttribute("data-pin-move", pin.pinId);
         down.setAttribute("data-direction", "down");
         down.title = t("button.moveDown", "Move down");
-        down.textContent = "↓";
+        setKwcFaIcon(down, "arrow-down");
         if (total > 0 && index >= total - 1) down.disabled = true;
         controls.appendChild(down);
 

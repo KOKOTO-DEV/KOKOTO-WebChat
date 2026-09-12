@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.3.0 — Visual Documentation Assets
+# KOKOTO WebChat 5.3.1 — Visual Documentation Assets
 
 The `docs/assets/` directory contains reusable diagrams for the repository documentation. The `wiki/assets/` directory contains copies intended for a GitHub Wiki repository where `../docs/assets/...` would not resolve. **5.3.0 distribution pages on Modrinth and CurseForge remain text-only; these diagrams are not part of their Summary/Description/Changelog content.**
 

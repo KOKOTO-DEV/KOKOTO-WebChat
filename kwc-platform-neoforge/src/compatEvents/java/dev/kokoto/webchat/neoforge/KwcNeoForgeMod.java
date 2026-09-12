@@ -32,7 +32,7 @@ import java.util.Map;
 @Mod(KwcNeoForgeMod.MOD_ID)
 public final class KwcNeoForgeMod {
     public static final String MOD_ID = "kokoto_webchat";
-    public static final String VERSION = "5.3.0";
+    public static final String VERSION = "5.3.1";
     public static final Logger LOGGER = LoggerFactory.getLogger("KOKOTO WebChat");
     private static final KwcNeoForgeRuntime RUNTIME = new KwcNeoForgeRuntime();
     private static final NeoForgeWebChatHost COMMAND_HOST = new NeoForgeWebChatHost(RUNTIME);
@@ -103,10 +103,29 @@ public final class KwcNeoForgeMod {
                         .then(Commands.argument("password", StringArgumentType.greedyString())
                                 .executes(ctx -> commandPassword(ctx.getSource(), StringArgumentType.getString(ctx, "password")))))
                 .then(Commands.argument("arguments", StringArgumentType.greedyString())
+                        .suggests((ctx, builder) -> commandSuggestions(ctx.getSource(), builder))
                         .executes(ctx -> commandShared(ctx.getSource(), StringArgumentType.getString(ctx, "arguments"))));
         var kchat = dispatcher.register(root);
         dispatcher.register(Commands.literal("kc").redirect(kchat));
         dispatcher.register(Commands.literal("kwc").redirect(kchat));
+    }
+
+    private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions> commandSuggestions(CommandSourceStack source, com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+        String remaining = builder.getRemaining();
+        int offset = remaining.lastIndexOf(' ') + 1;
+        var target = builder.createOffset(builder.getStart() + offset);
+        ServerPlayer player = NeoForgeCompat.sourcePlayer(source);
+        final ServerPlayer current = player;
+        GameCommandService.Sender sender = new GameCommandService.Sender() {
+            @Override public boolean isPlayer() { return current != null; }
+            @Override public java.util.UUID uuid() { return current == null ? null : current.getUUID(); }
+            @Override public String username() { return current == null ? source.getTextName() : NeoForgeCompat.profileName(current); }
+            @Override public String displayName() { return current == null ? source.getTextName() : RUNTIME.displayPlayerName(current); }
+            @Override public String actorName() { return source.getTextName(); }
+            @Override public void send(String message) { }
+        };
+        for (String suggestion : GAME_COMMANDS.suggest(sender, remaining)) target.suggest(suggestion);
+        return target.buildFuture();
     }
 
     private static int commandShared(CommandSourceStack source, String arguments) {

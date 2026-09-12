@@ -135,9 +135,9 @@ if "%FAST_MODE%"=="1" (
 
 set "LOGDIR=%ROOT%validation-logs"
 if "%FINAL_RELEASE_MODE%"=="1" (
-  set "OUTDIR=%ROOT%release-5.3.0"
+  set "OUTDIR=%ROOT%release-5.3.1"
 ) else (
-  set "OUTDIR=%ROOT%build-5.3.0\%SCOPE_LABEL%"
+  set "OUTDIR=%ROOT%build-5.3.1\%SCOPE_LABEL%"
 )
 
 if exist "%LOGDIR%" rmdir /s /q "%LOGDIR%"
@@ -152,10 +152,10 @@ set "KWC_VALIDATION_PARALLEL=%PARALLEL_MODE%"
 
 echo ============================================================
 if "%FINAL_RELEASE_MODE%"=="1" (
-  echo KOKOTO WebChat 5.3.0 exact-target release validation
+  echo KOKOTO WebChat 5.3.1 exact-target release validation
   echo Bukkit 1 + Fabric 16 + NeoForge 12 + Forge 16 = 45 JARs
 ) else (
-  echo KOKOTO WebChat 5.3.0 Windows build
+  echo KOKOTO WebChat 5.3.1 Windows build
   echo Platforms: %PLATFORMS%
 )
 echo ============================================================
@@ -244,7 +244,7 @@ set "TMP=%KWC_VALIDATION_TEMP%"
 exit /b 0
 
 :collectBukkit
-set "J=%ROOT%kwc-platform-bukkit\target\KOKOTO-WebChat-5.3.0-Bukkit-1.18-26.2.jar"
+set "J=%ROOT%kwc-platform-bukkit\target\KOKOTO-WebChat-5.3.1-Bukkit-1.18-26.2.jar"
 if not exist "%J%" (echo ERROR: Bukkit JAR missing: %J% 1>&2& exit /b 1)
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-adapter-packaging.ps1" -JarPath "%J%" -Platform "Bukkit"
 if errorlevel 1 exit /b 1
@@ -255,7 +255,7 @@ exit /b 0
 
 :collectFabric
 for %%M in (1.18.2 1.19.2 1.19.4 1.20.1 1.20.2 1.20.4 1.20.6 1.21.1 1.21.3 1.21.4 1.21.5 1.21.8 1.21.10 1.21.11 26.1.2 26.2) do (
-  set "J=%ROOT%kwc-platform-fabric\targets\%%M\build\libs\KOKOTO-WebChat-5.3.0-Fabric-%%M.jar"
+  set "J=%ROOT%kwc-platform-fabric\targets\%%M\build\libs\KOKOTO-WebChat-5.3.1-Fabric-%%M.jar"
   if not exist "!J!" (echo ERROR: Fabric %%M JAR missing: !J! 1>&2& exit /b 1)
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-release-mod-jar.ps1" -JarPath "!J!" -Platform "Fabric" -MinecraftVersion "%%M"
   if errorlevel 1 exit /b 1
@@ -269,7 +269,7 @@ exit /b 0
 
 :collectNeoForge
 for %%M in (1.20.2 1.20.4 1.20.6 1.21.1 1.21.3 1.21.4 1.21.5 1.21.8 1.21.10 1.21.11 26.1.2 26.2) do (
-  set "J=%ROOT%kwc-platform-neoforge\targets\%%M\build\libs\KOKOTO-WebChat-5.3.0-NeoForge-%%M.jar"
+  set "J=%ROOT%kwc-platform-neoforge\targets\%%M\build\libs\KOKOTO-WebChat-5.3.1-NeoForge-%%M.jar"
   if not exist "!J!" (echo ERROR: NeoForge %%M JAR missing: !J! 1>&2& exit /b 1)
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-release-mod-jar.ps1" -JarPath "!J!" -Platform "NeoForge" -MinecraftVersion "%%M"
   if errorlevel 1 exit /b 1
@@ -285,7 +285,7 @@ exit /b 0
 
 :collectForge
 for %%M in (1.18.2 1.19.2 1.19.4 1.20.1 1.20.2 1.20.4 1.20.6 1.21.1 1.21.3 1.21.4 1.21.5 1.21.8 1.21.10 1.21.11 26.1.2 26.2) do (
-  set "J=%ROOT%kwc-platform-forge\targets\%%M\build\libs\KOKOTO-WebChat-5.3.0-Forge-%%M.jar"
+  set "J=%ROOT%kwc-platform-forge\targets\%%M\build\libs\KOKOTO-WebChat-5.3.1-Forge-%%M.jar"
   if not exist "!J!" (echo ERROR: Forge %%M JAR missing: !J! 1>&2& exit /b 1)
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%validate-release-mod-jar.ps1" -JarPath "!J!" -Platform "Forge" -MinecraftVersion "%%M"
   if errorlevel 1 exit /b 1

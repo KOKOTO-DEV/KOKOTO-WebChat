@@ -1,10 +1,11 @@
-# KOKOTO WebChat 5.3.0 Release Checklist
+# KOKOTO WebChat 5.3.1 Release Checklist
 
 ## Source/config/i18n
-- [ ] Root/Bukkit/Fabric/NeoForge/Forge metadata and artifact names are `5.3.0`.
+- [ ] Root/Bukkit/Fabric/NeoForge/Forge metadata and artifact names are `5.3.1`.
 - [ ] Current `config.yml`, `config-baselines/config-5.3.0.yml`, localized config templates, and `distribution/config-reference-5.3.0.yml` have identical parsed setting paths/defaults; presentation comments and the `_auto_migration` marker may differ. Historical baselines remain migration inputs only.
-- [ ] 5.2.1 → 5.3.0 migration writes `5.3.0_auto_migration`, preserves supported operator values and Relay v2 trust settings, migrates retired hide confirmations to delete confirmations, and exact `5.3.0` stops same-version reconstruction.
+- [ ] 5.2.1 → 5.3.0 schema migration writes `5.3.0_auto_migration`, preserves supported operator values and Relay v2 trust settings, migrates retired hide confirmations to delete confirmations, and exact `5.3.0` stops same-version reconstruction.
 - [ ] en-US/ko-KR/ja-JP/zh-CN key sets and placeholders are identical.
+- [ ] 5.3.0 → 5.3.1 keeps config schema 5.3.0, preserves Relay 2.2/config values, validates Event automatic-end persistence, topology-aware Event scope, shared command completion, and mobile add-on Administrator interaction.
 - [ ] `inner.js` and all 8 frontend wrappers pass syntax and embedded JS/CSS equality checks.
 - [ ] `node tools/build-inner-bundle.js --check` passes, proving `frontend/inner/manifest.txt`, generated `inner.js`, and all 8 embedded wrapper payloads are identical.
 
@@ -15,7 +16,7 @@
 - [ ] Web replies preserve full source text and render readable URLs/custom emojis.
 - [ ] In-game DM/group labels prepare the existing commands and message-body clicks prepare replies; URL actions still open URLs.
 - [ ] Tampered `dm-...`/`group-...` private reply targets fail unless the player is a DM participant/current group member.
-- [ ] Chat Events support multiple simultaneous First come/Lottery records; First come auto-completes at winner capacity, participant/winner rows follow Display name / Real name mode, and result announcements start with `🏆` and use `Display name (Real name)` when different.
+- [ ] Chat Events cover First come/Lottery/Poll/Recruitment; automatic-end capacity/response/time policies behave by type and survive restart; First come still always completes at winner capacity; participant/result identity follows Display name / Real name mode.
 
 - [ ] Public reactions persist, Relay 2.2 propagation works, and reaction-only SSE updates do not restart active media; the 32 × 16 px empty-state `+` has 1 px visual clearance above/below without covering message text, reaction OFF restores the original 8 px spacing, real reactions use the full in-flow row, category/search rerenders preserve picker position and outside-click close behavior, reactor-name hover lists scroll after about four lines, and **Admin > Emojis > Reaction icons** uses the normal rounded themed setting rows plus an editable `emoji = search words` alias list persisted to `reaction-search-aliases.txt`. Search aliases remain picker-search-only and do not alter chat input.
 - [ ] Public/DM/group typing is event-driven with a five-second window, excludes self/audit viewers, collapses long multi-user labels, and creates no polling/persistent typing state. Web Admin Settings/config.yml independently enforce server-wide Open chat OFF / DM ON / Group ON defaults. `chat.typing-indicator.user-display-control` defaults OFF; when enabled, a signed-in user can hide incoming typing indicators with one account-stored setting without suppressing that user’s outgoing typing activity.
@@ -48,3 +49,10 @@
 
 - [ ] `validate-release-windows.bat` produces `FINAL RELEASE BUILD PASS`, 45 deployable JARs, and SHA256SUMS.
 - [ ] Final acceptance was run without `--fast`; sequential or `--parallel` clean scheduling is allowed, but cached/partial builds are not treated as `FINAL RELEASE BUILD PASS`.
+
+### 5.3.1 Presentation parity matrix
+
+- Desktop: all seven map add-ons + PiP and Standalone + PiP use the same server config, account preferences, permissions, and Event state.
+- Mobile: all seven map add-ons and Standalone use the same settings/state; only presentation capabilities such as minimize, PiP, and multi-window may differ.
+- Require `node validation/531-presentation-parity-harness/kwc-531-presentation-parity-harness.js` to pass.
+- Require `node tools/build-inner-bundle.js --check` to pass embedded-inner parity and byte-identical CSS across all eight presentations.

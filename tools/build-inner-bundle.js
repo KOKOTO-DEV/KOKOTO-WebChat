@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // KWC 파일 안내 / KWC file guide
-// 18개 frontend fragment를 manifest 순서로 결합해 배포용 inner.js를 만들고 wrapper 8종 embedded JS/CSS payload까지 동기화하는 생성기다.
-// Builds deployable inner.js from 18 frontend fragments in manifest order and synchronizes embedded JS/CSS payloads in all eight wrappers.
+// 19개 frontend fragment를 manifest 순서로 결합해 배포용 inner.js를 만들고 wrapper 8종 embedded JS/CSS payload까지 동기화하는 생성기다.
+// Builds deployable inner.js from 19 frontend fragments in manifest order and synchronizes embedded JS/CSS payloads in all eight wrappers.
 // --check는 generated 파일 drift를 CI/릴리스 전에 잡는 검증 모드이고, --write만 실제 파일을 갱신한다.
 // --check detects generated-file drift before CI/release, while --write is the mode that actually updates files.
 
@@ -97,6 +97,8 @@ function check(bundle) {
   const output = fs.readFileSync(outputPath);
   if (!output.equals(bundle)) fail('inner.js differs from frontend/inner manifest bundle; run with --write');
   const bundleText = bundle.toString('utf8');
+  let canonicalCss = null;
+  let canonicalCssPath = null;
   for (const wrapper of wrappers) {
     const text = fs.readFileSync(path.join(root, wrapper), 'utf8');
     if (embeddedInner(text, wrapper) !== bundleText) {
@@ -107,6 +109,12 @@ function check(bundle) {
     const cssText = fs.readFileSync(cssFile, 'utf8');
     if (embeddedCss(text, wrapper) !== cssText) {
       fail(`${wrapper} embedded CSS payload differs from ${path.relative(root, cssFile)}; run with --write`);
+    }
+    if (canonicalCss === null) {
+      canonicalCss = cssText;
+      canonicalCssPath = path.relative(root, cssFile);
+    } else if (cssText !== canonicalCss) {
+      fail(`${path.relative(root, cssFile)} differs from canonical presentation CSS ${canonicalCssPath}; presentation copies must stay byte-identical`);
     }
   }
   console.log(`INNER_BUNDLE_CHECK_PASS fragments=${manifestFiles().length} wrappers=${wrappers.length} css=${wrappers.length} bytes=${bundle.length}`);

@@ -60,7 +60,7 @@ build-all.bat
 ```
 
 
-> `validate-release-windows.bat` and its required PowerShell helpers are included in the source archive. The separate `KWC-5.2.0-validation-tools.zip` contains development-only browser regression tooling and is not required to run release builds.
+> `validate-release-windows.bat` and its required PowerShell helpers are included in the source archive. The separate `KWC-5.3.1-validation-tools.zip` contains development-only browser regression tooling and is not required to run release builds.
 
 For repeat Windows builds, append `--fast` to `build-all.bat` or `build-target.bat <minecraft-version>` to skip `clean` and enable the Gradle build cache. The root `validate-release-windows.bat --parallel` option is the clean full-matrix path that builds Bukkit first, then opens separate live Fabric/NeoForge/Forge build windows while the main console aggregates progress.
 

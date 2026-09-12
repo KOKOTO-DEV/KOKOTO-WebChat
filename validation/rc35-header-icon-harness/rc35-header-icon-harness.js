@@ -10,7 +10,7 @@ function check(ok,msg){ assertions++; if(!ok) throw new Error(msg); }
 function has(t,n,m){ check(t.includes(n), `${m} [missing: ${n}]`); }
 
 const auth = read('frontend/inner/40-root-auth.js');
-has(auth, 'status.textContent = "👤 " + String(loggedInCount);', 'logged-in count uses single-user icon');
+has(auth, 'kwcFaIcon("user", "kwc-status-icon")', 'logged-in count uses shared user icon');
 
 const frame = read('frontend/inner/30-reply-identity-frame.js');
 // RC37 supersedes RC34/RC35 directional hysteresis: both wrap and unwrap now

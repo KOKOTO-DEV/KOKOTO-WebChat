@@ -42,7 +42,7 @@ for (const p of javaFiles) {
 const fragmentsDir = path.join(root, 'frontend', 'inner');
 const fragments = fs.readFileSync(path.join(fragmentsDir, 'manifest.txt'), 'utf8')
   .split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-check(fragments.length === 18, `expected 18 frontend fragments, got ${fragments.length}`);
+check(fragments.length === 19, `expected 19 frontend fragments, got ${fragments.length}`);
 for (const name of fragments) {
   const text = fs.readFileSync(path.join(fragmentsDir, name), 'utf8');
   check(text.includes(FRONT_GUIDE), `missing detailed frontend maintenance notes: ${name}`);
@@ -91,8 +91,8 @@ for (const p of batFiles) {
   check(lf === crlf && crlf > 0, `BAT is not pure CRLF: ${path.relative(root, p)}`);
 }
 
-// 현재 loader/runtime에서 5.2.0을 출력하면 5.3.0 JAR이 구버전으로 보인다.
-// If an active loader/runtime prints 5.2.0, a 5.3.0 JAR reports itself as the old release.
+// 현재 loader/runtime에서 5.2.0을 출력하면 5.3.1 JAR이 구버전으로 보인다.
+// If an active loader/runtime prints 5.2.0, a 5.3.1 JAR reports itself as the old release.
 const activeRoots = ['kwc-platform-bukkit', 'kwc-platform-fabric', 'kwc-platform-forge', 'kwc-platform-neoforge'];
 for (const top of activeRoots) {
   for (const p of walk(path.join(root, top))) {
@@ -103,7 +103,7 @@ for (const top of activeRoots) {
 }
 
 const pluginYml = fs.readFileSync(path.join(root, 'kwc-platform-bukkit', 'src', 'main', 'resources', 'plugin.yml'), 'utf8');
-check(/^version:\s*5\.3\.0\s*$/m.test(pluginYml), 'Bukkit plugin.yml runtime version is not 5.3.0');
+check(/^version:\s*5\.3\.1\s*$/m.test(pluginYml), 'Bukkit plugin.yml runtime version is not 5.3.1');
 const mainConfig = fs.readFileSync(path.join(root, 'kwc-platform-bukkit', 'src', 'main', 'resources', 'config.yml'), 'utf8');
 check(mainConfig.includes('config-version: "5.3.0"'), 'current config.yml schema is not 5.3.0');
 for (const lang of ['ko-KR','ja-JP','zh-CN']) {

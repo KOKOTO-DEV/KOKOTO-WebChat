@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.3.0 総合ユーザー・運用マニュアル
+# KOKOTO WebChat 5.3.1 総合ユーザー・運用マニュアル
 
 
 ## ビジュアルマップ
@@ -15,16 +15,17 @@
 
 この文書で参照する一次規格と公式の外部プロジェクト文書は [REFERENCES.md](REFERENCES.md) にまとめています。
 
-> **5.3.0 運用:** Web Admin **Filter** で公開/グループ/任意 DM の block/mask/replace ルールと送信しないテストを管理し、**Settings** では対応しているライブ設定（guest/CAPTCHA、セッション、ユーザープロファイル、Open chat/DM/group の typing-indicator policy、管理者アラート、upload、content-filter）のみを管理します。moderation の 5 つのポリシー設定は `config.yml` 専用で Web Admin には公開しません。ゲーム側は `/kchat filter` / `/kchat settings`。セッション期間変更は期限切れセッションを復活させず作成時刻基準で既存対象を再計算します。`upload.filename-mode: original` は新規アップロードの安全な Unicode 元名を保持し重複時に番号を付けます。
+> **5.3.1 運用:** Web Admin **Filter** で公開/グループ/任意 DM の block/mask/replace ルールと送信しないテストを管理し、**Settings** では対応しているライブ設定（guest/CAPTCHA、セッション、ユーザープロファイル、Open chat/DM/group の typing-indicator policy、管理者アラート、upload、content-filter）のみを管理します。moderation の 5 つのポリシー設定は `config.yml` 専用で Web Admin には公開しません。ゲーム側は `/kchat filter` / `/kchat settings`。セッション期間変更は期限切れセッションを復活させず作成時刻基準で既存対象を再計算します。`upload.filename-mode: original` は新規アップロードの安全な Unicode 元名を保持し重複時に番号を付けます。
 
 
-この文書は KOKOTO WebChat 5.3.0 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION.md`、サーバー間リレーは `SERVER_RELAY.md`、HTTPS は `CADDY_HTTPS.md` と `NGINX_HTTPS.md` を参照してください。
+この文書は KOKOTO WebChat 5.3.1 の全機能を、利用者とサーバー管理者の両方の視点から説明します。設定項目ごとの詳細は `CONFIGURATION.md`、サーバー間リレーは `SERVER_RELAY.md`、HTTPS は `CADDY_HTTPS.md` と `NGINX_HTTPS.md` を参照してください。
 
 
-## 5.3.0 の追加機能
+## 5.3.1 の追加機能
 
 - **プライベートチャット:** DM/group は保存済み全履歴を検索できます。DM の「自分だけ非表示」は廃止されました。一般ユーザーの自己削除を有効にした場合、送信者だけが自分の DM を削除でき、削除すると両参加者の会話から消えます。group room には room-local `owner/admin/member` role、pin 管理、room 全体の削除と、global の自己削除設定にも従う member 自己削除 policy が追加されます。
-- **Chat Event:** Web または `/kchat game` から First come/抽選 event を複数同時に運用できます。First come は当選人数だけを定員とし、満員になると自動完了します。抽選は参加人数と当選人数を別に設定します。event 通知は local-only または Relay を選択できます。参加者/当選者一覧は global **表示名 / 実名** mode に従い、結果通知は `🏆` で始まり、2 つの名前が異なる場合は `表示名 (実名)` と表示します。
+- **Chat Event:** Web と `/kchat game` から First come、Lottery、Poll、role-based Recruitment を運用できます。First come は winner capacity 到達時に常に自動完了します。Lottery は participant capacity 到達時の自動抽選、Poll は unique response 数、Recruitment は全 role slot 充足を任意の自動終了条件として使用でき、全 type に終了日時を指定できます。複数条件を有効にした場合は最初に成立した条件で終了します。Event-capable Relay peer が構成されている場合は scope の既定値が Relay になり local-only に変更できます。該当 peer がない場合は scope 自体を表示せず local-only として扱います。参加者/結果の identity は global **表示名 / 実名** mode に従います。
+  Minecraft command completion は全 loader で Event action、event ID、Poll option number、Recruitment role、automatic-end condition を補完します。Event scope は Event-capable Relay topology がある場合だけ表示します。
 - **Profile / presence:** user profile で Minecraft Head/custom image、280 文字の About、role、personal block list、Game/Web 接続状態を扱います。ユーザーは Online/Busy/Offline を選択でき、Offline は他の viewer に対して実際の Game/Web 状態を server-side で隠します。
 - **Moderation:** ADMIN は account chat/upload 制限、custom profile image 削除、local role 変更を行え、moderator ごとに一部の管理 capability を委任できます。
 - **CAPTCHA / mention:** guest CAPTCHA は off/math/text/mixed と math complexity に対応し、public/DM/group Web composer は IME-safe な `@` autocomplete を共有します。
@@ -43,7 +44,7 @@
 
 ## 1. 概要
 
-KOKOTO WebChat は Minecraft サーバーのチャットをブラウザーに接続するサーバー側 Web チャットです。5.3.0 は Bukkit/Paper/Spigot に加え、Fabric 1.18.2〜26.2、NeoForge 1.20.2〜26.2、Forge 1.18.2〜26.2 の exact-target build を提供します。
+KOKOTO WebChat は Minecraft サーバーのチャットをブラウザーに接続するサーバー側 Web チャットです。5.3.1 は Bukkit/Paper/Spigot に加え、Fabric 1.18.2〜26.2、NeoForge 1.20.2〜26.2、Forge 1.18.2〜26.2 の exact-target build を提供します。
 
 主な利用形態:
 
@@ -1137,7 +1138,7 @@ discordsrv:
 
 ## 26. サーバー間 Relay
 
-KOKOTO WebChat 5.3.0 は Relay v2 trust/暗号化モデルを維持する **Relay Protocol 2.2** を使用します。public chat、cross-server 1:1 DM/read/delete/reaction/typing、remote event の参照/参加、remote public profile 参照を 2.x capability で処理し、group chat room は local のままです。各 peer は `public-chat`, `event`, `dm`, `profile` の送信/受信を独立して許可または拒否できます。
+KOKOTO WebChat 5.3.1 は Relay v2 trust/暗号化モデルを維持する **Relay Protocol 2.2** を使用します。public chat、cross-server 1:1 DM/read/delete/reaction/typing、remote event の参照/参加、remote public profile 参照を 2.x capability で処理し、group chat room は local のままです。各 peer は `public-chat`, `event`, `dm`, `profile` の送信/受信を独立して許可または拒否できます。
 
 Relay v2 は `groups -> peers` 構造です。各 group は 1 つの shared secret を持ち、peer は server ID、API URL、enabled state のみを持ちます。初回設定では 1 台のサーバーで `shared-secret: ""` のまま起動/リロードし、その `config.yml` に生成された値を同じ group の他サーバーへコピーします。既存の空でない secret は自動再生成されず、32 文字未満の手動 secret は invalid のままです。両側は同じ group で相互に peer 登録する必要があり、同一 peer ID を複数 local group に登録できません。
 

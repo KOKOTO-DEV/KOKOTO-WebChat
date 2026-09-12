@@ -1,6 +1,6 @@
 # KOKOTO WebChat 업그레이드 가이드
 
-이 문서는 4.5.5부터 5.3.0까지의 업그레이드 안내를 하나로 통합합니다. 여러 버전을 건너뛰는 경우 버전 순서대로 각 절을 확인하세요.
+이 문서는 4.5.5부터 5.3.1까지의 업그레이드 안내를 하나로 통합합니다. 여러 버전을 건너뛰는 경우 버전 순서대로 각 절을 확인하세요.
 
 ## 4.5.5에서 4.6.0으로 업그레이드
 
@@ -424,3 +424,12 @@ DM에는 메시지 단위 ‘나에게만 숨김’이 더 이상 없고 발신�
 Presence는 Game과 Web 접속을 구분합니다. compact 목록은 Game > Web > Offline 순서로 하나의 대표 상태를 표시하고, 프로필은 Game/Web을 따로 보여줍니다. 계정별 오프라인 상태는 다른 사용자에게 두 상태를 서버 단계에서 모두 숨깁니다.
 
 업그레이드 후 BlueMap 새로고침 복구, DM/그룹 검색·삭제, 그룹 핀/역할, Game/Web presence, 오프라인 개인정보 보호, 그리고 관련 relay peer를 모두 올린 뒤 서버 간 DM 삭제를 확인하세요.
+
+
+## KOKOTO WebChat 5.3.0에서 5.3.1로 업그레이드
+
+KWC 데이터 디렉터리를 백업한 뒤 동일한 5.3.1 런타임 JAR로 교체합니다. **설정 스키마는 올라가지 않습니다.** `config-version`과 관리자 reference는 계속 5.3.0이므로 기존 5.3.0 운영자 값과 Relay 2.2 신뢰/정책 설정을 그대로 보존합니다.
+
+5.3.1은 Poll/Recruitment 이벤트 수명주기와 자동종료 조건 저장을 완성하고, 모바일 애드온 관리자 버튼 탭 문제, 가려진 private window 재호출, Font Awesome Free 아이콘 정합성을 수정합니다. Minecraft `/kchat game` 자동완성은 Bukkit/Fabric/NeoForge/Forge에서 공통 서비스를 사용하며 이벤트 동작, 이벤트 ID, Poll 선택지 번호, Recruitment 역할, 자동종료 조건, 실시간 settings/filter/admin/guest 제어, 기본 DM/그룹 탐색을 제안합니다. Bukkit에서 문서에는 있었지만 dispatcher에서 빠졌던 `/kchat filter`, `/kchat settings`도 복구됩니다.
+
+이벤트 공지 범위는 Relay topology를 기준으로 표시됩니다. `send.event`를 허용하는 enabled peer가 하나 이상 구성돼 있으면 기본값은 Relay이고 local-only를 선택할 수 있습니다. 그런 peer가 없으면 범위 UI/명령 자체를 숨기고 local-only로 정규화합니다. 순간적인 접속/단절이 아니라 설정된 topology를 기준으로 하며 Relay Protocol은 2.2 그대로입니다.

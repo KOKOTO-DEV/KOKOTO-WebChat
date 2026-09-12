@@ -55,7 +55,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class ServerRelay implements AutoCloseable {
     /** Major wire compatibility. Keep this at 2 for all backward-compatible 2.x revisions. */
     private static final String PROTOCOL_MAJOR = "2";
-    /** Human/diagnostic protocol revision. KWC 5.3.0 stays on 2.2; optional delete/game/profile features are capability-negotiated within that revision. */
+    /** Human/diagnostic protocol revision. KWC 5.3.1 stays on 2.2; optional delete/game/profile features are capability-negotiated within that revision. */
     private static final String PROTOCOL_REVISION = "2.2";
     /** Existing 2.0 probe canonical embedded the then-current product version. Accept it only as a compatibility fallback. */
     private static final String LEGACY_V20_HANDSHAKE_PRODUCT_VERSION = "5.2.0";

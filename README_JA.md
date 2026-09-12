@@ -8,6 +8,11 @@
 
 > ビジュアル資料、アニメーションフロー、編集可能な図の source、参照規格一覧は `docs/assets/`、`docs/en/VISUAL_DOCUMENTATION.md`、`docs/en/REFERENCES.md` に含まれています。
 
+## 5.3.1 開発版
+
+5.3.1 では Chat Event に **Poll**、**role-based Recruitment**、永続化される **automatic-end 条件**を追加します。First come は winner capacity 到達時に従来どおり自動完了し、Lottery は participant capacity 到達時の自動抽選、Poll は unique response 数、Recruitment は全 role slot 充足を任意条件として利用でき、全 type で終了日時も指定できます。複数条件では最初に成立した条件が適用されます。mobile map add-on では window drag が Administrator control の tap を奪う問題を修正し、Standalone の DM/Group header button も隠れた既存 window を前面へ戻します。Product/runtime version は 5.3.1、config schema は 5.3.0 のままです。 Minecraft コマンド補完は Bukkit/Fabric/NeoForge/Forge で Event 操作、event ID、Poll 選択肢番号、Recruitment role、automatic-end 制御を共通で提供します。Event を送信できる Relay peer が構成されている場合だけ配信範囲を表示して既定を Relay とし、その topology がないサーバーでは local-only として不要な範囲設定を表示しません。
+
+
 ## 5.3.0 リリース
 
 5.3.0 は 5.2.1 を基準に、DM/group の保存済み全履歴検索と送信者所有メッセージ削除、room-local の group role/pin/delete policy、複数同時運用できる First come/Lottery Chat Event、user profile と Game/Web presence・Offline privacy、personal block、moderator ごとの委任権限、拡張 built-in CAPTCHA、Web `@` autocomplete、画像 metadata 除去を追加します。Relay Protocol **2.2** は protocol major 2 互換性を維持し、DM delete、event routing、remote profile lookup と peer ごとの `public-chat` / `event` / `dm` / `profile` send/receive policy を capability で制御します。**Standalone のデスクトップモード**では、DM/group の一覧と複数の個別会話を独立ウィンドウとして開き、drag/resize/maximize できます。8 種類の adapter/standalone は同じ frontend fragment と CSS から生成され、public chat の responsive header と最小化 frame 動作は adapter 側でも同期されます。
@@ -77,7 +82,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.1-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target
@@ -88,7 +93,7 @@ Fabric は Minecraft version 別の 16 exact-target JAR として build しま�
 kwc-platform-fabric\build-all.bat
 ```
 
-Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-Fabric-<Minecraft>.jar` です。
+Targets: `1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.1-Fabric-<Minecraft>.jar` です。
 
 ### NeoForge exact-target
 
@@ -98,7 +103,7 @@ NeoForge は 12 exact-target JAR として build します。1.20.2〜1.20.6 は
 kwc-platform-neoforge\build-all.bat
 ```
 
-Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-NeoForge-<Minecraft>.jar` です。
+Targets: `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`. 生成物は `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.1-NeoForge-<Minecraft>.jar` です。
 
 ### Forge exact-target
 
@@ -108,13 +113,13 @@ Forge は単一の広域 JAR ではなく、16 個の Minecraft version 別 exac
 kwc-platform-forge\build-all.bat
 ```
 
-script が target ごとに JDK 17/21/25 を選択し、各 target の `build/libs/` に `KOKOTO-WebChat-5.3.0-Forge-<Minecraft>.jar` を生成します。
+script が target ごとに JDK 17/21/25 を選択し、各 target の `build/libs/` に `KOKOTO-WebChat-5.3.1-Forge-<Minecraft>.jar` を生成します。
 
 ### Windows 最終 release 検証
 
-> **release build/validation workflow は source package に含まれています。** `validate-release-windows.bat` と、それが必要とする PowerShell helper は source に同梱されています。別の `KWC-5.3.0-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、通常 build / release build には不要です。
+> **release build/validation workflow は source package に含まれています。** `validate-release-windows.bat` と、それが必要とする PowerShell helper は source に同梱されています。別の `KWC-5.3.1-validation-tools.zip` には開発専用の browser regression tool のみが含まれ、通常 build / release build には不要です。
 
-source root で `validate-release-windows.bat` を実行すると、Bukkit、Fabric 16 target、NeoForge 12 target、Forge 16 target を連続 build します。`FINAL RELEASE BUILD PASS` が表示され、`release-5.3.0/` に配布用 JAR が正確に 45 個集まり、`SHA256SUMS.txt` が生成された場合のみ実 build まで最終検証済みと判定します。
+source root で `validate-release-windows.bat` を実行すると、Bukkit、Fabric 16 target、NeoForge 12 target、Forge 16 target を連続 build します。`FINAL RELEASE BUILD PASS` が表示され、`release-5.3.1/` に配布用 JAR が正確に 45 個集まり、`SHA256SUMS.txt` が生成された場合のみ実 build まで最終検証済みと判定します。
 
 Windows の反復 build では、同じ script で platform 選択、incremental cache、platform 並列 build、live progress を使用できます。
 
@@ -127,7 +132,7 @@ validate-release-windows.bat --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-platform option は組み合わせ可能です。`--bukkit` は Bukkit/Paper artifact と必要な Maven reactor dependency だけを build します。`--fast` は `clean` を省略し、既存の Maven/Gradle 出力と dependency cache を再利用して Gradle build cache を有効化します。`--parallel` は選択した build mode を維持し、Bukkit が選択されている場合は Bukkit を先に build し、PASS 後に Fabric/NeoForge/Forge をそれぞれ別の live build window で並列実行します。そのため `validate-release-windows.bat --parallel` は clean 45-target 最終検証として扱われ、成功時は `FINAL RELEASE BUILD PASS` を表示します。main console には経過時間、全体完了 target 数、platform 別完了数と現在の Minecraft target が表示され、各 worker window には実際の build log が表示されます。詳細 log は `validation-logs/` に残ります。部分 build または `--fast` build は `build-5.3.0/` に出力され、最終 release validation にはなりません。source root の `mvn clean package` は引き続き Bukkit 専用 Maven build です。
+platform option は組み合わせ可能です。`--bukkit` は Bukkit/Paper artifact と必要な Maven reactor dependency だけを build します。`--fast` は `clean` を省略し、既存の Maven/Gradle 出力と dependency cache を再利用して Gradle build cache を有効化します。`--parallel` は選択した build mode を維持し、Bukkit が選択されている場合は Bukkit を先に build し、PASS 後に Fabric/NeoForge/Forge をそれぞれ別の live build window で並列実行します。そのため `validate-release-windows.bat --parallel` は clean 45-target 最終検証として扱われ、成功時は `FINAL RELEASE BUILD PASS` を表示します。main console には経過時間、全体完了 target 数、platform 別完了数と現在の Minecraft target が表示され、各 worker window には実際の build log が表示されます。詳細 log は `validation-logs/` に残ります。部分 build または `--fast` build は `build-5.3.1/` に出力され、最終 release validation にはなりません。source root の `mvn clean package` は引き続き Bukkit 専用 Maven build です。
 Loader worker が Gradle cache/workspace の破損または cache lock と明確に判定できるエラー（例: `caches/<Gradle>/transforms/.../metadata.bin` の読み取り失敗）で終了した場合、検証 runner は lock されている可能性がある既存 cache を自動削除しません。代わりに `.build-cache/gradle-recovery/` 配下の新しい分離 cache を使って、その platform を 1 回だけ再試行します。ソースのコンパイルエラーや通常の dependency/build failure は自動再試行しません。復旧ビルドが成功しても元の cache は変更しないため、Explorer・antivirus・他プロセスの lock が解除された後に必要に応じて手動で整理できます。
 
 
@@ -345,7 +350,7 @@ kwc.update.notify
 - `docs/ja/USER_MANUAL.md` - 全機能のユーザー・運用総合マニュアル
 - `docs/ja/CONFIGURATION.md`
 - `docs/ja/SERVER_RELAY.md` - Relay Protocol v2 公開チャット・サーバー間 DM/既読 receipt・trust/forwarding 規則
-- `docs/ja/UPGRADE.md` - 5.3.0 までの統合アップグレード / 移行ガイド
+- `docs/ja/UPGRADE.md` - 5.3.1 までの統合アップグレード / 移行ガイド
 - `docs/ja/CADDY_HTTPS.md`
 - `docs/ja/I18N.md`
 - `docs/ja/INSTALL_TROUBLESHOOTING.md`
@@ -398,3 +403,7 @@ Forge は Minecraft 1.18.2〜26.2 を単一の広域 JAR ではなく、Minecraf
 本プロジェクトでは、コードレビュー、実装およびパッチ作成の補助、ドキュメント作成、多言語翻訳に生成AIを補助ツールとして使用しています。要件定義、アーキテクチャおよび設計判断、ソース統合、テスト、互換性検証、リリース検証、最終承認は人間のメンテナーが主導・確認します。AI支援による出力は、レビューと検証を経たものだけを採用します。詳細は `AI_USAGE.md` を参照してください。
 
 > Relay 2.2 は targeted event (`game`) routing を追加します。relay event link は local event に置き換えず、origin server の対象 event を開く/参加します。
+
+## サードパーティ素材
+
+KWC Web UI の一部アイコンには **Font Awesome Free 6.7.2** SVG を使用しています。帰属表示とライセンスは `THIRD_PARTY_NOTICES.md` を参照してください。

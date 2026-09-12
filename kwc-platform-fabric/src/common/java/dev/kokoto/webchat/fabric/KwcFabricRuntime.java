@@ -383,7 +383,7 @@ public final class KwcFabricRuntime {
     private void reconcileConfigMigration() {
         try {
             PortableConfigMigration.reconcile(
-                    dataDirectory, version(), this::resource,
+                    dataDirectory, PortableConfigMigration.CONFIG_SCHEMA_VERSION, this::resource,
                     in -> FabricYamlConfiguration.loadConfiguration(new InputStreamReader(in, StandardCharsets.UTF_8)).flatLeafValues(),
                     this::info);
         } catch (Exception ex) {
@@ -443,7 +443,7 @@ public final class KwcFabricRuntime {
     public ServerRelay serverRelay() { return serverRelay; }
     public WebChatServer webServer() { return webServer; }
 
-    public String version() { return "5.3.0"; }
+    public String version() { return "5.3.1"; }
 
     public String serverName() {
         if (configValues != null && configValues.serverRelayServerName != null && !configValues.serverRelayServerName.isBlank()) return configValues.serverRelayServerName;

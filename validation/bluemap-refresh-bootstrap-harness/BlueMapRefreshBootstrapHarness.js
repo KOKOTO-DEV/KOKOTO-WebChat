@@ -8,8 +8,7 @@ const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
 
-const root = process.argv[2];
-if (!root) throw new Error('project root argument required');
+const root = path.resolve(process.argv[2] || path.join(__dirname, '..', '..'));
 const source = fs.readFileSync(path.join(root, 'kwc-adapter-bluemap/src/main/resources/web/chat.js'), 'utf8');
 let assertions = 0;
 function ok(value, message) {

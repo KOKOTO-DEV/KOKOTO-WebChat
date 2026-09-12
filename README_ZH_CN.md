@@ -8,6 +8,11 @@
 
 > 可视化手册、动态图、可编辑的图表源文件以及参考标准列表位于 `docs/assets/`、`docs/en/VISUAL_DOCUMENTATION.md` 和 `docs/en/REFERENCES.md`。
 
+## 5.3.1 开发版
+
+5.3.1 为 Chat Event 新增 **投票（Poll）**、**按角色招募（Recruitment）**以及可持久化的**自动结束条件**。先到先得在获奖名额满时仍自动完成；抽奖可选择在参与人数满时自动抽取，投票可按唯一响应人数结束，招募可在所有角色名额填满时结束；四种类型都可指定结束日期/时间。启用多个条件时采用最先满足的条件。移动端地图 add-on 中窗口拖动不再吞掉 Administrator 控件的点击，Standalone 的 DM/群组按钮也会把被遮挡的既有窗口重新提升到前台。产品/runtime 版本为 5.3.1，config schema 仍为 5.3.0。 Minecraft 命令补全在 Bukkit/Fabric/NeoForge/Forge 上统一支持 Event 操作、活动 ID、Poll 选项编号、Recruitment 角色与自动结束控制。仅当配置了可发送 Event 的 Relay peer 时显示传递范围并默认使用 Relay；没有此 topology 的服务器按 local-only 处理且不显示多余的范围设置。
+
+
 ## 5.3.0 版本
 
 5.3.0 以 5.2.1 为基线，新增 DM/群聊完整已保存历史搜索与发送者本人删除、房间级群组角色/置顶/删除策略、可同时运行多个的先到先得/抽奖 Chat Event、用户资料与 Game/Web 在线状态及 Offline 隐私、个人屏蔽、按版主委派权限、扩展的内置 CAPTCHA、Web `@` 自动完成和图片元数据清除。Relay Protocol **2.2** 保持 protocol major 2 兼容，并通过 capability 支持 DM 删除、活动路由、远程资料查询，以及每个 peer 对 `public-chat` / `event` / `dm` / `profile` 的独立发送/接收策略。在 **Standalone 桌面模式**中，DM/群组列表与多个独立会话可作为独立窗口进行 drag/resize/maximize。8 个适配器/standalone 仍由相同的 frontend fragment 与 CSS 生成，公共聊天的 responsive 标题栏与最小化外框行为在适配器中也保持同步。
@@ -77,7 +82,7 @@ mvn clean package
 ```
 
 ```text
-kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.0-Bukkit-1.18-26.2.jar
+kwc-platform-bukkit/target/KOKOTO-WebChat-5.3.1-Bukkit-1.18-26.2.jar
 ```
 
 ### Fabric exact-target
@@ -88,7 +93,7 @@ Fabric 按 Minecraft 版本构建 16 个 exact-target JAR，脚本会按 target 
 kwc-platform-fabric\build-all.bat
 ```
 
-Targets：`1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`。产物位于 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-Fabric-<Minecraft>.jar`。
+Targets：`1.18.2`, `1.19.2`, `1.19.4`, `1.20.1`, `1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`。产物位于 `kwc-platform-fabric/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.1-Fabric-<Minecraft>.jar`。
 
 ### NeoForge exact-target
 
@@ -98,7 +103,7 @@ NeoForge 构建 12 个 exact-target JAR。1.20.2～1.20.6 使用 NeoGradle userd
 kwc-platform-neoforge\build-all.bat
 ```
 
-Targets：`1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`。产物位于 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.0-NeoForge-<Minecraft>.jar`。
+Targets：`1.20.2`, `1.20.4`, `1.20.6`, `1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.8`, `1.21.10`, `1.21.11`, `26.1.2`, `26.2`。产物位于 `kwc-platform-neoforge/targets/<Minecraft>/build/libs/KOKOTO-WebChat-5.3.1-NeoForge-<Minecraft>.jar`。
 
 ### Forge exact-target
 
@@ -108,13 +113,13 @@ Forge 不使用单个宽版本 JAR，而是构建 16 个按 Minecraft 版本区�
 kwc-platform-forge\build-all.bat
 ```
 
-脚本会为每个目标选择 JDK 17/21/25，并在对应 target 的 `build/libs/` 下生成 `KOKOTO-WebChat-5.3.0-Forge-<Minecraft>.jar`。
+脚本会为每个目标选择 JDK 17/21/25，并在对应 target 的 `build/libs/` 下生成 `KOKOTO-WebChat-5.3.1-Forge-<Minecraft>.jar`。
 
 ### Windows 最终发布验证
 
-> **发布构建/验证工作流包含在 source 包中。** `validate-release-windows.bat` 及其所需的 PowerShell helper 会随 source 一起提供。单独的 `KWC-5.3.0-validation-tools.zip` 只包含开发专用的浏览器回归测试工具，普通构建和发布构建都不需要它。
+> **发布构建/验证工作流包含在 source 包中。** `validate-release-windows.bat` 及其所需的 PowerShell helper 会随 source 一起提供。单独的 `KWC-5.3.1-validation-tools.zip` 只包含开发专用的浏览器回归测试工具，普通构建和发布构建都不需要它。
 
-在源码根目录运行 `validate-release-windows.bat`，会依次构建 Bukkit、16 个 Fabric target、12 个 NeoForge target 和 16 个 Forge target。只有输出 `FINAL RELEASE BUILD PASS`、在 `release-5.3.0/` 收集到准确 45 个可发布 JAR，并生成 `SHA256SUMS.txt` 后，才判定实际构建也完成最终验证。
+在源码根目录运行 `validate-release-windows.bat`，会依次构建 Bukkit、16 个 Fabric target、12 个 NeoForge target 和 16 个 Forge target。只有输出 `FINAL RELEASE BUILD PASS`、在 `release-5.3.1/` 收集到准确 45 个可发布 JAR，并生成 `SHA256SUMS.txt` 后，才判定实际构建也完成最终验证。
 
 Windows 下进行重复构建时，同一脚本支持平台选择、增量缓存、平台并行构建和实时进度：
 
@@ -127,7 +132,7 @@ validate-release-windows.bat --forge --fast
 validate-release-windows.bat --parallel
 ```
 
-平台选项可以组合使用。`--bukkit` 只构建 Bukkit/Paper 产物及其所需的 Maven reactor 依赖模块。`--fast` 会跳过 `clean`，复用已有 Maven/Gradle 输出与 dependency cache，并启用 Gradle build cache。`--parallel` 保持所选 clean/fast 模式不变；如果选择了 Bukkit，会先构建 Bukkit，Bukkit 通过后分别打开 Fabric、NeoForge、Forge 的实时构建窗口并并行运行，因此 `validate-release-windows.bat --parallel` 仍是 clean 的 45-target 最终验证，成功时会输出 `FINAL RELEASE BUILD PASS`。主控制台会持续显示经过时间、总体完成 target 数、各平台完成数和当前 Minecraft target，各工作窗口显示实际构建日志，完整日志保留在 `validation-logs/`。部分构建或 `--fast` 构建写入 `build-5.3.0/`，不视为最终发布验证。源码根目录的 `mvn clean package` 仍然只是 Bukkit Maven 构建。
+平台选项可以组合使用。`--bukkit` 只构建 Bukkit/Paper 产物及其所需的 Maven reactor 依赖模块。`--fast` 会跳过 `clean`，复用已有 Maven/Gradle 输出与 dependency cache，并启用 Gradle build cache。`--parallel` 保持所选 clean/fast 模式不变；如果选择了 Bukkit，会先构建 Bukkit，Bukkit 通过后分别打开 Fabric、NeoForge、Forge 的实时构建窗口并并行运行，因此 `validate-release-windows.bat --parallel` 仍是 clean 的 45-target 最终验证，成功时会输出 `FINAL RELEASE BUILD PASS`。主控制台会持续显示经过时间、总体完成 target 数、各平台完成数和当前 Minecraft target，各工作窗口显示实际构建日志，完整日志保留在 `validation-logs/`。部分构建或 `--fast` 构建写入 `build-5.3.1/`，不视为最终发布验证。源码根目录的 `mvn clean package` 仍然只是 Bukkit Maven 构建。
 如果 Loader worker 因可明确识别的 Gradle cache/workspace 损坏或 cache 锁定错误而失败（例如无法读取 `caches/<Gradle>/transforms/.../metadata.bin`），验证 runner 不会自动删除可能仍被锁定的主 cache，而会改用 `.build-cache/gradle-recovery/` 下的全新隔离 cache 对该平台仅重试一次。源码编译错误以及普通 dependency/build 失败不会自动重试。即使恢复构建成功，原 cache 也保持不变，可在资源管理器、杀毒软件或其他进程释放文件锁后再手动清理。
 
 
@@ -332,7 +337,7 @@ kwc.update.notify
 - `docs/zh-CN/USER_MANUAL.md` - 所有功能的完整用户与运维手册
 - `docs/zh-CN/CONFIGURATION.md`
 - `docs/zh-CN/SERVER_RELAY.md` - Relay Protocol v2 公共聊天、跨服务器私信/已读 receipt、信任与 forwarding 规则
-- `docs/zh-CN/UPGRADE.md` - 截至 5.3.0 的统一升级与迁移指南
+- `docs/zh-CN/UPGRADE.md` - 截至 5.3.1 的统一升级与迁移指南
 - `docs/zh-CN/CADDY_HTTPS.md`
 - `docs/zh-CN/I18N.md`
 - `docs/zh-CN/INSTALL_TROUBLESHOOTING.md`
@@ -400,3 +405,7 @@ Forge 对 Minecraft 1.18.2～26.2 使用按 Minecraft 版本区分的 exact-targ
 本项目在开发过程中使用生成式 AI 作为辅助工具，用于代码审查、实现与补丁编写辅助、文档编写和多语言翻译。项目需求、架构与设计决策、源码整合、测试、兼容性验证、发布验证和最终批准均由人工维护者主导并审核。AI 辅助产生的内容只有在人工审查和验证后才会纳入项目。详情请参阅 `AI_USAGE.md`。
 
 > Relay 2.2 增加 targeted event（`game`）路由。relay 事件链接会打开/参加来源服务器上的对应事件，不会替换成本地事件。
+
+## 第三方资源
+
+KWC Web UI 的部分图标使用 **Font Awesome Free 6.7.2** SVG。归属与许可信息请参阅 `THIRD_PARTY_NOTICES.md`。

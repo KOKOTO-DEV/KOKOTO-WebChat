@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.3.0 통합 사용·운영 매뉴얼
+# KOKOTO WebChat 5.3.1 통합 사용·운영 매뉴얼
 
 
 ## 시각 자료
@@ -15,16 +15,17 @@
 
 이 문서에서 사용하는 1차 표준과 공식 서드파티 문서는 [REFERENCES.md](REFERENCES.md)에 정리되어 있습니다.
 
-> **5.3.0 운영 기능:** Web Admin **Filter**에서 공개/그룹/선택형 DM의 차단·마스킹·치환 규칙과 전송 없는 테스트를 관리하고, **Settings**에서는 지원되는 실시간 안전 설정인 게스트/CAPTCHA, 세션, 사용자 프로필, 오픈채팅/DM/그룹채팅 입력 중 표시 정책, 관리자 알림, 업로드, 콘텐츠 필터 값만 관리합니다. moderation 정책 5종은 `config.yml` 전용이며 Web Admin에 노출하지 않습니다. 게임에서는 `/kchat filter`, `/kchat settings`를 사용합니다. 세션 기간 변경은 이미 만료된 세션을 부활시키지 않고 기존 대상 세션을 생성 시각 기준으로 재계산합니다. `upload.filename-mode: original`은 새 업로드의 안전한 Unicode 원본명을 보존하고 중복 접미사를 붙입니다.
+> **5.3.1 운영 기능:** Web Admin **Filter**에서 공개/그룹/선택형 DM의 차단·마스킹·치환 규칙과 전송 없는 테스트를 관리하고, **Settings**에서는 지원되는 실시간 안전 설정인 게스트/CAPTCHA, 세션, 사용자 프로필, 오픈채팅/DM/그룹채팅 입력 중 표시 정책, 관리자 알림, 업로드, 콘텐츠 필터 값만 관리합니다. moderation 정책 5종은 `config.yml` 전용이며 Web Admin에 노출하지 않습니다. 게임에서는 `/kchat filter`, `/kchat settings`를 사용합니다. 세션 기간 변경은 이미 만료된 세션을 부활시키지 않고 기존 대상 세션을 생성 시각 기준으로 재계산합니다. `upload.filename-mode: original`은 새 업로드의 안전한 Unicode 원본명을 보존하고 중복 접미사를 붙입니다.
 
 
-이 문서는 KOKOTO WebChat 5.3.0의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY.md`, HTTPS 구성은 `CADDY_HTTPS.md`와 `NGINX_HTTPS.md`를 함께 참고하세요.
+이 문서는 KOKOTO WebChat 5.3.1의 전체 기능을 사용자와 서버 운영자 관점에서 설명합니다. 단순 설정 키 목록은 `CONFIGURATION.md`, 서버 간 릴레이의 상세 프로토콜은 `SERVER_RELAY.md`, HTTPS 구성은 `CADDY_HTTPS.md`와 `NGINX_HTTPS.md`를 함께 참고하세요.
 
 
-## 5.3.0 추가 기능
+## 5.3.1 추가 기능
 
 - **비공개 채팅:** DM/그룹은 저장된 전체 기록을 검색할 수 있습니다. DM의 “나에게만 숨김”은 제거되었습니다. 일반 사용자 자기 메시지 삭제 기능을 켠 경우 발신자만 자신의 DM을 삭제할 수 있고 삭제 시 양쪽 대화에서 제거됩니다. 그룹에는 방 내부 `owner/admin/member` 역할, 고정 메시지 관리, 방 전체 삭제와 전역 자기 삭제 설정을 함께 따르는 방별 일반 멤버 자기 메시지 삭제 정책이 추가됩니다.
-- **Chat Event:** 웹 또는 `/kchat game`에서 선착순/추첨 이벤트를 여러 개 동시에 운영할 수 있습니다. 선착순은 당첨 인원이 유일한 정원이며 가득 차면 자동 완료되고, 추첨은 참가 인원과 당첨 인원을 따로 사용합니다. 이벤트 알림은 현재 서버만 또는 Relay 전송을 선택할 수 있습니다. 참가자/당첨자 목록은 전역 **표시이름 / 실제이름** 전환을 따르며, 채팅 결과 공지는 `🏆`로 시작하고 두 이름이 다르면 `표시이름 (실제이름)`으로 표시합니다.
+- **Chat Event:** 웹과 `/kchat game`에서 선착순, 추첨, 투표, 역할별 모집을 운영할 수 있습니다. 선착순은 당첨 정원이 차면 항상 자동 완료됩니다. 추첨은 참가 정원 도달 시 자동 추첨, 투표는 고유 응답 인원 도달, 모집은 모든 역할 정원 충족을 선택 자동종료 조건으로 사용할 수 있고, 모든 타입에 종료 날짜/시각을 지정할 수 있습니다. 여러 조건을 켜면 먼저 충족된 조건으로 종료됩니다. 이벤트 전송이 가능한 Relay peer가 구성된 경우 범위 기본값은 Relay이며 현재 서버만으로 바꿀 수 있습니다. 그런 peer가 없으면 범위 항목 자체가 숨겨지고 이벤트는 로컬로만 동작합니다. 참가자/결과 이름은 전역 **표시이름 / 실제이름** 전환을 따릅니다.
+  Minecraft 명령 자동완성은 모든 loader에서 이벤트 동작, 이벤트 ID, Poll 선택지 번호, Recruitment 역할, 자동종료 조건을 지원합니다. 이벤트 범위는 Event 전송이 가능한 Relay topology가 있을 때만 표시됩니다.
 - **프로필과 접속 상태:** 사용자 프로필에서 Minecraft Head/사용자 이미지, 280자 소개, 역할, 개인 차단 목록, Game/Web 접속 상태를 확인·관리합니다. 사용자는 온라인/바쁨/오프라인을 선택하며, 오프라인은 다른 사용자에게 실제 Game/Web 상태를 서버 단계에서 숨깁니다.
 - **관리 권한:** 관리자는 계정별 채팅/업로드 제한, 사용자 프로필 이미지 삭제, 로컬 역할 변경을 할 수 있고 모더레이터별로 일부 관리 권한을 위임할 수 있습니다.
 - **CAPTCHA와 멘션:** 게스트 CAPTCHA는 끄기/수학/문자/혼합 및 수학 난이도를 지원하고, 공개/DM/그룹 웹 입력창은 IME를 방해하지 않는 `@` 자동완성을 공유합니다.
@@ -43,7 +44,7 @@
 
 ## 1. 플러그인 개요
 
-KOKOTO WebChat은 Minecraft 서버의 게임 채팅을 웹 브라우저에 연결하는 서버측 웹 채팅입니다. 5.3.0은 Bukkit/Paper/Spigot과 Fabric 1.18.2~26.2, NeoForge 1.20.2~26.2, Forge 1.18.2~26.2 exact-target 빌드를 제공합니다.
+KOKOTO WebChat은 Minecraft 서버의 게임 채팅을 웹 브라우저에 연결하는 서버측 웹 채팅입니다. 5.3.1은 Bukkit/Paper/Spigot과 Fabric 1.18.2~26.2, NeoForge 1.20.2~26.2, Forge 1.18.2~26.2 exact-target 빌드를 제공합니다.
 
 지원 형태:
 
@@ -1249,7 +1250,7 @@ discordsrv:
 
 ## 26. 여러 서버 릴레이
 
-KOKOTO WebChat 5.3.0은 Relay v2 신뢰/암호화 모델을 유지하는 **Relay Protocol 2.2**를 사용합니다. public chat, cross-server 1:1 DM/read/delete/reaction/typing, 타 서버 이벤트 조회/참가, 원격 공개 프로필 조회를 2.x capability로 처리하며 group chat room은 서버 로컬 기능입니다. 각 peer는 `public-chat`, `event`, `dm`, `profile` 송신/수신을 독립적으로 허용하거나 차단할 수 있습니다.
+KOKOTO WebChat 5.3.1은 Relay v2 신뢰/암호화 모델을 유지하는 **Relay Protocol 2.2**를 사용합니다. public chat, cross-server 1:1 DM/read/delete/reaction/typing, 타 서버 이벤트 조회/참가, 원격 공개 프로필 조회를 2.x capability로 처리하며 group chat room은 서버 로컬 기능입니다. 각 peer는 `public-chat`, `event`, `dm`, `profile` 송신/수신을 독립적으로 허용하거나 차단할 수 있습니다.
 
 Relay v2 설정은 `groups -> peers` 구조입니다. 각 group은 shared secret 하나를 가지며 peer에는 server ID, API URL, enabled 상태만 둡니다. 최초 설정은 한 서버에서 `shared-secret: ""`로 시작/리로드한 뒤 그 서버의 `config.yml`에 생성된 값을 같은 group의 다른 서버에 복사합니다. 기존 비어 있지 않은 secret은 자동 재생성하지 않고, 수동 secret이 32자 미만이면 invalid 상태로 남습니다. 양쪽 서버는 같은 group에서 서로를 peer로 등록해야 하며 같은 peer ID를 여러 local group에 중복 등록할 수 없습니다.
 

@@ -1,5 +1,5 @@
 name: KOKOTO-WebChat
-version: 5.3.0
+version: 5.3.1
 main: dev.kokoto.webchat.KokotoWebChatPlugin
 api-version: '1.18'
 authors: [KOKOTO]
@@ -9,7 +9,7 @@ loadbefore: [ImageEmojis]
 commands:
   kchat:
     description: KOKOTO WebChat command
-    usage: /kchat <auth|password|status|dm|reply|group|reload|admin|guest|sessions|revoke|filter|settings>
+    usage: /kchat <auth|password|status|dm|reply|group|game|reload|admin|guest|sessions|revoke|filter|settings>
     aliases: [kc, kwc]
 permissions:
   kwc.auth:

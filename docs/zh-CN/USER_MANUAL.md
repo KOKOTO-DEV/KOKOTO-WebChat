@@ -1,4 +1,4 @@
-# KOKOTO WebChat 5.3.0 完整用户与运维手册
+# KOKOTO WebChat 5.3.1 完整用户与运维手册
 
 
 ## 可视化资料
@@ -15,16 +15,17 @@
 
 本文引用的一手标准与第三方官方文档统一列在 [REFERENCES.md](REFERENCES.md) 中。
 
-> **5.3.0 运维：** Web Admin **Filter** 管理公开聊天/群聊/可选私信的 block/mask/replace 规则与不发送测试，**Settings** 只管理受支持的实时安全设置：访客/CAPTCHA、会话、用户资料、公开聊天/DM/群聊 typing-indicator 策略、管理员提醒、上传与内容过滤。5 个 moderation 策略设置仅允许在 `config.yml` 中配置，不会暴露到 Web Admin。游戏侧使用 `/kchat filter` / `/kchat settings`。会话期限变更按创建时间重算现有目标会话，且不会复活已经过期的会话。`upload.filename-mode: original` 为新上传保留安全的 Unicode 原名并在重名时自动编号。
+> **5.3.1 运维：** Web Admin **Filter** 管理公开聊天/群聊/可选私信的 block/mask/replace 规则与不发送测试，**Settings** 只管理受支持的实时安全设置：访客/CAPTCHA、会话、用户资料、公开聊天/DM/群聊 typing-indicator 策略、管理员提醒、上传与内容过滤。5 个 moderation 策略设置仅允许在 `config.yml` 中配置，不会暴露到 Web Admin。游戏侧使用 `/kchat filter` / `/kchat settings`。会话期限变更按创建时间重算现有目标会话，且不会复活已经过期的会话。`upload.filename-mode: original` 为新上传保留安全的 Unicode 原名并在重名时自动编号。
 
 
-本文从普通用户和服务器管理员两个角度说明 KOKOTO WebChat 5.3.0 的全部功能。逐项配置说明请参阅 `CONFIGURATION.md`，服务器中继请参阅 `SERVER_RELAY.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS.md` 与 `NGINX_HTTPS.md`。
+本文从普通用户和服务器管理员两个角度说明 KOKOTO WebChat 5.3.1 的全部功能。逐项配置说明请参阅 `CONFIGURATION.md`，服务器中继请参阅 `SERVER_RELAY.md`，HTTPS 部署请同时参阅 `CADDY_HTTPS.md` 与 `NGINX_HTTPS.md`。
 
 
-## 5.3.0 新增功能
+## 5.3.1 新增功能
 
 - **私聊：** DM/群聊可搜索完整已保存历史。DM 的“仅对我隐藏”已移除。启用普通用户自删后，只有发送者能删除自己发送的 DM，删除后会从双方会话中移除。群组房间新增 room-local `owner/admin/member` 角色、置顶管理、全房间删除，以及同时受全局自删设置约束的普通成员自删策略。
-- **Chat Event：** 可通过 Web 或 `/kchat game` 同时运行多个先到先得/抽奖活动。先到先得只使用获奖人数作为容量，满额后自动完成；抽奖分别设置参与人数和获奖人数。活动公告可选择仅当前服务器或通过 Relay 发送。参与者/获奖者列表遵循全局 **显示名 / 真实名** 模式；结果公告以 `🏆` 开头，当两者不同时显示为 `显示名 (真实名)`。
+- **Chat Event：** Web 与 `/kchat game` 支持先到先得、抽奖、投票和按角色招募。先到先得在获奖名额满时始终自动完成；抽奖可选择在参与人数满时自动抽取，投票可按唯一响应人数结束，招募可在所有角色名额填满时结束；所有类型均可指定结束日期/时间。启用多个条件时，最先满足的条件结束活动。当配置了可发送 Event 的 Relay peer 时，活动范围默认使用 Relay，也可改为仅当前服务器；若没有此类 peer，则不显示范围选项并仅在本地处理。参与者/结果名称遵循全局 **显示名 / 真实名** 模式。
+  Minecraft 命令自动补全在所有 loader 上支持活动操作、活动 ID、Poll 选项编号、Recruitment 角色和自动结束条件。仅在存在可传递 Event 的 Relay topology 时显示活动范围。
 - **用户资料与在线状态：** 用户资料支持 Minecraft Head/自定义头像、280 字 About、角色、个人屏蔽列表及 Game/Web 连接状态。用户可选择 Online/Busy/Offline；Offline 会在服务器端向其他查看者隐藏真实 Game/Web 状态。
 - **管理权限：** ADMIN 可设置账号聊天/上传限制、删除自定义资料图片、更改本地角色，并可按 moderator 委派部分管理 capability。
 - **CAPTCHA 与提及：** 访客 CAPTCHA 支持 off/math/text/mixed 和数学难度；公共/DM/群聊 Web 输入框共享兼容 IME 的 `@` 自动完成。
@@ -43,7 +44,7 @@
 
 ## 1. 插件概述
 
-KOKOTO WebChat 用于把 Minecraft 服务器聊天连接到浏览器。5.3.0 提供 Bukkit/Paper/Spigot，以及 Fabric 1.18.2～26.2、NeoForge 1.20.2～26.2、Forge 1.18.2～26.2 exact-target 构建。
+KOKOTO WebChat 用于把 Minecraft 服务器聊天连接到浏览器。5.3.1 提供 Bukkit/Paper/Spigot，以及 Fabric 1.18.2～26.2、NeoForge 1.20.2～26.2、Forge 1.18.2～26.2 exact-target 构建。
 
 支持：
 
@@ -1139,7 +1140,7 @@ discordsrv:
 
 ## 26. 多服务器中继
 
-KOKOTO WebChat 5.3.0 使用保留 Relay v2 信任/加密模型的 **Relay Protocol 2.2**。public chat、跨服务器 1:1 DM/read/delete/reaction/typing、远程活动查询/参加以及远程公开 profile 查询通过 2.x capability 处理；group chat room 仍为本地功能。每个 peer 都可以独立允许或阻止 `public-chat`、`event`、`dm`、`profile` 的发送与接收。
+KOKOTO WebChat 5.3.1 使用保留 Relay v2 信任/加密模型的 **Relay Protocol 2.2**。public chat、跨服务器 1:1 DM/read/delete/reaction/typing、远程活动查询/参加以及远程公开 profile 查询通过 2.x capability 处理；group chat room 仍为本地功能。每个 peer 都可以独立允许或阻止 `public-chat`、`event`、`dm`、`profile` 的发送与接收。
 
 Relay v2 采用 `groups -> peers`。每个 group 只有一个 shared secret，peer 只保存 server ID、API URL 与 enabled 状态。首次设置时，可只在一台服务器上保留 `shared-secret: ""` 并启动/重载，然后把其 `config.yml` 中自动生成的值复制到同一 group 的其他服务器。已有的非空 secret 不会自动重新生成；手工 secret 不足 32 字符时保持 invalid。双方必须在同一个 group 中互相登记 peer，同一个 peer ID 不能登记到多个本地 group。
 

@@ -1,5 +1,32 @@
 # Changelog
 
+## 5.3.1
+
+5.3.1 is compared directly with the 5.3.0 release baseline. The entries below describe final user/operator-visible behavior introduced after 5.3.0; internal checkpoint regressions and development-only fixes are not listed separately.
+
+### Added
+
+- **Poll Chat Events**: added Poll as a first-class Chat Event type. One account may vote for one option and change its choice while the Poll remains open. Web and Minecraft `/kchat game` can both submit votes and inspect current counts, and relayed Poll responses are routed back to the event-origin server.
+- **Role-based Recruitment Chat Events**: added Recruitment with named roles, per-role accepted capacity, per-role waiting queues, role changes, withdrawal, and automatic promotion of the oldest waiter when an accepted slot opens. Web and Minecraft views expose accepted/capacity/waiting counts, the current user's state, and waiting position; relayed actions are routed to the origin server.
+- **Persisted Event automatic-end policies**: every event type may use an absolute end date/time. First come still always completes when its winner capacity fills; Lottery may optionally draw/finalize when participant capacity fills; Poll may finish after a configured number of unique voters respond; Recruitment may finish when every role's accepted capacity is filled, excluding waiting applicants. If multiple conditions are enabled, the first condition reached finalizes the event once. Policy, target time, completion time, and completion reason survive restart, and a server lifecycle check evaluates timed completion without requiring an open Web browser.
+- **Font Awesome Free Web UI icons**: replaced primary platform-dependent emoji/text control glyphs with a shared, locally bundled Font Awesome Free 6.7.2 SVG registry. Desktop/mobile add-ons, Standalone, and PiP use the same artwork without a CDN dependency. Required attribution and license notices are bundled with the source and JAR distribution.
+
+### Changed
+
+- **Minecraft command completion is shared across platforms**: Bukkit/Paper/Spigot, Fabric, NeoForge, and Forge use the same Core completion service for `/kchat game` and other supported KWC command surfaces. Completion now covers Event actions and IDs, Poll option numbers, Recruitment roles, automatic-end controls, supported live-setting keys, filter actions/rule IDs, administrator/guest actions, and basic DM/group navigation where applicable.
+- **Event announcement scope is topology-aware**: when at least one enabled configured Relay peer permits `send.event`, new Event announcements default to Relay and may be changed to local-only. When no Event-capable peer is configured, the scope control/help/completion is hidden and the server normalizes the Event to local-only. Visibility follows configured topology rather than transient peer connectivity.
+- **Presentation parity is explicit**: desktop map add-ons + PiP, desktop Standalone + PiP, mobile map add-ons, and mobile Standalone consume the same canonical server config, account preferences, permissions, notification preferences, and Event state. Mode-specific branches are limited to presentation capabilities such as minimize availability, PiP transport ownership, and Standalone multi-window layout. Build validation now rejects generated JavaScript/CSS drift between wrappers.
+
+### Fixed
+
+- **Event create-form type visibility**: fixed shared form CSS overriding HTML `hidden`, which could expose Recruitment role input in First come/Lottery and other type-specific controls in the wrong Event type. Poll options, Recruitment roles, participant/winner numeric fields, and Poll response-count automatic-end controls now appear only where they apply.
+- **Mobile add-on Administrator control**: fixed the Administrator/online-user header control not responding to taps in mobile map add-on mode. Interactive `button`, link, and `role="button"` controls are excluded from public-window drag capture so touch input reaches the control instead of starting a window drag.
+- **Detached DM/Group/Admin-audit icon sizing**: fixed Font Awesome normalization not reaching private/audit windows attached outside `#kwc-root`. Audit shields now use a compact badge size, search/delete icons remain inside their buttons, DM attachment artwork is restored, DM/Group emoji and attachment icons match public-chat sizing, and Group pin artwork is visible at the intended size.
+- **Standalone private-list re-open behavior**: pressing the DM or Group header button again now restores and raises the existing list window when it is minimized or hidden behind another KWC window instead of leaving it covered or creating a duplicate. Stale remembered-open state is cleared when it no longer matches the live DOM so the window can be recreated normally.
+- **Group-room creation window ownership**: in Standalone multi-window mode, creating a new group room now opens the creation form from the Group chats list/hub instead of attaching it to whichever group conversation child window is currently active. Room-local settings and management dialogs continue to stay with their owning conversation window.
+- **Bukkit command dispatch parity**: restored the documented `/kchat filter` and `/kchat settings` top-level dispatch paths and added the missing `game` surface to Bukkit command usage metadata.
+
+
 ## 5.3.0
 
 KOKOTO WebChat 5.3.0 expands **5.2.1** with improved DM/group management, Chat Events, user profiles and presence, blocking and moderation, Relay features, and desktop multi-window UI.

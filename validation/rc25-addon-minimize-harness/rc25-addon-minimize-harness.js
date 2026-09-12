@@ -12,12 +12,12 @@ function read(rel) { return fs.readFileSync(path.join(root, rel), 'utf8'); }
 const ui = read('frontend/inner/40-root-auth.js');
 const multi = read('frontend/inner/115-private-multiwindow.js');
 check(ui.includes('function publicChatMinimizeViewport()'), 'public-chat host viewport helper missing');
-check(ui.includes('if (!state.isStandalone && !state.isPip)'), 'adapter/add-on viewport branch missing');
+check(ui.includes('if (presentation.addon)'), 'adapter/add-on viewport branch missing');
 check(ui.includes('target = window.parent'), 'adapter/add-on minimize does not use the map parent viewport');
 check(ui.includes('target.visualViewport || null'), 'parent visualViewport is not preferred');
 check(ui.includes('Number(target.innerWidth)'), 'parent innerWidth fallback missing');
 check(ui.includes('Number(target.innerHeight)'), 'parent innerHeight fallback missing');
-check(ui.includes('if (!state.isStandalone) return true;'), 'embedded map/add-on minimize must remain available on mobile/small viewports');
+check(ui.includes('if (presentation.addon) return true;'), 'embedded map/add-on minimize must remain available on mobile/small viewports');
 check(ui.includes('const viewport = publicChatMinimizeViewport();'), 'Standalone minimize availability does not use viewport helper');
 check(ui.includes('viewport.width >= minW && viewport.height >= minH'), 'Standalone minimize threshold is not applied to its viewport');
 check(!ui.includes('typeof privateMultiWindowSupported === "function" && privateMultiWindowSupported()'), 'public minimize is still coupled directly to detached private-window capability');

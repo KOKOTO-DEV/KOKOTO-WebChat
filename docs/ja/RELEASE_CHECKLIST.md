@@ -1,10 +1,11 @@
-# KOKOTO WebChat 5.3.0 リリースチェックリスト
+# KOKOTO WebChat 5.3.1 リリースチェックリスト
 
 ## ソース / 設定 / 多言語
-- [ ] Root/Bukkit/Fabric/NeoForge/Forge の metadata と成果物名がすべて `5.3.0` である。
+- [ ] Root/Bukkit/Fabric/NeoForge/Forge の metadata と成果物名がすべて `5.3.1` である。
 - [ ] 現在の `config.yml`、`config-baselines/config-5.3.0.yml`、多言語 config template、`distribution/config-reference-5.3.0.yml` の parsed setting path/default が一致し、表示用 comment と `_auto_migration` marker の差だけが許容される。過去 baseline は migration 入力としてのみ保持する。
 - [ ] 5.2.1 → 5.3.0 migration が `5.3.0_auto_migration` を記録し、対応済み運用値と Relay v2 trust 設定を保持し、廃止された hide 確認設定を delete 確認設定へ移行し、正確な `5.3.0` は同一 version の再構築を停止する。
 - [ ] en-US/ko-KR/ja-JP/zh-CN の key set と placeholder が完全に一致する。
+- [ ] 5.3.0 → 5.3.1 は config schema 5.3.0 と Relay 2.2/既存設定値を維持し、Event automatic-end persistence、topology-aware Event scope、共通 command completion、mobile add-on Administrator 操作を検証する。
 - [ ] `inner.js` と 8 個すべての frontend wrapper が構文検査と embedded JS/CSS 一致検査を通過する。
 - [ ] `node tools/build-inner-bundle.js --check` が成功し、`frontend/inner/manifest.txt`、生成済み `inner.js`、8 個の wrapper の embedded payload がすべて一致する。
 
@@ -15,7 +16,7 @@
 - [ ] Web Reply は元メッセージ全文を保持し、URL/custom emoji を読みやすく表示する。
 - [ ] ゲーム内 DM/group の名前クリックは既存コマンドを入力欄へ準備し、本文クリックは Reply を準備し、URL 部分は URL を開く。
 - [ ] 改ざんした `dm-...`/`group-...` Reply target は、実際の DM 参加者または現在の group member でない限り拒否される。
-- [ ] Chat Event は First come/抽選を複数同時に保持し、First come は当選人数の定員到達で自動完了し、参加者/当選者一覧は表示名 / 実名 mode に従い、結果通知は `🏆` で始まり名前が異なる場合は `表示名 (実名)` と表示する。
+- [ ] Chat Event は First come/Lottery/Poll/Recruitment をサポートし、type 別の capacity/response/time 自動終了条件が restart 後も維持され、First come は winner capacity 到達時に常に自動完了し、participant/result identity は表示名 / 実名 mode に従う。
 
 - [ ] 公開 message reaction が永続化され Relay 2.2 伝播が動作し、reaction-only SSE 更新で再生中 media が再起動しない。32 × 16px empty-state `+` は本文下/次 message 前に各 1px の視覚的余白を取り、reaction OFF は元の 8px spacing、実 reaction は通常の in-flow row を使う。category/search 再描画後も picker 位置と outside-click close が維持され、**Admin > Emojis > Reaction icons** は他の Admin settings と同じ rounded themed row と `emoji = search words` alias editor を提供し、alias は `reaction-search-aliases.txt` に保存される。 検索 alias は picker 検索専用で chat 入力を変換しない。
 - [ ] public/DM/group typing は 5 秒の event-driven window で動作し、自分自身/audit viewer を除外し、長い複数 user 名は人数表示へ縮約し、polling/永続 typing state を作らない。Web Admin Settings/config.yml で server-wide の既定値 Open chat OFF / DM ON / Group ON を個別制御する。`chat.typing-indicator.user-display-control` は既定 OFF で、管理者が有効にした場合はアカウント保存の個人 switch が受信表示だけを隠し、自分の typing 送信は継続する。
@@ -48,3 +49,10 @@
 
 - [ ] `validate-release-windows.bat` が `FINAL RELEASE BUILD PASS`、45 個の deployable JAR、SHA256SUMS を生成する。
 - [ ] 最終 acceptance は `--fast` なしで実行する。sequential または `--parallel` clean 実行は許可するが、cached/partial build を `FINAL RELEASE BUILD PASS` として扱わない。
+
+### 5.3.1 Presentation parity matrix
+
+- PC の 7 map add-on + PiP、Standalone + PiP は同一の server config/account preference/権限/Event state を使用する。
+- Mobile の 7 map add-on と Standalone も同じ設定/状態を使用し、差分は minimize/PiP/multi-window など presentation capability のみに限定する。
+- `node validation/531-presentation-parity-harness/kwc-531-presentation-parity-harness.js` が PASS すること。
+- `node tools/build-inner-bundle.js --check` で 8 wrapper の embedded inner と 8 CSS の byte parity も PASS すること。

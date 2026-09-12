@@ -50,6 +50,8 @@ web:
     groupChats: グループチャット
     directMessages: メッセージ
     pip: PIP
+    minimize: 最小化
+    restore: 復元
     run: 実行
     jumpLatest: 最新メッセージへ
     createPack: フォルダー作成
@@ -730,12 +732,12 @@ web:
     youtubeTitle: YouTube 動画
     youtubeShorts: YouTube Shorts
     youtubeShortsTitle: YouTube Shorts
-    loadTikTok: ▶ TikTok
-    loadXPost: ▶ X 投稿
+    loadTikTok: TikTok
+    loadXPost: X 投稿
     openTikTok: TikTokで開く
     tiktok: TikTok
-    loadVideo: ▶ 動画
-    loadAudio: ▶ 音声
+    loadVideo: 動画
+    loadAudio: 音声
   error:
     unknown: 不明なエラー
     content_blocked: '禁止された内容が含まれているため、メッセージを送信できません。'
@@ -994,11 +996,45 @@ web:
     gameListEntry: '- {id} | {title} | {status} | {participants}/{max}'
     gameTypeFirstCome: '先着順'
     gameTypeLottery: '抽選'
+    gameAlreadyVoted: 'その項目にはすでに投票しています。'
+    gameVoted: '投票を記録しました。'
+    gameRecruitmentWaiting: 'その役割は満員のため、待機列 #{position} に登録しました。'
+    gameRecruitmentAccepted: '募集への参加が確定しました。'
+    gameRecruitmentWithdrawn: '募集への応募を取り消しました。'
+    gameWaitingCount: '待機: {count}人'
+    gameYourRecruitment: '自分の応募: {role} / {state}{extra}'
+    gameTypePoll: '投票'
+    gameTypeRecruitment: '募集'
+    gameRecruitmentStateAccepted: '確定'
+    gameRecruitmentStateWaiting: '待機'
+    gameNotPoll: '投票イベントではありません。'
+    gameNotRecruitment: '募集イベントではありません。'
+    gameVoteRequired: '投票イベントでは vote コマンドを使用してください。'
+    gameRoleRequired: '募集の役割を選択してください。'
+    gameInvalidPollOptions: '異なる投票項目を2つ以上入力してください。'
+    gameInvalidPollOption: '有効な投票項目番号を選択してください。'
+    gameInvalidRecruitmentRoles: '役割:人数 の形式で役割を1つ以上入力してください。'
+    gameInvalidRecruitmentRole: '有効な募集役割を選択してください。'
+    gameNotApplied: 'この募集イベントには応募していません。'
+    gameAutoEndNotApplicable: 'このイベント種類ではその自動終了条件を使用できません。'
+    gameAutoEndRequired: "First come イベントは当選枠が埋まると常に自動終了します。"
+    gameScopeUnavailable: 'このサーバーにはイベント配信用の Relay 構成がありません。'
+    gameAutoEndSummary: '自動終了: {value}'
+    gameAutoEndOff: '無効'
+    gameAutoEndCapacity: '定員到達'
+    gameAutoEndRolesFull: 'すべての役割枠が満員'
+    gameAutoEndResponses: '回答 {count} 人'
+    gameAutoEndTime: '{time} に終了'
+    gameScopeSummary: '告知範囲: {scope}'
+    gameScopeRelay: 'Relay'
+    gameScopeLocal: '現在のサーバーのみ'
+    gameInvalidAutoEndCount: '自動終了の回答人数は 0～500 で指定してください。'
+    gameInvalidAutoEndTime: '自動終了時刻は未来の時刻か無効である必要があります。'
     gameStatusOpen: '募集中'
     gameStatusReady: '定員到達'
     gameStatusCompleted: '終了'
     gameStatusClosed: 'クローズ'
-    gameInvalidType: 'イベント種類は firstcome または lottery にしてください。'
+    gameInvalidType: 'イベント種別は firstcome, lottery, poll, recruitment のいずれかである必要があります。'
     gameInvalidTitle: '80文字以内のイベント名を入力してください。'
     gameInvalidParticipantCount: '参加人数は2人以上にしてください。'
     gameInvalidWinnerCount: '当選人数は1人以上、参加人数以下にしてください。'
@@ -1131,7 +1167,9 @@ web:
     error.remote_game_manage_not_allowed: 'リモートイベントへの参加はできますが、管理は元サーバーで行ってください。'
     error.permission_denied: 'このイベントを管理する権限がありません。'
     error.not_lottery: 'このイベントは抽選形式ではありません。'
-    error.invalid_type: '先着順または抽選を選択してください。'
+    error.invalid_type: '先着順、抽選、投票、募集のいずれかを選択してください。'
+    error.invalid_auto_end_time: '自動終了日時は現在より後の日時を指定してください。'
+    error.invalid_auto_end_count: '自動終了の回答人数は1～500人にするか、無効にしてください。'
     title: イベント
     type: 方式
     eventTitle: タイトル
@@ -1141,6 +1179,17 @@ web:
     notificationScope: 通知範囲
     scopeLocal: 現在のサーバーのみ
     scopeRelay: Relay サーバーにも配信
+    autoEnd: '自動終了'
+    autoEndWhenFull: '参加定員に達したら終了'
+    autoEndWhenFirstComeFull: '当選枠が埋まったら終了（先着順では常に有効）'
+    autoEndWhenRolesFull: 'すべての役割枠が埋まったら終了'
+    autoEndResponseCount: 'この人数が回答したら終了'
+    autoEndDateTime: '終了日時（任意）'
+    autoEndFirstMatch: '複数の条件を有効にした場合、最初に満たした条件でイベントを終了します。'
+    autoEndAtResponses: '回答 {count}人で終了'
+    autoEndAtTime: '{time} に終了'
+    autoEndOff: '自動終了: オフ'
+    autoEndSummary: '自動終了: {conditions}'
     create: イベント作成
     join: 参加
     joined: 参加済み
@@ -1159,6 +1208,40 @@ web:
     none: 開催中のイベントはありません。
     type.firstcome: 先着順
     type.lottery: 抽選
+    type.poll: 投票
+    type.recruitment: 募集
+    pollOptions: 投票項目
+    pollOptionsHelp: 1行に1項目ずつ入力してください。2項目以上必要です。
+    recruitmentRoles: 募集役割
+    recruitmentRolesHelp: '1行に 役割:人数 の形式で入力してください。満員の役割は待機列に入ります。'
+    voteCount: '{count}票'
+    recruitmentMetric: '確定 {accepted}/{capacity} · 待機 {waiting}'
+    recruitmentRoleMetric: '確定 {accepted}/{capacity} · 待機 {waiting}'
+    recruitmentAccepted: 確定
+    recruitmentWaiting: 待機
+    vote: 投票
+    voted: 投票済み
+    apply: 応募
+    applied: 応募済み
+    withdraw: 応募取消
+    myRecruitment: '自分の応募: {role} · {state}{queue}'
+    voterHeading: '投票者 ({count})'
+    applicantHeading: '応募者 ({count})'
+    noVoters: まだ投票はありません。
+    noApplicants: まだ応募者はいません。
+    chat.pollCreated: '投票開始: {title} ({options}項目)'
+    chat.recruitmentCreated: '募集開始: {title} (定員 {participants}人、役割 {roles}個)'
+    chat.pollResults: '投票結果: {title} - {results}'
+    chat.recruitmentResults: '募集確定: {title} - 確定 {accepted}人、待機 {waiting}人'
+    error.not_poll: '投票イベントではありません。'
+    error.not_recruitment: '募集イベントではありません。'
+    error.vote_required: '投票項目を選択してください。'
+    error.role_required: '募集の役割を選択してください。'
+    error.invalid_poll_options: '異なる投票項目を2つ以上入力してください。'
+    error.invalid_poll_option: '有効な投票項目を選択してください。'
+    error.invalid_recruitment_roles: '役割:人数 の形式で役割を1つ以上入力してください。'
+    error.invalid_recruitment_role: '有効な募集役割を選択してください。'
+    error.not_applied: 'この募集イベントには応募していません。'
     status.open: 募集中
     status.ready: 募集完了
     status.completed: 終了

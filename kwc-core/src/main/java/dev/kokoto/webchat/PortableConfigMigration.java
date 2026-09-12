@@ -39,6 +39,7 @@ import java.util.Objects;
  * KWC maintenance note: Migration engine upgrading older configs to the current canonical config while preserving administrator choices wherever possible. Historical baselines are used for default comparisons, while renamed/retired settings are explicit. Migration keeps backups and reports so automatic changes remain auditable.
  */
 public final class PortableConfigMigration {
+    public static final String CONFIG_SCHEMA_VERSION = "5.3.0";
     private static final DateTimeFormatter BACKUP_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final java.util.Set<String> RETIRED_SETTINGS = java.util.Set.of(
             "ui.show-login-only-when-hidden",

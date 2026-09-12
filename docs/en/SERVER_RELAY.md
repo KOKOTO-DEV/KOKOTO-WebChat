@@ -13,7 +13,7 @@ For reaction authority, direct/multi-hop delivery, offline outbox behavior and n
 
 > **Security boundary:** Relay v2 is hop-by-hop authenticated encryption, not end-to-end encryption. A forwarding KWC server is a trusted participant.
 
-KOKOTO WebChat 5.3.0 uses **Relay Protocol 2.2**, the fixed relay revision for the entire 5.3.0 line. Protocol major `2` remains the wire-compatibility boundary. Revision 2.2 advertises `public`, `dm`, `read`, `delete`, `reaction`, `reaction-authority`, `typing`, `game`, and `profile`; product version is diagnostic only. Reaction/reaction-authority/typing remain compatible with the 2.1 feature set, while 5.3.0 capability-negotiates `delete`, `game`, and `profile` within revision 2.2. Group-chat rooms remain local.
+KOKOTO WebChat 5.3.1 continues to use **Relay Protocol 2.2**, the fixed relay revision for the entire 5.3.0 line. Protocol major `2` remains the wire-compatibility boundary. Revision 2.2 advertises `public`, `dm`, `read`, `delete`, `reaction`, `reaction-authority`, `typing`, `game`, and `profile`; product version is diagnostic only. Reaction/reaction-authority/typing remain compatible with the 2.1 feature set, while 5.3.0 capability-negotiates `delete`, `game`, and `profile` within revision 2.2. Group-chat rooms remain local.
 
 
 ## Security-sensitive upgrade scope
@@ -112,7 +112,7 @@ Each peer keeps `enabled` as its master switch and may independently restrict `s
 
 For an existing config, KWC does not rely only on runtime defaults: migration physically adds any missing `send` / `receive` maps and missing `public-chat`, `event`, `dm`, and `profile` entries with `true`. Existing explicit values are preserved, including a scalar `send: false` or `receive: false`, and running migration again is idempotent.
 
-`sources.event` is separate from `sources.system`. This lets event announcements relay while unrelated system notices stay local. Per-event **Notification scope** still decides whether that event's creation/result announcements are local-only or eligible for Relay; peer `send.event` / `receive.event` are the upper routing policy.
+`sources.event` is separate from `sources.system`. This lets event announcements relay while unrelated system notices stay local. KWC shows per-event **Notification scope** only when at least one enabled configured peer allows `send.event`; in that multi-server topology the default is Relay and local-only remains selectable. With no Event-capable peer, scope is hidden and events are normalized to local-only. This is configuration-based rather than live-link based, so transient peer outages do not change the UI. Peer `send.event` / `receive.event` remain the upper routing policy.
 
 ## Request authentication and optional identity probe
 
@@ -140,7 +140,7 @@ Legacy v1 endpoints (`/relay/handshake`, `/relay/receive`, `/relay/dm/receive`, 
 
 ## Protocol revision and capabilities
 
-Relay compatibility is no longer tied to the KWC product version. `X-KWC-Relay-Version: 2` identifies the compatible major wire family; `X-KWC-Relay-Protocol: 2.2` and `X-KWC-Relay-Capabilities` describe the current revision and optional extensions. A 2.0 peer can continue exchanging common v2 public/DM/read traffic with a 2.2 peer. Reaction, reaction-authority, and typing were added as 2.1 extensions. KWC 5.3.0 keeps revision 2.2 and capability-negotiates `delete`, `game`, and `profile` within that same revision. If either participating peer lacks `delete`, the deletion fails safely and the sender keeps its local copy. Lack of an optional extension does not make the peer itself incompatible. The handshake response reports `serverVersion` only for diagnostics.
+Relay compatibility is no longer tied to the KWC product version. `X-KWC-Relay-Version: 2` identifies the compatible major wire family; `X-KWC-Relay-Protocol: 2.2` and `X-KWC-Relay-Capabilities` describe the current revision and optional extensions. A 2.0 peer can continue exchanging common v2 public/DM/read traffic with a 2.2 peer. Reaction, reaction-authority, and typing were added as 2.1 extensions. KWC 5.3.1 keeps revision 2.2 and capability-negotiates `delete`, `game`, and `profile` within that same revision. If either participating peer lacks `delete`, the deletion fails safely and the sender keeps its local copy. Lack of an optional extension does not make the peer itself incompatible. The handshake response reports `serverVersion` only for diagnostics.
 
 
 ### Event relay routing (2.2)

@@ -18,7 +18,7 @@ has(src, 'const winnerCount = content.querySelector("#kwc-game-winner-count")?.v
 has(src, 'maxParticipants:selectedType === "firstcome" ? ""', 'firstcome request does not submit the hidden participant-capacity value');
 const manager = fs.readFileSync(path.join(root, 'kwc-core/src/main/java/dev/kokoto/webchat/ChatGameManager.java'), 'utf8');
 has(manager, 'if (type.equals("firstcome")) maxParticipants = winnerCount;', 'server normalizes firstcome capacity to winners');
-has(manager, 'game.winners.size() >= game.winnerCount) game.status = "completed";', 'firstcome auto-completes when winner slots fill');
+has(manager, '"firstcome".equals(game.type) && game.winners.size() >= game.winnerCount', 'firstcome auto-completes when winner slots fill');
 const command = fs.readFileSync(path.join(root, 'kwc-core/src/main/java/dev/kokoto/webchat/GameCommandService.java'), 'utf8');
-has(command, '/kchat game create firstcome <winners> <title>', 'command syntax has no firstcome participant capacity');
+has(command, 'create firstcome" + scope + " <winners> <title>', 'command syntax has no firstcome participant capacity and may include optional Relay scope');
 console.log(`RC32_FIRSTCOME_UI_PASS assertions=${assertions}`);

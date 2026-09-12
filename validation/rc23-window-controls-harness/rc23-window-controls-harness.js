@@ -17,7 +17,7 @@ const profile = read('frontend/inner/110-auth-dm-core.js');
 const multi = read('frontend/inner/115-private-multiwindow.js');
 
 check(rootUi.includes('function publicChatMinimizeAvailable()'), 'minimize availability helper missing');
-check(rootUi.includes('if (!state.isStandalone) return true;'), 'embedded map/add-on minimize must not be hidden by desktop multi-window thresholds');
+check(rootUi.includes('if (presentation.addon) return true;'), 'embedded map/add-on minimize must not be hidden by desktop multi-window thresholds');
 check(rootUi.includes('const viewport = publicChatMinimizeViewport();'), 'Standalone minimize availability is not tied to the public-chat viewport policy');
 check(!rootUi.includes('if (state.minimized) return true;'), 'stale minimized state still bypasses the capability gate');
 check(rootUi.includes('function reconcileMinimizeAvailability()'), 'minimize capability reconciliation missing');
@@ -35,7 +35,7 @@ check(multi.includes('window.innerHeight >= Number(state.privateMultiWindowMinHe
 check(pipUi.includes('function documentPictureInPictureSupported()'), 'Document PiP feature detector missing');
 check(pipUi.includes('typeof candidate.requestWindow === "function"'), 'Document PiP feature detector does not require requestWindow');
 check(pipUi.includes('window.parent.documentPictureInPicture'), 'adapter parent Document PiP capability is not checked');
-check(rootUi.includes('documentPictureInPictureSupported() ? `<button class="kwc-button kwc-pip"'), 'unsupported PiP button is still rendered');
+check(rootUi.includes('documentPictureInPictureSupported() ? `<button class="kwc-button kwc-pip kwc-icon-button"'), 'unsupported PiP button is still rendered');
 check(pipUi.includes('&& documentPictureInPictureSupported();'), 'runtime PiP visibility does not re-check browser capability');
 
 check(dmGroup.includes('t("button.closeAllDm", "Close all DMs")'), 'DM hub close-all label missing');

@@ -1,6 +1,6 @@
 # KOKOTO WebChat Upgrade Guide
 
-This document consolidates the supported upgrade notes from 4.5.5 through 5.3.0. Follow the sections in version order when skipping multiple releases.
+This document consolidates the supported upgrade notes from 4.5.5 through 5.3.1. Follow the sections in version order when skipping multiple releases.
 
 ## Upgrade from 4.5.5 to 4.6.0
 
@@ -424,3 +424,12 @@ DM no longer has a message-level hide-for-me operation: only the sender may dele
 Presence now distinguishes Game and Web connections. Compact lists show Game > Web > Offline, profiles show Game/Web separately, and the account-level Offline status masks both states from other viewers server-side.
 
 Retest BlueMap refresh/recovery, DM/group search and deletion, group pins/roles, Game/Web presence, Offline privacy, and any cross-server DM delete path after all relevant peers are upgraded.
+
+
+## Upgrading from KOKOTO WebChat 5.3.0 to 5.3.1
+
+Back up the KWC data directory and replace the runtime JARs with matching 5.3.1 artifacts. **No config schema bump is required:** `config-version` and the administrator reference remain 5.3.0, so existing 5.3.0 operator values and Relay 2.2 trust/policy settings are preserved.
+
+5.3.1 completes Poll/Recruitment Event lifecycle work, persists automatic-end conditions, fixes the mobile add-on Administrator tap regression and private-window raise behavior, and standardizes Font Awesome Free UI icons. Minecraft `/kchat game` completion is shared by Bukkit/Fabric/NeoForge/Forge and now suggests Event actions, event IDs, Poll option numbers, Recruitment roles, automatic-end controls, live-setting/filter/admin/guest controls, and basic DM/group navigation. Bukkit also restores the documented `/kchat filter` and `/kchat settings` dispatch paths.
+
+Event announcement scope is topology-aware. If at least one enabled Relay peer is configured with `send.event` allowed, Relay is the default and local-only remains selectable. With no Event-capable Relay peer, the scope control/command is hidden and the server normalizes Event announcements to local-only. This is based on configured topology rather than transient connection state. Relay Protocol remains 2.2.

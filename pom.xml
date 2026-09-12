@@ -11,11 +11,11 @@
 
     <groupId>dev.kokoto</groupId>
     <artifactId>kokoto-webchat-parent</artifactId>
-    <version>5.3.0</version>
+    <version>5.3.1</version>
     <packaging>pom</packaging>
 
     <name>KOKOTO WebChat Parent</name>
-    <description>Multi-module build for the KOKOTO WebChat 5.3.0 platform, frontend, and map-adapter separation.</description>
+    <description>Multi-module build for the KOKOTO WebChat 5.3.1 platform, frontend, and map-adapter separation.</description>
 
     <modules>
         <module>kwc-core</module>

@@ -530,7 +530,7 @@
     }
     const conversationKey = "dm:" + String(state.dmActiveThreadId || (state.dmDraftTarget && state.dmDraftTarget.uuid) || "");
     const auditNotice = state.dmAuditMode
-      ? `<div class="kwc-admin-audit-notice">🛡 ${esc(t("admin.dmAuditReadOnly", "This administrator audit view is read-only. Every access is recorded in the audit log."))}</div>`
+      ? `<div class="kwc-admin-audit-notice">${kwcFaIcon("shield-halved")} ${esc(t("admin.dmAuditReadOnly", "This administrator audit view is read-only. Every access is recorded in the audit log."))}</div>`
       : "";
     const result = reconcilePrivateMessageList(box, arr, "dm", conversationKey, auditNotice, `<div class="kwc-dm-empty">${esc(t("dm.emptyThread", "No messages yet."))}</div>`);
     if (options && options.preserveTop) {

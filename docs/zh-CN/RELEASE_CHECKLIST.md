@@ -1,10 +1,11 @@
-# KOKOTO WebChat 5.3.0 发布检查清单
+# KOKOTO WebChat 5.3.1 发布检查清单
 
 ## 源码 / 配置 / 多语言
-- [ ] Root/Bukkit/Fabric/NeoForge/Forge 的 metadata 与产物名称全部为 `5.3.0`。
+- [ ] Root/Bukkit/Fabric/NeoForge/Forge 的 metadata 与产物名称全部为 `5.3.1`。
 - [ ] 当前 `config.yml`、`config-baselines/config-5.3.0.yml`、多语言 config template 与 `distribution/config-reference-5.3.0.yml` 的解析设置路径和默认值一致，仅允许展示注释与 `_auto_migration` 标记不同；历史 baseline 仅作为 migration 输入保留。
 - [ ] 5.2.1 → 5.3.0 migration 会写入 `5.3.0_auto_migration`，保留受支持的运维值与 Relay v2 信任设置，将废弃的 hide 确认项迁移为 delete 确认项；精确的 `5.3.0` 会停止同版本重构。
 - [ ] en-US/ko-KR/ja-JP/zh-CN 的键集合与 placeholder 完全一致。
+- [ ] 5.3.0 → 5.3.1 保持 config schema 5.3.0 与 Relay 2.2/现有配置值，并验证 Event 自动结束持久化、topology-aware Event scope、共享命令补全和移动端 add-on Administrator 交互。
 - [ ] `inner.js` 与全部 8 个 frontend wrapper 均通过语法检查和 embedded JS/CSS 一致性检查。
 - [ ] `node tools/build-inner-bundle.js --check` 通过，确认 `frontend/inner/manifest.txt`、生成的 `inner.js` 与 8 个 wrapper 的 embedded payload 完全一致。
 
@@ -15,7 +16,7 @@
 - [ ] Web Reply 保留完整原文，并正确、可读地呈现 URL 与自定义表情。
 - [ ] 游戏内 DM/group 名称点击会准备现有命令，消息正文点击会准备 Reply，URL 片段仍执行打开 URL。
 - [ ] 被篡改的 `dm-...`/`group-...` Reply target，若发送者不是实际 DM 参与者或当前 group member，必须被拒绝。
-- [ ] Chat Event 可同时保留多个先到先得/抽奖活动；先到先得在获奖人数容量满额时自动完成；参与者/获奖者列表遵循显示名 / 真实名模式；结果公告以 `🏆` 开头，名称不同时显示为 `显示名 (真实名)`。
+- [ ] Chat Event 支持先到先得/抽奖/投票/招募；按类型的容量/响应数/时间自动结束条件在重启后仍保留；先到先得在获奖名额满时始终自动完成；参与者/结果名称遵循显示名 / 真实名模式。
 
 - [ ] 公共消息 reaction 可持久化，Relay 2.2 传播正常，且 reaction-only SSE 更新不会重启正在播放的媒体；32 × 16px empty-state `+` 与正文/下一条消息各保留 1px 视觉间距，reaction OFF 保持原来的 8px spacing，实际 reaction 使用正常 in-flow row；分类/搜索重绘后 picker 位置和外部点击关闭正常；**Admin > Emojis > Reaction icons** 使用与其他 Admin settings 相同的圆角主题行，并提供 `表情 = 搜索词` 别名编辑器，保存到 `reaction-search-aliases.txt`。 搜索别名仅用于 picker 搜索，不转换聊天输入。
 - [ ] 公开聊天/DM/群聊“正在输入…”使用 5 秒 event-driven window，排除本人/audit viewer，多个过长名称会折叠为人数，并且不产生 polling 或持久 typing 状态。Web Admin Settings/config.yml 分别执行服务器级默认值：公开聊天 OFF / DM ON / 群聊 ON。`chat.typing-indicator.user-display-control` 默认关闭；管理员启用后，按账号保存的个人开关只隐藏接收到的 typing 提示，不停止发送自己的 typing 状态。
@@ -48,3 +49,10 @@
 
 - [ ] `validate-release-windows.bat` 生成 `FINAL RELEASE BUILD PASS`、45 个可部署 JAR 与 SHA256SUMS。
 - [ ] 最终 acceptance 不使用 `--fast`；可采用 sequential 或 `--parallel` 的 clean 调度，但不得把缓存/部分构建视为 `FINAL RELEASE BUILD PASS`。
+
+### 5.3.1 Presentation parity matrix
+
+- PC 的 7 种 map add-on + PiP、Standalone + PiP 使用同一份 server config/account preference/权限/Event 状态。
+- Mobile 的 7 种 map add-on 与 Standalone 同样共享设置/状态，差异只允许存在于 minimize/PiP/multi-window 等 presentation capability。
+- 确认 `node validation/531-presentation-parity-harness/kwc-531-presentation-parity-harness.js` PASS。
+- `node tools/build-inner-bundle.js --check` 必须同时验证 8 个 wrapper embedded inner 与 8 份 CSS 的 byte parity。
